@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem
+from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem
 
 
 class CustomerShippingAddressSerializer(serializers.ModelSerializer):
@@ -606,11 +606,29 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
             try:
                 product = Product.objects.get(id=product_id)
 
+                # Calculate line total
+                from decimal import Decimal
+                line_total = Decimal(str(quantity)) * Decimal(str(unit_price))
+
+                # Populate all fields that would normally be set by save()
+                hsn_sac_code = ''
+                if product.hsn_code:
+                    hsn_sac_code = product.hsn_code.code
+                elif product.sac_code:
+                    hsn_sac_code = product.sac_code.code
+
                 items_to_create.append(PurchaseOrderItem(
                     purchase_order=purchase_order,
                     product=product,
+                    product_name=product.name,
+                    product_code=product.product_code,
+                    description=product.description,
+                    hsn_sac_code=hsn_sac_code,
                     quantity=quantity,
+                    unit=product.unit,
                     unit_price=unit_price,
+                    line_total=line_total,
+                    gst_rate=product.gst_rate,
                     line_number=index
                 ))
             except Product.DoesNotExist:
@@ -665,11 +683,29 @@ class PurchaseOrderUpdateSerializer(serializers.ModelSerializer):
                 try:
                     product = Product.objects.get(id=product_id)
 
+                    # Calculate line total
+                    from decimal import Decimal
+                    line_total = Decimal(str(quantity)) * Decimal(str(unit_price))
+
+                    # Populate all fields that would normally be set by save()
+                    hsn_sac_code = ''
+                    if product.hsn_code:
+                        hsn_sac_code = product.hsn_code.code
+                    elif product.sac_code:
+                        hsn_sac_code = product.sac_code.code
+
                     items_to_create.append(PurchaseOrderItem(
                         purchase_order=instance,
                         product=product,
+                        product_name=product.name,
+                        product_code=product.product_code,
+                        description=product.description,
+                        hsn_sac_code=hsn_sac_code,
                         quantity=quantity,
+                        unit=product.unit,
                         unit_price=unit_price,
+                        line_total=line_total,
+                        gst_rate=product.gst_rate,
                         line_number=index
                     ))
                 except Product.DoesNotExist:
@@ -680,6 +716,160 @@ class PurchaseOrderUpdateSerializer(serializers.ModelSerializer):
 
             # Calculate totals once after all items are created
             instance.calculate_totals()
+
+        return instance
+
+
+# Proforma Invoice Serializers
+
+class ProformaInvoiceItemSerializer(serializers.ModelSerializer):
+    """Serializer for Proforma Invoice items"""
+
+    class Meta:
+        model = ProformaInvoiceItem
+        fields = [
+            'id', 'product', 'product_name', 'product_code', 'description', 'hsn_sac_code',
+            'quantity', 'unit', 'unit_price', 'line_total', 'gst_rate', 'line_number'
+        ]
+        read_only_fields = [
+            'id', 'product_name', 'product_code', 'description', 'hsn_sac_code',
+            'line_total', 'gst_rate', 'unit'
+        ]
+
+
+class ProformaInvoiceListSerializer(serializers.ModelSerializer):
+    """Serializer for listing proforma invoices"""
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    customer_code = serializers.CharField(source='customer.customer_code', read_only=True)
+    customer_project_area = serializers.CharField(source='customer.project_area', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    po_number = serializers.CharField(source='purchase_order.internal_po_number', read_only=True)
+    item_count = serializers.SerializerMethodField()
+    proforma_items = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProformaInvoice
+        fields = [
+            'id', 'proforma_number', 'proforma_date', 'due_date', 'customer_name', 'customer_code',
+            'customer_project_area', 'po_number', 'status', 'gst_type',
+            'subtotal', 'total_tax', 'total_amount', 'item_count', 'proforma_items',
+            'created_at', 'created_by_name'
+        ]
+
+    def get_item_count(self, obj):
+        return obj.proforma_items.count()
+
+    def get_proforma_items(self, obj):
+        """Get simplified proforma items for tooltip"""
+        items = obj.proforma_items.all()[:10]  # Limit to first 10 items for performance
+        return [
+            {
+                'product_name': item.product_name,
+                'quantity': float(item.quantity),
+                'unit': item.unit,
+                'unit_price': float(item.unit_price),
+                'line_total': float(item.line_total)
+            }
+            for item in items
+        ]
+
+
+class ProformaInvoiceDetailSerializer(serializers.ModelSerializer):
+    """Serializer for Proforma Invoice details"""
+    customer_details = CustomerDetailSerializer(source='customer', read_only=True)
+    purchase_order_details = PurchaseOrderDetailSerializer(source='purchase_order', read_only=True)
+    shipping_address_details = CustomerShippingAddressSerializer(source='shipping_address', read_only=True)
+    proforma_items = ProformaInvoiceItemSerializer(many=True, read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+
+    class Meta:
+        model = ProformaInvoice
+        fields = '__all__'
+        read_only_fields = [
+            'id', 'proforma_number', 'company', 'created_by', 'created_at', 'updated_at',
+            'subtotal', 'total_tax', 'total_amount', 'cgst_amount', 'sgst_amount', 'igst_amount',
+            'gst_type', 'customer_gstin', 'company_gstin'
+        ]
+
+
+class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating proforma invoices from Purchase Orders"""
+
+    class Meta:
+        model = ProformaInvoice
+        fields = [
+            'purchase_order', 'proforma_date', 'due_date', 'reference',
+            'shipping_address', 'discount_percentage', 'discount_amount',
+            'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions', 'status'
+        ]
+
+    def create(self, validated_data):
+        # Get purchase order to copy information
+        purchase_order = validated_data['purchase_order']
+
+        # Set customer and GST information from purchase order
+        validated_data['customer'] = purchase_order.customer
+        validated_data['gst_type'] = purchase_order.gst_type
+        validated_data['customer_gstin'] = purchase_order.customer_gstin
+        validated_data['company_gstin'] = purchase_order.company_gstin
+
+        # Create the proforma invoice
+        proforma_invoice = ProformaInvoice.objects.create(**validated_data)
+
+        # Copy items from purchase order
+        items_to_create = []
+        for po_item in purchase_order.po_items.all():
+            # Populate all fields that would normally be set by save()
+            hsn_sac_code = ''
+            if po_item.product.hsn_code:
+                hsn_sac_code = po_item.product.hsn_code.code
+            elif po_item.product.sac_code:
+                hsn_sac_code = po_item.product.sac_code.code
+
+            items_to_create.append(ProformaInvoiceItem(
+                proforma_invoice=proforma_invoice,
+                product=po_item.product,
+                product_name=po_item.product.name,
+                product_code=po_item.product.product_code,
+                description=po_item.product.description,
+                hsn_sac_code=hsn_sac_code,
+                quantity=po_item.quantity,
+                unit=po_item.product.unit,
+                unit_price=po_item.unit_price,
+                line_total=po_item.line_total,
+                gst_rate=po_item.product.gst_rate,
+                line_number=po_item.line_number
+            ))
+
+        # Use bulk_create to avoid individual save() calls
+        ProformaInvoiceItem.objects.bulk_create(items_to_create)
+
+        # Calculate totals once after all items are created
+        proforma_invoice.calculate_totals()
+
+        return proforma_invoice
+
+
+class ProformaInvoiceUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating proforma invoices"""
+
+    class Meta:
+        model = ProformaInvoice
+        fields = [
+            'proforma_date', 'due_date', 'reference', 'shipping_address',
+            'discount_percentage', 'discount_amount', 'shipping_charges',
+            'other_charges', 'notes', 'terms_and_conditions', 'status'
+        ]
+        read_only_fields = ['proforma_number', 'purchase_order', 'customer', 'company', 'created_by', 'created_at']
+
+    def update(self, instance, validated_data):
+        # Update proforma fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Recalculate totals
+        instance.calculate_totals()
 
         return instance
 

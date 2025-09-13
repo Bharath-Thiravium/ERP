@@ -57,13 +57,12 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ onCreateNew, onEd
     try {
       const params = new URLSearchParams({
         page: page.toString(),
+        session_key: sessionKey,
         ...(searchTerm && { search: searchTerm }),
         ...(statusFilter && { status: statusFilter })
       })
 
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/?${params}`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/?${params}`)
 
       setPurchaseOrders(response.data.results)
       setTotalPages(Math.ceil(response.data.count / 5))
@@ -86,9 +85,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ onCreateNew, onEd
     }
 
     try {
-      await axios.delete(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      await axios.delete(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/?session_key=${sessionKey}`)
 
       toast.success('Purchase order deleted successfully!')
       fetchPurchaseOrders(currentPage)

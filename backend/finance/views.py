@@ -8,7 +8,7 @@ from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
 from authentication.models import ServiceUserSession, CompanyServiceUser
-from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem
+from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem
 from .serializers import (
     CustomerListSerializer, CustomerDetailSerializer,
     CustomerCreateSerializer, CustomerUpdateSerializer,
@@ -18,7 +18,9 @@ from .serializers import (
     QuotationListSerializer, QuotationDetailSerializer,
     QuotationCreateSerializer, QuotationUpdateSerializer,
     PurchaseOrderListSerializer, PurchaseOrderDetailSerializer,
-    PurchaseOrderCreateSerializer, PurchaseOrderUpdateSerializer
+    PurchaseOrderCreateSerializer, PurchaseOrderUpdateSerializer,
+    ProformaInvoiceListSerializer, ProformaInvoiceDetailSerializer,
+    ProformaInvoiceCreateSerializer, ProformaInvoiceUpdateSerializer
 )
 
 
@@ -1134,8 +1136,13 @@ class PurchaseOrderDetailView(RetrieveUpdateDestroyAPIView):
             return PurchaseOrder.objects.none()
 
     def get_session_key(self):
-        """Get session key from Authorization header"""
-        return self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        """Get session key from Authorization header or query params"""
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'POST']:
+            session_key = self.request.data.get('session_key')
+        return session_key
 
     def update(self, request, *args, **kwargs):
         """Override update to handle session authentication"""
@@ -1176,6 +1183,174 @@ class PurchaseOrderDetailView(RetrieveUpdateDestroyAPIView):
             )
             # Proceed with normal deletion
             return super().destroy(request, *args, **kwargs)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class ProformaInvoicePagination(PageNumberPagination):
+    """Custom pagination for proforma invoices"""
+    page_size = 5
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class ProformaInvoiceListCreateView(ListCreateAPIView):
+    """List and create proforma invoices for finance service"""
+    authentication_classes = []  # Disable JWT authentication
+    permission_classes = [permissions.AllowAny]  # Uses session-based auth
+    pagination_class = ProformaInvoicePagination
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return ProformaInvoiceCreateSerializer
+        return ProformaInvoiceListSerializer
+
+    def get_queryset(self):
+        # Get service user from session
+        session_key = self.get_session_key()
+        if not session_key:
+            return ProformaInvoice.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            # Return proforma invoices for this company only with prefetched related data
+            queryset = ProformaInvoice.objects.filter(
+                company=service_user.company
+            ).select_related(
+                'customer', 'purchase_order', 'created_by'
+            ).prefetch_related(
+                'proforma_items'
+            )
+
+            # Add filtering
+            status_filter = self.request.query_params.get('status', '')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+
+            customer_id = self.request.query_params.get('customer', '')
+            if customer_id:
+                queryset = queryset.filter(customer_id=customer_id)
+
+            return queryset.order_by('-created_at')
+
+        except ServiceUserSession.DoesNotExist:
+            return ProformaInvoice.objects.none()
+
+    def get_session_key(self):
+        """Get session key from Authorization header or query params"""
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        """Override create to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            # Create proforma invoice with company and created_by
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            proforma_invoice = serializer.save(
+                company=service_user.company,
+                created_by=service_user
+            )
+
+            # Return detailed proforma invoice data
+            detail_serializer = ProformaInvoiceDetailSerializer(proforma_invoice)
+            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class ProformaInvoiceDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete proforma invoice for finance service"""
+    authentication_classes = []  # Disable JWT authentication
+    permission_classes = [permissions.AllowAny]  # Uses session-based auth
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return ProformaInvoiceUpdateSerializer
+        return ProformaInvoiceDetailSerializer
+
+    def get_queryset(self):
+        # Get service user from session
+        session_key = self.get_session_key()
+        if not session_key:
+            return ProformaInvoice.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            # Return proforma invoices for this company only
+            return ProformaInvoice.objects.filter(
+                company=service_user.company
+            ).select_related(
+                'customer', 'purchase_order', 'shipping_address', 'created_by'
+            ).prefetch_related(
+                'proforma_items__product',
+                'customer__shipping_addresses'
+            )
+
+        except ServiceUserSession.DoesNotExist:
+            return ProformaInvoice.objects.none()
+
+    def get_session_key(self):
+        """Get session key from Authorization header or query params"""
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH']:
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def update(self, request, *args, **kwargs):
+        """Override update to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+
+            return super().update(request, *args, **kwargs)
 
         except ServiceUserSession.DoesNotExist:
             return Response(

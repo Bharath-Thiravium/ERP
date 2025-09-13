@@ -1,0 +1,378 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: white;
+    color: #111827;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer utilities {
+  .text-shadow-lg {
+    text-shadow: 0 4px 8px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
+
+  .font-athenas {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  .athenas-glow {
+    filter: drop-shadow(0 0 10px rgba(34, 197, 94, 0.5));
+  }
+
+  /* ᗩTᕼᙓᑎᗩ'𝔖 Brand Styles */
+  .brand-title {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+  }
+}
+
+/* Custom animations for futuristic dashboard */
+@keyframes blob {
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(168, 85, 247, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.8), 0 0 30px rgba(168, 85, 247, 0.6);
+    transform: scale(1.05);
+  }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.float-animation {
+  animation: float 3s ease-in-out infinite;
+}
+
+.pulse-glow-animation {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Glassmorphism effects */
+.glass-effect {
+  backdrop-filter: blur(16px) saturate(180%);
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-effect-dark {
+  backdrop-filter: blur(16px) saturate(180%);
+  background-color: rgba(17, 25, 40, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.125);
+}
+
+/* Service card animations */
+.service-card {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.service-card:hover {
+  transform: translateY(-8px) scale(1.05);
+  box-shadow: 0 25px 50px rgba(168, 85, 247, 0.2);
+}
+
+/* Print styles */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  .fixed {
+    position: static !important;
+  }
+
+  .bg-black {
+    background: transparent !important;
+  }
+
+  .bg-opacity-50 {
+    background-opacity: 1 !important;
+  }
+
+  .rounded-lg {
+    border-radius: 0 !important;
+  }
+
+  .shadow-xl {
+    box-shadow: none !important;
+  }
+
+  .max-w-4xl {
+    max-width: 100% !important;
+  }
+
+  .max-h-\[90vh\] {
+    max-height: none !important;
+  }
+
+  .overflow-hidden {
+    overflow: visible !important;
+  }
+
+  .p-4 {
+    padding: 0 !important;
+  }
+
+  .p-6 {
+    padding: 1rem !important;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .print\:overflow-visible {
+    overflow: visible !important;
+  }
+
+  .print\:p-0 {
+    padding: 0 !important;
+  }
+
+  .print\:max-h-none {
+    max-height: none !important;
+  }
+
+  /* Ensure tables break properly */
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  /* Ensure content fits on page */
+  .print-content {
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+  }
+
+  /* Page setup */
+  @page {
+    margin: 1in;
+    size: A4;
+  }
+
+  /* Prevent page breaks inside important elements */
+  .print\:break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Force page breaks */
+  .print\:break-before {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  /* Hide dark mode styles in print */
+  .dark\:bg-gray-800,
+  .dark\:bg-gray-700,
+  .dark\:text-white,
+  .dark\:text-gray-400,
+  .dark\:text-gray-300,
+  .dark\:border-gray-700 {
+    background: white !important;
+    color: black !important;
+    border-color: #e5e7eb !important;
+  }
+
+  /* Print specific utilities */
+  .print\:text-xs {
+    font-size: 0.75rem !important;
+  }
+
+  .print\:text-sm {
+    font-size: 0.875rem !important;
+  }
+
+  .print\:text-base {
+    font-size: 1rem !important;
+  }
+
+  .print\:mb-2 {
+    margin-bottom: 0.5rem !important;
+  }
+
+  .print\:mb-3 {
+    margin-bottom: 0.75rem !important;
+  }
+
+  .print\:mb-4 {
+    margin-bottom: 1rem !important;
+  }
+
+  .print\:mb-6 {
+    margin-bottom: 1.5rem !important;
+  }
+
+  .print\:gap-4 {
+    gap: 1rem !important;
+  }
+
+  .print\:p-3 {
+    padding: 0.75rem !important;
+  }
+
+  .print\:p-4 {
+    padding: 1rem !important;
+  }
+
+  .print\:pt-3 {
+    padding-top: 0.75rem !important;
+  }
+
+  .print\:border {
+    border-width: 1px !important;
+  }
+
+  .print\:border-gray-300 {
+    border-color: #d1d5db !important;
+  }
+
+  .print\:bg-white {
+    background-color: white !important;
+  }
+
+  .print\:text-gray-700 {
+    color: #374151 !important;
+  }
+
+  .print\:text-gray-900 {
+    color: #111827 !important;
+  }
+
+  .print\:flex-col {
+    flex-direction: column !important;
+  }
+
+  .print\:gap-1 {
+    gap: 0.25rem !important;
+  }
+
+  /* Printable Quotation Styles */
+  .printable-quotation {
+    background: white !important;
+    color: black !important;
+  }
+
+  .printable-quotation * {
+    background: white !important;
+    color: black !important;
+  }
+
+  .printable-quotation table {
+    border-collapse: collapse !important;
+  }
+
+  .printable-quotation th,
+  .printable-quotation td {
+    border: 1px solid #666 !important;
+    padding: 8px !important;
+  }
+
+  .printable-quotation .bg-gray-100 {
+    background: #f5f5f5 !important;
+  }
+
+  .printable-quotation .bg-gray-50 {
+    background: #f9f9f9 !important;
+  }
+
+  .printable-quotation .text-red-600 {
+    color: #dc2626 !important;
+  }
+
+  .printable-quotation .border-gray-800 {
+    border-color: #1f2937 !important;
+  }
+
+  .printable-quotation .border-gray-400 {
+    border-color: #9ca3af !important;
+  }
+
+  .printable-quotation .border-gray-300 {
+    border-color: #d1d5db !important;
+  }
+}

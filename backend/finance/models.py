@@ -840,3 +840,216 @@ class PurchaseOrderItem(models.Model):
         # Recalculate PO totals only if not in bulk creation
         if not skip_totals_calculation:
             self.purchase_order.calculate_totals()
+
+
+class ProformaInvoice(models.Model):
+    """Proforma Invoice model - created from approved Purchase Orders"""
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('sent', 'Sent to Customer'),
+        ('approved', 'Approved by Customer'),
+        ('converted', 'Converted to Invoice'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    # Basic Information
+    company = models.ForeignKey(Company, on_delete=models.CASCADE)
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='proforma_invoices')
+
+    # Proforma Invoice Details
+    proforma_number = models.CharField(max_length=50, unique=True, db_index=True)
+    proforma_date = models.DateField()
+    due_date = models.DateField()
+    reference = models.CharField(max_length=100, blank=True)
+
+    # Customer and Shipping Information
+    customer_gstin = models.CharField(max_length=15, blank=True)
+    company_gstin = models.CharField(max_length=15, blank=True)
+    shipping_address = models.ForeignKey(CustomerShippingAddress, on_delete=models.SET_NULL, null=True, blank=True)
+
+    # GST Information
+    gst_type = models.CharField(max_length=10, choices=[
+        ('igst', 'IGST'),
+        ('cgst_sgst', 'CGST + SGST'),
+        ('exempt', 'GST Exempt')
+    ], default='igst')
+
+    # Financial Information
+    subtotal = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    total_tax = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    total_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+
+    # Tax Breakdown
+    cgst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    sgst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    igst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+
+    # Additional Charges
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    discount_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    shipping_charges = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    other_charges = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+
+    # Status and Notes
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    notes = models.TextField(blank=True)
+    terms_and_conditions = models.TextField(blank=True)
+
+    # Audit fields
+    created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_proforma_invoices')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_proforma_invoices'
+        ordering = ['-created_at']
+        unique_together = ['company', 'proforma_number']
+
+    def __str__(self):
+        return f"{self.proforma_number} - {self.customer.name}"
+
+    def save(self, *args, **kwargs):
+        # Generate proforma number if not provided
+        if not self.proforma_number:
+            # Get the latest proforma number for this company
+            latest_proforma = ProformaInvoice.objects.filter(
+                company=self.company
+            ).order_by('-created_at').first()
+
+            if latest_proforma and latest_proforma.proforma_number:
+                # Extract number from format PI-2025-000001
+                try:
+                    parts = latest_proforma.proforma_number.split('-')
+                    if len(parts) == 3 and parts[0] == 'PI':
+                        year = parts[1]
+                        number = int(parts[2])
+                        current_year = timezone.now().year
+
+                        if int(year) == current_year:
+                            new_number = number + 1
+                        else:
+                            new_number = 1
+
+                        self.proforma_number = f"PI-{current_year}-{new_number:06d}"
+                    else:
+                        self.proforma_number = f"PI-{timezone.now().year}-000001"
+                except (ValueError, IndexError):
+                    self.proforma_number = f"PI-{timezone.now().year}-000001"
+            else:
+                self.proforma_number = f"PI-{timezone.now().year}-000001"
+
+        super().save(*args, **kwargs)
+
+    def calculate_totals(self):
+        """Calculate all totals for this proforma invoice"""
+        from decimal import Decimal
+
+        # Calculate subtotal from items
+        subtotal = sum(item.line_total for item in self.proforma_items.all())
+
+        # Apply discount
+        if self.discount_percentage > 0:
+            discount_amount = subtotal * (self.discount_percentage / 100)
+        else:
+            discount_amount = self.discount_amount
+
+        subtotal_after_discount = subtotal - discount_amount
+
+        # Calculate tax
+        total_tax = Decimal('0')
+        cgst_amount = Decimal('0')
+        sgst_amount = Decimal('0')
+        igst_amount = Decimal('0')
+
+        if self.gst_type != 'exempt':
+            for item in self.proforma_items.all():
+                item_total = item.line_total
+                item_tax = item_total * (item.gst_rate / 100)
+                total_tax += item_tax
+
+                if self.gst_type == 'cgst_sgst':
+                    cgst_amount += item_tax / 2
+                    sgst_amount += item_tax / 2
+                else:  # igst
+                    igst_amount += item_tax
+
+        # Calculate final total
+        total_with_charges = subtotal_after_discount + self.shipping_charges + self.other_charges
+        total_amount = total_with_charges + total_tax
+
+        # Update fields
+        self.subtotal = subtotal_after_discount
+        self.discount_amount = discount_amount
+        self.total_tax = total_tax
+        self.cgst_amount = cgst_amount
+        self.sgst_amount = sgst_amount
+        self.igst_amount = igst_amount
+        self.total_amount = total_amount
+
+        # Save without triggering calculate_totals again
+        super().save(update_fields=[
+            'subtotal', 'total_tax', 'total_amount', 'discount_amount',
+            'cgst_amount', 'sgst_amount', 'igst_amount'
+        ])
+
+
+class ProformaInvoiceItem(models.Model):
+    """Individual items in a Proforma Invoice"""
+
+    proforma_invoice = models.ForeignKey(ProformaInvoice, on_delete=models.CASCADE, related_name='proforma_items')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+
+    # Item details (captured at time of proforma creation)
+    product_name = models.CharField(max_length=255)
+    product_code = models.CharField(max_length=50)
+    description = models.TextField(blank=True)
+    hsn_sac_code = models.CharField(max_length=20, blank=True)
+
+    # Pricing and quantity
+    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    unit = models.CharField(max_length=10)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    line_total = models.DecimalField(max_digits=15, decimal_places=2)
+
+    # Tax information
+    gst_rate = models.DecimalField(max_digits=5, decimal_places=2)
+
+    # Line item order
+    line_number = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = 'finance_proforma_invoice_items'
+        ordering = ['line_number']
+        unique_together = ['proforma_invoice', 'line_number']
+
+    def __str__(self):
+        return f"{self.proforma_invoice.proforma_number} - {self.product_name}"
+
+    def save(self, *args, **kwargs):
+        # Extract skip_totals_calculation before passing to parent save
+        skip_totals_calculation = kwargs.pop('skip_totals_calculation', False)
+
+        # Capture product details at time of proforma creation
+        if self.product:
+            self.product_name = self.product.name
+            self.product_code = self.product.product_code
+            self.description = self.product.description
+            self.unit = self.product.unit
+            self.gst_rate = self.product.gst_rate
+
+            # Get HSN/SAC code
+            if self.product.hsn_code:
+                self.hsn_sac_code = self.product.hsn_code.code
+            elif self.product.sac_code:
+                self.hsn_sac_code = self.product.sac_code.code
+
+        # Calculate line total
+        self.line_total = self.quantity * self.unit_price
+
+        super().save(*args, **kwargs)
+
+        # Recalculate proforma totals only if not in bulk creation
+        if not skip_totals_calculation:
+            self.proforma_invoice.calculate_totals()

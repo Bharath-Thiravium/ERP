@@ -236,6 +236,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
       {/* PO List */}
       <PurchaseOrderList
         key={refreshList} // Force re-render when refreshList changes
+        sessionKey={sessionKey || ''}
         onCreateNew={handleAddPO}
         onEdit={handleEditPO}
         onView={handleViewPO}

@@ -25,6 +25,10 @@ urlpatterns = [
     path('purchase-orders/', views.PurchaseOrderListCreateView.as_view(), name='purchase_order_list_create'),
     path('purchase-orders/<int:pk>/', views.PurchaseOrderDetailView.as_view(), name='purchase_order_detail'),
 
+    # Proforma Invoice endpoints
+    path('proforma-invoices/', views.ProformaInvoiceListCreateView.as_view(), name='proforma_invoice_list_create'),
+    path('proforma-invoices/<int:pk>/', views.ProformaInvoiceDetailView.as_view(), name='proforma_invoice_detail'),
+
     # HSN/SAC code search endpoints
     path('hsn-codes/search/', views.HSNCodeSearchView.as_view(), name='hsn_code_search'),
     path('sac-codes/search/', views.SACCodeSearchView.as_view(), name='sac_code_search'),

@@ -43,6 +43,7 @@ import Customers from './Customers'
 import Products from './Products'
 import Quotations from './Quotations.tsx'
 import PurchaseOrders from './PurchaseOrders'
+import ProformaInvoices from './ProformaInvoices'
 
 const FinanceDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -135,13 +136,14 @@ const handlePOCreated = () => {
     }
   }
 
-  // Simplified sidebar menu items - Overview, Customers, Products, Quotations, PO/WO, and Settings
+  // Simplified sidebar menu items - Overview, Customers, Products, Quotations, PO/WO, Proforma Invoices, and Settings
   const sidebarItems = [
     { id: 'overview', label: 'Overview', icon: BarChart3, active: true },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'products', label: 'Products', icon: Building },
     { id: 'quotations', label: 'Quotations', icon: CreditCard },
     { id: 'purchase-orders', label: 'PO/WO', icon: ShoppingCart },
+    { id: 'proforma-invoices', label: 'Proforma Invoices', icon: Banknote },
     { id: 'settings', label: 'Settings', icon: Settings }
   ]
 
@@ -598,6 +600,8 @@ const handlePOCreated = () => {
         return <Quotations key={quotationRefreshKey} onCreatePO={handleQuotationCreatePO} />
       case 'purchase-orders':
         return <PurchaseOrders quotationForPO={quotationForPO} initialAction={poAction} onActionComplete={() => { setQuotationForPO(null); setPOAction(null); }} onPOCreated={handlePOCreated} />
+      case 'proforma-invoices':
+        return <ProformaInvoices sessionKey={sessionKey || ''} />
       case 'settings':
         return renderSettings()
       default:

@@ -87,6 +87,7 @@ interface PurchaseOrder {
   notes: string
   terms_and_conditions: string
   status: string
+  claim_type: string
   po_items: Array<{
     product: number
     quantity: number
@@ -192,11 +193,19 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
   // Load customer details if we have customer ID but no selected customer
   useEffect(() => {
-    if (formData.customer && !selectedCustomer && sessionKey) {
+    if (formData.customer && !selectedCustomer && sessionKey && customers.length > 0) {
       console.log('Loading customer details for ID:', formData.customer)
-      loadCustomerDetails(formData.customer)
+      // First try to find customer in loaded customers list
+      const foundCustomer = customers.find(c => c.id === formData.customer)
+      if (foundCustomer) {
+        console.log('Found customer in list:', foundCustomer)
+        setSelectedCustomer(foundCustomer)
+        setCustomerSearch(foundCustomer.name)
+      } else {
+        loadCustomerDetails(formData.customer)
+      }
     }
-  }, [formData.customer, selectedCustomer, sessionKey])
+  }, [formData.customer, selectedCustomer, sessionKey, customers])
 
   // Load full quotation details including customer_details
   const loadFullQuotationDetails = async (quotationId: number) => {
@@ -220,15 +229,21 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
   // Populate form from quotation data
   const populateFormFromQuotation = (quotationData: any) => {
     console.log('Populating form from quotation:', quotationData)
+    console.log('Quotation items:', quotationData.quotation_items)
 
     // Convert quotation items from detailed format to form format
-    const convertedItems = quotationData.quotation_items ? quotationData.quotation_items.map((item: any) => ({
-      product: item.product,
-      quantity: parseFloat(item.quantity) || 0,
-      unit_price: parseFloat(item.unit_price) || 0,
-      hsn_sac_code: item.hsn_sac_code || '',
-      gst_rate: parseFloat(item.gst_rate) || 0
-    })) : []
+    const convertedItems = quotationData.quotation_items ? quotationData.quotation_items.map((item: any) => {
+      console.log('Converting quotation item:', item)
+      return {
+        product: item.product,
+        quantity: parseFloat(item.quantity) || 0,
+        unit_price: parseFloat(item.unit_price) || 0,
+        hsn_sac_code: item.hsn_sac_code || '',
+        gst_rate: parseFloat(item.gst_rate) || 0
+      }
+    }) : []
+
+    console.log('Converted items:', convertedItems)
 
     setFormData(prev => ({
       ...prev,
@@ -713,53 +728,18 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               </div>
             </div>
 
-            {/* Customer Selection */}
+            {/* Customer Display */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <User className="w-4 h-4 inline mr-1" />
-                Customer *
+                Customer (From Quotation)
               </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search and select customer..."
-                  value={customerSearch}
-                  onChange={(e) => {
-                    if (!quotation) { // Only allow changes if not creating from quotation
-                      setCustomerSearch(e.target.value)
-                      setShowCustomerDropdown(true)
-                    }
-                  }}
-                  onFocus={() => !quotation && setShowCustomerDropdown(true)}
-                  className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-white ${
-                    quotation
-                      ? 'bg-gray-100 dark:bg-gray-600 cursor-not-allowed'
-                      : 'bg-white dark:bg-gray-700'
-                  }`}
-                  readOnly={!!quotation}
-                />
-                {showCustomerDropdown && !quotation && customers.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {customers
-                      .filter(customer =>
-                        customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-                        customer.customer_code.toLowerCase().includes(customerSearch.toLowerCase())
-                      )
-                      .map((customer) => (
-                        <div
-                          key={customer.id}
-                          onClick={() => handleCustomerSelect(customer)}
-                          className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-200 dark:border-gray-600 last:border-b-0"
-                        >
-                          <div className="font-medium text-gray-900 dark:text-white">{customer.name}</div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">{customer.customer_code} | {customer.email}</div>
-                        </div>
-                      ))
-                    }
-                  </div>
-                )}
-              </div>
-              {errors.customer && <p className="mt-1 text-sm text-red-600">{errors.customer}</p>}
+              <input
+                type="text"
+                value={selectedCustomer?.name || 'Loading customer...'}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white cursor-not-allowed"
+                readOnly
+              />
             </div>
 
             {/* Customer Details Display */}
@@ -781,50 +761,27 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               </div>
             )}
 
-            {/* Shipping Address Selection */}
-            {selectedCustomer && selectedCustomer.shipping_addresses && selectedCustomer.shipping_addresses.length > 0 && (
+            {/* Shipping Address Display */}
+            {selectedCustomer && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   <MapPin className="w-4 h-4 inline mr-1" />
-                  Shipping Address
+                  Shipping Address (From Quotation)
                 </label>
-                <select
-                  value={formData.shipping_address || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, shipping_address: e.target.value ? parseInt(e.target.value) : null }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                >
-                  <option value="">Select shipping address</option>
-                  {selectedCustomer.shipping_addresses.map((address: any) => (
-                    <option key={address.id} value={address.id}>
-                      {address.label} - {address.city}, {address.state}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-
-
-            {/* Shipping Address Selection */}
-            {selectedCustomer && selectedCustomer.shipping_addresses && selectedCustomer.shipping_addresses.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  <MapPin className="w-4 h-4 inline mr-1" />
-                  Shipping Address
-                </label>
-                <select
-                  value={formData.shipping_address || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, shipping_address: e.target.value ? parseInt(e.target.value) : null }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                >
-                  <option value="">Select shipping address</option>
-                  {selectedCustomer.shipping_addresses.map((address) => (
-                    <option key={address.id} value={address.id}>
-                      {address.address_line1}, {address.city}, {address.state} {address.pincode}
-                      {address.is_default && ' (Default)'}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white text-sm">
+                  {selectedCustomer.shipping_addresses && selectedCustomer.shipping_addresses.length > 0 ? (
+                    selectedCustomer.shipping_addresses
+                      .filter(addr => addr.id === formData.shipping_address)
+                      .map(address => (
+                        <div key={address.id}>
+                          {address.address_line1}, {address.city}, {address.state} {address.pincode}
+                          {address.is_default && ' (Default)'}
+                        </div>
+                      ))[0] || 'Same as billing address'
+                  ) : (
+                    'Same as billing address'
+                  )}
+                </div>
               </div>
             )}
 
@@ -941,7 +898,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                   </div>
                 ) : (
                   <div className="text-gray-500 dark:text-gray-400 text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                    <p className="mb-4">No products selected. Search and select products from the left panel.</p>
+                    <p className="mb-4">No products selected. {quotation ? 'Loading products from quotation...' : 'Search and select products from the left panel.'}</p>
                     {selectedCustomer && companyDetails && (
                       <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg text-sm">
                         <p className="font-medium text-gray-900 dark:text-white text-center">

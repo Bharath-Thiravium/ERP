@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem
+from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
 
 
 class CustomerShippingAddressSerializer(serializers.ModelSerializer):
@@ -525,8 +525,10 @@ class PurchaseOrderListSerializer(serializers.ModelSerializer):
         model = PurchaseOrder
         fields = [
             'id', 'internal_po_number', 'po_number', 'po_date', 'customer_name', 'customer_code',
-            'customer_project_area', 'quotation_number', 'status', 'gst_type',
+            'customer_project_area', 'quotation_number', 'status', 'gst_type', 'claim_type',
             'subtotal', 'total_tax', 'total_amount', 'item_count', 'po_items',
+            'proforma_claimed_amount', 'remaining_proforma_balance', 'proforma_status',
+            'invoice_claimed_amount', 'remaining_invoice_balance', 'invoice_status',
             'created_at', 'created_by_name'
         ]
 
@@ -579,7 +581,7 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
             'quotation', 'po_number', 'po_date', 'po_file', 'customer', 'quotation_date',
             'valid_until', 'reference', 'shipping_address', 'discount_percentage',
             'discount_amount', 'shipping_charges', 'other_charges', 'notes',
-            'terms_and_conditions', 'status', 'po_items'
+            'terms_and_conditions', 'status', 'claim_type', 'po_items'
         ]
 
     def create(self, validated_data):
@@ -794,58 +796,149 @@ class ProformaInvoiceDetailSerializer(serializers.ModelSerializer):
 
 class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating proforma invoices from Purchase Orders"""
+    proforma_items = serializers.ListField(
+        child=serializers.DictField(),
+        write_only=True,
+        required=False
+    )
 
     class Meta:
         model = ProformaInvoice
         fields = [
             'purchase_order', 'proforma_date', 'due_date', 'reference',
             'shipping_address', 'discount_percentage', 'discount_amount',
-            'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions', 'status'
+            'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions', 'status',
+            'claim_type', 'claim_percentage', 'is_advance_bill', 'proforma_items'
         ]
 
     def create(self, validated_data):
+        from decimal import Decimal
+
+        # Extract proforma_items_data before creating the invoice
+        proforma_items_data = validated_data.pop('proforma_items', None)
+
         # Get purchase order to copy information
         purchase_order = validated_data['purchase_order']
 
-        # Set customer and GST information from purchase order
+        # Auto-fix balance tracking if needed
+        purchase_order.fix_balance_tracking()
+
+        # Validate claim against remaining balance
+        claim_type = validated_data.get('claim_type', purchase_order.claim_type)
+        claim_percentage = validated_data.get('claim_percentage', 0)
+
+        if claim_type == 'percentage' and claim_percentage > 0:
+            # Calculate claim amount
+            claim_amount = (purchase_order.subtotal * Decimal(str(claim_percentage))) / Decimal('100')
+
+            # Check if claim exceeds remaining balance (sophisticated logic)
+            if claim_amount > purchase_order.remaining_proforma_balance:
+                # Get sophisticated status for detailed error message
+                status = purchase_order.get_sophisticated_claiming_status()
+                raise serializers.ValidationError({
+                    'claim_percentage': f'Claim amount ₹{claim_amount} exceeds available proforma balance ₹{purchase_order.remaining_proforma_balance}. '
+                                      f'Available: {status["available_proforma_percentage"]:.1f}% '
+                                      f'(Reduced due to {status["tax_invoice_claimed_percentage"]:.1f}% tax invoice claiming)'
+                })
+
+        # Set customer, company and GST information from purchase order
+        validated_data['company'] = purchase_order.company
         validated_data['customer'] = purchase_order.customer
         validated_data['gst_type'] = purchase_order.gst_type
         validated_data['customer_gstin'] = purchase_order.customer_gstin
         validated_data['company_gstin'] = purchase_order.company_gstin
 
+        # Set claim type from PO if not provided
+        if 'claim_type' not in validated_data:
+            validated_data['claim_type'] = purchase_order.claim_type
+
         # Create the proforma invoice
         proforma_invoice = ProformaInvoice.objects.create(**validated_data)
+        
+        # Update PO claim type if this is the first invoice
+        if not purchase_order.claim_type:
+            purchase_order.claim_type = validated_data.get('claim_type', 'percentage')
+            purchase_order.save(update_fields=['claim_type'])
 
-        # Copy items from purchase order
+        # Use frontend-calculated items if provided, otherwise fallback to PO items
+        
         items_to_create = []
-        for po_item in purchase_order.po_items.all():
-            # Populate all fields that would normally be set by save()
-            hsn_sac_code = ''
-            if po_item.product.hsn_code:
-                hsn_sac_code = po_item.product.hsn_code.code
-            elif po_item.product.sac_code:
-                hsn_sac_code = po_item.product.sac_code.code
+        if proforma_items_data:
+            # Use the calculated items from frontend
+            for index, item_data in enumerate(proforma_items_data, 1):
+                product_id = item_data.get('product')
+                try:
+                    product = Product.objects.get(id=product_id)
+                    
+                    # Get HSN/SAC code
+                    hsn_sac_code = ''
+                    if product.hsn_code:
+                        hsn_sac_code = product.hsn_code.code
+                    elif product.sac_code:
+                        hsn_sac_code = product.sac_code.code
+                    
+                    items_to_create.append(ProformaInvoiceItem(
+                        proforma_invoice=proforma_invoice,
+                        product=product,
+                        product_name=item_data.get('product_name', product.name),
+                        product_code=product.product_code,
+                        description=product.description,
+                        hsn_sac_code=hsn_sac_code,
+                        quantity=Decimal(str(item_data.get('quantity', 0))),
+                        unit=item_data.get('unit', product.unit),
+                        unit_price=Decimal(str(item_data.get('unit_price', 0))),
+                        line_total=Decimal(str(item_data.get('line_total', 0))),
+                        gst_rate=product.gst_rate,
+                        line_number=index
+                    ))
+                except Product.DoesNotExist:
+                    continue
+        else:
+            # Fallback: Copy items from purchase order with claim-based adjustments
+            for po_item in purchase_order.po_items.all():
+                # Populate all fields that would normally be set by save()
+                hsn_sac_code = ''
+                if po_item.product.hsn_code:
+                    hsn_sac_code = po_item.product.hsn_code.code
+                elif po_item.product.sac_code:
+                    hsn_sac_code = po_item.product.sac_code.code
 
-            items_to_create.append(ProformaInvoiceItem(
-                proforma_invoice=proforma_invoice,
-                product=po_item.product,
-                product_name=po_item.product.name,
-                product_code=po_item.product.product_code,
-                description=po_item.product.description,
-                hsn_sac_code=hsn_sac_code,
-                quantity=po_item.quantity,
-                unit=po_item.product.unit,
-                unit_price=po_item.unit_price,
-                line_total=po_item.line_total,
-                gst_rate=po_item.product.gst_rate,
-                line_number=po_item.line_number
-            ))
+                # Calculate quantities and amounts based on claim type
+                if claim_type == 'percentage' and claim_percentage > 0:
+                    # For percentage-based claiming, adjust quantities proportionally
+                    claimed_quantity = (po_item.quantity * Decimal(str(claim_percentage))) / Decimal('100')
+                    claimed_unit_price = po_item.unit_price
+                    claimed_line_total = claimed_quantity * claimed_unit_price
+                else:
+                    # For quantity-based or full claiming, use original values
+                    claimed_quantity = po_item.quantity
+                    claimed_unit_price = po_item.unit_price
+                    claimed_line_total = po_item.line_total
+
+                items_to_create.append(ProformaInvoiceItem(
+                    proforma_invoice=proforma_invoice,
+                    product=po_item.product,
+                    product_name=po_item.product.name,
+                    product_code=po_item.product.product_code,
+                    description=po_item.product.description,
+                    hsn_sac_code=hsn_sac_code,
+                    quantity=claimed_quantity,
+                    unit=po_item.product.unit,
+                    unit_price=claimed_unit_price,
+                    line_total=claimed_line_total,
+                    gst_rate=po_item.product.gst_rate,
+                    line_number=po_item.line_number
+                ))
 
         # Use bulk_create to avoid individual save() calls
         ProformaInvoiceItem.objects.bulk_create(items_to_create)
 
         # Calculate totals once after all items are created
         proforma_invoice.calculate_totals()
+
+        # Update PO balance tracking after totals are calculated
+        if proforma_invoice.purchase_order:
+            proforma_invoice.purchase_order.update_balance_tracking()
 
         return proforma_invoice
 
@@ -945,3 +1038,466 @@ class QuotationUpdateSerializer(serializers.ModelSerializer):
             instance.calculate_totals()
 
         return instance
+
+
+# Invoice Serializers
+class InvoiceItemSerializer(serializers.ModelSerializer):
+    """Serializer for invoice items"""
+
+    class Meta:
+        model = InvoiceItem
+        fields = [
+            'id', 'product', 'product_name', 'product_code', 'description',
+            'hsn_sac_code', 'quantity', 'unit', 'unit_price', 'line_total',
+            'gst_rate', 'line_number'
+        ]
+        read_only_fields = ['id', 'line_total']
+
+
+class InvoiceListSerializer(serializers.ModelSerializer):
+    """Serializer for invoice list view"""
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    customer_code = serializers.CharField(source='customer.customer_code', read_only=True)
+    customer_project_area = serializers.CharField(source='customer.project_area', read_only=True)
+    proforma_number = serializers.CharField(source='proforma_invoice.proforma_number', read_only=True)
+    item_count = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source='created_by.user.get_full_name', read_only=True)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            'id', 'invoice_number', 'invoice_date', 'due_date', 'customer_name',
+            'customer_code', 'customer_project_area', 'proforma_number', 'status',
+            'payment_status', 'gst_type', 'subtotal', 'total_tax', 'total_amount',
+            'paid_amount', 'outstanding_amount', 'item_count', 'created_at',
+            'created_by_name'
+        ]
+
+    def get_item_count(self, obj):
+        return obj.invoice_items.count()
+
+
+class InvoiceDetailSerializer(serializers.ModelSerializer):
+    """Serializer for invoice detail view"""
+    customer_details = CustomerDetailSerializer(source='customer', read_only=True)
+    proforma_invoice_details = ProformaInvoiceDetailSerializer(source='proforma_invoice', read_only=True)
+    invoice_items = InvoiceItemSerializer(many=True, read_only=True)
+    shipping_address_details = CustomerShippingAddressSerializer(source='shipping_address', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.user.get_full_name', read_only=True)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            'id', 'invoice_number', 'invoice_date', 'due_date', 'reference',
+            'customer_details', 'proforma_invoice_details', 'customer_gstin',
+            'company_gstin', 'shipping_address_details', 'gst_type', 'subtotal',
+            'total_tax', 'total_amount', 'cgst_amount', 'sgst_amount', 'igst_amount',
+            'discount_percentage', 'discount_amount', 'shipping_charges', 'other_charges',
+            'payment_status', 'paid_amount', 'outstanding_amount', 'status', 'notes',
+            'terms_and_conditions', 'invoice_items', 'created_at', 'created_by_name'
+        ]
+
+
+class InvoiceCreateSerializer(serializers.ModelSerializer):
+    """World-Class Invoice Creation - ONLY from Purchase Orders (No Proforma Conversion)"""
+    purchase_order = serializers.PrimaryKeyRelatedField(
+        queryset=PurchaseOrder.objects.all(),
+        required=True  # Now required - invoices ONLY from PO
+    )
+
+    # Add sophisticated claiming fields
+    claim_type = serializers.CharField(required=False, default='percentage')
+    claim_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=0)
+    selected_items = serializers.DictField(required=False)
+    item_percentages = serializers.DictField(required=False)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            'purchase_order', 'invoice_date', 'due_date', 'reference',
+            'shipping_address', 'discount_percentage', 'discount_amount',
+            'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions', 'status',
+            'claim_type', 'claim_percentage', 'selected_items', 'item_percentages'
+        ]
+
+    def validate(self, data):
+        """World-Class validation - ONLY Purchase Order claiming"""
+        purchase_order = data.get('purchase_order')
+        claim_type = data.get('claim_type', 'percentage')
+        claim_percentage = data.get('claim_percentage', 0)
+
+        if not purchase_order:
+            raise serializers.ValidationError("Purchase order is required for invoice creation")
+
+        # Validate percentage-based claiming for PO
+        if claim_type == 'percentage' and claim_percentage > 0:
+            from decimal import Decimal
+
+            # Calculate claim amount
+            claim_amount = (purchase_order.total_amount * Decimal(str(claim_percentage))) / Decimal('100')
+
+            # Check if claim exceeds remaining balance
+            if claim_amount > purchase_order.remaining_invoice_balance:
+                status = purchase_order.get_sophisticated_claiming_status()
+                raise serializers.ValidationError({
+                    'claim_percentage': f'Tax invoice claim amount ₹{claim_amount} exceeds available balance ₹{purchase_order.remaining_invoice_balance}. '
+                                      f'Available: {status["available_tax_invoice_percentage"]:.1f}%'
+                })
+
+        return data
+
+    def create(self, validated_data):
+        """Create invoice ONLY from Purchase Order"""
+        purchase_order = validated_data.get('purchase_order')
+        return self._create_from_purchase_order(validated_data, purchase_order)
+
+
+
+    def _create_from_purchase_order(self, validated_data, purchase_order):
+        """World-Class Invoice Creation - Supports item-level percentage and quantity claiming"""
+        from decimal import Decimal
+
+        # Extract claiming parameters
+        claim_type = validated_data.pop('claim_type', 'percentage')
+        claim_percentage = validated_data.pop('claim_percentage', 0)
+        selected_items = validated_data.pop('selected_items', {})
+        item_percentages = validated_data.pop('item_percentages', {})
+        
+
+
+        # Set customer and GST information from purchase order
+        validated_data['customer'] = purchase_order.customer
+        validated_data['gst_type'] = purchase_order.gst_type
+        validated_data['customer_gstin'] = purchase_order.customer_gstin
+        validated_data['company_gstin'] = purchase_order.company_gstin
+
+        # Create the invoice
+        invoice = Invoice.objects.create(**validated_data)
+        
+        # Update PO claim type if this is the first invoice
+        if not purchase_order.claim_type or purchase_order.claim_type != claim_type:
+            purchase_order.claim_type = claim_type
+            purchase_order.save(update_fields=['claim_type'])
+
+        # WORLD-CLASS SOPHISTICATED CLAIMING LOGIC
+        items_to_create = []
+        
+        if claim_type == 'quantity' and selected_items:
+            # QUANTITY-BASED CLAIMING: Create invoice for selected quantities
+            for po_item in purchase_order.po_items.all():
+                item_id_str = str(po_item.id)
+                if item_id_str in selected_items and selected_items[item_id_str] > 0:
+                    selected_quantity = Decimal(str(selected_items[item_id_str]))
+                    claim_line_total = selected_quantity * po_item.unit_price
+
+                    items_to_create.append(InvoiceItem(
+                        invoice=invoice,
+                        product=po_item.product,
+                        product_name=po_item.product_name,
+                        product_code=po_item.product_code,
+                        description=po_item.description,
+                        hsn_sac_code=po_item.hsn_sac_code,
+                        quantity=selected_quantity,
+                        unit=po_item.unit,
+                        unit_price=po_item.unit_price,
+                        line_total=claim_line_total,
+                        gst_rate=po_item.gst_rate,
+                        line_number=po_item.line_number
+                    ))
+        elif claim_type == 'percentage' and item_percentages:
+            # ITEM-LEVEL PERCENTAGE CLAIMING: Create invoice for item-specific percentages
+            for po_item in purchase_order.po_items.all():
+                item_id_str = str(po_item.id)
+                if item_id_str in item_percentages and float(item_percentages[item_id_str]) > 0:
+                    item_percentage = Decimal(str(item_percentages[item_id_str]))
+                    claim_line_total = (po_item.line_total * item_percentage) / Decimal('100')
+                    claim_quantity = (po_item.quantity * item_percentage) / Decimal('100')
+
+                    items_to_create.append(InvoiceItem(
+                        invoice=invoice,
+                        product=po_item.product,
+                        product_name=po_item.product_name,
+                        product_code=po_item.product_code,
+                        description=po_item.description,
+                        hsn_sac_code=po_item.hsn_sac_code,
+                        quantity=claim_quantity,
+                        unit=po_item.unit,
+                        unit_price=po_item.unit_price,
+                        line_total=claim_line_total,
+                        gst_rate=po_item.gst_rate,
+                        line_number=po_item.line_number
+                    ))
+        elif claim_type == 'percentage' and claim_percentage > 0:
+            # LEGACY PERCENTAGE-BASED CLAIMING: Create invoice for overall percentage
+            claiming_percentage = Decimal(str(claim_percentage))
+
+            for po_item in purchase_order.po_items.all():
+                claim_line_total = (po_item.line_total * claiming_percentage) / Decimal('100')
+                claim_quantity = (po_item.quantity * claiming_percentage) / Decimal('100')
+
+                items_to_create.append(InvoiceItem(
+                    invoice=invoice,
+                    product=po_item.product,
+                    product_name=po_item.product_name,
+                    product_code=po_item.product_code,
+                    description=po_item.description,
+                    hsn_sac_code=po_item.hsn_sac_code,
+                    quantity=claim_quantity,
+                    unit=po_item.unit,
+                    unit_price=po_item.unit_price,
+                    line_total=claim_line_total,
+                    gst_rate=po_item.gst_rate,
+                    line_number=po_item.line_number
+                ))
+        else:
+            # VALIDATION: Ensure at least some items are selected
+            if claim_type == 'percentage':
+                raise serializers.ValidationError("Please select at least one product with a percentage greater than 0")
+            elif claim_type == 'quantity':
+                raise serializers.ValidationError("Please select at least one product with a quantity greater than 0")
+            else:
+                # FALLBACK: Create invoice for remaining balance (legacy logic)
+                remaining_percentage = (purchase_order.remaining_invoice_balance / purchase_order.total_amount) * 100
+
+                if remaining_percentage <= 0:
+                    raise serializers.ValidationError("No remaining balance to invoice")
+
+                for po_item in purchase_order.po_items.all():
+                    remaining_line_total = (po_item.line_total * remaining_percentage) / Decimal('100')
+                    remaining_quantity = (po_item.quantity * remaining_percentage) / Decimal('100')
+
+                    items_to_create.append(InvoiceItem(
+                        invoice=invoice,
+                        product=po_item.product,
+                        product_name=po_item.product_name,
+                        product_code=po_item.product_code,
+                        description=po_item.description,
+                        hsn_sac_code=po_item.hsn_sac_code,
+                        quantity=remaining_quantity,
+                        unit=po_item.unit,
+                        unit_price=po_item.unit_price,
+                        line_total=remaining_line_total,
+                        gst_rate=po_item.gst_rate,
+                        line_number=po_item.line_number
+                    ))
+
+        # Use bulk_create to avoid individual save() calls
+        if items_to_create:
+            InvoiceItem.objects.bulk_create(items_to_create)
+
+        # Calculate totals once after all items are created
+        invoice.calculate_totals()
+
+        # Update PO balance tracking after invoice creation
+        if invoice.purchase_order:
+            invoice.purchase_order.update_balance_tracking()
+
+        return invoice
+
+
+class InvoiceUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating invoices"""
+
+    class Meta:
+        model = Invoice
+        fields = [
+            'invoice_date', 'due_date', 'reference', 'shipping_address',
+            'discount_percentage', 'discount_amount', 'shipping_charges',
+            'other_charges', 'notes', 'terms_and_conditions', 'status'
+        ]
+
+    def update(self, instance, validated_data):
+        # Update basic fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+
+        # Recalculate totals if financial fields changed
+        financial_fields = ['discount_percentage', 'discount_amount', 'shipping_charges', 'other_charges']
+        if any(field in validated_data for field in financial_fields):
+            instance.calculate_totals()
+
+        return instance
+
+
+# Payment Serializers
+class PaymentListSerializer(serializers.ModelSerializer):
+    """Serializer for payment list view"""
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    customer_code = serializers.CharField(source='customer.customer_code', read_only=True)
+    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.user.get_full_name', read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = [
+            'id', 'payment_number', 'payment_date', 'amount', 'payment_method',
+            'customer_name', 'customer_code', 'invoice_number', 'reference_number',
+            'bank_name', 'status', 'created_at', 'created_by_name'
+        ]
+
+
+class PaymentDetailSerializer(serializers.ModelSerializer):
+    """Serializer for payment detail view"""
+    customer_details = CustomerDetailSerializer(source='customer', read_only=True)
+    invoice_details = InvoiceDetailSerializer(source='invoice', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.user.get_full_name', read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = [
+            'id', 'payment_number', 'payment_date', 'amount', 'payment_method',
+            'customer_details', 'invoice_details', 'reference_number', 'bank_name',
+            'notes', 'status', 'created_at', 'created_by_name'
+        ]
+
+
+class PaymentCreateSerializer(serializers.ModelSerializer):
+    """World-Class Payment Creation with TDS Support"""
+
+    class Meta:
+        model = Payment
+        fields = [
+            'invoice', 'proforma_invoice', 'payment_date', 'amount', 'payment_method',
+            'reference_number', 'bank_name', 'notes', 'status',
+            # World-Class TDS Fields
+            'tds_amount', 'tds_percentage', 'tds_section', 'net_amount_received',
+            'tds_certificate_number', 'tds_certificate_date', 'is_tds_received'
+        ]
+
+    def validate_amount(self, value):
+        """Validate payment amount"""
+        if value <= 0:
+            raise serializers.ValidationError("Payment amount must be greater than 0")
+        return value
+
+    def validate(self, attrs):
+        """Cross-field validation"""
+        invoice = attrs.get('invoice')
+        amount = attrs.get('amount')
+
+        if invoice and amount:
+            # Check if payment amount doesn't exceed outstanding amount
+            if amount > invoice.outstanding_amount:
+                raise serializers.ValidationError(
+                    f"Payment amount (₹{amount}) cannot exceed outstanding amount (₹{invoice.outstanding_amount})"
+                )
+
+        return attrs
+
+    def create(self, validated_data):
+        # Set customer from invoice
+        validated_data['customer'] = validated_data['invoice'].customer
+
+        return super().create(validated_data)
+
+
+class PaymentUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating payments"""
+
+    class Meta:
+        model = Payment
+        fields = [
+            'payment_date', 'amount', 'payment_method', 'reference_number',
+            'bank_name', 'notes', 'status'
+        ]
+
+    def validate_amount(self, value):
+        """Validate payment amount"""
+        if value <= 0:
+            raise serializers.ValidationError("Payment amount must be greater than 0")
+        return value
+
+
+# World-Class Payment Serializers
+class WorldClassPaymentCreateSerializer(serializers.ModelSerializer):
+    """World-Class Payment Creation - Links payments to specific invoice numbers"""
+
+    class Meta:
+        model = Payment
+        fields = [
+            'customer', 'purchase_order', 'invoice', 'proforma_invoice',
+            'payment_date', 'amount', 'payment_method', 'reference_number',
+            'transaction_id', 'bank_name', 'notes', 'status',
+            # World-Class TDS Fields
+            'tds_amount', 'tds_percentage', 'tds_section', 'net_amount_received',
+            'tds_certificate_number', 'tds_certificate_date', 'is_tds_received'
+        ]
+
+    def validate(self, data):
+        """Validate that payment is linked to either invoice or proforma"""
+        if not data.get('invoice') and not data.get('proforma_invoice'):
+            raise serializers.ValidationError("Payment must be linked to either an Invoice or Proforma Invoice")
+
+        if data.get('invoice') and data.get('proforma_invoice'):
+            raise serializers.ValidationError("Payment cannot be linked to both Invoice and Proforma Invoice")
+
+        return data
+
+    def validate_amount(self, value):
+        """Validate payment amount"""
+        if value <= 0:
+            raise serializers.ValidationError("Payment amount must be greater than 0")
+        return value
+
+    def create(self, validated_data):
+        """Create payment with automatic status updates"""
+        payment = Payment.objects.create(**validated_data)
+        return payment
+
+
+class WorldClassPaymentListSerializer(serializers.ModelSerializer):
+    """World-Class Payment List View"""
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    customer_code = serializers.CharField(source='customer.customer_code', read_only=True)
+    po_number = serializers.CharField(source='purchase_order.internal_po_number', read_only=True)
+    invoice_number = serializers.SerializerMethodField()
+    invoice_type = serializers.SerializerMethodField()
+    outstanding_before = serializers.SerializerMethodField()
+    outstanding_after = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Payment
+        fields = [
+            'id', 'payment_number', 'payment_date', 'amount', 'payment_method',
+            'customer_name', 'customer_code', 'po_number', 'invoice_number',
+            'invoice_type', 'outstanding_before', 'outstanding_after',
+            'reference_number', 'transaction_id', 'bank_name', 'status',
+            'created_at',
+            # World-Class TDS Fields
+            'tds_amount', 'tds_percentage', 'tds_section', 'net_amount_received',
+            'tds_certificate_number', 'tds_certificate_date', 'is_tds_received'
+        ]
+
+    def get_invoice_number(self, obj):
+        """Get invoice number (either tax invoice or proforma)"""
+        if obj.invoice:
+            return obj.invoice.invoice_number
+        elif obj.proforma_invoice:
+            return obj.proforma_invoice.proforma_number
+        return None
+
+    def get_invoice_type(self, obj):
+        """Get invoice type"""
+        if obj.invoice:
+            return "Tax Invoice"
+        elif obj.proforma_invoice:
+            return "Proforma Invoice"
+        return None
+
+    def get_outstanding_before(self, obj):
+        """Get outstanding amount before this payment"""
+        if obj.invoice:
+            return obj.invoice.outstanding_amount + obj.amount
+        elif obj.proforma_invoice:
+            return obj.proforma_invoice.outstanding_amount + obj.amount
+        return 0
+
+    def get_outstanding_after(self, obj):
+        """Get outstanding amount after this payment"""
+        if obj.invoice:
+            return obj.invoice.outstanding_amount
+        elif obj.proforma_invoice:
+            return obj.proforma_invoice.outstanding_amount
+        return 0

@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { useThemeStore } from '../../../../store/themeStore'
+// import { useThemeStore } from '../../../../store/themeStore' // Removed unused import
 import PurchaseOrderList from '../components/PurchaseOrderList'
 import PurchaseOrderForm from '../components/PurchaseOrderForm'
 import PurchaseOrderView from '../components/PurchaseOrderView'
+import PODetailsModal from '../components/SophisticatedPOModal'
+import RaiseInvoiceModal from '../components/RaiseInvoiceModal'
+import SimpleProformaForm from '../components/SimpleProformaForm'
+import SimpleTaxInvoiceForm from '../components/SimpleTaxInvoiceForm'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import axios from 'axios'
 import toast from 'react-hot-toast'
@@ -107,15 +111,20 @@ interface PurchaseOrdersProps {
 }
 
 const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initialAction, onActionComplete, onPOCreated }) => {
-  const { theme } = useThemeStore()
+  // const { theme } = useThemeStore() // Removed unused import
   const { sessionKey } = useServiceUserStore()
   const [showForm, setShowForm] = useState(false)
   const [showView, setShowView] = useState(false)
+  const [showPODetails, setShowPODetails] = useState(false)
+  const [showRaiseInvoice, setShowRaiseInvoice] = useState(false)
+  const [showProformaForm, setShowProformaForm] = useState(false)
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false)
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [selectedPOId, setSelectedPOId] = useState<number | null>(null)
   const [refreshList, setRefreshList] = useState(0)
   const [isEditing, setIsEditing] = useState(false)
   const [quotationData, setQuotationData] = useState<Quotation | null>(quotationForPO || null)
+  const [invoiceData, setInvoiceData] = useState<any>(null)
 
   // Handle initial action from dashboard
   useEffect(() => {
@@ -134,7 +143,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
     setShowForm(true)
   }
 
-  const handleEditPO = async (po: PurchaseOrder) => {
+  const handleEditPO = async (po: any) => {
     if (!sessionKey) return
 
     try {
@@ -153,7 +162,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
     }
   }
 
-  const handleViewPO = async (po: PurchaseOrder) => {
+  const handleViewPO = async (po: any) => {
     if (!sessionKey) return
 
     try {
@@ -210,15 +219,82 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
     setSelectedPOId(null)
   }
 
-  const handleViewEdit = (po: PurchaseOrder) => {
-    setShowView(false)
-    setSelectedPO(po)
-    setIsEditing(true)
-    setShowForm(true)
+  const handleViewDetails = (po: any) => {
+    setSelectedPOId(po.id)
+    setShowPODetails(true)
   }
 
-  const handleViewDelete = (poId: number) => {
+  const handlePODetailsClose = () => {
+    setShowPODetails(false)
+    setSelectedPOId(null)
+  }
+
+  const handleRaiseInvoice = async (po: any) => {
+    if (!sessionKey) return
+
+    try {
+      // Load full PO details for invoice creation
+      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/`, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` }
+      })
+
+      setSelectedPO(response.data)
+      setShowRaiseInvoice(true)
+    } catch (error) {
+      console.error('Error loading PO details:', error)
+      toast.error('Failed to load purchase order details')
+    }
+  }
+
+  const handleRaiseInvoiceClose = () => {
+    setShowRaiseInvoice(false)
+    setSelectedPO(null)
+  }
+
+  const handleCreateProforma = (data: any) => {
+    setInvoiceData(data)
+    setShowRaiseInvoice(false)
+    setShowProformaForm(true)
+  }
+
+  const handleCreateTaxInvoice = (data: any) => {
+    setInvoiceData(data)
+    setShowRaiseInvoice(false)
+    setShowInvoiceForm(true)
+  }
+
+  const handleProformaFormClose = () => {
+    setShowProformaForm(false)
+    setInvoiceData(null)
+    setSelectedPO(null)
+  }
+
+  const handleInvoiceFormClose = () => {
+    setShowInvoiceForm(false)
+    setInvoiceData(null)
+    setSelectedPO(null)
+  }
+
+  const handleInvoiceSuccess = () => {
+    setShowProformaForm(false)
+    setShowInvoiceForm(false)
+    setInvoiceData(null)
+    setSelectedPO(null)
     setRefreshList(prev => prev + 1)
+    toast.success('Invoice created successfully!')
+  }
+
+  const handlePODeleted = () => {
+    // Refresh the PO list
+    setRefreshList(prev => prev + 1)
+
+    // Set flag to refresh quotations list (quotation status changed back to sent)
+    sessionStorage.setItem('refreshQuotationsAfterPODelete', 'true')
+
+    // Call the PO created callback to refresh quotations
+    if (onPOCreated) {
+      onPOCreated()
+    }
   }
 
   return (
@@ -240,12 +316,15 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
         onCreateNew={handleAddPO}
         onEdit={handleEditPO}
         onView={handleViewPO}
+        onViewDetails={handleViewDetails}
+        onRaiseInvoice={handleRaiseInvoice}
+        onDelete={handlePODeleted}
       />
 
       {/* PO Form Modal */}
       {showForm && (
         <PurchaseOrderForm
-          purchaseOrder={isEditing ? selectedPO : null}
+          purchaseOrder={isEditing ? selectedPO as any : null}
           quotation={quotationData}
           onClose={handleFormClose}
           onSuccess={handleFormSuccess}
@@ -257,6 +336,45 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
         <PurchaseOrderView
           purchaseOrder={selectedPO}
           onClose={handleViewClose}
+        />
+      )}
+
+      {/* PO Details Modal */}
+      {showPODetails && selectedPOId && (
+        <PODetailsModal
+          poId={selectedPOId}
+          onClose={handlePODetailsClose}
+          sessionKey={sessionKey || ''}
+        />
+      )}
+
+      {/* Raise Invoice Modal */}
+      {showRaiseInvoice && selectedPO && (
+        <RaiseInvoiceModal
+          purchaseOrder={selectedPO}
+          onClose={handleRaiseInvoiceClose}
+          onCreateProforma={handleCreateProforma}
+          onCreateTaxInvoice={handleCreateTaxInvoice}
+        />
+      )}
+
+      {/* Proforma Invoice Form */}
+      {showProformaForm && selectedPO && invoiceData && (
+        <SimpleProformaForm
+          purchaseOrder={selectedPO}
+          invoiceData={invoiceData}
+          onClose={handleProformaFormClose}
+          onSuccess={handleInvoiceSuccess}
+        />
+      )}
+
+      {/* Tax Invoice Form */}
+      {showInvoiceForm && selectedPO && invoiceData && (
+        <SimpleTaxInvoiceForm
+          purchaseOrder={selectedPO}
+          invoiceData={invoiceData}
+          onClose={handleInvoiceFormClose}
+          onSuccess={handleInvoiceSuccess}
         />
       )}
     </div>

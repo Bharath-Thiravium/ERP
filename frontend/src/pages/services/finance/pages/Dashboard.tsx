@@ -29,7 +29,8 @@ import {
   LineChart,
   PlusCircle,
   User,
-  ShoppingCart
+  ShoppingCart,
+  FileText
 } from 'lucide-react'
 import { useAuthStore } from '../../../../store/authStore'
 import { useThemeStore } from '../../../../store/themeStore'
@@ -44,6 +45,9 @@ import Products from './Products'
 import Quotations from './Quotations.tsx'
 import PurchaseOrders from './PurchaseOrders'
 import ProformaInvoices from './ProformaInvoices'
+import Invoices from './Invoices'
+import Payments from './Payments'
+import CustomerLedger from '../components/CustomerLedger'
 
 const FinanceDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -62,6 +66,30 @@ const FinanceDashboard: React.FC = () => {
     currentPassword: '',
     newPassword: '',
     confirmPassword: ''
+  })
+
+  // Real financial data state
+  const [financialData, setFinancialData] = useState({
+    totalQuotations: 0,
+    totalPurchaseOrders: 0,
+    totalProformaInvoices: 0,
+    totalInvoices: 0,
+    totalCustomers: 0,
+    totalProducts: 0,
+    quotationValue: 0,
+    poValue: 0,
+    proformaValue: 0,
+    invoiceValue: 0,
+    outstandingAmount: 0,
+    pendingQuotations: 0,
+    approvedQuotations: 0,
+    draftPOs: 0,
+    confirmedPOs: 0,
+    draftProformas: 0,
+    sentProformas: 0,
+    draftInvoices: 0,
+    paidInvoices: 0,
+    recentActivity: [] as any[]
   })
   const [isChangingPassword, setIsChangingPassword] = useState(false)
 
@@ -136,7 +164,7 @@ const handlePOCreated = () => {
     }
   }
 
-  // Simplified sidebar menu items - Overview, Customers, Products, Quotations, PO/WO, Proforma Invoices, and Settings
+  // Simplified sidebar menu items - Overview, Customers, Products, Quotations, PO/WO, Proforma Invoices, Invoices, and Settings
   const sidebarItems = [
     { id: 'overview', label: 'Overview', icon: BarChart3, active: true },
     { id: 'customers', label: 'Customers', icon: Users },
@@ -144,26 +172,67 @@ const handlePOCreated = () => {
     { id: 'quotations', label: 'Quotations', icon: CreditCard },
     { id: 'purchase-orders', label: 'PO/WO', icon: ShoppingCart },
     { id: 'proforma-invoices', label: 'Proforma Invoices', icon: Banknote },
+    { id: 'invoices', label: 'Invoices', icon: FileText },
+    { id: 'payments', label: 'Payments', icon: CreditCard },
+    { id: 'customer-ledger', label: 'Customer Ledger', icon: User },
     { id: 'settings', label: 'Settings', icon: Settings }
   ]
 
-  // Enhanced financial data
-  const financialData = {
-    totalRevenue: 2450000,
-    totalExpenses: 1850000,
-    netProfit: 600000,
-    cashFlow: 450000,
-    accountsReceivable: 320000,
-    accountsPayable: 180000,
-    monthlyGrowth: 12.5,
-    yearlyGrowth: 28.3,
-    budgetUtilization: 78.5,
-    profitMargin: 24.5,
-    operatingExpenses: 1200000,
-    grossProfit: 1250000,
-    currentAssets: 850000,
-    currentLiabilities: 420000,
-    workingCapital: 430000
+  // Fetch real financial data from APIs
+  const fetchFinancialData = async () => {
+    if (!sessionKey) return
+
+    try {
+      const [quotationsRes, posRes, proformasRes, invoicesRes, customersRes, productsRes] = await Promise.all([
+        api.get(`/api/finance/quotations/?session_key=${sessionKey}`),
+        api.get(`/api/finance/purchase-orders/?session_key=${sessionKey}`),
+        api.get(`/api/finance/proforma-invoices/?session_key=${sessionKey}`),
+        api.get(`/api/finance/invoices/?session_key=${sessionKey}`),
+        api.get(`/api/finance/customers/?session_key=${sessionKey}`),
+        api.get(`/api/finance/products/?session_key=${sessionKey}`)
+      ])
+
+      const quotations = quotationsRes.data.results || []
+      const pos = posRes.data.results || []
+      const proformas = proformasRes.data.results || []
+      const invoices = invoicesRes.data.results || []
+      const customers = customersRes.data.results || []
+      const products = productsRes.data.results || []
+
+      // Calculate real financial metrics
+      const quotationValue = quotations.reduce((sum: number, q: any) => sum + parseFloat(q.total_amount || 0), 0)
+      const poValue = pos.reduce((sum: number, p: any) => sum + parseFloat(p.total_amount || 0), 0)
+      const proformaValue = proformas.reduce((sum: number, p: any) => sum + parseFloat(p.total_amount || 0), 0)
+      const invoiceValue = invoices.reduce((sum: number, i: any) => sum + parseFloat(i.total_amount || 0), 0)
+      const outstandingAmount = invoices.reduce((sum: number, i: any) => sum + parseFloat(i.outstanding_amount || 0), 0)
+
+      setFinancialData({
+        totalQuotations: quotations.length,
+        totalPurchaseOrders: pos.length,
+        totalProformaInvoices: proformas.length,
+        totalInvoices: invoices.length,
+        totalCustomers: customers.length,
+        totalProducts: products.length,
+        quotationValue,
+        poValue,
+        proformaValue,
+        invoiceValue,
+        outstandingAmount,
+        pendingQuotations: quotations.filter((q: any) => q.status === 'sent').length,
+        approvedQuotations: quotations.filter((q: any) => q.status === 'approved').length,
+        draftPOs: pos.filter((p: any) => p.status === 'draft').length,
+        confirmedPOs: pos.filter((p: any) => p.status === 'confirmed').length,
+        draftProformas: proformas.filter((p: any) => p.status === 'draft').length,
+        sentProformas: proformas.filter((p: any) => p.status === 'sent').length,
+        draftInvoices: invoices.filter((i: any) => i.status === 'draft').length,
+        paidInvoices: invoices.filter((i: any) => i.payment_status === 'paid').length,
+        recentActivity: [...quotations, ...pos, ...proformas, ...invoices]
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5)
+      })
+    } catch (error) {
+      console.error('Error fetching financial data:', error)
+    }
   }
 
 
@@ -199,13 +268,45 @@ const handlePOCreated = () => {
     return () => clearTimeout(timer)
   }, [serviceUser?.company_id, sessionKey])
 
-  const recentTransactions = [
-    { id: 1, date: '2025-09-10', description: 'Client Payment - ABC Corp', amount: 25000, type: 'income' },
-    { id: 2, date: '2025-09-09', description: 'Office Rent Payment', amount: -8500, type: 'expense' },
-    { id: 3, date: '2025-09-08', description: 'Software License Renewal', amount: -2400, type: 'expense' },
-    { id: 4, date: '2025-09-07', description: 'Consulting Services - XYZ Ltd', amount: 18000, type: 'income' },
-    { id: 5, date: '2025-09-06', description: 'Equipment Purchase', amount: -15000, type: 'expense' }
-  ]
+  // Fetch financial data when sessionKey is available
+  useEffect(() => {
+    if (sessionKey) {
+      fetchFinancialData()
+    }
+  }, [sessionKey])
+
+  // Refresh financial data when quotations are updated
+  useEffect(() => {
+    if (quotationRefreshKey > 0 && sessionKey) {
+      fetchFinancialData()
+    }
+  }, [quotationRefreshKey, sessionKey])
+
+  // Format recent activity from real data
+  const getRecentActivity = () => {
+    return financialData.recentActivity.map((item: any, index: number) => {
+      let type = 'quotation'
+      let description = `Quotation ${item.quotation_number || item.internal_po_number || item.proforma_number}`
+      let amount = parseFloat(item.total_amount || 0)
+
+      if (item.internal_po_number) {
+        type = 'purchase_order'
+        description = `Purchase Order ${item.internal_po_number}`
+      } else if (item.proforma_number) {
+        type = 'proforma_invoice'
+        description = `Proforma Invoice ${item.proforma_number}`
+      }
+
+      return {
+        id: item.id || index,
+        date: item.created_at ? new Date(item.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
+        description: `${description} - ${item.customer_name || 'Customer'}`,
+        amount,
+        type,
+        status: item.status || 'draft'
+      }
+    })
+  }
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -226,67 +327,47 @@ const handlePOCreated = () => {
     <div className="space-y-8">
       {/* Enhanced Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Revenue Card */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 p-6 text-white shadow-xl shadow-green-500/25">
-          <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/20 rounded-xl">
-                <DollarSign className="h-6 w-6" />
-              </div>
-              <div className="text-right">
-                <div className="text-xs opacity-80">Total Revenue</div>
-                <div className="text-2xl font-bold">{formatCurrency(financialData.totalRevenue)}</div>
-              </div>
-            </div>
-            <div className="flex items-center text-sm">
-              <TrendingUp className="h-4 w-4 mr-1" />
-              <span className="font-medium">{formatPercentage(financialData.yearlyGrowth)} YoY</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Total Expenses Card */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-500 to-pink-600 p-6 text-white shadow-xl shadow-red-500/25">
-          <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/20 rounded-xl">
-                <CreditCard className="h-6 w-6" />
-              </div>
-              <div className="text-right">
-                <div className="text-xs opacity-80">Total Expenses</div>
-                <div className="text-2xl font-bold">{formatCurrency(financialData.totalExpenses)}</div>
-              </div>
-            </div>
-            <div className="flex items-center text-sm">
-              <TrendingDown className="h-4 w-4 mr-1" />
-              <span className="font-medium">-6.2% vs last month</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Net Profit Card */}
+        {/* Total Quotations Card */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 p-6 text-white shadow-xl shadow-blue-500/25">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
               <div className="p-2 bg-white/20 rounded-xl">
-                <LineChart className="h-6 w-6" />
+                <FileText className="h-6 w-6" />
               </div>
               <div className="text-right">
-                <div className="text-xs opacity-80">Net Profit</div>
-                <div className="text-2xl font-bold">{formatCurrency(financialData.netProfit)}</div>
+                <div className="text-xs opacity-80">Total Value</div>
+                <div className="text-2xl font-bold">₹{financialData.quotationValue.toLocaleString()}</div>
               </div>
             </div>
             <div className="flex items-center text-sm">
-              <TrendingUp className="h-4 w-4 mr-1" />
-              <span className="font-medium">{formatPercentage(financialData.monthlyGrowth)} MoM</span>
+              <span className="font-medium">{financialData.totalQuotations} quotations</span>
+              <span className="ml-2 opacity-70">• {financialData.pendingQuotations} pending</span>
             </div>
           </div>
         </div>
 
-        {/* Cash Flow Card */}
+        {/* Total Purchase Orders Card */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 p-6 text-white shadow-xl shadow-green-500/25">
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-white/20 rounded-xl">
+                <ShoppingCart className="h-6 w-6" />
+              </div>
+              <div className="text-right">
+                <div className="text-xs opacity-80">Total Value</div>
+                <div className="text-2xl font-bold">₹{financialData.poValue.toLocaleString()}</div>
+              </div>
+            </div>
+            <div className="flex items-center text-sm">
+              <span className="font-medium">{financialData.totalPurchaseOrders} purchase orders</span>
+              <span className="ml-2 opacity-70">• {financialData.confirmedPOs} confirmed</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Total Proforma Invoices Card */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-500 to-violet-600 p-6 text-white shadow-xl shadow-purple-500/25">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
           <div className="relative">
@@ -295,13 +376,53 @@ const handlePOCreated = () => {
                 <Banknote className="h-6 w-6" />
               </div>
               <div className="text-right">
-                <div className="text-xs opacity-80">Cash Flow</div>
-                <div className="text-2xl font-bold">{formatCurrency(financialData.cashFlow)}</div>
+                <div className="text-xs opacity-80">Total Value</div>
+                <div className="text-2xl font-bold">₹{financialData.proformaValue.toLocaleString()}</div>
               </div>
             </div>
             <div className="flex items-center text-sm">
-              <TrendingUp className="h-4 w-4 mr-1" />
-              <span className="font-medium">Positive trend</span>
+              <span className="font-medium">{financialData.totalProformaInvoices} proforma invoices</span>
+              <span className="ml-2 opacity-70">• {financialData.sentProformas} sent</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Total Invoices Card */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 p-6 text-white shadow-xl shadow-emerald-500/25">
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-white/20 rounded-xl">
+                <FileText className="h-6 w-6" />
+              </div>
+              <div className="text-right">
+                <div className="text-xs opacity-80">Total Value</div>
+                <div className="text-2xl font-bold">₹{financialData.invoiceValue.toLocaleString()}</div>
+              </div>
+            </div>
+            <div className="flex items-center text-sm">
+              <span className="font-medium">{financialData.totalInvoices} invoices</span>
+              <span className="ml-2 opacity-70">• ₹{financialData.outstandingAmount.toLocaleString()} outstanding</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Customers & Products Card */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 p-6 text-white shadow-xl shadow-orange-500/25">
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-white/20 rounded-xl">
+                <Users className="h-6 w-6" />
+              </div>
+              <div className="text-right">
+                <div className="text-xs opacity-80">Database</div>
+                <div className="text-2xl font-bold">{financialData.totalCustomers + financialData.totalProducts}</div>
+              </div>
+            </div>
+            <div className="flex items-center text-sm">
+              <span className="font-medium">{financialData.totalCustomers} customers</span>
+              <span className="ml-2 opacity-70">• {financialData.totalProducts} products</span>
             </div>
           </div>
         </div>
@@ -362,32 +483,47 @@ const handlePOCreated = () => {
           </Button>
         </div>
         <div className="space-y-3">
-          {recentTransactions.map((transaction) => (
+          {getRecentActivity().map((transaction: any) => (
             <div key={transaction.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl border border-gray-200/50 dark:border-gray-700/50 hover:shadow-md transition-all duration-200">
               <div className="flex items-center space-x-4">
                 <div className={`p-3 rounded-xl ${
-                  transaction.type === 'income'
+                  transaction.type === 'quotation'
+                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white'
+                    : transaction.type === 'purchase_order'
                     ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white'
-                    : 'bg-gradient-to-r from-red-500 to-pink-600 text-white'
+                    : 'bg-gradient-to-r from-purple-500 to-violet-600 text-white'
                 }`}>
-                  {transaction.type === 'income' ? (
-                    <TrendingUp className="h-5 w-5" />
+                  {transaction.type === 'quotation' ? (
+                    <FileText className="h-5 w-5" />
+                  ) : transaction.type === 'purchase_order' ? (
+                    <ShoppingCart className="h-5 w-5" />
                   ) : (
-                    <TrendingDown className="h-5 w-5" />
+                    <Banknote className="h-5 w-5" />
                   )}
                 </div>
                 <div>
                   <p className="font-semibold text-gray-900 dark:text-white">{transaction.description}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{transaction.date}</p>
+                  <div className="flex items-center space-x-2">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{transaction.date}</p>
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      transaction.status === 'approved' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
+                      transaction.status === 'sent' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
+                      'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                    }`}>
+                      {transaction.status}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="text-right">
                 <p className={`text-lg font-bold ${
-                  transaction.type === 'income'
+                  transaction.type === 'quotation'
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : transaction.type === 'purchase_order'
                     ? 'text-green-600 dark:text-green-400'
-                    : 'text-red-600 dark:text-red-400'
+                    : 'text-purple-600 dark:text-purple-400'
                 }`}>
-                  {transaction.amount > 0 ? '+' : ''}{formatCurrency(Math.abs(transaction.amount))}
+                  ₹{transaction.amount.toLocaleString()}
                 </p>
                 <div className="flex items-center space-x-2 mt-1">
                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
@@ -602,6 +738,12 @@ const handlePOCreated = () => {
         return <PurchaseOrders quotationForPO={quotationForPO} initialAction={poAction} onActionComplete={() => { setQuotationForPO(null); setPOAction(null); }} onPOCreated={handlePOCreated} />
       case 'proforma-invoices':
         return <ProformaInvoices sessionKey={sessionKey || ''} />
+      case 'invoices':
+        return <Invoices sessionKey={sessionKey || ''} />
+      case 'payments':
+        return <Payments sessionKey={sessionKey || ''} />
+      case 'customer-ledger':
+        return <CustomerLedger sessionKey={sessionKey || ''} />
       case 'settings':
         return renderSettings()
       default:

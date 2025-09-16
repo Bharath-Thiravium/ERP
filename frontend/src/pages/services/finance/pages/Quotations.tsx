@@ -31,12 +31,19 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
   const [selectedQuotation, setSelectedQuotation] = useState<Quotation | null>(null)
   const [refreshList, setRefreshList] = useState(0)
 
-  // Check for refresh flag after PO creation
+  // Check for refresh flag after PO creation or deletion
   React.useEffect(() => {
-    const shouldRefresh = sessionStorage.getItem('refreshQuotationsAfterPO')
-    if (shouldRefresh === 'true') {
+    const shouldRefreshAfterPO = sessionStorage.getItem('refreshQuotationsAfterPO')
+    const shouldRefreshAfterPODelete = sessionStorage.getItem('refreshQuotationsAfterPODelete')
+
+    if (shouldRefreshAfterPO === 'true') {
       setRefreshList(prev => prev + 1)
       sessionStorage.removeItem('refreshQuotationsAfterPO')
+    }
+
+    if (shouldRefreshAfterPODelete === 'true') {
+      setRefreshList(prev => prev + 1)
+      sessionStorage.removeItem('refreshQuotationsAfterPODelete')
     }
   }, [])
 

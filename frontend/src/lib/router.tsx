@@ -12,7 +12,7 @@ const CompanyDashboard = React.lazy(() => import('../pages/company/Dashboard'))
 const DetailedInfoForm = React.lazy(() => import('../pages/company/DetailedInfoForm'))
 const ServiceSelection = React.lazy(() => import('../pages/company/ServiceSelection'))
 const FinanceDashboard = React.lazy(() => import('../pages/services/finance/pages/Dashboard'))
-const PurchaseOrder = React.lazy(() => import('../pages/services/finance/PurchaseOrder'))
+const PurchaseOrders = React.lazy(() => import('../pages/services/finance/pages/PurchaseOrders'))
 const HRDashboard = React.lazy(() => import('../pages/services/hr/pages/Dashboard'))
 const InventoryDashboard = React.lazy(() => import('../pages/services/inventory/pages/Dashboard'))
 const WaitingApproval = React.lazy(() => import('../pages/company/WaitingApproval'))
@@ -239,10 +239,12 @@ export const AppRouter: React.FC = () => {
         path="/services/finance/purchase-orders"
         element={
           <SuspenseWrapper>
-            <PurchaseOrder />
+            <PurchaseOrders />
           </SuspenseWrapper>
         }
       />
+
+
 
       <Route
         path="/services/hr/dashboard"

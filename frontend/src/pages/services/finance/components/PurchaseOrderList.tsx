@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { Search, Plus, Eye, Edit, Trash2, Filter, Calendar, User, FileText, DollarSign, MapPin, Package, ShoppingCart } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, Filter, Calendar, User, FileText, DollarSign, MapPin, Package, ShoppingCart, BarChart3, Receipt } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface PurchaseOrder {
@@ -31,13 +31,16 @@ interface PurchaseOrder {
 }
 
 interface PurchaseOrderListProps {
+  sessionKey: string
   onCreateNew: () => void
   onEdit: (po: PurchaseOrder) => void
   onView: (po: PurchaseOrder) => void
+  onViewDetails: (po: PurchaseOrder) => void
+  onRaiseInvoice: (po: PurchaseOrder) => void
+  onDelete?: () => void
 }
 
-const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ onCreateNew, onEdit, onView }) => {
-  const { sessionKey } = useServiceUserStore()
+const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCreateNew, onEdit, onView, onViewDetails, onRaiseInvoice, onDelete }) => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -87,8 +90,13 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ onCreateNew, onEd
     try {
       await axios.delete(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/?session_key=${sessionKey}`)
 
-      toast.success('Purchase order deleted successfully!')
+      toast.success('Purchase order deleted successfully! Quotation status reverted to "sent".')
       fetchPurchaseOrders(currentPage)
+
+      // Notify parent component that a PO was deleted (to refresh quotations)
+      if (onDelete) {
+        onDelete()
+      }
     } catch (error) {
       console.error('Error deleting purchase order:', error)
       toast.error('Failed to delete purchase order')
@@ -348,6 +356,20 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ onCreateNew, onEd
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => onRaiseInvoice(po)}
+                            className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
+                            title="Raise Invoice"
+                          >
+                            <Receipt className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => onViewDetails(po)}
+                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                            title="PO Details & Payment Tracking"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => onView(po)}
                             className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"

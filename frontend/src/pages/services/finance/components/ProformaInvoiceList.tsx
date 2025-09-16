@@ -1,22 +1,27 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { toast } from 'react-hot-toast'
-import { 
-  FileText, 
-  Plus, 
-  Search, 
-  Filter, 
-  Eye, 
-  Edit, 
-  Trash2, 
+import {
+  FileText,
+  Plus,
+  Search,
+  Filter,
+  Eye,
+  Edit,
+  Trash2,
   Calendar,
   User,
   DollarSign,
   CheckCircle,
   Clock,
-  XCircle
+  XCircle,
+  Download,
+  PlayCircle,
+  Mail
 } from 'lucide-react'
-import ProformaInvoiceForm from './ProformaInvoiceForm'
+// import ProformaInvoiceForm from './ProformaInvoiceForm' // Removed - using simplified forms
+import ProformaInvoiceView from './ProformaInvoiceView'
+import UpdatePaymentModal from './UpdatePaymentModal'
 
 interface ProformaInvoice {
   id: number
@@ -29,9 +34,9 @@ interface ProformaInvoice {
   po_number: string
   status: string
   gst_type: string
-  subtotal: number
-  total_tax: number
-  total_amount: number
+  subtotal: string | number
+  total_tax: string | number
+  total_amount: string | number
   item_count: number
   proforma_items: Array<{
     product_name: string
@@ -96,15 +101,27 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
         page: currentPage.toString(),
         session_key: sessionKey
       })
-      
+
       if (statusFilter) params.append('status', statusFilter)
 
+      console.log('Fetching proforma invoices with params:', params.toString()) // Debug log
       const response = await axios.get(`http://127.0.0.1:8000/api/finance/proforma-invoices/?${params}`)
-      setProformaInvoices(response.data.results || [])
+      console.log('Proforma Invoice API Response:', response.data) // Debug log
+
+      const invoices = response.data.results || []
+      setProformaInvoices(invoices)
       setTotalPages(Math.ceil(response.data.count / 5))
+
+      if (invoices.length === 0 && currentPage === 1) {
+        console.log('No proforma invoices found') // Debug log
+      }
     } catch (error) {
       console.error('Error fetching proforma invoices:', error)
-      toast.error('Failed to fetch proforma invoices')
+      if (error.response?.status === 401) {
+        toast.error('Session expired. Please refresh the page.')
+      } else {
+        toast.error('Failed to fetch proforma invoices. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -114,6 +131,19 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
     fetchProformaInvoices()
   }, [currentPage, statusFilter, sessionKey])
 
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [selectedForPayment, setSelectedForPayment] = useState<ProformaInvoice | null>(null)
+  
+  const handleUpdatePayment = (proformaInvoice: ProformaInvoice) => {
+    setSelectedForPayment(proformaInvoice)
+    setShowPaymentModal(true)
+  }
+
+  const handleView = (proformaInvoice: ProformaInvoice) => {
+    setSelectedProformaInvoice(proformaInvoice)
+    setShowForm(true)
+  }
+  
   const handleEdit = (proformaInvoice: ProformaInvoice) => {
     setSelectedProformaInvoice(proformaInvoice)
     setShowForm(true)
@@ -131,6 +161,42 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
     } catch (error) {
       console.error('Error deleting proforma invoice:', error)
       toast.error('Failed to delete proforma invoice')
+    }
+  }
+
+  const handleDownloadPDF = async (id: number, proformaNumber: string) => {
+    try {
+      const response = await axios.get(`http://127.0.0.1:8000/api/finance/proforma-invoices/${id}/pdf/`, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` },
+        responseType: 'blob'
+      })
+
+      // Create blob link to download
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Proforma_${proformaNumber}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+
+      toast.success('PDF downloaded successfully')
+    } catch (error) {
+      console.error('Error downloading PDF:', error)
+      toast.error('Failed to download PDF')
+    }
+  }
+
+  const handleSendEmail = async (id: number, proformaNumber: string) => {
+    try {
+      await axios.post(`http://127.0.0.1:8000/api/finance/proforma-invoices/${id}/send-email/`, {}, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` }
+      })
+      toast.success(`Proforma ${proformaNumber} sent via email successfully!`)
+    } catch (error) {
+      console.error('Error sending email:', error)
+      toast.error('Failed to send email')
     }
   }
 
@@ -163,7 +229,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
           <p className="text-gray-600 dark:text-gray-400">Manage your proforma invoices</p>
         </div>
         <button
-          onClick={() => setShowForm(true)}
+          onClick={() => toast.info('Create proforma invoices via Purchase Orders → Raise Invoice')}
           className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -240,7 +306,10 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                       <div className="flex items-center">
                         <FileText className="w-5 h-5 text-blue-500 mr-3" />
                         <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          <div 
+                            onClick={() => handleView(proforma)}
+                            className="text-sm font-medium text-blue-600 hover:text-blue-800 cursor-pointer"
+                          >
                             {proforma.proforma_number}
                           </div>
                           <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -264,10 +333,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        ₹{proforma.total_amount.toFixed(2)}
-                      </div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
-                        Tax: ₹{proforma.total_tax.toFixed(2)}
+                        ₹{parseFloat(proforma.total_amount?.toString() || '0').toFixed(2)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -285,11 +351,39 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
                         <button
-                          onClick={() => handleEdit(proforma)}
+                          onClick={() => handleUpdatePayment(proforma)}
+                          className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                          title="Update Payment"
+                        >
+                          <DollarSign className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleView(proforma)}
                           className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                          title="View"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleEdit(proforma)}
+                          className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
                           title="Edit"
                         >
                           <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleSendEmail(proforma.id, proforma.proforma_number)}
+                          className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                          title="Send Email"
+                        >
+                          <Mail className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDownloadPDF(proforma.id, proforma.proforma_number)}
+                          className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
+                          title="Download PDF"
+                        >
+                          <Download className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(proforma.id)}
@@ -333,15 +427,35 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
         </div>
       )}
 
-      {/* Proforma Invoice Form Modal */}
-      {showForm && (
-        <ProformaInvoiceForm
+      {/* Proforma Invoice View Modal */}
+      {showForm && selectedProformaInvoice && (
+        <ProformaInvoiceView
           proformaInvoice={selectedProformaInvoice}
           onClose={() => {
             setShowForm(false)
             setSelectedProformaInvoice(null)
           }}
-          onSuccess={handleFormSuccess}
+        />
+      )}
+
+      {/* Update Payment Modal */}
+      {showPaymentModal && selectedForPayment && (
+        <UpdatePaymentModal
+          invoice={{
+            id: selectedForPayment.id,
+            invoice_number: selectedForPayment.proforma_number,
+            total_amount: selectedForPayment.subtotal?.toString() || '0',
+            outstanding_amount: selectedForPayment.subtotal?.toString() || '0'
+          }}
+          onClose={() => {
+            setShowPaymentModal(false)
+            setSelectedForPayment(null)
+          }}
+          onSuccess={() => {
+            setShowPaymentModal(false)
+            setSelectedForPayment(null)
+            fetchProformaInvoices()
+          }}
           sessionKey={sessionKey}
         />
       )}

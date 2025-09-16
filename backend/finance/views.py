@@ -3,12 +3,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.decorators import action
-from django.db.models import Q
+from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
+from django.db.models import Q, Sum
+from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 from authentication.models import ServiceUserSession, CompanyServiceUser
-from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem
+from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
 from .serializers import (
     CustomerListSerializer, CustomerDetailSerializer,
     CustomerCreateSerializer, CustomerUpdateSerializer,
@@ -20,7 +21,12 @@ from .serializers import (
     PurchaseOrderListSerializer, PurchaseOrderDetailSerializer,
     PurchaseOrderCreateSerializer, PurchaseOrderUpdateSerializer,
     ProformaInvoiceListSerializer, ProformaInvoiceDetailSerializer,
-    ProformaInvoiceCreateSerializer, ProformaInvoiceUpdateSerializer
+    ProformaInvoiceCreateSerializer, ProformaInvoiceUpdateSerializer,
+    InvoiceListSerializer, InvoiceDetailSerializer,
+    InvoiceCreateSerializer, InvoiceUpdateSerializer,
+    PaymentListSerializer, PaymentDetailSerializer,
+    PaymentCreateSerializer, PaymentUpdateSerializer,
+    WorldClassPaymentCreateSerializer, WorldClassPaymentListSerializer
 )
 
 
@@ -1168,7 +1174,7 @@ class PurchaseOrderDetailView(RetrieveUpdateDestroyAPIView):
             )
 
     def destroy(self, request, *args, **kwargs):
-        """Override destroy to handle session authentication"""
+        """Override destroy to handle session authentication and revert quotation status"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -1181,8 +1187,20 @@ class PurchaseOrderDetailView(RetrieveUpdateDestroyAPIView):
                 session_key=session_key,
                 is_active=True
             )
-            # Proceed with normal deletion
-            return super().destroy(request, *args, **kwargs)
+
+            # Get the PO instance before deletion to access the quotation
+            purchase_order = self.get_object()
+            quotation = purchase_order.quotation
+
+            # Delete the purchase order
+            response = super().destroy(request, *args, **kwargs)
+
+            # If deletion was successful, revert quotation status to 'sent'
+            if response.status_code == 204:  # HTTP 204 No Content (successful deletion)
+                quotation.status = 'sent'
+                quotation.save()
+
+            return response
 
         except ServiceUserSession.DoesNotExist:
             return Response(
@@ -1357,3 +1375,1268 @@ class ProformaInvoiceDetailView(RetrieveUpdateDestroyAPIView):
                 {'error': 'Invalid session'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
+
+
+# Invoice Views
+class InvoicePagination(PageNumberPagination):
+    """Custom pagination for invoices"""
+    page_size = 5
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class InvoiceListCreateView(ListCreateAPIView):
+    """List and create invoices for finance service"""
+    authentication_classes = []  # Disable JWT authentication
+    permission_classes = [permissions.AllowAny]  # Uses session-based auth
+    pagination_class = InvoicePagination
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return InvoiceCreateSerializer
+        return InvoiceListSerializer
+
+    def get_queryset(self):
+        # Get service user from session
+        session_key = self.get_session_key()
+        if not session_key:
+            return Invoice.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            # Return invoices for this company only with prefetched related data
+            queryset = Invoice.objects.filter(
+                company=service_user.company
+            ).select_related(
+                'customer', 'proforma_invoice', 'created_by'
+            ).prefetch_related(
+                'invoice_items', 'payments'
+            )
+
+            # Add search functionality
+            search = self.request.query_params.get('search', '')
+            if search:
+                queryset = queryset.filter(
+                    Q(invoice_number__icontains=search) |
+                    Q(customer__name__icontains=search) |
+                    Q(customer__customer_code__icontains=search) |
+                    Q(proforma_invoice__proforma_number__icontains=search) |
+                    Q(reference__icontains=search)
+                )
+
+            # Add filtering
+            status_filter = self.request.query_params.get('status', '')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+
+            payment_status_filter = self.request.query_params.get('payment_status', '')
+            if payment_status_filter:
+                queryset = queryset.filter(payment_status=payment_status_filter)
+
+            customer_id = self.request.query_params.get('customer', '')
+            if customer_id:
+                queryset = queryset.filter(customer_id=customer_id)
+
+            return queryset.order_by('-created_at')
+
+        except ServiceUserSession.DoesNotExist:
+            return Invoice.objects.none()
+
+    def get_session_key(self):
+        """Get session key from Authorization header or query params"""
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        """Override create to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            # Create invoice with company and created_by
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            invoice = serializer.save(
+                company=service_user.company,
+                created_by=service_user
+            )
+
+            # Return detailed invoice data
+            detail_serializer = InvoiceDetailSerializer(invoice)
+            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+    def list(self, request, *args, **kwargs):
+        """Override list to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            # Proceed with normal listing
+            return super().list(request, *args, **kwargs)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class InvoiceDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete invoice for finance service"""
+    authentication_classes = []  # Disable JWT authentication
+    permission_classes = [permissions.AllowAny]  # Uses session-based auth
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return InvoiceUpdateSerializer
+        return InvoiceDetailSerializer
+
+    def get_queryset(self):
+        # Get service user from session
+        session_key = self.get_session_key()
+        if not session_key:
+            return Invoice.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            # Return invoices for this company only
+            return Invoice.objects.filter(
+                company=service_user.company
+            ).select_related(
+                'customer', 'proforma_invoice', 'shipping_address', 'created_by'
+            ).prefetch_related(
+                'invoice_items__product',
+                'payments',
+                'customer__shipping_addresses'
+            )
+
+        except ServiceUserSession.DoesNotExist:
+            return Invoice.objects.none()
+
+    def get_session_key(self):
+        """Get session key from Authorization header or query params"""
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH']:
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def retrieve(self, request, *args, **kwargs):
+        """Override retrieve to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            # Proceed with normal retrieval
+            return super().retrieve(request, *args, **kwargs)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+    def update(self, request, *args, **kwargs):
+        """Override update to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            # Proceed with normal update
+            return super().update(request, *args, **kwargs)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            # Proceed with normal deletion
+            return super().destroy(request, *args, **kwargs)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+# Payment Views
+class PaymentPagination(PageNumberPagination):
+    """Custom pagination for payments"""
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class PaymentListCreateView(ListCreateAPIView):
+    """List and create payments for finance service"""
+    authentication_classes = []  # Disable JWT authentication
+    permission_classes = [permissions.AllowAny]  # Uses session-based auth
+    pagination_class = PaymentPagination
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return PaymentCreateSerializer
+        return PaymentListSerializer
+
+    def get_queryset(self):
+        # Get service user from session
+        session_key = self.get_session_key()
+        if not session_key:
+            return Payment.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            # Return payments for this company only with prefetched related data
+            queryset = Payment.objects.filter(
+                company=service_user.company
+            ).select_related(
+                'customer', 'invoice', 'created_by'
+            )
+
+            # Add search functionality
+            search = self.request.query_params.get('search', '')
+            if search:
+                queryset = queryset.filter(
+                    Q(payment_number__icontains=search) |
+                    Q(customer__name__icontains=search) |
+                    Q(customer__customer_code__icontains=search) |
+                    Q(invoice__invoice_number__icontains=search) |
+                    Q(reference_number__icontains=search)
+                )
+
+            # Add filtering
+            status_filter = self.request.query_params.get('status', '')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+
+            payment_method_filter = self.request.query_params.get('payment_method', '')
+            if payment_method_filter:
+                queryset = queryset.filter(payment_method=payment_method_filter)
+
+            customer_id = self.request.query_params.get('customer', '')
+            if customer_id:
+                queryset = queryset.filter(customer_id=customer_id)
+
+            invoice_id = self.request.query_params.get('invoice', '')
+            if invoice_id:
+                queryset = queryset.filter(invoice_id=invoice_id)
+
+            return queryset.order_by('-created_at')
+
+        except ServiceUserSession.DoesNotExist:
+            return Payment.objects.none()
+
+    def get_session_key(self):
+        """Get session key from Authorization header or query params"""
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        """Override create to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            # Create payment with company and created_by
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            payment = serializer.save(
+                company=service_user.company,
+                created_by=service_user
+            )
+
+            # Return detailed payment data
+            detail_serializer = PaymentDetailSerializer(payment)
+            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+    def list(self, request, *args, **kwargs):
+        """Override list to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            # Proceed with normal listing
+            return super().list(request, *args, **kwargs)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class PaymentDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete payment for finance service"""
+    authentication_classes = []  # Disable JWT authentication
+    permission_classes = [permissions.AllowAny]  # Uses session-based auth
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return PaymentUpdateSerializer
+        return PaymentDetailSerializer
+
+    def get_queryset(self):
+        # Get service user from session
+        session_key = self.get_session_key()
+        if not session_key:
+            return Payment.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            # Return payments for this company only
+            return Payment.objects.filter(
+                company=service_user.company
+            ).select_related(
+                'customer', 'invoice', 'created_by'
+            )
+
+        except ServiceUserSession.DoesNotExist:
+            return Payment.objects.none()
+
+    def get_session_key(self):
+        """Get session key from Authorization header or query params"""
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH']:
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def retrieve(self, request, *args, **kwargs):
+        """Override retrieve to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            # Proceed with normal retrieval
+            return super().retrieve(request, *args, **kwargs)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+    def update(self, request, *args, **kwargs):
+        """Override update to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            # Proceed with normal update
+            return super().update(request, *args, **kwargs)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to handle session authentication"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            # Proceed with normal deletion
+            return super().destroy(request, *args, **kwargs)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def payment_stats(request):
+    """Get payment statistics for the dashboard"""
+    # Get session key from Authorization header or query params
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.GET.get('session_key')
+
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    try:
+        session = ServiceUserSession.objects.get(
+            session_key=session_key,
+            is_active=True
+        )
+        service_user = session.service_user
+        payments = Payment.objects.filter(company=service_user.company)
+
+        # Calculate statistics
+        total_payments = payments.count()
+        total_amount = payments.aggregate(total=Sum('amount'))['total'] or 0
+
+        pending_payments = payments.filter(status='pending')
+        pending_count = pending_payments.count()
+        pending_amount = pending_payments.aggregate(total=Sum('amount'))['total'] or 0
+
+        completed_payments = payments.filter(status='completed')
+        completed_count = completed_payments.count()
+        completed_amount = completed_payments.aggregate(total=Sum('amount'))['total'] or 0
+
+        failed_payments = payments.filter(status='failed')
+        failed_count = failed_payments.count()
+        failed_amount = failed_payments.aggregate(total=Sum('amount'))['total'] or 0
+
+        return Response({
+            'total_payments': total_payments,
+            'total_amount': float(total_amount),
+            'pending_payments': pending_count,
+            'pending_amount': float(pending_amount),
+            'completed_payments': completed_count,
+            'completed_amount': float(completed_amount),
+            'failed_payments': failed_count,
+            'failed_amount': float(failed_amount),
+        })
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Service user not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def customer_ledger(request):
+    """Get customer ledger with transaction history"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.query_params.get('session_key')
+
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    customer_id = request.query_params.get('customer_id')
+    if not customer_id:
+        return Response({'error': 'Customer ID required'}, status=400)
+
+    try:
+        session = ServiceUserSession.objects.get(
+            session_key=session_key,
+            is_active=True
+        )
+        service_user = session.service_user
+
+        # Get customer
+        customer = Customer.objects.get(
+            id=customer_id,
+            company=service_user.company
+        )
+
+        # Get date range filters
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        # Build ledger entries from invoices and payments
+        entries = []
+
+        # Get invoices for this customer
+        invoices = Invoice.objects.filter(
+            customer=customer,
+            company=service_user.company
+        )
+
+        if start_date:
+            invoices = invoices.filter(invoice_date__gte=start_date)
+        if end_date:
+            invoices = invoices.filter(invoice_date__lte=end_date)
+
+        # Add invoice entries (debit entries)
+        for invoice in invoices:
+            entries.append({
+                'id': f'invoice_{invoice.id}',
+                'date': invoice.invoice_date.isoformat(),
+                'document_type': 'Invoice',
+                'document_number': invoice.invoice_number,
+                'description': f'Invoice for services/products',
+                'debit_amount': float(invoice.total_amount),
+                'credit_amount': 0,
+                'balance': 0,  # Will be calculated later
+                'status': invoice.payment_status,
+            })
+
+        # Get payments for this customer
+        payments = Payment.objects.filter(
+            customer=customer,
+            company=service_user.company
+        )
+
+        if start_date:
+            payments = payments.filter(payment_date__gte=start_date)
+        if end_date:
+            payments = payments.filter(payment_date__lte=end_date)
+
+        # Add payment entries (credit entries)
+        for payment in payments:
+            entries.append({
+                'id': f'payment_{payment.id}',
+                'date': payment.payment_date.isoformat(),
+                'document_type': 'Payment',
+                'document_number': payment.payment_number,
+                'description': f'Payment received - {payment.payment_method}',
+                'debit_amount': 0,
+                'credit_amount': float(payment.amount),
+                'balance': 0,  # Will be calculated later
+                'status': payment.status,
+            })
+
+        # Sort entries by date
+        entries.sort(key=lambda x: x['date'])
+
+        # Calculate running balance
+        balance = 0
+        for entry in entries:
+            balance += entry['debit_amount'] - entry['credit_amount']
+            entry['balance'] = balance
+
+        # Calculate summary statistics
+        total_invoiced = sum(float(inv.total_amount) for inv in invoices)
+        total_paid = sum(float(pay.amount) for pay in payments if pay.status == 'completed')
+        outstanding_amount = total_invoiced - total_paid
+
+        # Get customer credit limit (default to 100000 if not set)
+        credit_limit = getattr(customer, 'credit_limit', 100000)
+
+        return Response({
+            'customer': {
+                'id': customer.id,
+                'name': customer.name,
+                'customer_code': customer.customer_code,
+                'email': customer.email,
+                'phone': customer.phone,
+            },
+            'opening_balance': 0,  # Could be calculated from previous periods
+            'total_invoiced': total_invoiced,
+            'total_paid': total_paid,
+            'outstanding_amount': outstanding_amount,
+            'credit_limit': credit_limit,
+            'entries': entries,
+        })
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=404)
+    except Customer.DoesNotExist:
+        return Response({'error': 'Customer not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def generate_invoice_pdf(request, invoice_id):
+    """Generate PDF for an invoice"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.query_params.get('session_key')
+
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    try:
+        from .pdf_utils import generate_invoice_pdf, create_pdf_response
+
+        session = ServiceUserSession.objects.get(
+            session_key=session_key,
+            is_active=True
+        )
+        service_user = session.service_user
+
+        # Get invoice
+        invoice = Invoice.objects.select_related('customer', 'company').prefetch_related('invoice_items').get(
+            id=invoice_id,
+            company=service_user.company
+        )
+
+        # Generate PDF
+        pdf_data = generate_invoice_pdf(invoice)
+
+        # Create filename
+        filename = f"Invoice_{invoice.invoice_number}.pdf"
+
+        # Return PDF response
+        return create_pdf_response(pdf_data, filename)
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=404)
+    except Invoice.DoesNotExist:
+        return Response({'error': 'Invoice not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def generate_proforma_pdf(request, proforma_id):
+    """Generate PDF for a proforma invoice"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.query_params.get('session_key')
+
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    try:
+        from .pdf_utils import generate_invoice_pdf, create_pdf_response
+
+        session = ServiceUserSession.objects.get(
+            session_key=session_key,
+            is_active=True
+        )
+        service_user = session.service_user
+
+        # Get proforma invoice
+        proforma = ProformaInvoice.objects.select_related('customer', 'company').prefetch_related('proforma_items').get(
+            id=proforma_id,
+            company=service_user.company
+        )
+
+        # Convert proforma to invoice-like object for PDF generation
+        # This is a temporary solution - ideally we'd have a separate ProformaPDFGenerator
+        class ProformaWrapper:
+            def __init__(self, proforma):
+                self.invoice_number = proforma.proforma_number
+                self.invoice_date = proforma.proforma_date
+                self.due_date = proforma.due_date
+                self.payment_status = proforma.status
+                self.customer_details = proforma.customer_details
+                self.company = proforma.company
+                self.subtotal = proforma.subtotal
+                self.total_tax = proforma.total_tax
+                self.total_amount = proforma.total_amount
+                self.paid_amount = 0
+                self.outstanding_amount = proforma.total_amount
+
+            def invoice_items(self):
+                return proforma.proforma_items
+
+        wrapped_proforma = ProformaWrapper(proforma)
+        wrapped_proforma.invoice_items = proforma.proforma_items
+
+        # Generate PDF
+        pdf_data = generate_invoice_pdf(wrapped_proforma)
+
+        # Create filename
+        filename = f"Proforma_{proforma.proforma_number}.pdf"
+
+        # Return PDF response
+        return create_pdf_response(pdf_data, filename)
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=404)
+    except ProformaInvoice.DoesNotExist:
+        return Response({'error': 'Proforma invoice not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+# World-Class Payment Management Views
+class WorldClassPaymentListCreateView(ListCreateAPIView):
+    """World-Class Payment Management - List and create payments with invoice linking"""
+    serializer_class = WorldClassPaymentListSerializer
+    pagination_class = CustomerPagination
+
+    def get_queryset(self):
+        """Get payments for the company with advanced filtering"""
+        session_key = self.request.query_params.get('session_key')
+        if not session_key:
+            return Payment.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+
+            queryset = Payment.objects.filter(company=company).select_related(
+                'customer', 'purchase_order', 'invoice', 'proforma_invoice', 'created_by'
+            )
+
+            # Advanced filtering
+            customer_id = self.request.query_params.get('customer_id')
+            if customer_id:
+                queryset = queryset.filter(customer_id=customer_id)
+
+            po_id = self.request.query_params.get('purchase_order_id')
+            if po_id:
+                queryset = queryset.filter(purchase_order_id=po_id)
+
+            payment_method = self.request.query_params.get('payment_method')
+            if payment_method:
+                queryset = queryset.filter(payment_method=payment_method)
+
+            status = self.request.query_params.get('status')
+            if status:
+                queryset = queryset.filter(status=status)
+
+            # Date range filtering
+            start_date = self.request.query_params.get('start_date')
+            end_date = self.request.query_params.get('end_date')
+            if start_date:
+                queryset = queryset.filter(payment_date__gte=start_date)
+            if end_date:
+                queryset = queryset.filter(payment_date__lte=end_date)
+
+            return queryset
+
+        except ServiceUserSession.DoesNotExist:
+            return Payment.objects.none()
+
+    def get_serializer_class(self):
+        """Use different serializers for list and create"""
+        if self.request.method == 'POST':
+            return WorldClassPaymentCreateSerializer
+        return WorldClassPaymentListSerializer
+
+    def perform_create(self, serializer):
+        """Create payment with company and user context"""
+        session_key = self.request.data.get('session_key')
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            serializer.save(
+                company=session.service_user.company,
+                created_by=session.service_user
+            )
+        except ServiceUserSession.DoesNotExist:
+            raise ValidationError({'session_key': 'Invalid session'})
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def purchase_order_payment_details(request, po_id):
+    """World-Class Payment Details for Purchase Order - Bill-wise payment tracking with TDS"""
+    session_key = request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+
+        # Get Purchase Order
+        po = PurchaseOrder.objects.get(id=po_id, company=service_user.company)
+
+        # Get all proforma invoices for this PO with their payments
+        proforma_invoices = []
+        for pf in po.proforma_invoices.all():
+            payments = []
+            for payment in pf.payments.filter(status='completed').order_by('-payment_date'):
+                payments.append({
+                    'payment_number': payment.payment_number,
+                    'payment_date': payment.payment_date.strftime('%Y-%m-%d'),
+                    'amount': float(payment.amount),
+                    'net_amount_received': float(payment.net_amount_received),
+                    'tds_amount': float(payment.tds_amount),
+                    'tds_percentage': float(payment.tds_percentage),
+                    'tds_section': payment.tds_section,
+                    'is_tds_received': payment.is_tds_received,
+                    'payment_method': payment.payment_method,
+                    'reference_number': payment.reference_number,
+                })
+
+            proforma_invoices.append({
+                'id': pf.id,
+                'proforma_number': pf.proforma_number,
+                'proforma_date': pf.proforma_date.strftime('%Y-%m-%d'),
+                'total_amount': float(pf.total_amount),
+                'paid_amount': float(pf.paid_amount),
+                'outstanding_amount': float(pf.outstanding_amount),
+                'payment_status': pf.payment_status,
+                'payments': payments,
+                'total_tds_deducted': sum(p['tds_amount'] for p in payments),
+                'total_net_received': sum(p['net_amount_received'] for p in payments),
+            })
+
+        # Get all tax invoices for this PO with their payments
+        tax_invoices = []
+        for inv in po.invoices.all():
+            payments = []
+            for payment in inv.payments.filter(status='completed').order_by('-payment_date'):
+                payments.append({
+                    'payment_number': payment.payment_number,
+                    'payment_date': payment.payment_date.strftime('%Y-%m-%d'),
+                    'amount': float(payment.amount),
+                    'net_amount_received': float(payment.net_amount_received),
+                    'tds_amount': float(payment.tds_amount),
+                    'tds_percentage': float(payment.tds_percentage),
+                    'tds_section': payment.tds_section,
+                    'is_tds_received': payment.is_tds_received,
+                    'payment_method': payment.payment_method,
+                    'reference_number': payment.reference_number,
+                })
+
+            tax_invoices.append({
+                'id': inv.id,
+                'invoice_number': inv.invoice_number,
+                'invoice_date': inv.invoice_date.strftime('%Y-%m-%d'),
+                'total_amount': float(inv.total_amount),
+                'paid_amount': float(inv.paid_amount),
+                'outstanding_amount': float(inv.outstanding_amount),
+                'payment_status': inv.payment_status,
+                'payments': payments,
+                'total_tds_deducted': sum(p['tds_amount'] for p in payments),
+                'total_net_received': sum(p['net_amount_received'] for p in payments),
+            })
+
+        # Calculate summary
+        total_bills_amount = sum(pf['total_amount'] for pf in proforma_invoices) + sum(inv['total_amount'] for inv in tax_invoices)
+        total_payments_received = sum(pf['paid_amount'] for pf in proforma_invoices) + sum(inv['paid_amount'] for inv in tax_invoices)
+        total_outstanding = sum(pf['outstanding_amount'] for pf in proforma_invoices) + sum(inv['outstanding_amount'] for inv in tax_invoices)
+        total_tds_deducted = sum(pf['total_tds_deducted'] for pf in proforma_invoices) + sum(inv['total_tds_deducted'] for inv in tax_invoices)
+        total_net_received = sum(pf['total_net_received'] for pf in proforma_invoices) + sum(inv['total_net_received'] for inv in tax_invoices)
+
+        return Response({
+            'po_details': {
+                'internal_po_number': po.internal_po_number,
+                'po_number': po.po_number,
+                'customer_name': po.customer.name,
+                'total_po_amount': float(po.total_amount),
+            },
+            'proforma_invoices': proforma_invoices,
+            'tax_invoices': tax_invoices,
+            'payment_summary': {
+                'total_bills_amount': total_bills_amount,
+                'total_payments_received': total_payments_received,
+                'total_outstanding': total_outstanding,
+                'total_tds_deducted': total_tds_deducted,
+                'total_net_received': total_net_received,
+                'collection_efficiency': (total_payments_received / total_bills_amount * 100) if total_bills_amount > 0 else 0,
+            }
+        })
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except PurchaseOrder.DoesNotExist:
+        return Response({'error': 'Purchase Order not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def world_class_payment_summary(request):
+    """World-Class Payment Summary - Advanced analytics and insights"""
+    session_key = request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+
+        # Get date range (default to current month)
+        from datetime import datetime, date
+        today = date.today()
+        start_date = request.query_params.get('start_date', f"{today.year}-{today.month:02d}-01")
+        end_date = request.query_params.get('end_date', str(today))
+
+        payments = Payment.objects.filter(
+            company=company,
+            payment_date__range=[start_date, end_date],
+            status='completed'
+        )
+
+        # Calculate summary statistics
+        total_payments = payments.aggregate(total=Sum('amount'))['total'] or 0
+        payment_count = payments.count()
+
+        # Payment method breakdown
+        payment_methods = payments.values('payment_method').annotate(
+            total=Sum('amount'),
+            count=models.Count('id')
+        ).order_by('-total')
+
+        # Customer-wise payments
+        customer_payments = payments.values(
+            'customer__name', 'customer__customer_code'
+        ).annotate(
+            total=Sum('amount'),
+            count=models.Count('id')
+        ).order_by('-total')[:10]
+
+        # Invoice type breakdown
+        tax_invoice_payments = payments.filter(invoice__isnull=False).aggregate(
+            total=Sum('amount'), count=models.Count('id')
+        )
+        proforma_payments = payments.filter(proforma_invoice__isnull=False).aggregate(
+            total=Sum('amount'), count=models.Count('id')
+        )
+
+        # Outstanding amounts
+        outstanding_invoices = Invoice.objects.filter(
+            company=company,
+            outstanding_amount__gt=0
+        ).aggregate(total=Sum('outstanding_amount'))['total'] or 0
+
+        outstanding_proformas = ProformaInvoice.objects.filter(
+            company=company,
+            outstanding_amount__gt=0
+        ).aggregate(total=Sum('outstanding_amount'))['total'] or 0
+
+        return Response({
+            'summary': {
+                'total_payments': total_payments,
+                'payment_count': payment_count,
+                'average_payment': total_payments / payment_count if payment_count > 0 else 0,
+                'outstanding_invoices': outstanding_invoices,
+                'outstanding_proformas': outstanding_proformas,
+                'total_outstanding': outstanding_invoices + outstanding_proformas
+            },
+            'payment_methods': payment_methods,
+            'top_customers': customer_payments,
+            'invoice_types': {
+                'tax_invoices': tax_invoice_payments,
+                'proforma_invoices': proforma_payments
+            },
+            'date_range': {
+                'start_date': start_date,
+                'end_date': end_date
+            }
+        })
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def world_class_po_payment_dashboard(request, po_id):
+    """World-Class PO Payment Dashboard - Complete payment tracking for a specific PO"""
+    session_key = request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+
+        # Get the PO
+        po = PurchaseOrder.objects.get(id=po_id, company=company)
+
+        # Get world-class payment summary
+        payment_summary = po.get_world_class_payment_summary()
+
+        # Get detailed proforma invoices with payments
+        proformas = []
+        for pf in po.proforma_invoices.all():
+            proforma_payments = []
+            for payment in pf.payments.all():
+                proforma_payments.append({
+                    'payment_number': payment.payment_number,
+                    'payment_date': payment.payment_date,
+                    'amount': payment.amount,
+                    'payment_method': payment.payment_method,
+                    'reference_number': payment.reference_number,
+                    'status': payment.status
+                })
+
+            proformas.append({
+                'proforma_number': pf.proforma_number,
+                'proforma_date': pf.proforma_date,
+                'total_amount': pf.total_amount,
+                'paid_amount': pf.paid_amount,
+                'outstanding_amount': pf.outstanding_amount,
+                'payment_status': pf.payment_status,
+                'payments': proforma_payments
+            })
+
+        # Get detailed tax invoices with payments
+        invoices = []
+        for inv in po.invoices.all():
+            invoice_payments = []
+            for payment in inv.payments.all():
+                invoice_payments.append({
+                    'payment_number': payment.payment_number,
+                    'payment_date': payment.payment_date,
+                    'amount': payment.amount,
+                    'payment_method': payment.payment_method,
+                    'reference_number': payment.reference_number,
+                    'status': payment.status
+                })
+
+            invoices.append({
+                'invoice_number': inv.invoice_number,
+                'invoice_date': inv.invoice_date,
+                'invoice_type': inv.invoice_type,
+                'total_amount': inv.total_amount,
+                'paid_amount': inv.paid_amount,
+                'outstanding_amount': inv.outstanding_amount,
+                'payment_status': inv.payment_status,
+                'payments': invoice_payments
+            })
+
+        return Response({
+            'po_details': {
+                'internal_po_number': po.internal_po_number,
+                'po_date': po.po_date,
+                'customer_name': po.customer.name,
+                'total_amount': po.total_amount,
+                'subtotal': po.subtotal,
+                'total_tax': po.total_tax,
+                'claim_type': po.claim_type
+            },
+            'payment_summary': payment_summary,
+            'proforma_invoices': proformas,
+            'tax_invoices': invoices,
+            'world_class_insights': {
+                'total_invoices_created': len(proformas) + len(invoices),
+                'advance_payment_percentage': float((payment_summary['proforma_payments'] / po.subtotal) * 100) if po.subtotal > 0 else 0,
+                'tax_payment_percentage': float((payment_summary['invoice_payments'] / po.total_tax) * 100) if po.total_tax > 0 else 0,
+                'overall_completion': payment_summary['payment_completion_percentage'],
+                'next_action': 'Create more invoices' if payment_summary['total_outstanding'] > 0 else 'PO fully paid'
+            }
+        })
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=404)
+    except PurchaseOrder.DoesNotExist:
+        return Response({'error': 'Purchase order not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def sophisticated_po_claiming_status(request, po_id):
+    """World-Class Sophisticated PO Claiming Status - Shows cross-impact calculations"""
+    session_key = request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+
+        # Get the PO
+        po = PurchaseOrder.objects.get(id=po_id, company=company)
+
+        # Update balance tracking to ensure accuracy
+        po.update_balance_tracking()
+
+        # Get sophisticated claiming status
+        claiming_status = po.get_sophisticated_claiming_status()
+
+        # Get detailed invoice breakdown
+        proforma_invoices = []
+        for pf in po.proforma_invoices.all():
+            proforma_invoices.append({
+                'proforma_number': pf.proforma_number,
+                'proforma_date': pf.proforma_date,
+                'subtotal': pf.subtotal,
+                'total_amount': pf.total_amount,
+                'percentage_of_original': float((pf.subtotal / po.subtotal) * 100) if po.subtotal > 0 else 0,
+                'payment_status': pf.payment_status,
+                'paid_amount': pf.paid_amount,
+                'outstanding_amount': pf.outstanding_amount
+            })
+
+        tax_invoices = []
+        for inv in po.invoices.all():
+            tax_invoices.append({
+                'invoice_number': inv.invoice_number,
+                'invoice_date': inv.invoice_date,
+                'subtotal': inv.subtotal,
+                'total_amount': inv.total_amount,
+                'percentage_of_original': float((inv.total_amount / po.total_amount) * 100) if po.total_amount > 0 else 0,
+                'payment_status': inv.payment_status,
+                'paid_amount': inv.paid_amount,
+                'outstanding_amount': inv.outstanding_amount
+            })
+
+        # Calculate receivable amounts
+        total_generated_bills = sum(pf['total_amount'] for pf in proforma_invoices) + sum(inv['total_amount'] for inv in tax_invoices)
+        total_received_payments = sum(pf['paid_amount'] for pf in proforma_invoices) + sum(inv['paid_amount'] for inv in tax_invoices)
+        total_receivable = total_generated_bills - total_received_payments
+
+        return Response({
+            'po_details': {
+                'internal_po_number': po.internal_po_number,
+                'po_date': po.po_date,
+                'customer_name': po.customer.name,
+                'claim_type': po.claim_type
+            },
+            'sophisticated_claiming_status': claiming_status,
+            'proforma_invoices': proforma_invoices,
+            'tax_invoices': tax_invoices,
+            'financial_summary': {
+                'total_generated_bills': total_generated_bills,
+                'total_received_payments': total_received_payments,
+                'total_receivable_amount': total_receivable,
+                'receivable_percentage': float((total_receivable / total_generated_bills) * 100) if total_generated_bills > 0 else 0
+            },
+            'world_class_insights': {
+                'proforma_vs_tax_invoice_ratio': f"{len(proforma_invoices)}:{len(tax_invoices)}",
+                'claiming_efficiency': claiming_status['po_completion_percentage'],
+                'payment_efficiency': float((total_received_payments / total_generated_bills) * 100) if total_generated_bills > 0 else 0,
+                'next_recommended_action': _get_next_action_recommendation(claiming_status, total_receivable)
+            }
+        })
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=404)
+    except PurchaseOrder.DoesNotExist:
+        return Response({'error': 'Purchase order not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+def _get_next_action_recommendation(claiming_status, total_receivable):
+    """Get intelligent recommendation for next action"""
+    if claiming_status['is_po_completed']:
+        if total_receivable > 0:
+            return "PO completed - Focus on collecting outstanding payments"
+        else:
+            return "PO fully completed and paid - Excellent!"
+    elif claiming_status['available_tax_invoice_percentage'] > 0:
+        return f"Create tax invoice for remaining {claiming_status['available_tax_invoice_percentage']:.1f}%"
+    elif claiming_status['available_proforma_percentage'] > 0:
+        return f"Create proforma invoice for remaining {claiming_status['available_proforma_percentage']:.1f}%"
+    else:
+        return "All claiming completed - Focus on payments"

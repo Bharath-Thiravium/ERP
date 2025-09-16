@@ -34,7 +34,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../../../../store/authStore'
 import { useThemeStore } from '../../../../store/themeStore'
-import api from '../../../../lib/api'
+import api, { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/Card'
@@ -184,12 +184,12 @@ const handlePOCreated = () => {
 
     try {
       const [quotationsRes, posRes, proformasRes, invoicesRes, customersRes, productsRes] = await Promise.all([
-        api.get(`/api/finance/quotations/?session_key=${sessionKey}`),
-        api.get(`/api/finance/purchase-orders/?session_key=${sessionKey}`),
-        api.get(`/api/finance/proforma-invoices/?session_key=${sessionKey}`),
-        api.get(`/api/finance/invoices/?session_key=${sessionKey}`),
-        api.get(`/api/finance/customers/?session_key=${sessionKey}`),
-        api.get(`/api/finance/products/?session_key=${sessionKey}`)
+        apiClient.getFinanceQuotations({ session_key: sessionKey }),
+        apiClient.getFinancePurchaseOrders({ session_key: sessionKey }),
+        apiClient.getFinanceProformaInvoices({ session_key: sessionKey }),
+        apiClient.getFinanceInvoices({ session_key: sessionKey }),
+        apiClient.getFinanceCustomers({ session_key: sessionKey }),
+        apiClient.getFinanceProducts({ session_key: sessionKey })
       ])
 
       const quotations = quotationsRes.data.results || []
@@ -568,7 +568,7 @@ const handlePOCreated = () => {
         return
       }
 
-      await api.post('/api/auth/service-user/change-password/', {
+      await apiClient.changeServiceUserPassword({
         session_key: sessionKey,
         current_password: passwordData.currentPassword,
         new_password: passwordData.newPassword,

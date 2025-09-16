@@ -22,6 +22,7 @@ import {
 // import ProformaInvoiceForm from './ProformaInvoiceForm' // Removed - using simplified forms
 import ProformaInvoiceView from './ProformaInvoiceView'
 import UpdatePaymentModal from './UpdatePaymentModal'
+import SendEmailModal from './SendEmailModal'
 
 interface ProformaInvoice {
   id: number
@@ -133,6 +134,8 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
 
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedForPayment, setSelectedForPayment] = useState<ProformaInvoice | null>(null)
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [selectedForEmail, setSelectedForEmail] = useState<ProformaInvoice | null>(null)
   
   const handleUpdatePayment = (proformaInvoice: ProformaInvoice) => {
     setSelectedForPayment(proformaInvoice)
@@ -188,16 +191,9 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
     }
   }
 
-  const handleSendEmail = async (id: number, proformaNumber: string) => {
-    try {
-      await axios.post(`http://127.0.0.1:8000/api/finance/proforma-invoices/${id}/send-email/`, {}, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
-      toast.success(`Proforma ${proformaNumber} sent via email successfully!`)
-    } catch (error) {
-      console.error('Error sending email:', error)
-      toast.error('Failed to send email')
-    }
+  const handleSendEmail = (proforma: ProformaInvoice) => {
+    setSelectedForEmail(proforma)
+    setShowEmailModal(true)
   }
 
   const handleFormSuccess = () => {
@@ -372,7 +368,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleSendEmail(proforma.id, proforma.proforma_number)}
+                          onClick={() => handleSendEmail(proforma)}
                           className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
                           title="Send Email"
                         >
@@ -457,6 +453,21 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
             fetchProformaInvoices()
           }}
           sessionKey={sessionKey}
+        />
+      )}
+
+      {/* Send Email Modal */}
+      {showEmailModal && selectedForEmail && (
+        <SendEmailModal
+          isOpen={showEmailModal}
+          onClose={() => {
+            setShowEmailModal(false)
+            setSelectedForEmail(null)
+          }}
+          invoiceId={selectedForEmail.id}
+          invoiceNumber={selectedForEmail.proforma_number}
+          invoiceType="proforma_invoice"
+          customerEmail=""
         />
       )}
     </div>

@@ -269,6 +269,156 @@ export const apiClient = {
   // Token validation
   validateToken: () =>
     api.get('/api/auth/validate-token/'),
+
+  // Finance Service APIs
+  // Customers
+  getFinanceCustomers: (params?: any) =>
+    api.get('/api/finance/customers/', { params }),
+
+  createFinanceCustomer: (data: any) =>
+    api.post('/api/finance/customers/', data),
+
+  getFinanceCustomer: (id: number, params?: any) =>
+    api.get(`/api/finance/customers/${id}/`, { params }),
+
+  updateFinanceCustomer: (id: number, data: any) =>
+    api.put(`/api/finance/customers/${id}/`, data),
+
+  deleteFinanceCustomer: (id: number, params?: any) =>
+    api.delete(`/api/finance/customers/${id}/`, { params }),
+
+  getCustomerLedger: (params?: any) =>
+    api.get('/api/finance/customer-ledger/', { params }),
+
+  // Products
+  getFinanceProducts: (params?: any) =>
+    api.get('/api/finance/products/', { params }),
+
+  createFinanceProduct: (data: any) =>
+    api.post('/api/finance/products/', data),
+
+  getFinanceProduct: (id: number, params?: any) =>
+    api.get(`/api/finance/products/${id}/`, { params }),
+
+  updateFinanceProduct: (id: number, data: any) =>
+    api.put(`/api/finance/products/${id}/`, data),
+
+  deleteFinanceProduct: (id: number, params?: any) =>
+    api.delete(`/api/finance/products/${id}/`, { params }),
+
+  generateProductCode: (type: string, params?: any) =>
+    api.get(`/api/finance/generate-code/?type=${type}`, { params }),
+
+  // HSN/SAC Codes
+  searchHSNCodes: (params?: any) =>
+    api.get('/api/finance/hsn-codes/search/', { params }),
+
+  searchSACCodes: (params?: any) =>
+    api.get('/api/finance/sac-codes/search/', { params }),
+
+  // Quotations
+  getFinanceQuotations: (params?: any) =>
+    api.get('/api/finance/quotations/', { params }),
+
+  createFinanceQuotation: (data: any) =>
+    api.post('/api/finance/quotations/', data),
+
+  getFinanceQuotation: (id: number, params?: any) =>
+    api.get(`/api/finance/quotations/${id}/`, { params }),
+
+  updateFinanceQuotation: (id: number, data: any) =>
+    api.put(`/api/finance/quotations/${id}/`, data),
+
+  deleteFinanceQuotation: (id: number, params?: any) =>
+    api.delete(`/api/finance/quotations/${id}/`, { params }),
+
+  copyFinanceQuotation: (id: number, params?: any) =>
+    api.post(`/api/finance/quotations/${id}/copy/`, {}, { params }),
+
+  // Purchase Orders
+  getFinancePurchaseOrders: (params?: any) =>
+    api.get('/api/finance/purchase-orders/', { params }),
+
+  createFinancePurchaseOrder: (data: any) =>
+    api.post('/api/finance/purchase-orders/', data),
+
+  getFinancePurchaseOrder: (id: number, params?: any) =>
+    api.get(`/api/finance/purchase-orders/${id}/`, { params }),
+
+  updateFinancePurchaseOrder: (id: number, data: any) =>
+    api.put(`/api/finance/purchase-orders/${id}/`, data),
+
+  deleteFinancePurchaseOrder: (id: number, params?: any) =>
+    api.delete(`/api/finance/purchase-orders/${id}/`, { params }),
+
+  // Proforma Invoices
+  getFinanceProformaInvoices: (params?: any) =>
+    api.get('/api/finance/proforma-invoices/', { params }),
+
+  createFinanceProformaInvoice: (data: any) =>
+    api.post('/api/finance/proforma-invoices/', data),
+
+  getFinanceProformaInvoice: (id: number, params?: any) =>
+    api.get(`/api/finance/proforma-invoices/${id}/`, { params }),
+
+  updateFinanceProformaInvoice: (id: number, data: any) =>
+    api.put(`/api/finance/proforma-invoices/${id}/`, data),
+
+  deleteFinanceProformaInvoice: (id: number, params?: any) =>
+    api.delete(`/api/finance/proforma-invoices/${id}/`, { params }),
+
+  generateProformaPDF: (id: number, params?: any) =>
+    api.get(`/api/finance/proforma-invoices/${id}/pdf/`, { params }),
+
+  sendProformaEmail: (id: number, data?: any) =>
+    api.post(`/api/finance/proforma-invoices/${id}/send-email/`, data),
+
+  // Tax Invoices
+  getFinanceInvoices: (params?: any) =>
+    api.get('/api/finance/invoices/', { params }),
+
+  createFinanceInvoice: (data: any) =>
+    api.post('/api/finance/invoices/', data),
+
+  getFinanceInvoice: (id: number, params?: any) =>
+    api.get(`/api/finance/invoices/${id}/`, { params }),
+
+  updateFinanceInvoice: (id: number, data: any) =>
+    api.put(`/api/finance/invoices/${id}/`, data),
+
+  deleteFinanceInvoice: (id: number, params?: any) =>
+    api.delete(`/api/finance/invoices/${id}/`, { params }),
+
+  generateInvoicePDF: (id: number, params?: any) =>
+    api.get(`/api/finance/invoices/${id}/pdf/`, { params }),
+
+  sendInvoiceEmail: (id: number, data?: any) =>
+    api.post(`/api/finance/invoices/${id}/send-email/`, data),
+
+  sendProformaEmail: (id: number, data?: any) =>
+    api.post(`/api/finance/proforma-invoices/${id}/send-email/`, data),
+
+  updateInvoicePayment: (id: number, data: any) =>
+    api.post(`/api/finance/invoices/${id}/payments/`, data),
+
+  // Payments
+  getFinancePayments: (params?: any) =>
+    api.get('/api/finance/payments/', { params }),
+
+  createFinancePayment: (data: any) =>
+    api.post('/api/finance/payments/', data),
+
+  getFinancePayment: (id: number, params?: any) =>
+    api.get(`/api/finance/payments/${id}/`, { params }),
+
+  updateFinancePayment: (id: number, data: any) =>
+    api.put(`/api/finance/payments/${id}/`, data),
+
+  deleteFinancePayment: (id: number, params?: any) =>
+    api.delete(`/api/finance/payments/${id}/`, { params }),
+
+  getPaymentStats: (params?: any) =>
+    api.get('/api/finance/payments/stats/', { params }),
 }
 
 // Export token management functions

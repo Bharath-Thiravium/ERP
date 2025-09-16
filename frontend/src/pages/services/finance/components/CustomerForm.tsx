@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { X, Save, User, Building2, MapPin, CreditCard, FileText, Phone, Mail, Globe, Plus, Trash2 } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { useThemeStore } from '../../../../store/themeStore'
-import api from '../../../../lib/api'
+import api, { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
 interface Customer {
@@ -122,7 +122,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
       const params = new URLSearchParams()
       if (sessionKey) params.append('session_key', sessionKey)
 
-      const response = await api.get(`/api/finance/customers/${customerId}/?${params.toString()}`)
+      const response = await apiClient.getFinanceCustomer(customerId, Object.fromEntries(params))
       const customerData = response.data
 
       // Set form data with all fields from the database
@@ -353,11 +353,11 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
 
       if (customer?.id) {
         // Update existing customer
-        await api.put(`/api/finance/customers/${customer.id}/`, payload)
+        await apiClient.updateFinanceCustomer(customer.id, payload)
         toast.success('Customer updated successfully!')
       } else {
         // Create new customer
-        await api.post('/api/finance/customers/', payload)
+        await apiClient.createFinanceCustomer(payload)
         toast.success('Customer created successfully!')
       }
 

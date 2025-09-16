@@ -10,6 +10,7 @@ from django.utils import timezone
 from datetime import timedelta
 from authentication.models import ServiceUserSession, CompanyServiceUser
 from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
+from .email_utils import send_invoice_email, send_proforma_email
 from .serializers import (
     CustomerListSerializer, CustomerDetailSerializer,
     CustomerCreateSerializer, CustomerUpdateSerializer,
@@ -2640,3 +2641,85 @@ def _get_next_action_recommendation(claiming_status, total_receivable):
         return f"Create proforma invoice for remaining {claiming_status['available_proforma_percentage']:.1f}%"
     else:
         return "All claiming completed - Focus on payments"
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
+def send_invoice_email_view(request, invoice_id):
+    """Send invoice via email"""
+    session_key = request.data.get('session_key') or request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    recipient_email = request.data.get('email')
+    if not recipient_email:
+        return Response({'error': 'Recipient email required'}, status=400)
+
+    message = request.data.get('message', '')
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+
+        # Get invoice
+        invoice = Invoice.objects.select_related('customer', 'company').prefetch_related('invoice_items').get(
+            id=invoice_id,
+            company=service_user.company
+        )
+
+        # Send email
+        success, result_message = send_invoice_email(invoice, recipient_email, message)
+        
+        if success:
+            return Response({'message': result_message})
+        else:
+            return Response({'error': result_message}, status=500)
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except Invoice.DoesNotExist:
+        return Response({'error': 'Invoice not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
+def send_proforma_email_view(request, proforma_id):
+    """Send proforma invoice via email"""
+    session_key = request.data.get('session_key') or request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    recipient_email = request.data.get('email')
+    if not recipient_email:
+        return Response({'error': 'Recipient email required'}, status=400)
+
+    message = request.data.get('message', '')
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+
+        # Get proforma invoice
+        proforma = ProformaInvoice.objects.select_related('customer', 'company').prefetch_related('proforma_items').get(
+            id=proforma_id,
+            company=service_user.company
+        )
+
+        # Send email
+        success, result_message = send_proforma_email(proforma, recipient_email, message)
+        
+        if success:
+            return Response({'message': result_message})
+        else:
+            return Response({'error': result_message}, status=500)
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except ProformaInvoice.DoesNotExist:
+        return Response({'error': 'Proforma invoice not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)

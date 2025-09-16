@@ -4,7 +4,7 @@ import { useThemeStore } from '../../../../store/themeStore';
 import { useSearchParams } from 'react-router-dom';
 import PaymentList from '../components/PaymentList';
 import PaymentForm from '../components/PaymentForm';
-import api from '../../../../lib/api';
+import api, { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
 interface PaymentStats {
@@ -46,9 +46,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
 
     try {
       setLoading(true);
-      const response = await api.get('/api/finance/payments/stats/', {
-        headers: { Authorization: `Bearer ${sessionKey}` }
-      });
+      const response = await apiClient.getPaymentStats({ session_key: sessionKey });
 
       if (response.data) {
         setStats(response.data);

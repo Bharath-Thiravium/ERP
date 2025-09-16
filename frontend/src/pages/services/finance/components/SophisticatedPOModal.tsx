@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, DollarSign, Receipt, CreditCard, AlertCircle } from 'lucide-react';
-import api from '../../../../lib/api';
+import api, { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
 interface PODetailsModalProps {
@@ -145,21 +145,15 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
       setLoading(true);
       
       // Fetch PO details
-      const poResponse = await api.get(`/api/finance/purchase-orders/${poId}/`, {
-        params: { session_key: sessionKey }
-      });
+      const poResponse = await apiClient.getFinancePurchaseOrder(poId, { session_key: sessionKey });
       setPOData(poResponse.data);
       
       // Fetch proforma invoices
-      const proformaResponse = await api.get('/api/finance/proforma-invoices/', {
-        params: { purchase_order: poId, session_key: sessionKey }
-      });
+      const proformaResponse = await apiClient.getFinanceProformaInvoices({ purchase_order: poId, session_key: sessionKey });
       setProformaInvoices(proformaResponse.data.results || []);
       
       // Fetch tax invoices
-      const invoiceResponse = await api.get('/api/finance/invoices/', {
-        params: { purchase_order: poId, session_key: sessionKey }
-      });
+      const invoiceResponse = await apiClient.getFinanceInvoices({ purchase_order: poId, session_key: sessionKey });
       setTaxInvoices(invoiceResponse.data.results || []);
       
     } catch (error: any) {

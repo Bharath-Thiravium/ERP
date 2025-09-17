@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     'analytics',
     'reports',
     'notifications',
+    'deployment',
 ]
 
 MIDDLEWARE = [

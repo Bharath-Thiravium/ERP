@@ -44,6 +44,7 @@ urlpatterns = [
     path('api/analytics/', include('analytics.urls')),
     path('api/reports/', include('reports.urls')),
     path('api/notifications/', include('notifications.urls')),
+    path('api/deploy/', include('deployment.urls')),
 ]
 
 # Serve media files in development

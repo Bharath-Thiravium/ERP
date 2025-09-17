@@ -71,8 +71,8 @@ export const useServiceUserStore = create<ServiceUserState>()(
             error: null
           })
 
-          // Set up session monitoring
-          get().startSessionMonitoring()
+          // Set up session monitoring (disabled for now)
+          // get().startSessionMonitoring()
 
           return true
         } catch (error: any) {
@@ -203,24 +203,8 @@ export const useServiceUserStore = create<ServiceUserState>()(
 
       // Session monitoring methods (not persisted)
       startSessionMonitoring: () => {
-        // Check session validity every minute
-        const interval = setInterval(() => {
-          get().checkSessionValidity()
-        }, 60000)
-
-        // Store interval ID for cleanup
-        ;(window as any).sessionMonitorInterval = interval
-
-        // Auto-logout after 30 minutes of inactivity
-        const inactivityInterval = setInterval(() => {
-          const { lastActivity } = get()
-          if (lastActivity && Date.now() - lastActivity > 30 * 60 * 1000) {
-            get().logout()
-            toast.error('Logged out due to inactivity')
-          }
-        }, 60000)
-
-        ;(window as any).inactivityMonitorInterval = inactivityInterval
+        // Disabled aggressive session monitoring that was causing auto-logouts
+        // Only check session validity on user activity, not on timer
       },
 
       stopSessionMonitoring: () => {
@@ -271,20 +255,16 @@ export const useActivityTracker = () => {
   }, [updateLastActivity])
 }
 
-// Session validity checker hook
+// Session validity checker hook (disabled to prevent auto-logout)
 export const useSessionChecker = () => {
-  const checkSessionValidity = useServiceUserStore(state => state.checkSessionValidity)
-
-  React.useEffect(() => {
-    // Check session on mount
-    checkSessionValidity()
-
-    // Check session on window focus
-    const handleFocus = () => {
-      checkSessionValidity()
-    }
-
-    window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
-  }, [checkSessionValidity])
+  // Disabled to prevent automatic session validation that causes logout
+  // const checkSessionValidity = useServiceUserStore(state => state.checkSessionValidity)
+  // React.useEffect(() => {
+  //   checkSessionValidity()
+  //   const handleFocus = () => {
+  //     checkSessionValidity()
+  //   }
+  //   window.addEventListener('focus', handleFocus)
+  //   return () => window.removeEventListener('focus', handleFocus)
+  // }, [checkSessionValidity])
 }

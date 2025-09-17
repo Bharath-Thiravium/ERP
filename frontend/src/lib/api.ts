@@ -74,6 +74,15 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
 
+      // Skip token refresh for service user endpoints (HR, Finance)
+      const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
+                                   originalRequest.url?.includes('/api/finance/')
+      
+      if (isServiceUserEndpoint) {
+        // For service user endpoints, don't try JWT refresh, just return the error
+        return Promise.reject(error)
+      }
+
       const refreshToken = getRefreshToken()
       if (refreshToken) {
         try {
@@ -101,11 +110,16 @@ api.interceptors.response.use(
           return Promise.reject(refreshError)
         }
       } else {
-        // No refresh token, redirect to login
-        console.log('🔍 DEBUG: No refresh token available')
-        clearTokens()
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login'
+        // No refresh token, redirect to login (but not for service user endpoints)
+        const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
+                                     originalRequest.url?.includes('/api/finance/')
+        
+        if (!isServiceUserEndpoint) {
+          console.log('🔍 DEBUG: No refresh token available')
+          clearTokens()
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login'
+          }
         }
       }
     }
@@ -416,6 +430,83 @@ export const apiClient = {
 
   getPaymentStats: (params?: any) =>
     api.get('/api/finance/payments/stats/', { params }),
+
+  // HR Service APIs (using correct backend URLs with /api/ prefix)
+  // HR Dashboard
+  getHRStats: (params?: any) =>
+    api.get('/api/hr/dashboard/stats/', { params }),
+
+  getHRAttendanceSummary: (params?: any) =>
+    api.get('/api/hr/dashboard/attendance_summary/', { params }),
+
+  // Departments
+  getHRDepartments: (params?: any) =>
+    api.get('/api/hr/departments/', { params }),
+
+  createHRDepartment: (data: any) =>
+    api.post('/api/hr/departments/', data),
+
+  getHRDepartment: (id: number) =>
+    api.get(`/api/hr/departments/${id}/`),
+
+  updateHRDepartment: (id: number, data: any) =>
+    api.put(`/api/hr/departments/${id}/`, data),
+
+  deleteHRDepartment: (id: number) =>
+    api.delete(`/api/hr/departments/${id}/`),
+
+  // Designations
+  getHRDesignations: (params?: any) =>
+    api.get('/api/hr/designations/', { params }),
+
+  createHRDesignation: (data: any) =>
+    api.post('/api/hr/designations/', data),
+
+  // Employees
+  getHREmployees: (params?: any) =>
+    api.get('/api/hr/employees/', { params }),
+
+  createHREmployee: (data: any) =>
+    api.post('/api/hr/employees/', data),
+
+  getHREmployee: (id: number) =>
+    api.get(`/api/hr/employees/${id}/`),
+
+  updateHREmployee: (id: number, data: any) =>
+    api.put(`/api/hr/employees/${id}/`, data),
+
+  deleteHREmployee: (id: number) =>
+    api.delete(`/api/hr/employees/${id}/`),
+
+  // Attendance
+  getHRAttendance: (params?: any) =>
+    api.get('/api/hr/attendance/', { params }),
+
+  markAttendance: (data: any) =>
+    api.post('/api/hr/attendance/mark_attendance/', data),
+
+  // Payroll
+  getHRPayroll: (params?: any) =>
+    api.get('/api/hr/payroll/', { params }),
+
+  processPayroll: (data: any) =>
+    api.post('/api/hr/payroll/process_payroll/', data),
+
+  getHRPayrollRecord: (id: number) =>
+    api.get(`/api/hr/payroll/${id}/`),
+
+  // Leave Applications
+  getHRLeaveApplications: (params?: any) =>
+    api.get('/api/hr/leave-applications/', { params }),
+
+  createHRLeaveApplication: (data: any) =>
+    api.post('/api/hr/leave-applications/', data),
+
+  approveLeaveApplication: (id: number) =>
+    api.post(`/api/hr/leave-applications/${id}/approve/`),
+
+  rejectLeaveApplication: (id: number, data: any) =>
+    api.post(`/api/hr/leave-applications/${id}/reject/`, data),
 }
 
 // Export token management functions

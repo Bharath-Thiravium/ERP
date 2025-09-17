@@ -78,12 +78,20 @@ jobs:
         key: ${{ secrets.SSH_KEY }}
         port: ${{ secrets.PORT || 22 }}
         script: |
-          cd /var/www/SAP-Python
-          git pull origin main
+          # Setup git config
+          git config --global --add safe.directory /var/www/SAP-Python
+          
+          # Navigate to project directory
+          cd /var/www/SAP-Python || exit 1
+          
+          # Reset any local changes and pull
+          git reset --hard HEAD
+          git clean -fd
+          git pull origin main || git pull
           
           # Backend deployment
           cd backend
-          source venv/bin/activate
+          source venv/bin/activate || exit 1
           pip install -r requirements.txt
           python manage.py migrate
           python manage.py collectstatic --noinput

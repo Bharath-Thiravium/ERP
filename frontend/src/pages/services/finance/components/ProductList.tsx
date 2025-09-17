@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Search, Plus, Edit, Eye, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { useThemeStore } from '../../../../store/themeStore'
+
 import axios from 'axios'
 
 interface Product {
@@ -43,7 +43,7 @@ const ProductList: React.FC<ProductListProps> = ({
   onViewProduct
 }) => {
   const { sessionKey } = useServiceUserStore()
-  const { theme } = useThemeStore()
+
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')

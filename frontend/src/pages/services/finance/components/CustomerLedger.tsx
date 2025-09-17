@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, User, Calendar, DollarSign, TrendingUp, TrendingDown, FileText, CreditCard, AlertCircle } from 'lucide-react';
-import { useThemeStore } from '../../../../store/themeStore';
+;
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -39,7 +39,7 @@ interface CustomerLedgerProps {
 }
 
 const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
-  const { theme } = useThemeStore();
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [ledgerData, setLedgerData] = useState<CustomerLedgerData | null>(null);

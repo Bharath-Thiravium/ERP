@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { X, Save, User, Building2, MapPin, CreditCard, FileText, Phone, Mail, Globe, Plus, Trash2 } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { useThemeStore } from '../../../../store/themeStore'
-import api, { apiClient } from '../../../../lib/api'
+
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
 interface Customer {
@@ -52,7 +52,7 @@ interface CustomerFormProps {
 
 const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }) => {
   const { sessionKey } = useServiceUserStore()
-  const { theme } = useThemeStore()
+
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('basic')
   const [errors, setErrors] = useState<Record<string, string>>({})

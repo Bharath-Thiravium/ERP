@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+
 import {
   User,
   Lock,
@@ -10,15 +10,13 @@ import {
   LogIn,
   ArrowLeft,
   Shield,
-  Building2,
-  AlertCircle,
-  CheckCircle
+
 } from 'lucide-react'
-import { apiClient } from '../../lib/api'
+
 import { useServiceUserStore } from '../../store/serviceUserStore'
 import { Button } from '../../components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/Card'
-import { LoadingSpinner } from '../../components/ui/LoadingSpinner'
+
 import toast from 'react-hot-toast'
 
 const ServiceUserLogin: React.FC = () => {

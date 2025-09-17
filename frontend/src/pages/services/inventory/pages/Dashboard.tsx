@@ -12,7 +12,7 @@ import {
   Settings,
   Download,
   TrendingUp,
-  TrendingDown,
+
   Box,
   MapPin,
   Scan
@@ -20,13 +20,13 @@ import {
 import { useAuthStore } from '../../../../store/authStore'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { Button } from '../../../../components/ui/Button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/Card'
+import { Card, CardContent } from '../../../../components/ui/Card'
 
 interface InventoryDashboardProps {
   service: any
 }
 
-const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ service }) => {
+const InventoryDashboard: React.FC<InventoryDashboardProps> = () => {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const { serviceUser } = useServiceUserStore()

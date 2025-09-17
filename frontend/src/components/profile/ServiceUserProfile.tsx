@@ -8,13 +8,11 @@ import {
   Save,
   AlertCircle,
   CheckCircle,
-  Clock,
   Building2,
   Mail,
   UserCheck,
   Key,
   Activity,
-  Calendar,
   Settings
 } from 'lucide-react'
 import { useServiceUserStore } from '../../store/serviceUserStore'
@@ -23,7 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import toast from 'react-hot-toast'
 
 const ServiceUserProfile: React.FC = () => {
-  const { serviceUser, changePassword, isLoading, logout } = useServiceUserStore()
+  const { serviceUser, changePassword, isLoading } = useServiceUserStore()
   const [activeTab, setActiveTab] = useState('profile')
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -68,15 +66,7 @@ const ServiceUserProfile: React.FC = () => {
     setPasswordForm(prev => ({ ...prev, [field]: value }))
   }
 
-  const formatDate = (dateString: string) => {
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(new Date(dateString))
-  }
+
 
   const renderProfileTab = () => (
     <div className="space-y-6">

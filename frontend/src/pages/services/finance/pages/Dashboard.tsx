@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
+
+
+
   CreditCard,
   PieChart,
   BarChart3,
@@ -26,7 +26,7 @@ import {
   ExternalLink,
   ChevronRight,
   Banknote,
-  LineChart,
+
   PlusCircle,
   User,
   ShoppingCart,
@@ -308,18 +308,7 @@ const handlePOCreated = () => {
     })
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount)
-  }
 
-  const formatPercentage = (value: number) => {
-    return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
-  }
 
 
 

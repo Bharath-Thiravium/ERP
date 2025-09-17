@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { X, Building2, Mail, Phone, MapPin, Key, Eye, EyeOff, Download, Check, Sparkles, Zap, Star, Calculator, CreditCard, Shield, Rocket } from 'lucide-react'
+import { X, Building2, Mail, Phone, MapPin, Key, Eye, EyeOff, Check, Sparkles, Zap, Star, Calculator, Shield, Rocket } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient } from '../../lib/api'
@@ -84,7 +84,7 @@ const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
 
   const createCompanyMutation = useMutation({
     mutationFn: (data: CreateCompanyFormData) => apiClient.createCompany(data),
-    onSuccess: (response: any) => {
+    onSuccess: () => {
       toast.success('Company created successfully! Company user can now login and manage service credentials.')
 
       // Close modal immediately - no service credentials to show

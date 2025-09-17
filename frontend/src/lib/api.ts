@@ -395,9 +395,6 @@ export const apiClient = {
   sendInvoiceEmail: (id: number, data?: any) =>
     api.post(`/api/finance/invoices/${id}/send-email/`, data),
 
-  sendProformaEmail: (id: number, data?: any) =>
-    api.post(`/api/finance/proforma-invoices/${id}/send-email/`, data),
-
   updateInvoicePayment: (id: number, data: any) =>
     api.post(`/api/finance/invoices/${id}/payments/`, data),
 

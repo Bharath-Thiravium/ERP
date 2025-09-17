@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { CreditCard, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
-import { useThemeStore } from '../../../../store/themeStore';
+import { CreditCard, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+
 import { useSearchParams } from 'react-router-dom';
 import PaymentList from '../components/PaymentList';
 import PaymentForm from '../components/PaymentForm';
-import api, { apiClient } from '../../../../lib/api';
+import { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
 interface PaymentStats {
@@ -23,7 +23,7 @@ interface PaymentsProps {
 }
 
 const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
-  const { theme } = useThemeStore();
+
   const [searchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<any>(null);
@@ -356,7 +356,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
           onClose={handleFormClose}
           onSave={handleFormSave}
           sessionKey={sessionKey}
-          preSelectedInvoice={preSelectedInvoice}
+          preSelectedInvoice={preSelectedInvoice || undefined}
         />
       )}
     </div>

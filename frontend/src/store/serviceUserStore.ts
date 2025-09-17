@@ -35,6 +35,8 @@ interface ServiceUserState {
   changePassword: (data: { current_password: string; new_password: string; confirm_password: string }) => Promise<boolean>
   clearError: () => void
   checkSessionValidity: () => boolean
+  startSessionMonitoring: () => void
+  stopSessionMonitoring: () => void
 }
 
 export const useServiceUserStore = create<ServiceUserState>()(

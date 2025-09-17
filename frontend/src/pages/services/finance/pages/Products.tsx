@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useThemeStore } from '../../../../store/themeStore'
+
 import ProductList from '../components/ProductList'
 import ProductForm from '../components/ProductForm'
 import ProductDetail from '../components/ProductDetail'
@@ -25,7 +25,7 @@ interface Product {
 }
 
 const Products: React.FC = () => {
-  const { theme } = useThemeStore()
+
   const [showForm, setShowForm] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)

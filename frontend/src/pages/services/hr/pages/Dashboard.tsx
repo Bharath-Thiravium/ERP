@@ -4,7 +4,7 @@ import {
   ArrowLeft, 
   Users, 
   UserPlus,
-  Calendar,
+
   Clock,
   Award,
   FileText,
@@ -17,13 +17,13 @@ import {
 import { useAuthStore } from '../../../../store/authStore'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { Button } from '../../../../components/ui/Button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/Card'
+import { Card, CardContent } from '../../../../components/ui/Card'
 
 interface HRDashboardProps {
   service: any
 }
 
-const HRDashboard: React.FC<HRDashboardProps> = ({ service }) => {
+const HRDashboard: React.FC<HRDashboardProps> = () => {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const { serviceUser } = useServiceUserStore()

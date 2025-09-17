@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, CreditCard, Calendar, DollarSign, AlertCircle, Building } from 'lucide-react';
-import { useThemeStore } from '../../../../store/themeStore';
+import { X, Save, CreditCard, DollarSign } from 'lucide-react';
+
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -60,7 +60,7 @@ interface PaymentFormProps {
 }
 
 const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, sessionKey, preSelectedInvoice }) => {
-  const { theme } = useThemeStore();
+
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [proformaInvoices, setProformaInvoices] = useState<ProformaInvoice[]>([]);

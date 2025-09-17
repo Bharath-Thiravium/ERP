@@ -32,7 +32,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
   const baseAmount = parseFloat(purchaseOrder.subtotal || '0')
   const totalAmount = parseFloat(purchaseOrder.total_amount || '0')
   const taxAmount = totalAmount - baseAmount
-  const claimPercentage = invoiceData.claim_percentage || 0
+
   
   const calculateInvoiceAmounts = () => {
     if (invoiceData.claim_type === 'quantity') {
@@ -126,7 +126,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
         status: 'draft'
       }
 
-      const response = await axios.post('http://127.0.0.1:8000/api/finance/invoices/', dataToSend, {
+      await axios.post('http://127.0.0.1:8000/api/finance/invoices/', dataToSend, {
         headers: {
           'Authorization': `Bearer ${sessionKey}`,
           'Content-Type': 'application/json'
@@ -147,7 +147,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
       onSuccess()
     } catch (error: any) {
       console.error('Error creating invoice:', error)
-      console.log('Data sent:', dataToSend)
+      console.log('Data sent:', JSON.stringify(invoiceData))
       toast.error('Failed to create tax invoice')
     } finally {
       setLoading(false)

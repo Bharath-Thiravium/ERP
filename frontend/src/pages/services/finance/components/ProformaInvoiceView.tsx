@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, FileText, User, MapPin, Calendar, DollarSign } from 'lucide-react'
+import { X, FileText, User, Calendar, DollarSign } from 'lucide-react'
 
 interface ProformaInvoiceViewProps {
   proformaInvoice: any

@@ -10,13 +10,13 @@ import {
   Edit,
   Trash2,
   Calendar,
-  User,
+
   DollarSign,
   CheckCircle,
   Clock,
   XCircle,
   Download,
-  PlayCircle,
+
   Mail
 } from 'lucide-react'
 // import ProformaInvoiceForm from './ProformaInvoiceForm' // Removed - using simplified forms
@@ -118,7 +118,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
       }
     } catch (error) {
       console.error('Error fetching proforma invoices:', error)
-      if (error.response?.status === 401) {
+      if ((error as any).response?.status === 401) {
         toast.error('Session expired. Please refresh the page.')
       } else {
         toast.error('Failed to fetch proforma invoices. Please try again.')
@@ -196,11 +196,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
     setShowEmailModal(true)
   }
 
-  const handleFormSuccess = () => {
-    setShowForm(false)
-    setSelectedProformaInvoice(null)
-    fetchProformaInvoices()
-  }
+
 
   const filteredProformaInvoices = proformaInvoices.filter(proforma =>
     proforma.proforma_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -225,7 +221,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
           <p className="text-gray-600 dark:text-gray-400">Manage your proforma invoices</p>
         </div>
         <button
-          onClick={() => toast.info('Create proforma invoices via Purchase Orders → Raise Invoice')}
+          onClick={() => toast.success('Create proforma invoices via Purchase Orders → Raise Invoice')}
           className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus className="w-4 h-4 mr-2" />

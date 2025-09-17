@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import {
-  Plus, Search, Filter, Edit, Trash2, Eye,
+  Plus, Search, Edit, Trash2, Eye,
   Building2, User, Phone, Mail, MapPin, ChevronLeft, ChevronRight
 } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { useThemeStore } from '../../../../store/themeStore'
+
 import axios from 'axios'
 
 interface Customer {
@@ -45,7 +45,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
   onViewCustomer
 }) => {
   const { sessionKey } = useServiceUserStore()
-  const { theme } = useThemeStore()
+
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')

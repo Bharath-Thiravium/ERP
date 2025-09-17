@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, User, Calendar, MapPin, FileText, Package, Download } from 'lucide-react'
+import { X, User, MapPin, Package, Download } from 'lucide-react'
 
 interface PurchaseOrder {
   id: number
@@ -271,7 +271,7 @@ const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, on
                   </tr>
                 </thead>
                 <tbody>
-                  {purchaseOrder.po_items.map((item, index) => (
+                  {purchaseOrder.po_items.map((item) => (
                     <tr key={item.id} className="border-b border-gray-200 dark:border-gray-600 last:border-b-0">
                       <td className="py-3">
                         <div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, FileText, TrendingUp, DollarSign, Calendar, AlertCircle } from 'lucide-react';
-import { useThemeStore } from '../../../../store/themeStore';
+
 import InvoiceList from '../components/InvoiceList';
 // import InvoiceForm from '../components/InvoiceForm'; // Removed - using simplified forms
 import api from '../../../../lib/api';
@@ -10,20 +10,7 @@ interface InvoicesProps {
   sessionKey: string;
 }
 
-interface Invoice {
-  id: number;
-  invoice_number: string;
-  invoice_date: string;
-  due_date: string;
-  customer_details: any;
-  subtotal: number;
-  total_tax: number;
-  total_amount: number;
-  paid_amount: number;
-  outstanding_amount: number;
-  payment_status: string;
-  status: string;
-}
+
 
 interface InvoiceStats {
   totalInvoices: number;
@@ -35,10 +22,10 @@ interface InvoiceStats {
 }
 
 const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
-  const { theme } = useThemeStore();
-  const [showForm, setShowForm] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [refreshList, setRefreshList] = useState(0);
+
+
+
+
   const [stats, setStats] = useState<InvoiceStats>({
     totalInvoices: 0,
     totalAmount: 0,
@@ -98,23 +85,11 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
   }, [sessionKey]);
 
   const handleAddInvoice = () => {
-    toast.info('Create invoices via Purchase Orders → Raise Invoice');
+    toast.success('Create invoices via Purchase Orders → Raise Invoice');
   };
 
-  const handleEditInvoice = (invoice: Invoice) => {
-    toast.info('Edit functionality moved to PO workflow with simplified forms');
-  };
-
-  const handleFormClose = () => {
-    setShowForm(false);
-    setSelectedInvoice(null);
-  };
-
-  const handleFormSave = () => {
-    setShowForm(false);
-    setSelectedInvoice(null);
-    setRefreshList(prev => prev + 1);
-    fetchInvoiceStats(); // Refresh stats
+  const handleEditInvoice = () => {
+    toast.success('Edit functionality moved to PO workflow with simplified forms');
   };
 
   return (
@@ -213,7 +188,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
-            onClick={() => toast.info('Create invoices via Purchase Orders → Raise Invoice')}
+            onClick={() => toast.success('Create invoices via Purchase Orders → Raise Invoice')}
             className="flex items-center p-4 bg-gradient-to-r from-athenas-blue to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200"
           >
             <Plus className="w-5 h-5 mr-3" />
@@ -224,7 +199,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
           </button>
 
           <button
-            onClick={() => toast.info('Filter functionality to be implemented')}
+            onClick={() => toast.success('Filter functionality to be implemented')}
             className="flex items-center p-4 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-200"
           >
             <AlertCircle className="w-5 h-5 mr-3" />
@@ -235,7 +210,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
           </button>
 
           <button
-            onClick={() => toast.info('Filter functionality to be implemented')}
+            onClick={() => toast.success('Filter functionality to be implemented')}
             className="flex items-center p-4 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all duration-200"
           >
             <DollarSign className="w-5 h-5 mr-3" />
@@ -249,9 +224,9 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
 
       {/* Invoice List */}
       <InvoiceList
-        key={refreshList}
+
         onAddInvoice={handleAddInvoice}
-        onEditInvoice={handleEditInvoice}
+        onEditInvoice={() => handleEditInvoice()}
         sessionKey={sessionKey}
       />
 

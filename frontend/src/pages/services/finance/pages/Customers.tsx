@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useThemeStore } from '../../../../store/themeStore'
+
 import CustomerList from '../components/CustomerList'
 import CustomerForm from '../components/CustomerForm'
 import CustomerDetail from '../components/CustomerDetail'
@@ -36,7 +36,7 @@ interface Customer {
 }
 
 const Customers: React.FC = () => {
-  const { theme } = useThemeStore()
+
   const [showForm, setShowForm] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -58,11 +58,7 @@ const Customers: React.FC = () => {
     setShowDetail(true)
   }
 
-  const handleDeleteCustomer = async (customerId: number) => {
-    // This will be handled by the CustomerDetail component
-    // Just refresh the list after deletion
-    setRefreshList(prev => prev + 1)
-  }
+
 
   const handleFormClose = () => {
     setShowForm(false)
@@ -84,7 +80,7 @@ const Customers: React.FC = () => {
     setShowForm(true)
   }
 
-  const handleDetailDelete = (customerId: number) => {
+  const handleDetailDelete = () => {
     setRefreshList(prev => prev + 1)
   }
 
@@ -103,14 +99,14 @@ const Customers: React.FC = () => {
       <CustomerList
         key={refreshList} // Force re-render when refreshList changes
         onAddCustomer={handleAddCustomer}
-        onEditCustomer={handleEditCustomer}
-        onViewCustomer={handleViewCustomer}
+        onEditCustomer={(customer: any) => handleEditCustomer(customer)}
+        onViewCustomer={(customer: any) => handleViewCustomer(customer)}
       />
 
       {/* Customer Form Modal */}
       {showForm && (
         <CustomerForm
-          customer={selectedCustomer}
+          customer={selectedCustomer as any}
           onClose={handleFormClose}
           onSave={handleFormSave}
         />

@@ -1,10 +1,10 @@
-name: Deploy SAP System
+name: Deploy to Production
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 jobs:
   test:
@@ -23,7 +23,7 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-      
+
       redis:
         image: redis:6
         options: >-
@@ -56,7 +56,7 @@ jobs:
         DB_HOST: localhost
         DB_PORT: 5432
         SECRET_KEY: test-secret-key
-        DEBUG: True
+        DEBUG: true
         REDIS_URL: redis://localhost:6379/0
       run: |
         cd backend
@@ -65,22 +65,34 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     
     steps:
+    - uses: actions/checkout@v3
+    
     - name: Deploy to server
-      uses: appleboy/ssh-action@v0.1.5
+      uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.SSH_KEY }}
+        port: ${{ secrets.PORT || 22 }}
         script: |
-          cd /var/www/sap-project
+          cd /var/www/SAP-Python
           git pull origin main
+          
+          # Backend deployment
           cd backend
           source venv/bin/activate
           pip install -r requirements.txt
           python manage.py migrate
           python manage.py collectstatic --noinput
-          sudo systemctl restart sap-backend
+          
+          # Frontend deployment
+          cd ../frontend
+          pnpm install
+          pnpm run build
+          
+          # Restart services
+          sudo systemctl restart gunicorn
           sudo systemctl restart nginx

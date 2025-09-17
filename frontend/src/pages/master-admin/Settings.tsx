@@ -16,7 +16,6 @@ import {
   Moon,
   Sun,
   Calendar,
-  Filter,
   Sparkles,
   Zap,
   Star,
@@ -35,31 +34,24 @@ import {
   Mail,
   MessageSquare,
   Clock,
-  Languages,
-  MapPin,
   Key,
   Fingerprint,
   AlertTriangle,
   CheckCircle2,
   Info,
-  ArrowRight,
   ArrowLeft,
   ExternalLink,
   RefreshCw,
   Download,
-  Upload,
   Trash2,
   Edit3,
   Copy,
-  Share2
+
 } from 'lucide-react'
 
 import { Link } from 'react-router-dom'
 import { apiClient } from '../../lib/api'
 import { useThemeStore } from '../../store/themeStore'
-import { Button } from '../../components/ui/Button'
-import { Input } from '../../components/ui/Input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/Card'
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner'
 import athenasLogo from '../../assets/logo.jpeg'
 

@@ -4,7 +4,7 @@ import {
   CreditCard, FileText, Globe, Calendar, DollarSign
 } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { useThemeStore } from '../../../../store/themeStore'
+
 import api from '../../../../lib/api'
 
 interface Customer {
@@ -52,7 +52,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
   onDelete
 }) => {
   const { sessionKey } = useServiceUserStore()
-  const { theme } = useThemeStore()
+
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [loading, setLoading] = useState(true)
 

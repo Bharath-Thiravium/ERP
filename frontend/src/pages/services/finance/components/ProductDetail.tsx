@@ -1,6 +1,6 @@
 import React from 'react'
 import { X, Edit, Package, Tag, DollarSign, BarChart3, Calendar, User } from 'lucide-react'
-import { useThemeStore } from '../../../../store/themeStore'
+
 
 interface Product {
   id: number
@@ -33,7 +33,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
   onClose,
   onEdit
 }) => {
-  const { theme } = useThemeStore()
+
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {

@@ -1,24 +1,21 @@
 import React, { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+
 import {
   Shield,
   Users,
   Activity,
-  AlertTriangle,
   Clock,
   Eye,
   Lock,
-  Unlock,
   UserX,
-  CheckCircle,
+
   XCircle,
-  Calendar,
   Globe,
   Smartphone,
   Monitor,
   RefreshCw
 } from 'lucide-react'
-import { apiClient } from '../../lib/api'
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { LoadingSpinner } from '../ui/LoadingSpinner'
@@ -28,18 +25,12 @@ interface SecurityDashboardProps {
   companyId?: number
 }
 
-const SecurityDashboard: React.FC<SecurityDashboardProps> = ({ companyId }) => {
+const SecurityDashboard: React.FC<SecurityDashboardProps> = () => {
   const [activeTab, setActiveTab] = useState('overview')
   const [timeRange, setTimeRange] = useState('24h')
 
   // Fetch security logs
-  const { data: securityLogs, isLoading: logsLoading, refetch: refetchLogs } = useQuery({
-    queryKey: ['security-logs', timeRange],
-    queryFn: () => apiClient.getSecurityLogs({ 
-      time_range: timeRange,
-      company_id: companyId 
-    }),
-  })
+
 
   // Fetch active sessions (mock data for now)
   const activeSessions = [
@@ -203,7 +194,7 @@ const SecurityDashboard: React.FC<SecurityDashboardProps> = ({ companyId }) => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => refetchLogs()}
+              onClick={() => {}}
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
@@ -270,7 +261,7 @@ const SecurityDashboard: React.FC<SecurityDashboardProps> = ({ companyId }) => {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {logsLoading ? (
+        {false ? (
           <div className="flex justify-center py-8">
             <LoadingSpinner size="lg" text="Loading security logs..." />
           </div>

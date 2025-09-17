@@ -7,8 +7,6 @@ import {
   Users,
   BarChart3,
   Shield,
-  ArrowRight,
-  Clock,
   CheckCircle,
   Plus,
   Key,
@@ -17,7 +15,6 @@ import {
   Copy,
   UserPlus,
   Trash2,
-  Edit,
   LogOut,
   Sun,
   Moon,
@@ -26,8 +23,7 @@ import {
   Activity,
   TrendingUp,
   Zap,
-  Globe,
-  Star,
+
   ExternalLink,
   UserCheck,
   AlertCircle,
@@ -37,15 +33,7 @@ import {
   Image,
   Camera,
   Download,
-  FileText,
-  Calendar,
-  DollarSign,
-  Package,
-  ShoppingCart,
-  PieChart,
-  MoreVertical,
-  Filter,
-  Search,
+
   RefreshCw
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
@@ -103,8 +91,8 @@ const CompanyDashboard: React.FC = () => {
   })
 
   // Handle paginated response from ListAPIView (axios wraps response in .data)
-  const servicesData = services?.data?.results || services?.results || services?.data || []
-  const serviceUsersData = serviceUsers?.data?.results || serviceUsers?.results || serviceUsers?.data || []
+  const servicesData = services?.data?.results || services?.data || []
+  const serviceUsersData = serviceUsers?.data?.results || serviceUsers?.data || []
 
   const getServiceIcon = (serviceType: string) => {
     switch (serviceType.toLowerCase()) {

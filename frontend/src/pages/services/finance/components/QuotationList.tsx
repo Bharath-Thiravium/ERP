@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { Search, Plus, Eye, Edit, Trash2, Filter, Calendar, User, FileText, DollarSign, MapPin, Package, Mail, Copy, RotateCcw, X, ShoppingCart } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, RotateCcw, X, ShoppingCart } from 'lucide-react'
 import QuotationEdit from './QuotationEdit'
 import toast from 'react-hot-toast'
 
@@ -41,7 +41,7 @@ interface QuotationListProps {
   onCreatePO: (quotation: Quotation) => void
 }
 
-const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onEdit, onView, onCreatePO }) => {
+const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCreatePO }) => {
   const { sessionKey } = useServiceUserStore()
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [loading, setLoading] = useState(true)
@@ -183,7 +183,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onEdit, onVi
     }
 
     try {
-      const response = await axios.post(`http://127.0.0.1:8000/api/finance/quotations/${quotation.id}/copy/`, {}, {
+      await axios.post(`http://127.0.0.1:8000/api/finance/quotations/${quotation.id}/copy/`, {}, {
         headers: {
           'Authorization': `Bearer ${sessionKey}`,
           'Content-Type': 'application/json'

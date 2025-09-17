@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, CreditCard, Calendar, User, DollarSign, Eye, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, CreditCard, User, DollarSign, Eye, Edit, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useThemeStore } from '../../../../store/themeStore';
-import api from '../../../../lib/api';
+
+import { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
 interface Payment {
@@ -28,7 +28,7 @@ interface PaymentListProps {
 }
 
 const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, sessionKey }) => {
-  const { theme } = useThemeStore();
+
   const navigate = useNavigate();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,9 +71,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
       if (statusFilter) params.append('status', statusFilter);
       if (paymentMethodFilter) params.append('payment_method', paymentMethodFilter);
 
-      const response = await api.get(`/api/finance/payments/?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
-      });
+      const response = await apiClient.getFinancePayments(Object.fromEntries(params));
 
       setPayments(response.data.results || []);
       setTotalPages(Math.ceil(response.data.count / 10));
@@ -93,9 +91,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
     if (!window.confirm('Are you sure you want to delete this payment?')) return;
 
     try {
-      await api.delete(`/api/finance/payments/${id}/`, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
-      });
+      await apiClient.deleteFinancePayment(id, { session_key: sessionKey });
       toast.success('Payment deleted successfully');
       fetchPayments();
     } catch (error: any) {

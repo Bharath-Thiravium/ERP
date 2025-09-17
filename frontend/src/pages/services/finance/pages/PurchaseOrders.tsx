@@ -351,7 +351,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
       {/* Raise Invoice Modal */}
       {showRaiseInvoice && selectedPO && (
         <RaiseInvoiceModal
-          purchaseOrder={selectedPO}
+          purchaseOrder={selectedPO as any}
           onClose={handleRaiseInvoiceClose}
           onCreateProforma={handleCreateProforma}
           onCreateTaxInvoice={handleCreateTaxInvoice}

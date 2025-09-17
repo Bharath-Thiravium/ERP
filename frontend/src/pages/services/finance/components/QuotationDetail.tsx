@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { X, User, MapPin, Calendar, FileText, DollarSign, Printer, Mail, Edit, Download } from 'lucide-react'
+import { X, User, MapPin, FileText, DollarSign, Printer, Mail, Edit, Download } from 'lucide-react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import PrintableQuotation from './PrintableQuotation'

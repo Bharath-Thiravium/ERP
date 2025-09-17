@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { useMutation } from '@tanstack/react-query'
 import {
   Building2, Users, DollarSign, Globe, FileText, Phone, Mail, User,
-  Briefcase, Factory, Receipt, CreditCard, MapPin, Star, Sparkles,
+  Briefcase, Receipt, CreditCard, Star, Sparkles,
   CheckCircle, ArrowRight, Shield, Zap, LogOut
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -14,7 +14,7 @@ import { apiClient } from '../../lib/api'
 import { useAuthStore } from '../../store/authStore'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/Card'
+
 
 const detailedInfoSchema = z.object({
   business_type: z.string().min(2, 'Business type is required'),

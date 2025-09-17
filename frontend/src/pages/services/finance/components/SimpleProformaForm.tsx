@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { X, FileText, User, MapPin, Calculator, Package } from 'lucide-react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
@@ -30,7 +30,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
 
   // Calculate amounts
   const baseAmount = parseFloat(purchaseOrder.subtotal || '0')
-  const claimPercentage = invoiceData.claim_percentage || 0
+
   
   const calculateProformaAmount = () => {
     if (invoiceData.claim_type === 'quantity') {
@@ -63,7 +63,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
 
     try {
       // Calculate proforma items based on selection
-      const proformaItems = []
+      const proformaItems: any[] = []
       
       if (invoiceData.claim_type === 'percentage') {
         // For percentage-based, create items with calculated amounts
@@ -120,7 +120,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
         status: 'draft'
       }
 
-      const response = await axios.post('http://127.0.0.1:8000/api/finance/proforma-invoices/', dataToSend, {
+      await axios.post('http://127.0.0.1:8000/api/finance/proforma-invoices/', dataToSend, {
         headers: {
           'Authorization': `Bearer ${sessionKey}`,
           'Content-Type': 'application/json'

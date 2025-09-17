@@ -9,7 +9,7 @@ import {
   Settings,
   Plus,
   Search,
-  Filter,
+
   MoreVertical,
   CheckCircle,
   XCircle,
@@ -100,7 +100,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
 
   // Bulk actions
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
-  const [showBulkActions, setShowBulkActions] = useState(false)
+
 
   // Fetch companies
   const { data: companies, isLoading: companiesLoading, refetch: refetchCompanies } = useQuery({
@@ -109,7 +109,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   })
 
   // Fetch notifications
-  const { data: notifications, isLoading: notificationsLoading } = useQuery({
+  const { data: notifications } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => apiClient.getNotifications({ is_read: false }),
   })

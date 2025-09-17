@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, FileText, Calendar, User, DollarSign, Eye, Edit, Trash2, Download, PlayCircle, Mail } from 'lucide-react';
-import { useThemeStore } from '../../../../store/themeStore';
-import { useNavigate } from 'react-router-dom';
+import { Plus, Search, FileText, Calendar, User, DollarSign, Eye, Edit, Trash2, Download, Mail } from 'lucide-react';
+
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import InvoiceView from './InvoiceView';
@@ -36,8 +35,7 @@ interface InvoiceListProps {
 }
 
 const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, sessionKey }) => {
-  const { theme } = useThemeStore();
-  const navigate = useNavigate();
+
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');

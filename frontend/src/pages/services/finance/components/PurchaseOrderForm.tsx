@@ -111,9 +111,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
   const [products, setProducts] = useState<Product[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [companyDetails, setCompanyDetails] = useState<any>(null)
-  const [customerSearch, setCustomerSearch] = useState('')
   const [productSearch, setProductSearch] = useState('')
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -135,6 +133,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     notes: quotation?.notes || '',
     terms_and_conditions: quotation?.terms_and_conditions || '',
     status: 'draft',
+    claim_type: '',
     po_items: quotation?.quotation_items || []
   })
 
@@ -165,11 +164,11 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       })
 
       // Set selected customer if available - use customer_details for detailed view
-      const customerData = purchaseOrder.customer_details || purchaseOrder.customer
+      const customerData = (purchaseOrder as any).customer_details || purchaseOrder.customer
       if (customerData) {
         if (typeof customerData === 'object') {
           setSelectedCustomer(customerData)
-          setCustomerSearch(customerData.name)
+
         } else {
           loadCustomerDetails(customerData)
         }
@@ -200,7 +199,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       if (foundCustomer) {
         console.log('Found customer in list:', foundCustomer)
         setSelectedCustomer(foundCustomer)
-        setCustomerSearch(foundCustomer.name)
+
       } else {
         loadCustomerDetails(formData.customer)
       }
@@ -269,7 +268,6 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     if (customerData && typeof customerData === 'object') {
       console.log('Setting customer from object:', customerData)
       setSelectedCustomer(customerData)
-      setCustomerSearch(customerData.name)
     } else {
       // Try to get customer ID from the quotation.customer field
       const customerId = quotationData.customer
@@ -327,7 +325,6 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       const fullCustomer = response.data
       console.log('Loaded customer details:', fullCustomer)
       setSelectedCustomer(fullCustomer)
-      setCustomerSearch(fullCustomer.name)
 
       // Also update form data with customer ID and default shipping address
       setFormData(prev => ({
@@ -341,30 +338,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     }
   }
 
-  const handleCustomerSelect = async (customer: Customer) => {
-    setCustomerSearch(customer.name)
-    setShowCustomerDropdown(false)
 
-    if (!sessionKey) return
-
-    try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/customers/${customer.id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
-
-      const fullCustomer = response.data
-      setSelectedCustomer(fullCustomer)
-      setFormData(prev => ({
-        ...prev,
-        customer: fullCustomer.id,
-        shipping_address: fullCustomer.shipping_addresses?.find((addr: ShippingAddress) => addr.is_default)?.id || null
-      }))
-    } catch (error) {
-      console.error('Error fetching customer details:', error)
-      setSelectedCustomer(customer)
-      setFormData(prev => ({ ...prev, customer: customer.id, shipping_address: null }))
-    }
-  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null

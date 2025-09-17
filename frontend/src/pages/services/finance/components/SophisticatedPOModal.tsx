@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, DollarSign, Receipt, CreditCard, AlertCircle } from 'lucide-react';
-import api from '../../../../lib/api';
+import { X, DollarSign, Receipt, CreditCard, AlertCircle } from 'lucide-react';
+import { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
 interface PODetailsModalProps {
@@ -9,126 +9,9 @@ interface PODetailsModalProps {
   sessionKey: string;
 }
 
-interface SophisticatedClaimingStatus {
-  original_po_amount: number;
-  original_subtotal: number;
-  original_tax: number;
-  proforma_claimed_amount: number;
-  proforma_claimed_percentage: number;
-  proforma_base_reduced_by_tax_invoices: number;
-  current_proforma_base: number;
-  available_proforma_amount: number;
-  available_proforma_percentage: number;
-  tax_invoice_claimed_amount: number;
-  tax_invoice_claimed_percentage: number;
-  available_tax_invoice_amount: number;
-  available_tax_invoice_percentage: number;
-  po_completion_percentage: number;
-  is_po_completed: boolean;
-  total_invoices_created: number;
-}
 
-interface WorldClassInsights {
-  proforma_vs_tax_invoice_ratio: string;
-  claiming_efficiency: number;
-  payment_efficiency: number;
-  next_recommended_action: string;
-}
 
-interface PaymentDetail {
-  payment_number: string;
-  payment_date: string;
-  amount: number;
-  net_amount_received: number;
-  tds_amount: number;
-  tds_percentage: number;
-  tds_section: string;
-  is_tds_received: boolean;
-  payment_method: string;
-  reference_number: string;
-}
 
-interface ProformaInvoiceDetail {
-  id: number;
-  proforma_number: string;
-  proforma_date: string;
-  total_amount: number;
-  paid_amount: number;
-  outstanding_amount: number;
-  payment_status: string;
-  payments: PaymentDetail[];
-  total_tds_deducted: number;
-  total_net_received: number;
-}
-
-interface TaxInvoiceDetail {
-  id: number;
-  invoice_number: string;
-  invoice_date: string;
-  total_amount: number;
-  paid_amount: number;
-  outstanding_amount: number;
-  payment_status: string;
-  payments: PaymentDetail[];
-  total_tds_deducted: number;
-  total_net_received: number;
-}
-
-interface PaymentTrackingData {
-  po_details: {
-    internal_po_number: string;
-    po_number: string;
-    customer_name: string;
-    total_po_amount: number;
-  };
-  proforma_invoices: ProformaInvoiceDetail[];
-  tax_invoices: TaxInvoiceDetail[];
-  payment_summary: {
-    total_bills_amount: number;
-    total_payments_received: number;
-    total_outstanding: number;
-    total_tds_deducted: number;
-    total_net_received: number;
-    collection_efficiency: number;
-  };
-}
-
-interface SophisticatedData {
-  po_details: {
-    internal_po_number: string;
-    po_date: string;
-    customer_name: string;
-    claim_type: string;
-  };
-  sophisticated_claiming_status: SophisticatedClaimingStatus;
-  proforma_invoices: Array<{
-    proforma_number: string;
-    proforma_date: string;
-    subtotal: number;
-    total_amount: number;
-    percentage_of_original: number;
-    payment_status: string;
-    paid_amount: number;
-    outstanding_amount: number;
-  }>;
-  tax_invoices: Array<{
-    invoice_number: string;
-    invoice_date: string;
-    subtotal: number;
-    total_amount: number;
-    percentage_of_original: number;
-    payment_status: string;
-    paid_amount: number;
-    outstanding_amount: number;
-  }>;
-  financial_summary: {
-    total_generated_bills: number;
-    total_received_payments: number;
-    total_receivable_amount: number;
-    receivable_percentage: number;
-  };
-  world_class_insights: WorldClassInsights;
-}
 
 const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionKey }) => {
   const [loading, setLoading] = useState(true);
@@ -145,21 +28,15 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
       setLoading(true);
       
       // Fetch PO details
-      const poResponse = await api.get(`/api/finance/purchase-orders/${poId}/`, {
-        params: { session_key: sessionKey }
-      });
+      const poResponse = await apiClient.getFinancePurchaseOrder(poId, { session_key: sessionKey });
       setPOData(poResponse.data);
       
       // Fetch proforma invoices
-      const proformaResponse = await api.get('/api/finance/proforma-invoices/', {
-        params: { purchase_order: poId, session_key: sessionKey }
-      });
+      const proformaResponse = await apiClient.getFinanceProformaInvoices({ purchase_order: poId, session_key: sessionKey });
       setProformaInvoices(proformaResponse.data.results || []);
       
       // Fetch tax invoices
-      const invoiceResponse = await api.get('/api/finance/invoices/', {
-        params: { purchase_order: poId, session_key: sessionKey }
-      });
+      const invoiceResponse = await apiClient.getFinanceInvoices({ purchase_order: poId, session_key: sessionKey });
       setTaxInvoices(invoiceResponse.data.results || []);
       
     } catch (error: any) {

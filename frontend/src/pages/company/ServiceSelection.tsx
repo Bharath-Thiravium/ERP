@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { CheckCircle, Server, ArrowRight, Building2, Settings, Shield } from 'lucide-react'
+import { CheckCircle, Server, ArrowRight, Settings, Shield } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { apiClient } from '../../lib/api'
 import { useAuthStore } from '../../store/authStore'

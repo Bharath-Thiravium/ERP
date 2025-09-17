@@ -63,4 +63,8 @@ urlpatterns = [
     # Payment Update endpoints
     path('invoices/<int:invoice_id>/payments/', payment_views.update_invoice_payment, name='update_invoice_payment'),
     path('proforma-invoices/<int:proforma_id>/payments/', payment_views.update_proforma_payment, name='update_proforma_payment'),
+    
+    # Email endpoints
+    path('invoices/<int:invoice_id>/send-email/', views.send_invoice_email_view, name='send_invoice_email'),
+    path('proforma-invoices/<int:proforma_id>/send-email/', views.send_proforma_email_view, name='send_proforma_email'),
 ]

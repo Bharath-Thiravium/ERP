@@ -1,8 +1,7 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { Shield, AlertTriangle, CheckCircle, FileText, Calendar, Download } from 'lucide-react'
 
 const ComplianceList: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('overview')
 
   const complianceItems = [
     {

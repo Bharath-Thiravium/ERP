@@ -250,7 +250,7 @@ export const AppRouter: React.FC = () => {
         path="/services/hr/dashboard"
         element={
           <SuspenseWrapper>
-            <HRDashboard service={{ name: 'Human Resources', service_type: 'hr' }} />
+            <HRDashboard />
           </SuspenseWrapper>
         }
       />

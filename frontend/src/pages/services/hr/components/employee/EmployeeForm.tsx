@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { X, Upload, Camera, User, Mail, Phone, MapPin, Calendar, Building, CreditCard, Save, AlertCircle, Sparkles, Zap, Shield } from 'lucide-react'
+import { X, Camera, User, Mail, Phone, MapPin, Calendar, Building, CreditCard, Save, AlertCircle, Sparkles, Zap, Shield } from 'lucide-react'
 import { apiClient } from '../../../../../lib/api'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import toast from 'react-hot-toast'
@@ -35,18 +35,19 @@ const employeeSchema = z.object({
 type EmployeeFormData = z.infer<typeof employeeSchema>
 
 interface EmployeeFormProps {
+  sessionKey: string
   employee?: any
   onClose: () => void
-  onSuccess: () => void
+  onSave: () => void
 }
 
-const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSuccess }) => {
-  const { sessionKey } = useServiceUserStore()
+const EmployeeForm: React.FC<EmployeeFormProps> = ({ sessionKey: propSessionKey, employee, onClose, onSave }) => {
+  const { sessionKey: storeSessionKey } = useServiceUserStore()
+  const sessionKey = propSessionKey || storeSessionKey
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-    watch
   } = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
     defaultValues: {
@@ -77,7 +78,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSucces
 
   const [departments, setDepartments] = useState<any[]>([])
   const [designations, setDesignations] = useState<any[]>([])
-  const [photo, setPhoto] = useState<File | null>(null)
+  const [, setPhoto] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string>('')
   const [currentStep, setCurrentStep] = useState(1)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -150,7 +151,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSucces
         await apiClient.post(`/api/hr/employees/?session_key=${sessionKey}`, submitData)
         toast.success('Employee created successfully! 🚀')
       }
-      onSuccess()
+      onSave()
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to save employee')
     }

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Filter, MoreVertical, Edit, Trash2, Eye, Users, Zap, Star, TrendingUp, Download, Mail, Phone, MapPin, Calendar, Building } from 'lucide-react'
+import { Plus, Search, MoreVertical, Edit, Trash2, Users, Zap, TrendingUp, Mail, Phone, Building } from 'lucide-react'
 import { apiClient } from '../../../../../lib/api'
-import { useServiceUserStore } from '../../../../../store/serviceUserStore'
-import EmployeeForm from './EmployeeForm'
+
+
 import toast from 'react-hot-toast'
 
 interface Employee {
@@ -10,27 +10,36 @@ interface Employee {
   employee_id: string
   first_name: string
   last_name: string
+  full_name: string
   email: string
   phone: string
-  department: {
-    id: number
-    name: string
-  }
-  status: string
+  department: number
+  designation: number
+  department_name: string
+  designation_title: string
+  city: string
   join_date: string
+  status: string
   photo?: string
 }
 
-const EmployeeList: React.FC = () => {
+interface EmployeeListProps {
+  sessionKey: string
+  onAddEmployee: () => void
+  onEditEmployee: (employee: Employee) => void
+  onViewEmployee: (employee: Employee) => void
+  refreshTrigger: number
+}
+
+const EmployeeList: React.FC<EmployeeListProps> = ({ sessionKey, onAddEmployee, onEditEmployee, refreshTrigger }) => {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [showForm, setShowForm] = useState(false)
-  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+
   const [selectedEmployees, setSelectedEmployees] = useState<number[]>([])
-  const { sessionKey } = useServiceUserStore()
+
 
   const fetchEmployees = async () => {
     try {
@@ -47,7 +56,7 @@ const EmployeeList: React.FC = () => {
     if (sessionKey) {
       fetchEmployees()
     }
-  }, [sessionKey])
+  }, [sessionKey, refreshTrigger])
 
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this employee?')) return
@@ -227,7 +236,7 @@ const EmployeeList: React.FC = () => {
             )}
             
             <button
-              onClick={() => setShowForm(true)}
+              onClick={onAddEmployee}
               className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-xl transition-all duration-300 hover:scale-105 hover:shadow-lg flex items-center gap-2"
             >
               <Plus className="h-5 w-5" />
@@ -283,7 +292,7 @@ const EmployeeList: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Building className="h-4 w-4 text-purple-500" />
-                  <span>{employee.department?.name}</span>
+                  <span>{employee.department_name}</span>
                 </div>
               </div>
 
@@ -293,10 +302,7 @@ const EmployeeList: React.FC = () => {
                 </span>
                 <div className="flex gap-1">
                   <button
-                    onClick={() => {
-                      setEditingEmployee(employee)
-                      setShowForm(true)
-                    }}
+                    onClick={() => onEditEmployee(employee)}
                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                   >
                     <Edit className="h-4 w-4" />
@@ -373,7 +379,7 @@ const EmployeeList: React.FC = () => {
                       <div className="text-sm text-gray-500">{employee.phone}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {employee.department?.name}
+                      {employee.department_name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(employee.status)}`}>
@@ -383,10 +389,7 @@ const EmployeeList: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex gap-2">
                         <button
-                          onClick={() => {
-                            setEditingEmployee(employee)
-                            setShowForm(true)
-                          }}
+                          onClick={() => onEditEmployee(employee)}
                           className="text-blue-600 hover:text-blue-900 transition-colors"
                         >
                           <Edit className="h-4 w-4" />
@@ -415,7 +418,7 @@ const EmployeeList: React.FC = () => {
           <h3 className="text-lg font-medium text-gray-900 mb-2">No employees found</h3>
           <p className="text-gray-500 mb-6">Get started by adding your first employee.</p>
           <button
-            onClick={() => setShowForm(true)}
+            onClick={onAddEmployee}
             className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-xl transition-all duration-300 hover:scale-105 hover:shadow-lg flex items-center gap-2 mx-auto"
           >
             <Plus className="h-5 w-5" />
@@ -424,20 +427,7 @@ const EmployeeList: React.FC = () => {
         </div>
       )}
 
-      {showForm && (
-        <EmployeeForm
-          employee={editingEmployee}
-          onClose={() => {
-            setShowForm(false)
-            setEditingEmployee(null)
-          }}
-          onSuccess={() => {
-            fetchEmployees()
-            setShowForm(false)
-            setEditingEmployee(null)
-          }}
-        />
-      )}
+
     </div>
   )
 }

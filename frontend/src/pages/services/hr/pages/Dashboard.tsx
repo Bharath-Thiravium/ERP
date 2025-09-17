@@ -6,7 +6,6 @@ import {
   Clock,
   CreditCard,
   Calendar,
-  TrendingUp,
   Shield,
   FileText,
   Settings,
@@ -18,23 +17,14 @@ import {
   LogOut,
   ChevronRight,
   Building,
-  MapPin,
   UserCheck,
   UserX,
   DollarSign,
-  Award,
-  AlertCircle,
-  CheckCircle,
-  Eye,
-  Edit,
-  Trash2,
   BarChart3,
   PieChart,
-  RefreshCw,
   Download,
-  Mail,
-  Phone,
-  User
+  Edit,
+  Eye
 } from 'lucide-react'
 import { useAuthStore } from '../../../../store/authStore'
 import { useThemeStore } from '../../../../store/themeStore'
@@ -527,7 +517,7 @@ const HRDashboard: React.FC = () => {
       case 'overview':
         return renderOverview()
       case 'employees':
-        return <Employees />
+        return sessionKey ? <Employees sessionKey={sessionKey} /> : <div>Loading...</div>
       case 'departments':
         return <Departments />
       case 'attendance':

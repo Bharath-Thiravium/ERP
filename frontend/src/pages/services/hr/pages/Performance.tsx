@@ -1,5 +1,5 @@
 import React from 'react'
-import { TrendingUp, Award, Target, BarChart3 } from 'lucide-react'
+import { TrendingUp, Award } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent } from '../../../../components/ui/Card'
 
@@ -7,7 +7,7 @@ interface PerformanceProps {
   sessionKey: string
 }
 
-const Performance: React.FC<PerformanceProps> = ({ sessionKey }) => {
+const Performance: React.FC<PerformanceProps> = () => {
   return (
     <div className="space-y-6">
       <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6">

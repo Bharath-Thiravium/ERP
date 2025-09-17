@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Calendar, Clock, Search, Filter } from 'lucide-react'
+import { Calendar, Clock, Search } from 'lucide-react'
 import { apiClient } from '../../../../../lib/api'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import toast from 'react-hot-toast'

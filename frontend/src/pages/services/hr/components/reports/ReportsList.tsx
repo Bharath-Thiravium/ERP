@@ -1,8 +1,7 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { BarChart3, PieChart, TrendingUp, Users, Calendar, Download } from 'lucide-react'
 
 const ReportsList: React.FC = () => {
-  const [selectedReport, setSelectedReport] = useState('')
 
   const reports = [
     {

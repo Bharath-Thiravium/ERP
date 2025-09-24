@@ -51,4 +51,7 @@ urlpatterns = [
 
     # Token validation
     path('validate-token/', views.ValidateTokenView.as_view(), name='validate_token'),
+    
+    # Auto-code generation (testing)
+    path('generate-auto-code/', views.GenerateAutoCodeView.as_view(), name='generate_auto_code'),
 ]

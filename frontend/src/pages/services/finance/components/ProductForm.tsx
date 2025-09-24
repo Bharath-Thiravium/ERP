@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { X, Search } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
 interface Product {
@@ -129,12 +128,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
   const generateProductCode = async (type: 'product' | 'service') => {
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/generate-code/?type=${type}`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const response = await apiClient.generateProductCode(type, { session_key: sessionKey })
 
       setFormData(prev => ({
         ...prev,
@@ -158,16 +152,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     }
 
     try {
-      const params = new URLSearchParams()
-      params.append('session_key', sessionKey)
-      params.append('search', searchTerm)
-
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/hsn-codes/search/?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const response = await apiClient.searchHSNCodes({ session_key: sessionKey, search: searchTerm })
       setHsnCodes(response.data.results || [])
     } catch (error) {
       console.error('Error searching HSN codes:', error)
@@ -188,16 +173,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     }
 
     try {
-      const params = new URLSearchParams()
-      params.append('session_key', sessionKey)
-      params.append('search', searchTerm)
-
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/sac-codes/search/?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const response = await apiClient.searchSACCodes({ session_key: sessionKey, search: searchTerm })
       setSacCodes(response.data.results || [])
     } catch (error) {
       console.error('Error searching SAC codes:', error)
@@ -373,20 +349,10 @@ const ProductForm: React.FC<ProductFormProps> = ({
       }
 
       if (isEditing && product) {
-        await axios.put(`http://127.0.0.1:8000/api/finance/products/${product.id}/`, submitData, {
-          headers: {
-            'Authorization': `Bearer ${sessionKey}`,
-            'Content-Type': 'application/json'
-          }
-        })
+        await apiClient.updateFinanceProduct(product.id, submitData)
         toast.success('Product updated successfully!')
       } else {
-        await axios.post('http://127.0.0.1:8000/api/finance/products/', submitData, {
-          headers: {
-            'Authorization': `Bearer ${sessionKey}`,
-            'Content-Type': 'application/json'
-          }
-        })
+        await apiClient.createFinanceProduct(submitData)
         toast.success('Product created successfully!')
       }
 

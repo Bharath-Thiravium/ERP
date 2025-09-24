@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import { toast } from 'react-hot-toast'
 import {
   FileText,
@@ -106,7 +106,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
       if (statusFilter) params.append('status', statusFilter)
 
       console.log('Fetching proforma invoices with params:', params.toString()) // Debug log
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/proforma-invoices/?${params}`)
+      const response = await apiClient.getFinanceProformaInvoices(Object.fromEntries(new URLSearchParams(params)))
       console.log('Proforma Invoice API Response:', response.data) // Debug log
 
       const invoices = response.data.results || []
@@ -156,9 +156,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
     if (!confirm('Are you sure you want to delete this proforma invoice?')) return
 
     try {
-      await axios.delete(`http://127.0.0.1:8000/api/finance/proforma-invoices/${id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      await apiClient.deleteFinanceProformaInvoice(id, { session_key: sessionKey })
       toast.success('Proforma invoice deleted successfully!')
       fetchProformaInvoices()
     } catch (error) {
@@ -169,10 +167,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
 
   const handleDownloadPDF = async (id: number, proformaNumber: string) => {
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/proforma-invoices/${id}/pdf/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` },
-        responseType: 'blob'
-      })
+      const response = await apiClient.generateProformaPDF(id, { session_key: sessionKey })
 
       // Create blob link to download
       const url = window.URL.createObjectURL(new Blob([response.data]))

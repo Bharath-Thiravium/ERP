@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { X, FileText, User, MapPin, Calculator, Package } from 'lucide-react'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 
@@ -59,6 +59,11 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (loading) {
+      return // Prevent double submission
+    }
+    
     setLoading(true)
 
     try {
@@ -120,22 +125,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
         status: 'draft'
       }
 
-      await axios.post('http://127.0.0.1:8000/api/finance/proforma-invoices/', dataToSend, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      // Update PO status to in_progress after first invoice
-      await axios.patch(`http://127.0.0.1:8000/api/finance/purchase-orders/${purchaseOrder.id}/`, {
-        status: 'in_progress'
-      }, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      await apiClient.createFinanceProformaInvoice({ ...dataToSend, session_key: sessionKey })
       
       toast.success('Proforma Invoice created successfully!')
       onSuccess()
@@ -450,7 +440,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Creating...' : 'Create Proforma Invoice'}
             </button>

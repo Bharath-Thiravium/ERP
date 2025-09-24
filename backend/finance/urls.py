@@ -61,10 +61,11 @@ urlpatterns = [
     path('purchase-orders/<int:po_id>/payment-details/', views.purchase_order_payment_details, name='purchase_order_payment_details'),
     
     # Payment Update endpoints
-    path('invoices/<int:invoice_id>/payments/', payment_views.update_invoice_payment, name='update_invoice_payment'),
+    path('invoices/<int:invoice_id>/payments/', payment_views.unified_payment_update, name='update_invoice_payment'),
     path('proforma-invoices/<int:proforma_id>/payments/', payment_views.update_proforma_payment, name='update_proforma_payment'),
     
     # Email endpoints
+    path('quotations/<int:quotation_id>/send-email/', views.send_quotation_email_view, name='send_quotation_email'),
     path('invoices/<int:invoice_id>/send-email/', views.send_invoice_email_view, name='send_invoice_email'),
     path('proforma-invoices/<int:proforma_id>/send-email/', views.send_proforma_email_view, name='send_proforma_email'),
 ]

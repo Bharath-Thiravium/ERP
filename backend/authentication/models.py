@@ -22,7 +22,8 @@ class MasterAdmin(models.Model):
     two_factor_secret = models.CharField(max_length=32, blank=True)
 
     def __str__(self):
-        return f"Master Admin - {self.company_name}"
+        from .sanitizers import sanitize_html_input
+        return f"Master Admin - {sanitize_html_input(self.company_name)}"
 
     def is_password_expired(self):
         return timezone.now() > self.password_expires_at
@@ -42,6 +43,7 @@ class Company(models.Model):
 
     # Basic info (filled by master admin)
     name = models.CharField(max_length=255)
+    company_prefix = models.CharField(max_length=10, unique=True, help_text="Unique prefix for auto-generated codes (e.g., ACME, TECH)")
     email = models.EmailField(validators=[EmailValidator()])
     phone = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
@@ -86,7 +88,63 @@ class Company(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return self.name
+        from .sanitizers import sanitize_html_input
+        return sanitize_html_input(self.name)
+
+
+class CompanyAutoCodeSettings(models.Model):
+    """Auto-code generation settings for each company"""
+    CODE_TYPES = [
+        ('employee', 'Employee ID'),
+        ('product', 'Product Code'),
+        ('invoice', 'Invoice Number'),
+        ('purchase_order', 'Purchase Order'),
+        ('quotation', 'Quotation Number'),
+        ('customer', 'Customer ID'),
+        ('vendor', 'Vendor ID'),
+        ('asset', 'Asset Code'),
+        ('proforma_invoice', 'Proforma Invoice'),
+        ('payment', 'Payment Number'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='auto_code_settings')
+    code_type = models.CharField(max_length=20, choices=CODE_TYPES)
+    current_number = models.IntegerField(default=0)
+    number_length = models.IntegerField(default=3, help_text="Number of digits (e.g., 3 for 001)")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['company', 'code_type']
+        verbose_name = 'Company Auto Code Setting'
+        verbose_name_plural = 'Company Auto Code Settings'
+
+    def __str__(self):
+        return f"{self.company.name} - {self.get_code_type_display()}"
+
+    def get_next_code(self):
+        """Generate next auto code for this type"""
+        self.current_number += 1
+        self.save()
+        number_str = str(self.current_number).zfill(self.number_length)
+        
+        # Map code types to their prefixes
+        code_prefixes = {
+            'employee': 'EMP',
+            'product': 'PRD',
+            'invoice': 'INV',
+            'purchase_order': 'POU',
+            'quotation': 'QUO',
+            'customer': 'CUS',
+            'vendor': 'VEN',
+            'asset': 'AST',
+            'proforma_invoice': 'PFI',
+            'payment': 'PAY',
+        }
+        
+        prefix = code_prefixes.get(self.code_type, self.code_type.upper()[:3])
+        return f"{self.company.company_prefix}{prefix}{number_str}"
 
 
 class Service(models.Model):
@@ -116,7 +174,8 @@ class Service(models.Model):
     features = models.JSONField(default=list)  # List of features
 
     def __str__(self):
-        return self.name
+        from .sanitizers import sanitize_html_input
+        return sanitize_html_input(self.name)
 
 
 class CompanyService(models.Model):

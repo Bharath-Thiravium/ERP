@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { X, User, Calendar, Search, Trash2, MapPin, Upload, FileText } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
 interface Customer {
@@ -212,9 +212,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
     try {
       console.log('Loading full quotation details for ID:', quotationId)
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/quotations/${quotationId}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceQuotation(quotationId, { session_key: sessionKey })
 
       const fullQuotation = response.data
       console.log('Loaded full quotation details:', fullQuotation)
@@ -282,9 +280,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
   const loadCustomers = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/finance/customers/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceCustomers({ session_key: sessionKey })
       setCustomers(response.data.results)
     } catch (error) {
       console.error('Error loading customers:', error)
@@ -293,9 +289,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
   const loadProducts = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/finance/products/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceProducts({ session_key: sessionKey })
       setProducts(response.data.results)
     } catch (error) {
       console.error('Error loading products:', error)
@@ -304,9 +298,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
   const loadCompanyDetails = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/auth/company-profile/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.get('/api/auth/company-profile/', { session_key: sessionKey })
       setCompanyDetails(response.data)
     } catch (error) {
       console.error('Error loading company details:', error)
@@ -318,9 +310,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
     try {
       console.log('Loading customer details for ID:', customerId)
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/customers/${customerId}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceCustomer(customerId, { session_key: sessionKey })
 
       const fullCustomer = response.data
       console.log('Loaded customer details:', fullCustomer)
@@ -476,68 +466,65 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     setLoading(true)
     
     try {
-      console.log('Form data before sending:', formData)
+      // Sanitize form data before logging to prevent log injection
+      const sanitizedFormData = {
+        ...formData,
+        po_number: formData.po_number.replace(/[\r\n]/g, ''),
+        reference: formData.reference.replace(/[\r\n]/g, ''),
+        notes: formData.notes.replace(/[\r\n]/g, ' '),
+        terms_and_conditions: formData.terms_and_conditions.replace(/[\r\n]/g, ' ')
+      }
+      console.log('Form data before sending:', sanitizedFormData)
 
-      const url = purchaseOrder
-        ? `http://127.0.0.1:8000/api/finance/purchase-orders/${purchaseOrder.id}/`
-        : 'http://127.0.0.1:8000/api/finance/purchase-orders/'
-
-      const method = purchaseOrder ? 'patch' : 'post'
-
-      let response;
-
-      if (selectedFile) {
-        // If there's a file, use FormData
-        const formDataToSend = new FormData()
-
-        // Add all form fields except po_items
-        Object.entries(formData).forEach(([key, value]) => {
-          if (key === 'po_items') {
-            // Don't add po_items to FormData, we'll add it separately
-            return
-          } else if (key === 'po_file') {
-            // Don't add po_file here, we'll add the selectedFile
-            return
-          } else if (value !== null && value !== undefined) {
-            formDataToSend.append(key, value.toString())
-          }
-        })
-
-        // Add po_items as JSON string for FormData
-        formDataToSend.append('po_items', JSON.stringify(formData.po_items))
-
-        // Add the file
-        formDataToSend.append('po_file', selectedFile)
-
-        // Add session key
-        formDataToSend.append('session_key', sessionKey || '')
-
-        console.log('Sending FormData with file')
-
-        response = await axios[method](url, formDataToSend, {
-          headers: {
-            'Authorization': `Bearer ${sessionKey}`,
-            'Content-Type': 'multipart/form-data'
-          }
-        })
-      } else {
-        // If no file, send JSON data
-        const jsonData = {
-          ...formData,
-          session_key: sessionKey
+      let response
+      // Use apiClient for PO creation/update
+      if (purchaseOrder && purchaseOrder.id) {
+        // Update existing PO
+        if (selectedFile) {
+          // Handle file upload for update
+          const formDataToSend = new FormData()
+          Object.entries(formData).forEach(([key, value]) => {
+            if (key === 'po_items') {
+              formDataToSend.append('po_items', JSON.stringify(value))
+            } else if (key !== 'po_file' && value !== null && value !== undefined) {
+              formDataToSend.append(key, value.toString())
+            }
+          })
+          formDataToSend.append('po_file', selectedFile)
+          formDataToSend.append('session_key', sessionKey || '')
+          
+          response = await apiClient.put(`/api/finance/purchase-orders/${purchaseOrder.id}/`, formDataToSend)
+        } else {
+          response = await apiClient.updateFinancePurchaseOrder(purchaseOrder.id, { ...formData, session_key: sessionKey })
         }
-
-        console.log('Sending JSON data:', jsonData)
-
-        response = await axios[method](url, jsonData, {
-          headers: {
-            'Authorization': `Bearer ${sessionKey}`,
-            'Content-Type': 'application/json'
-          }
-        })
+      } else {
+        // Create new PO
+        if (selectedFile) {
+          // Handle file upload for creation
+          const formDataToSend = new FormData()
+          Object.entries(formData).forEach(([key, value]) => {
+            if (key === 'po_items') {
+              formDataToSend.append('po_items', JSON.stringify(value))
+            } else if (key !== 'po_file' && value !== null && value !== undefined) {
+              formDataToSend.append(key, value.toString())
+            }
+          })
+          formDataToSend.append('po_file', selectedFile)
+          formDataToSend.append('session_key', sessionKey || '')
+          
+          response = await apiClient.post('/api/finance/purchase-orders/', formDataToSend)
+        } else {
+          response = await apiClient.createFinancePurchaseOrder({ ...formData, session_key: sessionKey })
+        }
       }
 
-      console.log('PO saved successfully:', response.data)
+      // Sanitize response data before logging
+      const sanitizedResponse = {
+        ...response.data,
+        po_number: response.data.po_number?.replace(/[\r\n]/g, '') || '',
+        reference: response.data.reference?.replace(/[\r\n]/g, '') || ''
+      }
+      console.log('PO saved successfully:', sanitizedResponse)
 
       toast.success(purchaseOrder ? 'Purchase order updated successfully!' : 'Purchase order created successfully!')
       onSuccess()

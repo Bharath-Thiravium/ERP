@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, RotateCcw, X, ShoppingCart } from 'lucide-react'
 import QuotationEdit from './QuotationEdit'
+import SendEmailModal from './SendEmailModal'
 import toast from 'react-hot-toast'
 
 interface Quotation {
@@ -11,6 +12,7 @@ interface Quotation {
   customer_name: string
   customer_code: string
   customer_project_area?: string
+  customer_email?: string
   quotation_date: string
   valid_until: string
   status: string
@@ -53,6 +55,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
   const [totalCount, setTotalCount] = useState(0)
   const [hoveredQuotation, setHoveredQuotation] = useState<number | null>(null)
   const [editingQuotationId, setEditingQuotationId] = useState<number | null>(null)
+  const [emailQuotation, setEmailQuotation] = useState<Quotation | null>(null)
 
   const statusOptions = [
     { value: '', label: 'All Status' },
@@ -90,12 +93,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
       console.log('🔍 DEBUG: Fetching quotations with session key:', sessionKey.substring(0, 10) + '...')
       console.log('🔍 DEBUG: API URL:', `/api/finance/quotations/?${params.toString()}`)
 
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/quotations/?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const response = await apiClient.getFinanceQuotations(Object.fromEntries(params))
 
 
 
@@ -132,12 +130,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
     }
 
     try {
-      await axios.delete(`http://127.0.0.1:8000/api/finance/quotations/${quotation.id}/`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      await apiClient.deleteFinanceQuotation(quotation.id, { session_key: sessionKey })
 
       // Refresh the list
       fetchQuotations(currentPage)
@@ -148,32 +141,13 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
     }
   }
 
-  const handleSendMail = async (quotation: Quotation) => {
-    if (!sessionKey) {
-      alert('Session expired. Please login again.')
-      return
-    }
+  const handleSendMail = (quotation: Quotation) => {
+    setEmailQuotation(quotation)
+  }
 
-    try {
-      // Update quotation status to 'sent'
-      await axios.patch(`http://127.0.0.1:8000/api/finance/quotations/${quotation.id}/`, {
-        status: 'sent'
-      }, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      // Show success message
-      toast.success('Mail sent successfully!')
-
-      // Refresh the list
-      fetchQuotations(currentPage)
-    } catch (error) {
-      console.error('Error sending mail:', error)
-      toast.error('Failed to send mail')
-    }
+  const handleEmailSuccess = () => {
+    setEmailQuotation(null)
+    fetchQuotations(currentPage) // Refresh the list
   }
 
   const handleCopyQuotation = async (quotation: Quotation) => {
@@ -183,12 +157,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
     }
 
     try {
-      await axios.post(`http://127.0.0.1:8000/api/finance/quotations/${quotation.id}/copy/`, {}, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      await apiClient.copyFinanceQuotation(quotation.id, { session_key: sessionKey })
 
       toast.success('Quotation copied successfully!')
       fetchQuotations(currentPage)
@@ -210,14 +179,10 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
 
     try {
       // Change status back to draft and mark as revised
-      await axios.patch(`http://127.0.0.1:8000/api/finance/quotations/${quotation.id}/`, {
+      await apiClient.updateFinanceQuotation(quotation.id, {
         status: 'draft',
-        is_revised: true
-      }, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
+        is_revised: true,
+        session_key: sessionKey
       })
 
       toast.success('Quotation reversed successfully! You can now edit it.')
@@ -240,11 +205,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
 
     try {
       // Delete the quotation from database instead of marking as rejected
-      await axios.delete(`http://127.0.0.1:8000/api/finance/quotations/${quotation.id}/`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`
-        }
-      })
+      await apiClient.deleteFinanceQuotation(quotation.id, { session_key: sessionKey })
 
       toast.success('Quotation rejected and removed from database!')
       fetchQuotations(currentPage)
@@ -691,6 +652,19 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
             setEditingQuotationId(null)
             fetchQuotations(currentPage) // Refresh the list
           }}
+        />
+      )}
+
+      {/* Email Modal */}
+      {emailQuotation && (
+        <SendEmailModal
+          isOpen={true}
+          onClose={() => setEmailQuotation(null)}
+          invoiceId={emailQuotation.id}
+          invoiceNumber={emailQuotation.quotation_number}
+          invoiceType="quotation"
+          customerEmail={emailQuotation.customer_email || ''}
+          onSuccess={handleEmailSuccess}
         />
       )}
     </div>

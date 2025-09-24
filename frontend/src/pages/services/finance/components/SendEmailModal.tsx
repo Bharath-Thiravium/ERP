@@ -9,8 +9,9 @@ interface SendEmailModalProps {
   onClose: () => void;
   invoiceId: number;
   invoiceNumber: string;
-  invoiceType: 'tax_invoice' | 'proforma_invoice';
+  invoiceType: 'tax_invoice' | 'proforma_invoice' | 'quotation';
   customerEmail?: string;
+  onSuccess?: () => void;
 }
 
 const SendEmailModal: React.FC<SendEmailModalProps> = ({
@@ -19,7 +20,8 @@ const SendEmailModal: React.FC<SendEmailModalProps> = ({
   invoiceId,
   invoiceNumber,
   invoiceType,
-  customerEmail = ''
+  customerEmail = '',
+  onSuccess
 }) => {
   const { sessionKey } = useServiceUserStore();
   const [email, setEmail] = useState(customerEmail);
@@ -47,12 +49,17 @@ const SendEmailModal: React.FC<SendEmailModalProps> = ({
 
       if (invoiceType === 'tax_invoice') {
         await apiClient.sendInvoiceEmail(invoiceId, payload);
-      } else {
+      } else if (invoiceType === 'proforma_invoice') {
         await apiClient.sendProformaEmail(invoiceId, payload);
+      } else if (invoiceType === 'quotation') {
+        await apiClient.sendQuotationEmail(invoiceId, payload);
       }
 
       toast.success('Email sent successfully!');
       onClose();
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (error: any) {
       console.error('Error sending email:', error);
       toast.error(error.response?.data?.error || 'Failed to send email');
@@ -71,7 +78,7 @@ const SendEmailModal: React.FC<SendEmailModalProps> = ({
           <div className="flex items-center space-x-2">
             <Mail className="w-5 h-5 text-blue-500" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Send {invoiceType === 'tax_invoice' ? 'Invoice' : 'Proforma Invoice'}
+              Send {invoiceType === 'tax_invoice' ? 'Invoice' : invoiceType === 'proforma_invoice' ? 'Proforma Invoice' : 'Quotation'}
             </h2>
           </div>
           <button

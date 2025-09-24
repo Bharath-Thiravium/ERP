@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { X, User, MapPin, FileText, DollarSign, Printer, Mail, Edit, Download } from 'lucide-react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import PrintableQuotation from './PrintableQuotation'
+import SendEmailModal from './SendEmailModal'
 
 interface QuotationItem {
   id: number
@@ -86,6 +87,7 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
   const [quotation, setQuotation] = useState<QuotationDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
+  const [showEmailModal, setShowEmailModal] = useState(false)
   const printableRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -100,12 +102,7 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
 
     try {
       setLoading(true)
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/quotations/${quotationId}/`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const response = await apiClient.getFinanceQuotation(quotationId, { session_key: sessionKey })
 
       setQuotation(response.data)
     } catch (error) {
@@ -275,8 +272,7 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
   }
 
   const handleSendEmail = () => {
-    // This would typically open an email modal or send the quotation
-    alert('Email functionality would be implemented here')
+    setShowEmailModal(true)
   }
 
   if (loading) {
@@ -662,6 +658,20 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
           <PrintableQuotation quotation={quotation} />
         </div>
       </div>
+
+      {/* Email Modal */}
+      <SendEmailModal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        invoiceId={quotation.id}
+        invoiceNumber={quotation.quotation_number}
+        invoiceType="quotation"
+        customerEmail={quotation.customer_details.email}
+        onSuccess={() => {
+          setShowEmailModal(false);
+          fetchQuotationDetail(); // Refresh quotation details
+        }}
+      />
     </div>
   )
 }

@@ -14,6 +14,11 @@ const createCompanySchema = z.object({
     .min(2, 'Company name must be at least 2 characters')
     .max(100, 'Company name must be less than 100 characters')
     .regex(/^[a-zA-Z0-9\s&.-]+$/, 'Company name contains invalid characters'),
+  company_prefix: z.string()
+    .min(2, 'Company prefix must be at least 2 characters')
+    .max(10, 'Company prefix must be less than 10 characters')
+    .regex(/^[A-Za-z0-9]+$/, 'Company prefix must contain only letters and numbers')
+    .transform(val => val.toUpperCase()),
   email: z.string()
     .email('Please enter a valid email address')
     .max(255, 'Email must be less than 255 characters'),
@@ -290,6 +295,32 @@ IMPORTANT: Please keep these credentials secure and share them only with authori
                     {errors.name && (
                       <p className="text-red-500 text-sm mt-1">{errors.name.message}</p>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                      Company Prefix *
+                      <span className="text-xs text-gray-500 ml-2">(for auto-generated codes)</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Shield className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        {...register('company_prefix')}
+                        type="text"
+                        placeholder="ACME, TECH, COMP001"
+                        maxLength={10}
+                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 uppercase"
+                        style={{ textTransform: 'uppercase' }}
+                      />
+                    </div>
+                    {errors.company_prefix && (
+                      <p className="text-red-500 text-sm mt-1">{errors.company_prefix.message}</p>
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Used for employee IDs (e.g., ACMEEMP001), invoices (ACMEINV001), etc.
+                    </p>
                   </div>
 
                   <div>

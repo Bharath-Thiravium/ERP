@@ -96,14 +96,27 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
         if not attrs.get('shipping_same_as_billing', True):
             required_shipping_fields = ['shipping_address_line1', 'shipping_city', 'shipping_state', 'shipping_pincode']
             for field in required_shipping_fields:
-                if not attrs.get(field):
+                field_value = attrs.get(field, '').strip()
+                if not field_value:
                     raise serializers.ValidationError(f"{field.replace('_', ' ').title()} is required when shipping address is different from billing address")
         
         return attrs
 
     def create(self, validated_data):
         shipping_addresses_data = validated_data.pop('shipping_addresses', [])
-        customer = Customer.objects.create(**validated_data)
+        
+        try:
+            customer = Customer.objects.create(**validated_data)
+        except Exception as e:
+            # Handle unique constraint errors
+            if 'unique' in str(e).lower() or 'duplicate' in str(e).lower():
+                # Retry with timestamp-based code
+                import time
+                timestamp = int(time.time() * 1000) % 1000000
+                validated_data['customer_code'] = f"CUST-{timestamp:06d}"
+                customer = Customer.objects.create(**validated_data)
+            else:
+                raise e
 
         # Create shipping addresses
         for address_data in shipping_addresses_data:
@@ -856,8 +869,8 @@ class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
         proforma_invoice = ProformaInvoice.objects.create(**validated_data)
         
         # Update PO claim type if this is the first invoice
-        if not purchase_order.claim_type:
-            purchase_order.claim_type = validated_data.get('claim_type', 'percentage')
+        if not purchase_order.claim_type and 'claim_type' in validated_data:
+            purchase_order.claim_type = validated_data.get('claim_type')
             purchase_order.save(update_fields=['claim_type'])
 
         # Use frontend-calculated items if provided, otherwise fallback to PO items
@@ -1106,7 +1119,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
     )
 
     # Add sophisticated claiming fields
-    claim_type = serializers.CharField(required=False, default='percentage')
+    claim_type = serializers.CharField(required=False)
     claim_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=0)
     selected_items = serializers.DictField(required=False)
     item_percentages = serializers.DictField(required=False)
@@ -1123,14 +1136,17 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
     def validate(self, data):
         """World-Class validation - ONLY Purchase Order claiming"""
         purchase_order = data.get('purchase_order')
-        claim_type = data.get('claim_type', 'percentage')
+        claim_type = data.get('claim_type')
         claim_percentage = data.get('claim_percentage', 0)
 
         if not purchase_order:
             raise serializers.ValidationError("Purchase order is required for invoice creation")
+        
+        if not claim_type:
+            raise serializers.ValidationError("Claim type is required for invoice creation")
 
         # Validate percentage-based claiming for PO
-        if claim_type == 'percentage' and claim_percentage > 0:
+        if claim_type == 'percentage' and claim_percentage and claim_percentage > 0:
             from decimal import Decimal
 
             # Calculate claim amount
@@ -1158,7 +1174,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         from decimal import Decimal
 
         # Extract claiming parameters
-        claim_type = validated_data.pop('claim_type', 'percentage')
+        claim_type = validated_data.pop('claim_type', None)
         claim_percentage = validated_data.pop('claim_percentage', 0)
         selected_items = validated_data.pop('selected_items', {})
         item_percentages = validated_data.pop('item_percentages', {})
@@ -1175,7 +1191,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         invoice = Invoice.objects.create(**validated_data)
         
         # Update PO claim type if this is the first invoice
-        if not purchase_order.claim_type or purchase_order.claim_type != claim_type:
+        if not purchase_order.claim_type and claim_type:
             purchase_order.claim_type = claim_type
             purchase_order.save(update_fields=['claim_type'])
 

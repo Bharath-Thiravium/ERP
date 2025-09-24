@@ -74,7 +74,7 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Company
-        fields = ['name', 'email', 'phone', 'address', 'services', 
+        fields = ['name', 'company_prefix', 'email', 'phone', 'address', 'services', 
                  'user_email', 'user_password']
     
     def validate_services(self, value):
@@ -95,6 +95,23 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
             print(f'🔍 DEBUG: User with email {value} already exists (ID: {existing_user.id})')
             raise serializers.ValidationError("User with this email already exists.")
         print(f'🔍 DEBUG: Email {value} is available for new user')
+        return value
+    
+    def validate_company_prefix(self, value):
+        """Validate company prefix"""
+        from .utils import validate_company_prefix
+        
+        if not value:
+            raise serializers.ValidationError("Company prefix is required.")
+        
+        # Convert to uppercase
+        value = value.upper()
+        
+        # Validate format and uniqueness
+        is_valid, message = validate_company_prefix(value)
+        if not is_valid:
+            raise serializers.ValidationError(message)
+        
         return value
     
     def create(self, validated_data):
@@ -135,6 +152,13 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
                 password_expires_at=timezone.now() + timedelta(days=365)  # Extended expiry
             )
 
+        # Initialize auto-code settings for the company
+        from .utils import initialize_company_auto_codes
+        try:
+            initialize_company_auto_codes(company.id)
+        except Exception as e:
+            print(f'Warning: Failed to initialize auto-code settings: {str(e)}')
+
         return company
     
     def generate_service_password(self, length=12):
@@ -150,7 +174,7 @@ class CompanyListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Company
-        fields = ['id', 'name', 'email', 'phone', 'approval_status', 
+        fields = ['id', 'name', 'company_prefix', 'email', 'phone', 'approval_status', 
                  'detailed_info_submitted', 'created_at', 'created_by_name',
                  'services_count']
     

@@ -85,52 +85,60 @@ class WebhookView(View):
         logs = []
         
         try:
-            # Step 1: Git pull
+            # Step 1: Git pull (using absolute paths)
             logs.append("=== Starting Git Pull ===")
-            result = subprocess.run(['git', 'pull', 'origin', 'main'], 
-                                  capture_output=True, text=True, cwd=settings.BASE_DIR.parent)
+            result = subprocess.run(['/usr/bin/git', 'pull', 'origin', 'main'], 
+                                  capture_output=True, text=True, cwd=settings.BASE_DIR.parent,
+                                  timeout=300)  # 5 minute timeout
             logs.append(f"Git pull output: {result.stdout}")
             if result.stderr:
                 logs.append(f"Git pull errors: {result.stderr}")
             
-            # Step 2: Install dependencies
+            # Step 2: Install dependencies (using absolute paths)
             logs.append("=== Installing Backend Dependencies ===")
-            result = subprocess.run(['pip', 'install', '-r', 'requirements.txt'], 
-                                  capture_output=True, text=True, cwd=settings.BASE_DIR)
+            result = subprocess.run(['/usr/bin/pip', 'install', '-r', 'requirements.txt'], 
+                                  capture_output=True, text=True, cwd=settings.BASE_DIR,
+                                  timeout=600)  # 10 minute timeout
             logs.append(f"Pip install output: {result.stdout}")
             
-            # Step 3: Run migrations
+            # Step 3: Run migrations (using absolute paths)
             logs.append("=== Running Migrations ===")
-            result = subprocess.run(['python', 'manage.py', 'migrate'], 
-                                  capture_output=True, text=True, cwd=settings.BASE_DIR)
+            result = subprocess.run(['/usr/bin/python', 'manage.py', 'migrate'], 
+                                  capture_output=True, text=True, cwd=settings.BASE_DIR,
+                                  timeout=300)  # 5 minute timeout
             logs.append(f"Migration output: {result.stdout}")
             
-            # Step 4: Collect static files
+            # Step 4: Collect static files (using absolute paths)
             logs.append("=== Collecting Static Files ===")
-            result = subprocess.run(['python', 'manage.py', 'collectstatic', '--noinput'], 
-                                  capture_output=True, text=True, cwd=settings.BASE_DIR)
+            result = subprocess.run(['/usr/bin/python', 'manage.py', 'collectstatic', '--noinput'], 
+                                  capture_output=True, text=True, cwd=settings.BASE_DIR,
+                                  timeout=300)  # 5 minute timeout
             logs.append(f"Collectstatic output: {result.stdout}")
             
-            # Step 5: Install frontend dependencies
+            # Step 5: Install frontend dependencies (using absolute paths)
             logs.append("=== Installing Frontend Dependencies ===")
             frontend_path = settings.BASE_DIR.parent / 'frontend'
-            result = subprocess.run(['pnpm', 'install'], 
-                                  capture_output=True, text=True, cwd=frontend_path)
+            result = subprocess.run(['/usr/bin/pnpm', 'install'], 
+                                  capture_output=True, text=True, cwd=frontend_path,
+                                  timeout=600)  # 10 minute timeout
             logs.append(f"Frontend install output: {result.stdout}")
             
-            # Step 6: Build frontend
+            # Step 6: Build frontend (using absolute paths)
             logs.append("=== Building Frontend ===")
-            result = subprocess.run(['pnpm', 'run', 'build'], 
-                                  capture_output=True, text=True, cwd=frontend_path)
+            result = subprocess.run(['/usr/bin/pnpm', 'run', 'build'], 
+                                  capture_output=True, text=True, cwd=frontend_path,
+                                  timeout=600)  # 10 minute timeout
             logs.append(f"Frontend build output: {result.stdout}")
             
-            # Step 7: Restart services (if in production)
+            # Step 7: Restart services (if in production) - using absolute paths
             if not settings.DEBUG:
                 logs.append("=== Restarting Services ===")
                 # Restart Gunicorn
-                subprocess.run(['sudo', 'systemctl', 'restart', 'gunicorn'])
+                subprocess.run(['/usr/bin/sudo', '/bin/systemctl', 'restart', 'gunicorn'],
+                             timeout=60)  # 1 minute timeout
                 # Restart Nginx
-                subprocess.run(['sudo', 'systemctl', 'restart', 'nginx'])
+                subprocess.run(['/usr/bin/sudo', '/bin/systemctl', 'restart', 'nginx'],
+                             timeout=60)  # 1 minute timeout
                 logs.append("Services restarted successfully")
             
             deployment.status = 'success'
@@ -154,21 +162,24 @@ class WebhookView(View):
         try:
             logs.append("=== Starting Rollback ===")
             
-            # Get previous commit
-            result = subprocess.run(['git', 'log', '--oneline', '-2'], 
-                                  capture_output=True, text=True, cwd=settings.BASE_DIR.parent)
+            # Get previous commit (using absolute paths)
+            result = subprocess.run(['/usr/bin/git', 'log', '--oneline', '-2'], 
+                                  capture_output=True, text=True, cwd=settings.BASE_DIR.parent,
+                                  timeout=60)  # 1 minute timeout
             commits = result.stdout.strip().split('\n')
             if len(commits) > 1:
                 previous_commit = commits[1].split()[0]
-                deployment.rollback_commit = previous_commit
-                
-                # Reset to previous commit
-                subprocess.run(['git', 'reset', '--hard', previous_commit], 
-                             cwd=settings.BASE_DIR.parent)
-                
-                # Re-run migrations
-                subprocess.run(['python', 'manage.py', 'migrate'], 
-                             cwd=settings.BASE_DIR)
+                # Validate commit hash format (alphanumeric, 7-40 chars)
+                if previous_commit.isalnum() and 7 <= len(previous_commit) <= 40:
+                    deployment.rollback_commit = previous_commit
+                    
+                    # Reset to previous commit
+                    subprocess.run(['/usr/bin/git', 'reset', '--hard', previous_commit], 
+                                 cwd=settings.BASE_DIR.parent, timeout=60)
+                    
+                    # Re-run migrations
+                    subprocess.run(['/usr/bin/python', 'manage.py', 'migrate'], 
+                                 cwd=settings.BASE_DIR, timeout=300)
                 
                 deployment.status = 'rollback'
                 logs.append(f"Rolled back to commit: {previous_commit}")

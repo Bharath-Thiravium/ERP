@@ -4,8 +4,7 @@ import {
   Building2, User, Phone, Mail, MapPin, ChevronLeft, ChevronRight
 } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 
 interface Customer {
   id: number
@@ -101,12 +100,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
       console.log('🔍 DEBUG: Fetching customers with session key:', sessionKey.substring(0, 10) + '...')
       console.log('🔍 DEBUG: API URL:', `/api/finance/customers/?${params.toString()}`)
 
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/customers/?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const response = await apiClient.getFinanceCustomers(Object.fromEntries(params))
 
       const data: PaginatedResponse = response.data
       setCustomers(data.results || [])
@@ -128,12 +122,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
     if (!confirm('Are you sure you want to delete this customer?')) return
 
     try {
-      await axios.delete(`http://127.0.0.1:8000/api/finance/customers/${customerId}/?session_key=${sessionKey}`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      await apiClient.deleteFinanceCustomer(customerId, { session_key: sessionKey })
       fetchCustomers() // Refresh the list
     } catch (error) {
       console.error('Error deleting customer:', error)

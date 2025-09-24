@@ -61,6 +61,9 @@ export const useServiceUserStore = create<ServiceUserState>()(
           const sessionExpiry = Date.now() + (8 * 60 * 60 * 1000)
           const lastActivity = Date.now()
 
+          // Store session key in localStorage for API interceptor
+          localStorage.setItem('service_session_key', session_key)
+          
           set({
             serviceUser: user,
             sessionKey: session_key,
@@ -103,6 +106,9 @@ export const useServiceUserStore = create<ServiceUserState>()(
           }
         }
 
+        // Clear session key from localStorage
+        localStorage.removeItem('service_session_key')
+        
         set({
           serviceUser: null,
           sessionKey: null,

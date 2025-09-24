@@ -1,7 +1,7 @@
 import axios, { AxiosResponse, AxiosError, AxiosInstance } from 'axios'
 import toast from 'react-hot-toast'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -12,28 +12,23 @@ const api: AxiosInstance = axios.create({
   },
 })
 
+import tokenManager from './tokenManager'
+
 // Token management
 const getToken = (): string | null => {
-  return localStorage.getItem('access_token')
+  return tokenManager.getAccessToken()
 }
 
 const getRefreshToken = (): string | null => {
-  return localStorage.getItem('refresh_token')
+  return tokenManager.getRefreshToken()
 }
 
 const setTokens = (accessToken: string, refreshToken: string): void => {
-  console.log('🔍 DEBUG: setTokens called', { accessToken: accessToken.substring(0, 20) + '...' })
-  localStorage.setItem('access_token', accessToken)
-  localStorage.setItem('refresh_token', refreshToken)
-  console.log('🔍 DEBUG: Tokens stored in localStorage')
+  tokenManager.setTokens(accessToken, refreshToken)
 }
 
 const clearTokens = (): void => {
-  console.log('🔍 DEBUG: clearTokens called - CLEARING ALL AUTH DATA!')
-  console.trace('🔍 DEBUG: clearTokens call stack')
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
-  localStorage.removeItem('user')
+  tokenManager.clearTokens()
 }
 
 // Request interceptor to add auth token (exclude login endpoints)
@@ -45,9 +40,23 @@ api.interceptors.request.use(
                            config.url?.includes('/health/')
 
     if (!isLoginEndpoint) {
-      const token = getToken()
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`
+      // Check if this is a service user endpoint (HR, Finance)
+      const isServiceUserEndpoint = config.url?.includes('/api/hr/') ||
+                                   config.url?.includes('/api/finance/')
+      
+      if (isServiceUserEndpoint) {
+        // Use session key as query parameter for service user endpoints
+        const sessionKey = localStorage.getItem('service_session_key')
+        if (sessionKey) {
+          config.params = config.params || {}
+          config.params.session_key = sessionKey
+        }
+      } else {
+        // Use JWT token for regular endpoints
+        const token = getToken()
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`
+        }
       }
     }
 
@@ -86,13 +95,11 @@ api.interceptors.response.use(
       const refreshToken = getRefreshToken()
       if (refreshToken) {
         try {
-          console.log('🔍 DEBUG: Attempting token refresh...')
           const response = await axios.post(`${API_BASE_URL}/api/token/refresh/`, {
             refresh: refreshToken,
           })
 
           const { access } = response.data
-          console.log('🔍 DEBUG: Token refresh successful')
           setTokens(access, refreshToken)
 
           // Retry original request with new token
@@ -100,7 +107,6 @@ api.interceptors.response.use(
           return api(originalRequest)
         } catch (refreshError: any) {
           // Refresh failed, redirect to login
-          console.log('🔍 DEBUG: Token refresh failed:', refreshError.response?.data)
           clearTokens()
 
           // Don't show error toast for token refresh failures
@@ -115,7 +121,6 @@ api.interceptors.response.use(
                                      originalRequest.url?.includes('/api/finance/')
         
         if (!isServiceUserEndpoint) {
-          console.log('🔍 DEBUG: No refresh token available')
           clearTokens()
           if (!window.location.pathname.includes('/login')) {
             window.location.href = '/login'
@@ -140,23 +145,54 @@ api.interceptors.response.use(
   }
 )
 
+// URL validation for SSRF protection
+function validateUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url, API_BASE_URL)
+    // Only allow same origin requests
+    return urlObj.origin === new URL(API_BASE_URL).origin
+  } catch {
+    return false
+  }
+}
+
 // API methods
 export const apiClient = {
   // Generic methods
-  get: <T = any>(url: string, params?: any): Promise<AxiosResponse<T>> =>
-    api.get(url, { params }),
+  get: <T = any>(url: string, params?: any): Promise<AxiosResponse<T>> => {
+    if (!validateUrl(url)) {
+      throw new Error('Invalid URL: SSRF protection')
+    }
+    return api.get(url, { params })
+  },
   
-  post: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> =>
-    api.post(url, data),
+  post: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> => {
+    if (!validateUrl(url)) {
+      throw new Error('Invalid URL: SSRF protection')
+    }
+    return api.post(url, data)
+  },
   
-  put: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> =>
-    api.put(url, data),
+  put: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> => {
+    if (!validateUrl(url)) {
+      throw new Error('Invalid URL: SSRF protection')
+    }
+    return api.put(url, data)
+  },
   
-  patch: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> =>
-    api.patch(url, data),
+  patch: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> => {
+    if (!validateUrl(url)) {
+      throw new Error('Invalid URL: SSRF protection')
+    }
+    return api.patch(url, data)
+  },
   
-  delete: <T = any>(url: string): Promise<AxiosResponse<T>> =>
-    api.delete(url),
+  delete: <T = any>(url: string): Promise<AxiosResponse<T>> => {
+    if (!validateUrl(url)) {
+      throw new Error('Invalid URL: SSRF protection')
+    }
+    return api.delete(url)
+  },
 
   // Authentication
   masterAdminLogin: (credentials: { email: string; password: string }) =>
@@ -349,6 +385,9 @@ export const apiClient = {
   copyFinanceQuotation: (id: number, params?: any) =>
     api.post(`/api/finance/quotations/${id}/copy/`, {}, { params }),
 
+  sendQuotationEmail: (id: number, data?: any) =>
+    api.post(`/api/finance/quotations/${id}/send-email/`, data),
+
   // Purchase Orders
   getFinancePurchaseOrders: (params?: any) =>
     api.get('/api/finance/purchase-orders/', { params }),
@@ -469,8 +508,8 @@ export const apiClient = {
   createHREmployee: (data: any) =>
     api.post('/api/hr/employees/', data),
 
-  getHREmployee: (id: number) =>
-    api.get(`/api/hr/employees/${id}/`),
+  getHREmployee: (id: number, params?: any) =>
+    api.get(`/api/hr/employees/${id}/`, { params }),
 
   updateHREmployee: (id: number, data: any) =>
     api.put(`/api/hr/employees/${id}/`, data),
@@ -507,9 +546,156 @@ export const apiClient = {
 
   rejectLeaveApplication: (id: number, data: any) =>
     api.post(`/api/hr/leave-applications/${id}/reject/`, data),
+
+  // Enhanced HR APIs
+  // Live Attendance Dashboard
+  getLiveAttendanceDashboard: (params?: any) =>
+    api.get('/api/hr/live-attendance/live_dashboard/', { params }),
+
+  mobileCheckin: (data: any) =>
+    api.post('/api/hr/live-attendance/mobile_checkin/', data),
+
+  // Biometric Devices
+  getBiometricDevices: (params?: any) =>
+    api.get('/api/hr/biometric-devices/', { params }),
+
+  createBiometricDevice: (data: any) =>
+    api.post('/api/hr/biometric-devices/', data),
+
+  syncBiometricDevice: (id: number) =>
+    api.post(`/api/hr/biometric-devices/${id}/sync_attendance/`),
+
+  getBiometricDeviceStatus: (params?: any) =>
+    api.get('/api/hr/biometric-devices/device_status/', { params }),
+
+  // Geofence Locations
+  getGeofenceLocations: (params?: any) =>
+    api.get('/api/hr/geofence-locations/', { params }),
+
+  createGeofenceLocation: (data: any) =>
+    api.post('/api/hr/geofence-locations/', data),
+
+  // ESI Contributions
+  getESIContributions: (params?: any) =>
+    api.get('/api/hr/esi-contributions/', { params }),
+
+  generateESIContributions: (data: any) =>
+    api.post('/api/hr/esi-contributions/generate_monthly_contributions/', data),
+
+  // EPFO Contributions
+  getEPFOContributions: (params?: any) =>
+    api.get('/api/hr/epfo-contributions/', { params }),
+
+  generateEPFOContributions: (data: any) =>
+    api.post('/api/hr/epfo-contributions/generate_monthly_contributions/', data),
+
+  // Performance Reviews
+  getPerformanceReviews: (params?: any) =>
+    api.get('/api/hr/performance-reviews/', { params }),
+
+  createPerformanceReview: (data: any) =>
+    api.post('/api/hr/performance-reviews/', data),
+
+  getPerformanceReview: (id: number) =>
+    api.get(`/api/hr/performance-reviews/${id}/`),
+
+  updatePerformanceReview: (id: number, data: any) =>
+    api.put(`/api/hr/performance-reviews/${id}/`, data),
+
+  // Employee Documents
+  getEmployeeDocuments: (params?: any) =>
+    api.get('/api/hr/employee-documents/', { params }),
+
+  createEmployeeDocument: (data: any) =>
+    api.post('/api/hr/employee-documents/', data),
+
+  verifyEmployeeDocument: (id: number, data: any) =>
+    api.post(`/api/hr/employee-documents/${id}/verify_document/`, data),
+
+  // Shifts
+  getShifts: (params?: any) =>
+    api.get('/api/hr/shifts/', { params }),
+
+  createShift: (data: any) =>
+    api.post('/api/hr/shifts/', data),
+
+  // Employee Shifts
+  getEmployeeShifts: (params?: any) =>
+    api.get('/api/hr/employee-shifts/', { params }),
+
+  createEmployeeShift: (data: any) =>
+    api.post('/api/hr/employee-shifts/', data),
+
+  // Overtime Requests
+  getOvertimeRequests: (params?: any) =>
+    api.get('/api/hr/overtime-requests/', { params }),
+
+  createOvertimeRequest: (data: any) =>
+    api.post('/api/hr/overtime-requests/', data),
+
+  approveOvertimeRequest: (id: number, data: any) =>
+    api.post(`/api/hr/overtime-requests/${id}/approve/`, data),
+
+  rejectOvertimeRequest: (id: number, data: any) =>
+    api.post(`/api/hr/overtime-requests/${id}/reject/`, data),
+
+  // HR Analytics
+  getAttendanceAnalytics: (params?: any) =>
+    api.get('/api/hr/analytics/attendance_analytics/', { params }),
+
+  getPayrollAnalytics: (params?: any) =>
+    api.get('/api/hr/dashboard/payroll_analytics/', { params }),
+
+  // Salary Structures
+  getSalaryStructures: (params?: any) =>
+    api.get('/api/hr/salary-structures/', { params }),
+
+  createSalaryStructure: (data: any) =>
+    api.post('/api/hr/salary-structures/', data),
+
+  getSalaryStructure: (id: number, params?: any) =>
+    api.get(`/api/hr/salary-structures/${id}/`, { params }),
+
+  updateSalaryStructure: (id: number, data: any) =>
+    api.put(`/api/hr/salary-structures/${id}/`, data),
+
+  // Work Schedules
+  getWorkSchedules: (params?: any) =>
+    api.get('/api/hr/work-schedules/', { params }),
+
+  createWorkSchedule: (data: any) =>
+    api.post('/api/hr/work-schedules/', data),
+
+  getWorkSchedule: (id: number, params?: any) =>
+    api.get(`/api/hr/work-schedules/${id}/`, { params }),
+
+  updateWorkSchedule: (id: number, data: any) =>
+    api.put(`/api/hr/work-schedules/${id}/`, data),
+
+  // Leave Types
+  getLeaveTypes: (params?: any) =>
+    api.get('/api/hr/leave-types/', { params }),
+
+  createLeaveType: (data: any) =>
+    api.post('/api/hr/leave-types/', data),
+
+  // Leave Balances
+  getLeaveBalances: (params?: any) =>
+    api.get('/api/hr/leave-balances/', { params }),
+
+  createLeaveBalance: (data: any) =>
+    api.post('/api/hr/leave-balances/', data),
+
+  // Convenience methods for backward compatibility
+  getEmployees: (params?: any) => apiClient.getHREmployees(params),
+  createEmployee: (data: any) => apiClient.createHREmployee(data),
+  getEmployee: (id: number, params?: any) => apiClient.getHREmployee(id, params),
+  updateEmployee: (id: number, data: any) => apiClient.updateHREmployee(id, data),
+  deleteEmployee: (id: number) => apiClient.deleteHREmployee(id),
+  getPayroll: (params?: any) => apiClient.getHRPayroll(params),
 }
 
-// Export token management functions
-export { getToken, getRefreshToken, setTokens, clearTokens }
+// Export token management functions and API_BASE_URL
+export { getToken, getRefreshToken, setTokens, clearTokens, API_BASE_URL }
 
 export default api

@@ -166,13 +166,39 @@ class MasterAdminCreator:
     def save_credentials(self, credentials):
         """Save credentials to secure file"""
         try:
+            # Save JSON format
             with open(self.credentials_file, 'w') as f:
                 json.dump(credentials, f, indent=2)
             
+            # Save TXT format for easy reading
+            txt_file = self.credentials_file.with_suffix('.txt')
+            with open(txt_file, 'w') as f:
+                f.write("ATHENA SAP - MASTER ADMIN CREDENTIALS\n")
+                f.write("=" * 50 + "\n\n")
+                f.write(f"Company Name: {credentials['company_name']}\n")
+                f.write(f"Email: {credentials['email']}\n")
+                f.write(f"Password: {credentials['password']}\n")
+                f.write(f"API Key: {credentials['api_key']}\n")
+                f.write(f"Created: {credentials['created_at']}\n")
+                f.write(f"Password Expires: {credentials['password_expires_at']}\n\n")
+                f.write("LOGIN URLS:\n")
+                f.write(f"Frontend: {credentials['login_url']}\n")
+                f.write(f"Admin Panel: {credentials['admin_panel_url']}\n\n")
+                f.write("RECOVERY CODES (save securely):\n")
+                for i, code in enumerate(credentials['recovery_codes'], 1):
+                    f.write(f"{i:2d}. {code}\n")
+                f.write("\n" + "=" * 50 + "\n")
+                f.write("SECURITY NOTES:\n")
+                f.write("1. Change password after first login\n")
+                f.write("2. Enable 2FA immediately\n")
+                f.write("3. Store recovery codes securely\n")
+                f.write("4. Delete this file after saving details\n")
+            
             # Set secure file permissions (readable only by owner)
             os.chmod(self.credentials_file, 0o600)
+            os.chmod(txt_file, 0o600)
             
-            self.log_security_event("CREDENTIALS_SAVED", f"Credentials saved to {self.credentials_file}")
+            self.log_security_event("CREDENTIALS_SAVED", f"Credentials saved to {self.credentials_file} and {txt_file}")
             
         except Exception as e:
             self.log_security_event("CREDENTIALS_SAVE_ERROR", f"Failed to save credentials: {str(e)}", "ERROR")
@@ -221,6 +247,7 @@ class MasterAdminCreator:
                     json.dump(self.security_log, f, indent=2)
                 
                 print(f"\nSecurity log saved to: {log_file}")
+                print(f"Credentials also saved as TXT file: {self.credentials_file.with_suffix('.txt')}")
                 return True
             else:
                 print("Master admin creation failed or user already exists.")

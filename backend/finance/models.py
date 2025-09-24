@@ -100,30 +100,35 @@ class Product(models.Model):
     def save(self, *args, **kwargs):
         # Auto-generate product code if not provided
         if not self.product_code:
-            if self.product_type == 'product':
-                # Generate PRD- codes for products
-                last_product = Product.objects.filter(
-                    company=self.company,
-                    product_type='product',
-                    product_code__startswith='PRD-'
-                ).order_by('-id').first()
-                if last_product:
-                    last_number = int(last_product.product_code.split('-')[-1])
-                    self.product_code = f"PRD-{last_number + 1:06d}"
+            try:
+                from authentication.utils import generate_auto_code
+                self.product_code = generate_auto_code(self.company.id, 'product')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                if self.product_type == 'product':
+                    # Generate PRD- codes for products
+                    last_product = Product.objects.filter(
+                        company=self.company,
+                        product_type='product',
+                        product_code__startswith='PRD-'
+                    ).order_by('-id').first()
+                    if last_product:
+                        last_number = int(last_product.product_code.split('-')[-1])
+                        self.product_code = f"PRD-{last_number + 1:06d}"
+                    else:
+                        self.product_code = "PRD-000001"
                 else:
-                    self.product_code = "PRD-000001"
-            else:
-                # Generate SER- codes for services
-                last_service = Product.objects.filter(
-                    company=self.company,
-                    product_type='service',
-                    product_code__startswith='SER-'
-                ).order_by('-id').first()
-                if last_service:
-                    last_number = int(last_service.product_code.split('-')[-1])
-                    self.product_code = f"SER-{last_number + 1:06d}"
-                else:
-                    self.product_code = "SER-000001"
+                    # Generate SER- codes for services
+                    last_service = Product.objects.filter(
+                        company=self.company,
+                        product_type='service',
+                        product_code__startswith='SER-'
+                    ).order_by('-id').first()
+                    if last_service:
+                        last_number = int(last_service.product_code.split('-')[-1])
+                        self.product_code = f"SER-{last_number + 1:06d}"
+                    else:
+                        self.product_code = "SER-000001"
 
         # Auto-set GST rate from HSN/SAC code
         if self.product_type == 'product' and self.hsn_code:
@@ -158,7 +163,7 @@ class Customer(models.Model):
 
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='finance_customers')
-    created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.CASCADE, related_name='created_customers')
+    created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.CASCADE, related_name='created_customers', null=True, blank=True)
     customer_code = models.CharField(max_length=20, unique=True, help_text="Auto-generated unique customer code")
 
     # Customer Type and Basic Details
@@ -262,18 +267,49 @@ class Customer(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.customer_code:
-            # Auto-generate customer code
-            last_customer = Customer.objects.filter(company=self.company).order_by('-id').first()
-            if last_customer:
-                last_number = int(last_customer.customer_code.split('-')[-1])
-                new_number = last_number + 1
-            else:
-                new_number = 1
-            self.customer_code = f"CUST-{new_number:06d}"
-
+            try:
+                from authentication.utils import generate_auto_code
+                self.customer_code = generate_auto_code(self.company.id, 'customer')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                max_retries = 10
+                for attempt in range(max_retries):
+                    try:
+                        # Get the highest customer number for this company
+                        last_customer = Customer.objects.filter(
+                            company=self.company,
+                            customer_code__startswith='CUST-'
+                        ).order_by('-customer_code').first()
+                        
+                        if last_customer and last_customer.customer_code:
+                            try:
+                                last_number = int(last_customer.customer_code.split('-')[-1])
+                                new_number = last_number + 1
+                            except (ValueError, IndexError):
+                                new_number = 1
+                        else:
+                            new_number = 1
+                        
+                        self.customer_code = f"CUST-{new_number:06d}"
+                        break  # Success, exit retry loop
+                        
+                    except Exception as e:
+                        if 'unique constraint' in str(e).lower() or 'duplicate' in str(e).lower():
+                            # If it's a uniqueness error, retry with next number
+                            if attempt < max_retries - 1:
+                                continue
+                            else:
+                                # Last attempt failed, use timestamp-based code
+                                import time
+                                timestamp = int(time.time() * 1000) % 1000000
+                                self.customer_code = f"CUST-{timestamp:06d}"
+                                break
+                        else:
+                            # Different error, re-raise
+                            raise e
+        
         if not self.display_name:
             self.display_name = self.name
-
         super().save(*args, **kwargs)
 
     @property
@@ -443,18 +479,23 @@ class Quotation(models.Model):
     def save(self, *args, **kwargs):
         # Auto-generate quotation number if not provided
         if not self.quotation_number:
-            from datetime import datetime
-            year = datetime.now().year
-            last_quotation = Quotation.objects.filter(
-                company=self.company,
-                quotation_number__startswith=f"QUO-{year}"
-            ).order_by('-id').first()
+            try:
+                from authentication.utils import generate_auto_code
+                self.quotation_number = generate_auto_code(self.company.id, 'quotation')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                from datetime import datetime
+                year = datetime.now().year
+                last_quotation = Quotation.objects.filter(
+                    company=self.company,
+                    quotation_number__startswith=f"QUO-{year}"
+                ).order_by('-id').first()
 
-            if last_quotation:
-                last_number = int(last_quotation.quotation_number.split('-')[-1])
-                self.quotation_number = f"QUO-{year}-{last_number + 1:06d}"
-            else:
-                self.quotation_number = f"QUO-{year}-000001"
+                if last_quotation:
+                    last_number = int(last_quotation.quotation_number.split('-')[-1])
+                    self.quotation_number = f"QUO-{year}-{last_number + 1:06d}"
+                else:
+                    self.quotation_number = f"QUO-{year}-000001"
 
         # Determine GST type based on customer and company GSTIN
         if self.customer.gstin and hasattr(self.company, 'gst_number') and self.company.gst_number:
@@ -707,8 +748,9 @@ class PurchaseOrder(models.Model):
     claim_type = models.CharField(
         max_length=20,
         choices=CLAIM_TYPE_CHOICES,
-        default='percentage',
-        help_text="How proforma invoices will be claimed from this PO"
+        blank=True,
+        null=True,
+        help_text="How proforma invoices will be claimed from this PO (set on first invoice creation)"
     )
 
     # Balance Tracking Fields
@@ -771,32 +813,36 @@ class PurchaseOrder(models.Model):
     def save(self, *args, **kwargs):
         # Generate internal PO number if not provided
         if not self.internal_po_number:
-            # Get the latest PO number for this company
-            latest_po = PurchaseOrder.objects.filter(
-                company=self.company
-            ).order_by('-created_at').first()
+            try:
+                from authentication.utils import generate_auto_code
+                self.internal_po_number = generate_auto_code(self.company.id, 'purchase_order')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                latest_po = PurchaseOrder.objects.filter(
+                    company=self.company
+                ).order_by('-created_at').first()
 
-            if latest_po and latest_po.internal_po_number:
-                # Extract number from format PO-2025-000001
-                try:
-                    parts = latest_po.internal_po_number.split('-')
-                    if len(parts) == 3 and parts[0] == 'PO':
-                        year = parts[1]
-                        number = int(parts[2])
-                        current_year = timezone.now().year
+                if latest_po and latest_po.internal_po_number:
+                    # Extract number from format PO-2025-000001
+                    try:
+                        parts = latest_po.internal_po_number.split('-')
+                        if len(parts) == 3 and parts[0] == 'PO':
+                            year = parts[1]
+                            number = int(parts[2])
+                            current_year = timezone.now().year
 
-                        if int(year) == current_year:
-                            new_number = number + 1
+                            if int(year) == current_year:
+                                new_number = number + 1
+                            else:
+                                new_number = 1
+
+                            self.internal_po_number = f"PO-{current_year}-{new_number:06d}"
                         else:
-                            new_number = 1
-
-                        self.internal_po_number = f"PO-{current_year}-{new_number:06d}"
-                    else:
+                            self.internal_po_number = f"PO-{timezone.now().year}-000001"
+                    except (ValueError, IndexError):
                         self.internal_po_number = f"PO-{timezone.now().year}-000001"
-                except (ValueError, IndexError):
+                else:
                     self.internal_po_number = f"PO-{timezone.now().year}-000001"
-            else:
-                self.internal_po_number = f"PO-{timezone.now().year}-000001"
 
         # Initialize balance tracking for new POs before saving
         is_new = self.pk is None
@@ -1286,32 +1332,36 @@ class ProformaInvoice(models.Model):
     def save(self, *args, **kwargs):
         # Generate proforma number if not provided
         if not self.proforma_number:
-            # Get the latest proforma number for this company
-            latest_proforma = ProformaInvoice.objects.filter(
-                company=self.company
-            ).order_by('-created_at').first()
+            try:
+                from authentication.utils import generate_auto_code
+                self.proforma_number = generate_auto_code(self.company.id, 'proforma_invoice')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                latest_proforma = ProformaInvoice.objects.filter(
+                    company=self.company
+                ).order_by('-created_at').first()
 
-            if latest_proforma and latest_proforma.proforma_number:
-                # Extract number from format PI-2025-000001
-                try:
-                    parts = latest_proforma.proforma_number.split('-')
-                    if len(parts) == 3 and parts[0] == 'PI':
-                        year = parts[1]
-                        number = int(parts[2])
-                        current_year = timezone.now().year
+                if latest_proforma and latest_proforma.proforma_number:
+                    # Extract number from format PI-2025-000001
+                    try:
+                        parts = latest_proforma.proforma_number.split('-')
+                        if len(parts) == 3 and parts[0] == 'PI':
+                            year = parts[1]
+                            number = int(parts[2])
+                            current_year = timezone.now().year
 
-                        if int(year) == current_year:
-                            new_number = number + 1
+                            if int(year) == current_year:
+                                new_number = number + 1
+                            else:
+                                new_number = 1
+
+                            self.proforma_number = f"PI-{current_year}-{new_number:06d}"
                         else:
-                            new_number = 1
-
-                        self.proforma_number = f"PI-{current_year}-{new_number:06d}"
-                    else:
+                            self.proforma_number = f"PI-{timezone.now().year}-000001"
+                    except (ValueError, IndexError):
                         self.proforma_number = f"PI-{timezone.now().year}-000001"
-                except (ValueError, IndexError):
+                else:
                     self.proforma_number = f"PI-{timezone.now().year}-000001"
-            else:
-                self.proforma_number = f"PI-{timezone.now().year}-000001"
 
         super().save(*args, **kwargs)
 
@@ -1554,32 +1604,36 @@ class Invoice(models.Model):
     def save(self, *args, **kwargs):
         # Generate invoice number if not provided
         if not self.invoice_number:
-            # Get the latest invoice number for this company
-            latest_invoice = Invoice.objects.filter(
-                company=self.company
-            ).order_by('-created_at').first()
+            try:
+                from authentication.utils import generate_auto_code
+                self.invoice_number = generate_auto_code(self.company.id, 'invoice')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                latest_invoice = Invoice.objects.filter(
+                    company=self.company
+                ).order_by('-created_at').first()
 
-            if latest_invoice and latest_invoice.invoice_number:
-                # Extract number from format INV-2025-000001
-                try:
-                    parts = latest_invoice.invoice_number.split('-')
-                    if len(parts) == 3 and parts[0] == 'INV':
-                        year = parts[1]
-                        number = int(parts[2])
-                        current_year = timezone.now().year
+                if latest_invoice and latest_invoice.invoice_number:
+                    # Extract number from format INV-2025-000001
+                    try:
+                        parts = latest_invoice.invoice_number.split('-')
+                        if len(parts) == 3 and parts[0] == 'INV':
+                            year = parts[1]
+                            number = int(parts[2])
+                            current_year = timezone.now().year
 
-                        if int(year) == current_year:
-                            new_number = number + 1
+                            if int(year) == current_year:
+                                new_number = number + 1
+                            else:
+                                new_number = 1
+
+                            self.invoice_number = f"INV-{current_year}-{new_number:06d}"
                         else:
-                            new_number = 1
-
-                        self.invoice_number = f"INV-{current_year}-{new_number:06d}"
-                    else:
+                            self.invoice_number = f"INV-{timezone.now().year}-000001"
+                    except (ValueError, IndexError):
                         self.invoice_number = f"INV-{timezone.now().year}-000001"
-                except (ValueError, IndexError):
+                else:
                     self.invoice_number = f"INV-{timezone.now().year}-000001"
-            else:
-                self.invoice_number = f"INV-{timezone.now().year}-000001"
 
         # Calculate outstanding amount
         self.outstanding_amount = self.total_amount - self.paid_amount
@@ -1748,30 +1802,35 @@ class Payment(models.Model):
     def save(self, *args, **kwargs):
         # Generate payment number if not provided
         if not self.payment_number:
-            latest_payment = Payment.objects.filter(
-                company=self.company
-            ).order_by('-created_at').first()
+            try:
+                from authentication.utils import generate_auto_code
+                self.payment_number = generate_auto_code(self.company.id, 'payment')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                latest_payment = Payment.objects.filter(
+                    company=self.company
+                ).order_by('-created_at').first()
 
-            if latest_payment and latest_payment.payment_number:
-                try:
-                    parts = latest_payment.payment_number.split('-')
-                    if len(parts) == 3 and parts[0] == 'PAY':
-                        year = parts[1]
-                        number = int(parts[2])
-                        current_year = timezone.now().year
+                if latest_payment and latest_payment.payment_number:
+                    try:
+                        parts = latest_payment.payment_number.split('-')
+                        if len(parts) == 3 and parts[0] == 'PAY':
+                            year = parts[1]
+                            number = int(parts[2])
+                            current_year = timezone.now().year
 
-                        if int(year) == current_year:
-                            new_number = number + 1
+                            if int(year) == current_year:
+                                new_number = number + 1
+                            else:
+                                new_number = 1
+
+                            self.payment_number = f"PAY-{current_year}-{new_number:06d}"
                         else:
-                            new_number = 1
-
-                        self.payment_number = f"PAY-{current_year}-{new_number:06d}"
-                    else:
+                            self.payment_number = f"PAY-{timezone.now().year}-000001"
+                    except (ValueError, IndexError):
                         self.payment_number = f"PAY-{timezone.now().year}-000001"
-                except (ValueError, IndexError):
+                else:
                     self.payment_number = f"PAY-{timezone.now().year}-000001"
-            else:
-                self.payment_number = f"PAY-{timezone.now().year}-000001"
 
         # World-Class TDS Calculation
         if self.tds_percentage > 0 and self.amount > 0:

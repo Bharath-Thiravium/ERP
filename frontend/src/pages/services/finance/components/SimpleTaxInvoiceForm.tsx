@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { X, CreditCard, User, MapPin, Calculator, Package } from 'lucide-react'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 
@@ -92,6 +92,11 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (loading) {
+      return // Prevent double submission
+    }
+    
     setLoading(true)
 
     try {
@@ -126,22 +131,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
         status: 'draft'
       }
 
-      await axios.post('http://127.0.0.1:8000/api/finance/invoices/', dataToSend, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      // Update PO status to in_progress after first invoice
-      await axios.patch(`http://127.0.0.1:8000/api/finance/purchase-orders/${purchaseOrder.id}/`, {
-        status: 'in_progress'
-      }, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      await apiClient.createFinanceInvoice({ ...dataToSend, session_key: sessionKey })
       
       toast.success('Tax Invoice created successfully!')
       onSuccess()
@@ -493,7 +483,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50"
+              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Creating...' : 'Create Tax Invoice'}
             </button>

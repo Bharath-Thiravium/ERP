@@ -19,6 +19,7 @@ from django.conf import settings
 from datetime import timedelta
 import secrets
 import string
+from .utils import safe_join, validate_filename, get_safe_scripts_path
 
 from .models import (
     MasterAdmin, Company, Service, CompanyService,
@@ -200,17 +201,20 @@ class CompanyListCreateView(ListCreateAPIView):
 
     def _save_service_credentials_file(self, company, service_credentials):
         """Save service credentials to a file for master admin"""
-        import os
         from datetime import datetime
 
-        # Create scripts directory if it doesn't exist
-        scripts_dir = os.path.join(settings.BASE_DIR, 'scripts')
-        os.makedirs(scripts_dir, exist_ok=True)
+        # Get safe scripts directory
+        scripts_dir = get_safe_scripts_path()
 
-        # Generate filename
-        company_name_safe = company.name.lower().replace(' ', '_').replace('-', '_')
+        # Generate safe filename
+        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
         filename = f'service_credentials_{company_name_safe}.txt'
-        filepath = os.path.join(scripts_dir, filename)
+        
+        # Validate filename
+        filename = validate_filename(filename)
+        
+        # Use safe path joining
+        filepath = safe_join(scripts_dir, filename)
 
         # Get company user email
         company_user = company.users.first()
@@ -309,25 +313,29 @@ class CompanyDetailView(RetrieveUpdateDestroyAPIView):
         """Clean up service credentials files for the deleted company"""
         import os
 
-        # Generate possible filenames
-        company_name_safe = company.name.lower().replace(' ', '_').replace('-', '_')
+        # Get safe scripts directory
+        scripts_dir = get_safe_scripts_path()
+        
+        # Generate safe filename variations
+        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
         possible_filenames = [
             f'service_credentials_{company_name_safe}.txt',
-            f'service_credentials_{company.name.lower().replace(" ", "_")}.txt'
         ]
 
-        scripts_dir = os.path.join(settings.BASE_DIR, 'scripts')
         files_deleted = 0
 
         for filename in possible_filenames:
-            filepath = os.path.join(scripts_dir, filename)
-            if os.path.exists(filepath):
-                try:
+            try:
+                # Validate filename before using
+                safe_filename = validate_filename(filename)
+                filepath = safe_join(scripts_dir, safe_filename)
+                
+                if os.path.exists(filepath):
                     os.remove(filepath)
                     files_deleted += 1
                     print(f'🔍 DEBUG: Deleted credentials file: {filename}')
-                except Exception as e:
-                    print(f'🔍 DEBUG: Error deleting credentials file {filename}: {e}')
+            except Exception as e:
+                print(f'🔍 DEBUG: Error deleting credentials file {filename}: {e}')
 
         if files_deleted == 0:
             print(f'🔍 DEBUG: No credentials files found for company {company.name}')
@@ -1078,17 +1086,20 @@ class CompanyServiceCredentialsView(APIView):
 
     def _save_service_credentials_file(self, company, service_credentials):
         """Save service credentials to a file for master admin"""
-        import os
         from datetime import datetime
 
-        # Create scripts directory if it doesn't exist
-        scripts_dir = os.path.join(settings.BASE_DIR, 'scripts')
-        os.makedirs(scripts_dir, exist_ok=True)
+        # Get safe scripts directory
+        scripts_dir = get_safe_scripts_path()
 
-        # Generate filename
-        company_name_safe = company.name.lower().replace(' ', '_').replace('-', '_')
+        # Generate safe filename
+        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
         filename = f'service_credentials_{company_name_safe}.txt'
-        filepath = os.path.join(scripts_dir, filename)
+        
+        # Validate filename
+        filename = validate_filename(filename)
+        
+        # Use safe path joining
+        filepath = safe_join(scripts_dir, filename)
 
         # Get company user email
         company_user = company.users.first()
@@ -1522,3 +1533,81 @@ class CompanyLogoUpdateView(APIView):
             import traceback
             traceback.print_exc()
             return Response({'error': f'Failed to update logo: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class GenerateAutoCodeView(APIView):
+    """Generate auto code for testing (Master Admin only)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        # Only master admins can test auto-code generation
+        if not hasattr(request.user, 'master_admin'):
+            return Response(
+                {'error': 'Only master admins can generate auto codes.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_id = request.data.get('company_id')
+        code_type = request.data.get('code_type')
+
+        if not company_id or not code_type:
+            return Response(
+                {'error': 'company_id and code_type are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from .utils import generate_auto_code
+            auto_code = generate_auto_code(company_id, code_type)
+            
+            return Response({
+                'success': True,
+                'auto_code': auto_code,
+                'company_id': company_id,
+                'code_type': code_type
+            })
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class GenerateAutoCodeView(APIView):
+    """Generate auto code for testing (Master Admin only)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        # Only master admins can test auto-code generation
+        if not hasattr(request.user, 'master_admin'):
+            return Response(
+                {'error': 'Only master admins can generate auto codes.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_id = request.data.get('company_id')
+        code_type = request.data.get('code_type')
+
+        if not company_id or not code_type:
+            return Response(
+                {'error': 'company_id and code_type are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from .utils import generate_auto_code
+            auto_code = generate_auto_code(company_id, code_type)
+            
+            return Response({
+                'success': True,
+                'auto_code': auto_code,
+                'company_id': company_id,
+                'code_type': code_type
+            })
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )

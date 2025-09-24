@@ -8,7 +8,7 @@ import RaiseInvoiceModal from '../components/RaiseInvoiceModal'
 import SimpleProformaForm from '../components/SimpleProformaForm'
 import SimpleTaxInvoiceForm from '../components/SimpleTaxInvoiceForm'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
 interface PurchaseOrder {
@@ -148,9 +148,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
 
     try {
       // Load full PO details for editing
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinancePurchaseOrder(po.id, { session_key: sessionKey })
 
       setSelectedPO(response.data)
       setQuotationData(null)
@@ -167,9 +165,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
 
     try {
       // Load full PO details for viewing
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinancePurchaseOrder(po.id, { session_key: sessionKey })
 
       setSelectedPO(response.data)
       setSelectedPOId(po.id)
@@ -234,9 +230,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
 
     try {
       // Load full PO details for invoice creation
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinancePurchaseOrder(po.id, { session_key: sessionKey })
 
       setSelectedPO(response.data)
       setShowRaiseInvoice(true)
@@ -281,7 +275,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
     setInvoiceData(null)
     setSelectedPO(null)
     setRefreshList(prev => prev + 1)
-    toast.success('Invoice created successfully!')
+    // Success toast is already shown by individual forms
   }
 
   const handlePODeleted = () => {

@@ -5,12 +5,16 @@ from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIV
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from django.db.models import Q, Sum
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from datetime import timedelta
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 from authentication.models import ServiceUserSession, CompanyServiceUser
 from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
-from .email_utils import send_invoice_email, send_proforma_email
+from .email_utils import send_invoice_email, send_proforma_email, send_quotation_email
 from .serializers import (
     CustomerListSerializer, CustomerDetailSerializer,
     CustomerCreateSerializer, CustomerUpdateSerializer,
@@ -113,16 +117,24 @@ class CustomerListCreateView(ListCreateAPIView):
             )
             service_user = session.service_user
 
-            serializer.save(
-                company=service_user.company,
-                created_by=service_user
-            )
+            # Use database transaction to ensure atomicity
+            with transaction.atomic():
+                try:
+                    customer = serializer.save(
+                        company=service_user.company,
+                        created_by=service_user
+                    )
+                    logger.info(f"Customer created successfully: {customer.customer_code} for company {service_user.company.name}")
+                except Exception as e:
+                    logger.error(f"Error creating customer for company {service_user.company.name}: {str(e)}")
+                    raise e
 
         except ServiceUserSession.DoesNotExist:
+            logger.error(f"Invalid session key: {session_key}")
             raise PermissionError("Invalid session")
 
     def create(self, request, *args, **kwargs):
-        """Override create to handle session authentication"""
+        """Override create to handle session authentication with better error handling"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -135,8 +147,28 @@ class CustomerListCreateView(ListCreateAPIView):
                 session_key=session_key,
                 is_active=True
             )
+            
+            # Log the creation attempt
+            logger.info(f"Creating customer for company: {session.service_user.company.name}")
+            
             # Proceed with normal creation
-            return super().create(request, *args, **kwargs)
+            try:
+                response = super().create(request, *args, **kwargs)
+                logger.info(f"Customer creation successful for company: {session.service_user.company.name}")
+                return response
+            except Exception as e:
+                logger.error(f"Customer creation failed for company {session.service_user.company.name}: {str(e)}")
+                logger.error(f"Request data: {request.data}")
+                
+                # Return detailed error for debugging
+                return Response(
+                    {
+                        'error': 'Customer creation failed',
+                        'details': str(e),
+                        'company': session.service_user.company.name
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         except ServiceUserSession.DoesNotExist:
             return Response(
@@ -1377,6 +1409,47 @@ class ProformaInvoiceDetailView(RetrieveUpdateDestroyAPIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to handle session authentication and reset claim_type if needed"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            
+            # Get the proforma and its PO before deletion
+            proforma = self.get_object()
+            purchase_order = proforma.purchase_order
+            
+            # Proceed with normal deletion
+            response = super().destroy(request, *args, **kwargs)
+            
+            # If deletion was successful and PO exists, check if we need to reset claim_type
+            if response.status_code == 204 and purchase_order:
+                # Check if this PO has any remaining invoices (both proforma and tax)
+                has_proforma = purchase_order.proforma_invoices.exists()
+                has_tax_invoice = purchase_order.invoices.exists()
+                
+                # If no invoices remain, reset claim_type to null
+                if not has_proforma and not has_tax_invoice:
+                    purchase_order.claim_type = None
+                    purchase_order.save(update_fields=['claim_type'])
+            
+            return response
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
 
 # Invoice Views
 class InvoicePagination(PageNumberPagination):
@@ -1609,7 +1682,7 @@ class InvoiceDetailView(RetrieveUpdateDestroyAPIView):
             )
 
     def destroy(self, request, *args, **kwargs):
-        """Override destroy to handle session authentication"""
+        """Override destroy to handle session authentication and reset claim_type if needed"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -1622,8 +1695,26 @@ class InvoiceDetailView(RetrieveUpdateDestroyAPIView):
                 session_key=session_key,
                 is_active=True
             )
+            
+            # Get the invoice and its PO before deletion
+            invoice = self.get_object()
+            purchase_order = invoice.purchase_order if hasattr(invoice, 'purchase_order') else None
+            
             # Proceed with normal deletion
-            return super().destroy(request, *args, **kwargs)
+            response = super().destroy(request, *args, **kwargs)
+            
+            # If deletion was successful and PO exists, check if we need to reset claim_type
+            if response.status_code == 204 and purchase_order:
+                # Check if this PO has any remaining invoices (both proforma and tax)
+                has_proforma = purchase_order.proforma_invoices.exists()
+                has_tax_invoice = purchase_order.invoices.exists()
+                
+                # If no invoices remain, reset claim_type to null
+                if not has_proforma and not has_tax_invoice:
+                    purchase_order.claim_type = None
+                    purchase_order.save(update_fields=['claim_type'])
+            
+            return response
 
         except ServiceUserSession.DoesNotExist:
             return Response(
@@ -2683,6 +2774,49 @@ def send_invoice_email_view(request, invoice_id):
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
+def send_quotation_email_view(request, quotation_id):
+    """Send quotation via email"""
+    session_key = request.data.get('session_key') or request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    recipient_email = request.data.get('email')
+    if not recipient_email:
+        return Response({'error': 'Recipient email required'}, status=400)
+
+    message = request.data.get('message', '')
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+
+        # Get quotation
+        quotation = Quotation.objects.select_related('customer', 'company').prefetch_related('quotation_items').get(
+            id=quotation_id,
+            company=service_user.company
+        )
+
+        # Send email
+        success, result_message = send_quotation_email(quotation, recipient_email, message)
+        
+        if success:
+            # Update quotation status to 'sent'
+            quotation.status = 'sent'
+            quotation.save()
+            return Response({'message': result_message})
+        else:
+            return Response({'error': result_message}, status=500)
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except Quotation.DoesNotExist:
+        return Response({'error': 'Quotation not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
 
 @api_view(['POST'])
 @authentication_classes([])

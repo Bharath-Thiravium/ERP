@@ -18,23 +18,15 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
 from . import views
 
 urlpatterns = [
+    # Root URL - serves basic info
+    path('', views.home, name='home'),
+    
+    # Admin
     path('admin/', admin.site.urls),
-
-    # Health check and API info
-    path('api/health/', views.health_check, name='health_check'),
-    path('api/', views.api_info, name='api_info'),
-
-    # JWT Authentication
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-
+    
     # API endpoints
     path('api/auth/', include('authentication.urls')),
     path('api/finance/', include('finance.urls')),
@@ -44,10 +36,11 @@ urlpatterns = [
     path('api/analytics/', include('analytics.urls')),
     path('api/reports/', include('reports.urls')),
     path('api/notifications/', include('notifications.urls')),
-    path('api/deploy/', include('deployment.urls')),
+    path('api/deployment/', include('deployment.urls')),
+    path('api/public/', include('hr.public_urls')),
 ]
 
-# Serve media files in development
+# Serve static and media files in development
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

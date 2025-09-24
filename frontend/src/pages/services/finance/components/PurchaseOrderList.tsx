@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 
 import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, MapPin, Package, ShoppingCart, Receipt } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -65,7 +65,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
         ...(statusFilter && { status: statusFilter })
       })
 
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/?${params}`)
+      const response = await apiClient.getFinancePurchaseOrders(Object.fromEntries(new URLSearchParams(params)))
 
       setPurchaseOrders(response.data.results)
       setTotalPages(Math.ceil(response.data.count / 5))
@@ -88,7 +88,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
     }
 
     try {
-      await axios.delete(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/?session_key=${sessionKey}`)
+      await apiClient.deleteFinancePurchaseOrder(po.id, { session_key: sessionKey })
 
       toast.success('Purchase order deleted successfully! Quotation status reverted to "sent".')
       fetchPurchaseOrders(currentPage)

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { X, User, Calendar, Search, Trash2, MapPin } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
 interface Customer {
@@ -155,10 +155,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
     if (!sessionKey || !customerId) return
 
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/customers/${customerId}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
-
+      const response = await apiClient.getFinanceCustomer(customerId, { session_key: sessionKey })
       const fullCustomer = response.data
       setSelectedCustomer(fullCustomer)
       setCustomerSearch(fullCustomer.name)
@@ -169,9 +166,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
 
   const loadCustomers = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/finance/customers/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceCustomers({ session_key: sessionKey })
       setCustomers(response.data.results || [])
     } catch (error) {
       console.error('Error loading customers:', error)
@@ -180,9 +175,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
 
   const loadProducts = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/finance/products/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceProducts({ session_key: sessionKey })
       setProducts(response.data.results || [])
     } catch (error) {
       console.error('Error loading products:', error)
@@ -191,9 +184,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
 
   const loadCompanyDetails = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/auth/company-profile/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.get('/api/auth/company-profile/', { session_key: sessionKey })
       setCompanyDetails(response.data)
     } catch (error) {
       console.error('Error loading company details:', error)
@@ -208,10 +199,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
     if (!sessionKey) return
 
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/customers/${customer.id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
-
+      const response = await apiClient.getFinanceCustomer(customer.id, { session_key: sessionKey })
       const fullCustomer = response.data
       setSelectedCustomer(fullCustomer)
       setFormData(prev => ({
@@ -368,14 +356,10 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       const submitData = { ...formData }
 
       if (quotation) {
-        await axios.put(`http://127.0.0.1:8000/api/finance/quotations/${quotation.id}/`, submitData, {
-          headers: { 'Authorization': `Bearer ${sessionKey}` }
-        })
+        await apiClient.updateFinanceQuotation(quotation.id, { ...submitData, session_key: sessionKey })
         toast.success('Quotation updated successfully!')
       } else {
-        await axios.post('http://127.0.0.1:8000/api/finance/quotations/', submitData, {
-          headers: { 'Authorization': `Bearer ${sessionKey}` }
-        })
+        await apiClient.createFinanceQuotation({ ...submitData, session_key: sessionKey })
         toast.success('Quotation created successfully!')
       }
 

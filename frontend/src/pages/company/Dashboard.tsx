@@ -42,6 +42,7 @@ import { Button } from '../../components/ui/Button'
 import { useThemeStore } from '../../store/themeStore'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/Card'
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner'
+import { sanitizeUserInput } from '../../lib/sanitizer'
 import toast from 'react-hot-toast'
 
 const CompanyDashboard: React.FC = () => {
@@ -336,7 +337,7 @@ Website: https://athenas.co.in
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {user?.company_name || 'Your Company'}
+                  {sanitizeUserInput(user?.company_name || 'Your Company')}
                 </h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Business Management Portal

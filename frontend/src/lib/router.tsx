@@ -17,6 +17,10 @@ const HRDashboard = React.lazy(() => import('../pages/services/hr/pages/Dashboar
 const InventoryDashboard = React.lazy(() => import('../pages/services/inventory/pages/Dashboard'))
 const WaitingApproval = React.lazy(() => import('../pages/company/WaitingApproval'))
 const NotFoundPage = React.lazy(() => import('../pages/NotFoundPage'))
+const EmployeeApp = React.lazy(() => import('../pages/EmployeeApp'))
+const JobPortal = React.lazy(() => import('../pages/public/JobPortal'))
+const JobApplication = React.lazy(() => import('../pages/public/JobApplication'))
+
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -222,6 +226,37 @@ export const AppRouter: React.FC = () => {
           </SuspenseWrapper>
         }
       />
+
+      {/* Employee Mobile App */}
+      <Route
+        path="/employee"
+        element={
+          <SuspenseWrapper>
+            <EmployeeApp />
+          </SuspenseWrapper>
+        }
+      />
+
+      {/* Public Job Portal Routes */}
+      <Route
+        path="/jobs"
+        element={
+          <SuspenseWrapper>
+            <JobPortal />
+          </SuspenseWrapper>
+        }
+      />
+      
+      <Route
+        path="/jobs/:jobId/apply"
+        element={
+          <SuspenseWrapper>
+            <JobApplication />
+          </SuspenseWrapper>
+        }
+      />
+
+
 
 
 

@@ -48,7 +48,7 @@ export function generatePassword(length: number = 12): string {
   const lowercase = 'abcdefghijklmnopqrstuvwxyz'
   const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
   const numbers = '0123456789'
-  const special = '!@#$%^&*'
+  const special = '@$!%*?&'  // Match backend allowed special characters
   const allChars = lowercase + uppercase + numbers + special
 
   let password = ''
@@ -83,20 +83,26 @@ export function validatePassword(password: string): {
     errors.push('Password must be at least 8 characters long')
   }
   
-  if (!/[a-z]/.test(password)) {
-    errors.push('Password must contain at least one lowercase letter')
+  if (password.length > 128) {
+    errors.push('Password must be less than 128 characters')
   }
   
-  if (!/[A-Z]/.test(password)) {
-    errors.push('Password must contain at least one uppercase letter')
-  }
+  // Match the exact backend regex pattern
+  const backendRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/
   
-  if (!/\d/.test(password)) {
-    errors.push('Password must contain at least one number')
-  }
-  
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-    errors.push('Password must contain at least one special character')
+  if (!backendRegex.test(password)) {
+    if (!/[a-z]/.test(password)) {
+      errors.push('Password must contain at least one lowercase letter')
+    }
+    if (!/[A-Z]/.test(password)) {
+      errors.push('Password must contain at least one uppercase letter')
+    }
+    if (!/\d/.test(password)) {
+      errors.push('Password must contain at least one number')
+    }
+    if (!/[@$!%*?&]/.test(password)) {
+      errors.push('Password must contain at least one special character (@$!%*?&)')
+    }
   }
   
   return {

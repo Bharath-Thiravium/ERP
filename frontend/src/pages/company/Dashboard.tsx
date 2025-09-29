@@ -173,8 +173,8 @@ const CompanyDashboard: React.FC = () => {
       return
     }
 
-    // Navigate to service user login with service type
-    navigate(`/service-login?service=${service.service_type.toLowerCase()}`)
+    // Navigate directly to service dashboard
+    navigate(`/service/${service.service_type.toLowerCase()}/dashboard`)
   }
 
   // Create service user mutation

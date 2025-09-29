@@ -9,24 +9,18 @@ import {
   Activity,
   Server,
   HardDrive,
-  Download,
-  Upload,
+
   RefreshCw,
   Calendar,
   Clock,
-  CheckCircle,
-  XCircle,
+
   AlertTriangle,
-  Plus,
-  Play,
-  Trash2,
-  Eye,
-  Edit
+
 } from 'lucide-react'
 import { apiClient } from '../../../lib/api'
 import { Button } from '../../../components/ui/Button'
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner'
-import toast from 'react-hot-toast'
+
 import DatabaseBackup from './DatabaseBackup'
 import SystemSettings from './SystemSettings'
 import SecurityConfig from './SecurityConfig'

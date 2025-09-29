@@ -5,22 +5,19 @@ import {
   Key, 
   AlertTriangle, 
   CheckCircle, 
-  XCircle, 
-  Eye, 
-  EyeOff,
+  Eye,
   RefreshCw,
   Settings,
   Users,
   Clock,
-  Globe,
-  Server
+
 } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
-import toast from 'react-hot-toast'
+
 
 const SecurityConfig: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview')
-  const [showPasswords, setShowPasswords] = useState<{ [key: string]: boolean }>({})
+  useState<{ [key: string]: boolean }>({})
 
   const securityTabs = [
     { id: 'overview', label: 'Security Overview', icon: Shield },
@@ -105,12 +102,7 @@ const SecurityConfig: React.FC = () => {
     }
   ]
 
-  const toggleShowPassword = (key: string) => {
-    setShowPasswords(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }))
-  }
+
 
   const renderSecurityOverview = () => (
     <div className="space-y-6">

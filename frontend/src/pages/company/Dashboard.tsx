@@ -8,13 +8,10 @@ import {
   BarChart3,
   Shield,
   CheckCircle,
-  Plus,
   Key,
   Eye,
   EyeOff,
-  Copy,
   UserPlus,
-  Trash2,
   LogOut,
   Sun,
   Moon,
@@ -23,8 +20,6 @@ import {
   Activity,
   TrendingUp,
   Zap,
-
-  ExternalLink,
   UserCheck,
   AlertCircle,
   Info,
@@ -33,7 +28,6 @@ import {
   Image,
   Camera,
   Download,
-
   RefreshCw
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
@@ -41,7 +35,7 @@ import { useAuthStore } from '../../store/authStore'
 import { Button } from '../../components/ui/Button'
 import { useThemeStore } from '../../store/themeStore'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/Card'
-import { LoadingSpinner } from '../../components/ui/LoadingSpinner'
+
 import { sanitizeUserInput } from '../../lib/sanitizer'
 import toast from 'react-hot-toast'
 import ServiceManagement from '../../components/company/ServiceManagement'

@@ -1,6 +1,6 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Server, TrendingUp, DollarSign, Users } from 'lucide-react'
+import { Server, DollarSign, Users } from 'lucide-react'
 import { apiClient } from '../../../../lib/api'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 

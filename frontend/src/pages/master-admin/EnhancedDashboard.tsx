@@ -32,8 +32,7 @@ import {
   Moon,
   Sun,
   AlertCircle,
-  Shield,
-  Key
+
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
 import { useAuthStore } from '../../store/authStore'
@@ -68,7 +67,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [activeSection, setActiveSection] = useState('overview')
   const [realTimeData, setRealTimeData] = useState<any>(null)
-  const [wsConnected, setWsConnected] = useState(false)
+  const [, setWsConnected] = useState(false)
 
   // Handle URL parameters for section navigation
   useEffect(() => {
@@ -190,7 +189,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   ]
 
   // Handle company actions
-  const handleApproveCompany = async (companyId: string, comments?: string) => {
+  const handleApproveCompany = async (companyId: string) => {
     try {
       await apiClient.approveCompany(parseInt(companyId), 'approve')
       toast.success('Company approved successfully!')
@@ -203,7 +202,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
     }
   }
 
-  const handleRejectCompany = async (companyId: string, comments: string) => {
+  const handleRejectCompany = async (companyId: string) => {
     try {
       await apiClient.approveCompany(parseInt(companyId), 'reject')
       toast.success('Company rejected successfully!')

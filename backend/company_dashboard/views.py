@@ -45,13 +45,42 @@ def company_dashboard_overview(request):
             last_login__date=today
         ).count()
         
-        # System health calculation
+        # Enhanced system health calculation
+        health_score = 0
+        health_factors = 0
+        
+        # Factor 1: Service availability (40% weight)
+        if total_services > 0:
+            health_score += 40
+            health_factors += 1
+        
+        # Factor 2: Service users created (30% weight)
+        if total_service_users > 0:
+            health_score += 30
+            health_factors += 1
+        
+        # Factor 3: Service utilization (20% weight)
         avg_usage = service_utilizations.aggregate(Avg('usage_percentage'))['usage_percentage__avg'] or 0
-        if avg_usage >= 80:
+        if avg_usage > 0:
+            if avg_usage >= 60:
+                health_score += 20
+            elif avg_usage >= 30:
+                health_score += 15
+            else:
+                health_score += 10
+            health_factors += 1
+        
+        # Factor 4: Recent activity (10% weight)
+        if active_users_today > 0:
+            health_score += 10
+            health_factors += 1
+        
+        # Calculate final health status
+        if health_score >= 85:
             system_health = 'excellent'
-        elif avg_usage >= 60:
+        elif health_score >= 65:
             system_health = 'good'
-        elif avg_usage >= 40:
+        elif health_score >= 40:
             system_health = 'fair'
         else:
             system_health = 'poor'

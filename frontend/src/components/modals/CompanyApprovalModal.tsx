@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, CheckCircle, XCircle, FileText, Download, Eye, MessageSquare, AlertTriangle, Building2, User, Mail, Phone } from 'lucide-react'
+import { X, CheckCircle, XCircle, FileText, Download, Eye, MessageSquare, AlertTriangle, Building2, User } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { LoadingSpinner } from '../ui/LoadingSpinner'
 
@@ -21,7 +21,7 @@ const CompanyApprovalModal: React.FC<CompanyApprovalModalProps> = ({
   const [loading, setLoading] = useState(false)
   const [action, setAction] = useState<'approve' | 'reject' | null>(null)
   const [comments, setComments] = useState('')
-  const [showDocuments, setShowDocuments] = useState(false)
+  useState(false)
 
   const handleApprove = async () => {
     setLoading(true)
@@ -245,7 +245,7 @@ const CompanyApprovalModal: React.FC<CompanyApprovalModalProps> = ({
                 {hasDocuments ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {Object.entries(documents).map(([key, path]) => {
-                      const isImage = path.toString().match(/\.(jpg|jpeg|png|gif)$/i)
+                      const isImage = String(path).match(/\.(jpg|jpeg|png|gif)$/i)
                       return (
                         <div key={key} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-green-200/30 dark:border-green-700/30 shadow-sm">
                           <div className="flex items-center justify-between mb-3">
@@ -287,7 +287,8 @@ const CompanyApprovalModal: React.FC<CompanyApprovalModalProps> = ({
                                 className="w-full h-32 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
                                 onError={(e) => {
                                   e.currentTarget.style.display = 'none'
-                                  e.currentTarget.nextElementSibling.style.display = 'flex'
+                                  const nextEl = e.currentTarget.nextElementSibling as HTMLElement
+                                  if (nextEl) nextEl.style.display = 'flex'
                                 }}
                               />
                               <div className="hidden w-full h-32 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 items-center justify-center">

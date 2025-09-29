@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, Building2, Mail, Phone, MapPin, Calendar, User, CheckCircle, Clock, XCircle, Users, Server } from 'lucide-react'
+import { X, Building2, Mail, User, CheckCircle, Clock, XCircle, Users, Server } from 'lucide-react'
 import { Button } from '../ui/Button'
 
 interface CompanyViewModalProps {

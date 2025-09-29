@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -7,9 +7,9 @@ import toast from 'react-hot-toast'
 import {
   Shield, Lock, Key, Eye, EyeOff, RefreshCw, Copy, Download, 
   AlertTriangle, CheckCircle2, Activity, Clock, Fingerprint,
-  Smartphone, QrCode, ArrowLeft, Settings as SettingsIcon,
-  Sparkles, Star, Zap, TrendingUp, BarChart3, Globe, 
-  ExternalLink, Trash2, Save, User, Mail, Calendar
+  Smartphone, QrCode, ArrowLeft,
+  Zap, TrendingUp, Globe, 
+  User, Mail, Calendar
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../../lib/api'
@@ -967,7 +967,7 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
             
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {securityLog?.data?.logs?.length > 0 ? (
-                securityLog.data.logs.map((log: any, index: number) => (
+                securityLog?.data?.logs?.map((log: any, index: number) => (
                   <div key={index} className={`p-4 rounded-xl border ${
                     log.severity === 'high' ? 'bg-red-50/80 dark:bg-red-900/20 border-red-200 dark:border-red-700' :
                     log.severity === 'medium' ? 'bg-yellow-50/80 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700' :

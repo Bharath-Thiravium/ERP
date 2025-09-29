@@ -9,15 +9,10 @@ import {
   Clock, 
   CheckCircle, 
   XCircle, 
-  AlertTriangle, 
   Plus, 
   Play, 
   Trash2, 
-  Eye,
-  HardDrive,
-  Server,
-  FileText,
-  Settings
+  HardDrive
 } from 'lucide-react'
 import { apiClient } from '../../../lib/api'
 import { Button } from '../../../components/ui/Button'
@@ -26,8 +21,7 @@ import toast from 'react-hot-toast'
 
 const DatabaseBackup: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showScheduleModal, setShowScheduleModal] = useState(false)
-  const [selectedBackup, setSelectedBackup] = useState<any>(null)
+  const [, setShowScheduleModal] = useState(false)
   const queryClient = useQueryClient()
 
   // Fetch backups

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Bell, AlertCircle, Info, CheckCircle, X, Clock } from 'lucide-react'
+import { Bell, AlertCircle, Info, CheckCircle, Clock } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { LoadingSpinner } from '../ui/LoadingSpinner'

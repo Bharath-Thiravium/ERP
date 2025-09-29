@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Mail, Send, TestTube, CheckCircle, AlertCircle, Info, Eye, EyeOff } from 'lucide-react'
+import { Mail, TestTube, CheckCircle, Info, Eye, EyeOff } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { LoadingSpinner } from '../ui/LoadingSpinner'
@@ -11,7 +11,7 @@ interface EmailSettingsProps {
 }
 
 const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
-  const [emailSettings, setEmailSettings] = useState<any>(null)
+  const [, setEmailSettings] = useState<any>(null)
   const [providers, setProviders] = useState<any>({})
   const [usage, setUsage] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)

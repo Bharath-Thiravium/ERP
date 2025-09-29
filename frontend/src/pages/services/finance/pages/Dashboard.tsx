@@ -420,40 +420,209 @@ const handlePOCreated = () => {
 
       {/* Modern Charts and Analytics Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Revenue vs Expenses Chart */}
+        {/* Revenue Analytics Chart */}
         <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Revenue vs Expenses</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Monthly comparison for the last 6 months</p>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Revenue Analytics</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Quotations vs Purchase Orders vs Invoices</p>
             </div>
             <Button variant="outline" size="sm">
               <MoreVertical className="h-4 w-4" />
             </Button>
           </div>
-          <div className="h-64 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl">
-            <div className="text-center">
-              <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Chart visualization will be implemented</p>
+          <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl p-4">
+            <div className="h-full flex flex-col justify-between">
+              {/* Revenue Bars */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Quotations</span>
+                  <span className="text-sm font-bold text-blue-600">₹{financialData.quotationValue.toLocaleString()}</span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-1000"
+                    style={{ width: `${Math.min((financialData.quotationValue / Math.max(financialData.quotationValue, financialData.poValue, financialData.invoiceValue)) * 100, 100)}%` }}
+                  ></div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Purchase Orders</span>
+                  <span className="text-sm font-bold text-green-600">₹{financialData.poValue.toLocaleString()}</span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-green-500 to-green-600 h-3 rounded-full transition-all duration-1000"
+                    style={{ width: `${Math.min((financialData.poValue / Math.max(financialData.quotationValue, financialData.poValue, financialData.invoiceValue)) * 100, 100)}%` }}
+                  ></div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Invoices</span>
+                  <span className="text-sm font-bold text-purple-600">₹{financialData.invoiceValue.toLocaleString()}</span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-purple-500 to-purple-600 h-3 rounded-full transition-all duration-1000"
+                    style={{ width: `${Math.min((financialData.invoiceValue / Math.max(financialData.quotationValue, financialData.poValue, financialData.invoiceValue)) * 100, 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+              
+              {/* Conversion Rate */}
+              <div className="mt-4 p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                <div className="text-xs text-gray-600 dark:text-gray-400">Conversion Rate</div>
+                <div className="text-sm font-bold text-gray-900 dark:text-white">
+                  {financialData.quotationValue > 0 ? ((financialData.poValue / financialData.quotationValue) * 100).toFixed(1) : 0}% Quote to PO
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Expense Breakdown */}
+        {/* Payment Status Breakdown */}
         <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Expense Breakdown</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Current month expense categories</p>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Payment Status</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Outstanding vs Paid amounts</p>
             </div>
             <Button variant="outline" size="sm">
               <ExternalLink className="h-4 w-4" />
             </Button>
           </div>
-          <div className="h-64 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl">
-            <div className="text-center">
-              <PieChart className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Pie chart visualization will be implemented</p>
+          <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl p-4">
+            <div className="h-full flex flex-col justify-center">
+              {/* Donut Chart Simulation */}
+              <div className="relative mx-auto">
+                <div className="w-32 h-32 mx-auto relative">
+                  {/* Outer Ring - Total Invoice Value */}
+                  <div className="w-32 h-32 rounded-full border-8 border-gray-200 dark:border-gray-700"></div>
+                  
+                  {/* Outstanding Amount Ring */}
+                  <div 
+                    className="absolute top-0 left-0 w-32 h-32 rounded-full border-8 border-red-500 transform -rotate-90 transition-all duration-1000"
+                    style={{
+                      borderImage: `conic-gradient(#ef4444 0deg ${financialData.invoiceValue > 0 ? (financialData.outstandingAmount / financialData.invoiceValue) * 360 : 0}deg, transparent ${financialData.invoiceValue > 0 ? (financialData.outstandingAmount / financialData.invoiceValue) * 360 : 0}deg 360deg) 1`,
+                      borderRadius: '50%'
+                    }}
+                  ></div>
+                  
+                  {/* Center Text */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-gray-900 dark:text-white">
+                        {financialData.invoiceValue > 0 ? ((1 - financialData.outstandingAmount / financialData.invoiceValue) * 100).toFixed(0) : 0}%
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Paid</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Legend */}
+              <div className="mt-6 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Paid</span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    ₹{(financialData.invoiceValue - financialData.outstandingAmount).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Outstanding</span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    ₹{financialData.outstandingAmount.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Business Insights */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Quick Stats */}
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Stats</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Conversion Rate</span>
+              <span className="font-semibold text-green-600">
+                {financialData.quotationValue > 0 ? ((financialData.poValue / financialData.quotationValue) * 100).toFixed(1) : 0}%
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Avg. Deal Size</span>
+              <span className="font-semibold text-blue-600">
+                ₹{financialData.totalPurchaseOrders > 0 ? (financialData.poValue / financialData.totalPurchaseOrders).toLocaleString() : 0}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Collection Rate</span>
+              <span className="font-semibold text-purple-600">
+                {financialData.invoiceValue > 0 ? (((financialData.invoiceValue - financialData.outstandingAmount) / financialData.invoiceValue) * 100).toFixed(1) : 0}%
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Document Status */}
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Document Status</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Pending Quotes</span>
+              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                {financialData.pendingQuotations}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Draft POs</span>
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                {financialData.draftPOs}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Paid Invoices</span>
+              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                {financialData.paidInvoices}
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Performance Metrics */}
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Performance</h3>
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Total Revenue</span>
+                <span className="text-sm font-semibold text-green-600">
+                  ₹{(financialData.quotationValue + financialData.poValue + financialData.invoiceValue).toLocaleString()}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                <div className="bg-green-500 h-2 rounded-full" style={{ width: '100%' }}></div>
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Active Documents</span>
+                <span className="text-sm font-semibold text-blue-600">
+                  {financialData.totalQuotations + financialData.totalPurchaseOrders + financialData.totalInvoices}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                <div className="bg-blue-500 h-2 rounded-full" style={{ width: '100%' }}></div>
+              </div>
             </div>
           </div>
         </div>
@@ -466,10 +635,16 @@ const handlePOCreated = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Transactions</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">Latest financial activities</p>
           </div>
-          <Button size="sm" className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Add Transaction
-          </Button>
+          <div className="flex space-x-2">
+            <Button variant="outline" size="sm">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+            <Button size="sm" className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
+              <PlusCircle className="h-4 w-4 mr-2" />
+              New Transaction
+            </Button>
+          </div>
         </div>
         <div className="space-y-3">
           {getRecentActivity().map((transaction: any) => (

@@ -47,7 +47,7 @@ const ActivityMonitor: React.FC<ActivityMonitorProps> = ({
           Activity Monitor
         </h2>
         <p className="text-gray-600 dark:text-gray-400">
-          Real-time monitoring of user activities and system events
+          Real-time monitoring of your company's user activities and service events only
         </p>
       </div>
 
@@ -59,7 +59,7 @@ const ActivityMonitor: React.FC<ActivityMonitorProps> = ({
             <span>Service User Activities</span>
           </CardTitle>
           <CardDescription>
-            Current status and activity of all service users
+            Current status and activity of your company's service users only
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -134,7 +134,7 @@ const ActivityMonitor: React.FC<ActivityMonitorProps> = ({
             <span>Recent Activity Logs</span>
           </CardTitle>
           <CardDescription>
-            Latest system activities and user actions
+            Latest activities and actions from your company users only (excludes master admin)
           </CardDescription>
         </CardHeader>
         <CardContent>

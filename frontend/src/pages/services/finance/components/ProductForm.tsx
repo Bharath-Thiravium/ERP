@@ -173,8 +173,13 @@ const ProductForm: React.FC<ProductFormProps> = ({
     }
 
     try {
+      console.log('Searching SAC codes for:', searchTerm)
       const response = await apiClient.searchSACCodes({ session_key: sessionKey, search: searchTerm })
+      console.log('SAC search response:', response.data)
       setSacCodes(response.data.results || [])
+      if (response.data.results && response.data.results.length > 0) {
+        setShowSacDropdown(true)
+      }
     } catch (error) {
       console.error('Error searching SAC codes:', error)
       setSacCodes([])
@@ -184,24 +189,32 @@ const ProductForm: React.FC<ProductFormProps> = ({
   // Handle HSN search input change
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (formData.product_type === 'product') {
+      if (formData.product_type === 'product' && hsnSearchTerm.trim()) {
         searchHsnCodes(hsnSearchTerm)
+        setShowHsnDropdown(true)
+      } else {
+        setHsnCodes([])
+        setShowHsnDropdown(false)
       }
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [hsnSearchTerm, formData.product_type])
+  }, [hsnSearchTerm, formData.product_type, sessionKey])
 
   // Handle SAC search input change
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (formData.product_type === 'service') {
+      if (formData.product_type === 'service' && sacSearchTerm.trim()) {
         searchSacCodes(sacSearchTerm)
+        setShowSacDropdown(true)
+      } else {
+        setSacCodes([])
+        setShowSacDropdown(false)
       }
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [sacSearchTerm, formData.product_type])
+  }, [sacSearchTerm, formData.product_type, sessionKey])
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -604,30 +617,60 @@ const ProductForm: React.FC<ProductFormProps> = ({
             </div>
           )}
 
-          {/* GST Rate (Auto-filled) */}
+          {/* GST Rate (Auto-filled + Editable) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                GST Rate (%) {selectedHsnCode || selectedSacCode ? <span className="text-green-600 text-xs">(Auto-filled)</span> : ''}
+                GST Rate (%) 
+                {selectedHsnCode || selectedSacCode ? (
+                  <span className="text-green-600 text-xs ml-2">(Auto-filled)</span>
+                ) : (
+                  <span className="text-blue-600 text-xs ml-2">(Manual)</span>
+                )}
               </label>
-              <input
-                type="number"
-                name="gst_rate"
-                value={formData.gst_rate}
-                onChange={handleInputChange}
-                step="0.01"
-                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-white ${
-                  selectedHsnCode || selectedSacCode 
-                    ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-600' 
-                    : 'bg-white dark:bg-gray-700'
-                }`}
-                placeholder={selectedHsnCode || selectedSacCode ? "Auto-filled from HSN/SAC" : "Enter GST rate"}
-              />
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  name="gst_rate"
+                  value={formData.gst_rate}
+                  onChange={handleInputChange}
+                  step="0.01"
+                  min="0"
+                  max="28"
+                  className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-white ${
+                    selectedHsnCode || selectedSacCode 
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-600' 
+                      : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'
+                  }`}
+                  placeholder="Enter GST rate"
+                />
+                {(selectedHsnCode || selectedSacCode) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Reset to auto-filled value
+                      const autoRate = formData.product_type === 'product' 
+                        ? selectedHsnCode?.gst_rate 
+                        : selectedSacCode?.gst_rate
+                      if (autoRate !== undefined) {
+                        setFormData(prev => ({ ...prev, gst_rate: autoRate }))
+                      }
+                    }}
+                    className="px-3 py-2 bg-green-100 hover:bg-green-200 dark:bg-green-800 dark:hover:bg-green-700 text-green-700 dark:text-green-300 rounded-lg text-sm transition-colors"
+                    title="Reset to auto-filled rate"
+                  >
+                    ↻ Reset
+                  </button>
+                )}
+              </div>
               {(selectedHsnCode || selectedSacCode) && (
                 <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                  ✓ Auto-filled from {formData.product_type === 'product' ? 'HSN' : 'SAC'} code: {formData.product_type === 'product' ? selectedHsnCode?.code : selectedSacCode?.code}
+                  ✓ Auto-rate: {formData.product_type === 'product' ? selectedHsnCode?.gst_rate : selectedSacCode?.gst_rate}% from {formData.product_type === 'product' ? 'HSN' : 'SAC'} {formData.product_type === 'product' ? selectedHsnCode?.code : selectedSacCode?.code}
                 </p>
               )}
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                💡 You can edit this rate manually if needed (0-28%)
+              </p>
             </div>
 
             <div>

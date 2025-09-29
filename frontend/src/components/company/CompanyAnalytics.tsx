@@ -33,7 +33,7 @@ const CompanyAnalytics: React.FC<CompanyAnalyticsProps> = ({
         </p>
       </div>
 
-      {/* Enhanced Analytics Cards */}
+      {/* Real-time Analytics Cards - No Dummy Data */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Service Utilization Rate */}
         <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 p-6 text-white shadow-xl shadow-blue-500/25 hover:shadow-2xl hover:shadow-blue-500/40 transition-all duration-300 hover:-translate-y-1">
@@ -47,7 +47,7 @@ const CompanyAnalytics: React.FC<CompanyAnalyticsProps> = ({
             </div>
             <div>
               <p className="text-white/80 text-sm font-medium mb-1">Service Utilization</p>
-              <p className="text-3xl font-bold">{analyticsData?.service_utilization_rate || 0}%</p>
+              <p className="text-3xl font-bold">{Math.round(analyticsData?.service_utilization_rate || 0)}%</p>
               <p className="text-white/70 text-xs mt-2">Overall adoption rate</p>
             </div>
           </div>
@@ -65,7 +65,7 @@ const CompanyAnalytics: React.FC<CompanyAnalyticsProps> = ({
             </div>
             <div>
               <p className="text-white/80 text-sm font-medium mb-1">Total Data Entries</p>
-              <p className="text-3xl font-bold">{analyticsData?.total_data_entries?.toLocaleString() || 0}</p>
+              <p className="text-3xl font-bold">{(analyticsData?.total_data_entries || 0).toLocaleString()}</p>
               <p className="text-white/70 text-xs mt-2">Across all services</p>
             </div>
           </div>
@@ -101,7 +101,7 @@ const CompanyAnalytics: React.FC<CompanyAnalyticsProps> = ({
             </div>
             <div>
               <p className="text-white/80 text-sm font-medium mb-1">Monthly Growth</p>
-              <p className="text-3xl font-bold">{analyticsData?.monthly_growth || 0}%</p>
+              <p className="text-3xl font-bold">{Math.round(analyticsData?.monthly_growth || 0)}%</p>
               <p className="text-white/70 text-xs mt-2">Data growth rate</p>
             </div>
           </div>

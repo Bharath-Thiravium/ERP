@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status, permissions
+from django.utils._os import safe_join
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
@@ -226,9 +227,18 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 @permission_classes([permissions.AllowAny])
 def mobile_attendance(request):
     """Mobile app attendance check-in/out with face recognition and GPS"""
+    print(f"🔍 Mobile attendance request data keys: {list(request.data.keys())}")
+    print(f"🔍 Request FILES keys: {list(request.FILES.keys())}")
+    print(f"🔍 Employee ID: {request.data.get('employee_id')}")
+    print(f"🔍 Action: {request.data.get('action')}")
+    
     serializer = MobileAttendanceSerializer(data=request.data)
     if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        print(f"❌ Serializer errors: {serializer.errors}")
+        return Response({
+            'error': 'Validation failed',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     data = serializer.validated_data
     
@@ -263,9 +273,17 @@ def mobile_attendance(request):
             # Process face image if provided
             if 'face_image' in request.FILES:
                 attendance.check_in_face_image = request.FILES['face_image']
-                # Here you would implement face recognition matching
-                attendance.is_valid_face_match = True  # Placeholder
-                attendance.face_match_score = 0.95  # Placeholder
+                
+                # Face recognition validation
+                face_match_result = validate_face_recognition(employee, request.FILES['face_image'])
+                if not face_match_result['is_valid']:
+                    return Response({
+                        'error': 'Face recognition failed',
+                        'message': face_match_result['message']
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                attendance.is_valid_face_match = face_match_result['is_valid']
+                attendance.face_match_score = face_match_result['score']
             
             # Check if late
             if attendance.is_late():
@@ -285,6 +303,14 @@ def mobile_attendance(request):
             
             if 'face_image' in request.FILES:
                 attendance.check_out_face_image = request.FILES['face_image']
+                
+                # Face recognition validation for checkout
+                face_match_result = validate_face_recognition(employee, request.FILES['face_image'])
+                if not face_match_result['is_valid']:
+                    return Response({
+                        'error': 'Face recognition failed',
+                        'message': face_match_result['message']
+                    }, status=status.HTTP_400_BAD_REQUEST)
             
             attendance.calculate_hours()
         
@@ -364,6 +390,106 @@ def face_recognition_attendance(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def validate_face_recognition(employee, face_image):
+    """Validate face recognition against employee's stored face"""
+    try:
+        import face_recognition
+        import numpy as np
+        from PIL import Image
+        import io
+        
+        # Check if employee has a profile picture
+        if not employee.profile_picture:
+            return {
+                'is_valid': False,
+                'score': 0.0,
+                'message': 'No reference photo found for employee. Please update profile picture.'
+            }
+        
+        # Load employee's reference image
+        try:
+            reference_image = face_recognition.load_image_file(employee.profile_picture.path)
+            reference_encodings = face_recognition.face_encodings(reference_image)
+            
+            if not reference_encodings:
+                return {
+                    'is_valid': False,
+                    'score': 0.0,
+                    'message': 'No face detected in reference photo. Please update profile picture.'
+                }
+            
+            reference_encoding = reference_encodings[0]
+        except Exception as e:
+            return {
+                'is_valid': False,
+                'score': 0.0,
+                'message': 'Error processing reference photo.'
+            }
+        
+        # Load and process the uploaded image
+        try:
+            # Convert uploaded file to image
+            image_data = face_image.read()
+            face_image.seek(0)  # Reset file pointer
+            
+            # Load image using face_recognition
+            uploaded_image = face_recognition.load_image_file(io.BytesIO(image_data))
+            uploaded_encodings = face_recognition.face_encodings(uploaded_image)
+            
+            if not uploaded_encodings:
+                return {
+                    'is_valid': False,
+                    'score': 0.0,
+                    'message': 'No face detected in uploaded photo. Please take a clear photo.'
+                }
+            
+            uploaded_encoding = uploaded_encodings[0]
+        except Exception as e:
+            return {
+                'is_valid': False,
+                'score': 0.0,
+                'message': 'Error processing uploaded photo.'
+            }
+        
+        # Compare faces
+        face_distances = face_recognition.face_distance([reference_encoding], uploaded_encoding)
+        face_distance = face_distances[0]
+        
+        # Convert distance to similarity score (0-1, where 1 is perfect match)
+        similarity_score = 1 - face_distance
+        
+        # Set threshold for face recognition (0.6 is a good balance)
+        threshold = 0.6
+        is_match = similarity_score >= threshold
+        
+        if is_match:
+            return {
+                'is_valid': True,
+                'score': round(similarity_score, 3),
+                'message': 'Face recognition successful'
+            }
+        else:
+            return {
+                'is_valid': False,
+                'score': round(similarity_score, 3),
+                'message': f'Face does not match. Similarity: {round(similarity_score * 100, 1)}%'
+            }
+            
+    except ImportError:
+        # Face recognition library not installed, skip validation
+        return {
+            'is_valid': True,
+            'score': 1.0,
+            'message': 'Face recognition not available - attendance allowed'
+        }
+    except Exception as e:
+        return {
+            'is_valid': False,
+            'score': 0.0,
+            'message': f'Face recognition error: {str(e)}'
+        }
+
+
 def validate_location(latitude, longitude, attendance_system):
     """Validate if employee is within geo-fence"""
     if not latitude or not longitude:
@@ -385,6 +511,74 @@ def validate_location(latitude, longitude, attendance_system):
     distance = 6371000 * c  # Distance in meters
     
     return distance <= attendance_system.geo_fence_radius
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def validate_location(request):
+    """Validate employee location against geo-fence settings"""
+    latitude = request.data.get('latitude')
+    longitude = request.data.get('longitude')
+    
+    if not latitude or not longitude:
+        return Response({
+            'error': 'Latitude and longitude are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Get session key from Authorization header
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        return Response({
+            'error': 'Session key required'
+        }, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        from authentication.models import ServiceUserSession
+        # For mobile app, we need to find employee by session
+        # This is a simplified approach - in production you'd have proper mobile sessions
+        
+        # For now, let's get the first active attendance system
+        attendance_systems = AttendanceSystem.objects.filter(
+            enable_geo_fencing=True,
+            office_latitude__isnull=False,
+            office_longitude__isnull=False
+        ).first()
+        
+        if not attendance_systems:
+            return Response({
+                'isValid': True,
+                'message': 'No geo-fence configured - location accepted',
+                'distance': 0
+            })
+        
+        # Calculate distance using Haversine formula
+        from math import radians, cos, sin, asin, sqrt
+        
+        lat1, lon1 = radians(float(latitude)), radians(float(longitude))
+        lat2, lon2 = radians(float(attendance_systems.office_latitude)), radians(float(attendance_systems.office_longitude))
+        
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+        c = 2 * asin(sqrt(a))
+        distance = int(6371000 * c)  # Distance in meters
+        
+        is_valid = distance <= attendance_systems.geo_fence_radius
+        
+        return Response({
+            'isValid': is_valid,
+            'distance': distance,
+            'allowedRadius': attendance_systems.geo_fence_radius,
+            'message': f'You are {distance}m from office' + (' (within allowed range)' if is_valid else ' (outside allowed range)')
+        })
+        
+    except Exception as e:
+        return Response({
+            'isValid': True,  # Allow attendance if validation fails
+            'message': 'Location validation unavailable',
+            'distance': 0
+        })
 
 
 @api_view(['POST'])

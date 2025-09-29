@@ -27,7 +27,6 @@ class DesignationSerializer(serializers.ModelSerializer):
 class EmployeeListSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     designation_title = serializers.CharField(source='designation.title', read_only=True)
-    manager_name = serializers.CharField(source='reporting_manager.full_name', read_only=True)
     
     class Meta:
         model = Employee
@@ -35,12 +34,13 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             'id', 'employee_id', 'first_name', 'last_name', 'full_name', 'email', 
             'phone', 'date_of_birth', 'gender', 'department', 'department_name', 'designation', 'designation_title',
             'employment_type', 'work_mode', 'status', 'date_of_joining', 
-            'reporting_manager', 'manager_name', 'base_salary', 'address_line1', 'address_line2',
+            'base_salary', 'address_line1', 'address_line2',
             'city', 'state', 'pincode', 'country', 'aadhar_number', 'pan_number',
             'pf_number', 'uan_number', 'esi_number', 'bank_name', 'bank_account_number',
             'bank_ifsc_code', 'bank_branch', 'emergency_contact_name', 'emergency_contact_relationship',
             'emergency_contact_phone', 'emergency_contact_address', 'skills', 'performance_score', 
-            'engagement_score', 'retention_risk', 'profile_picture', 'face_photo', 'created_at'
+            'engagement_score', 'retention_risk', 'profile_picture', 'face_photo', 
+            'mobile_app_enabled', 'last_mobile_login', 'mobile_device_id', 'created_at'
         ]
         read_only_fields = ['id', 'employee_id', 'full_name', 'created_at']
 
@@ -48,7 +48,6 @@ class EmployeeListSerializer(serializers.ModelSerializer):
 class EmployeeDetailSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     designation_title = serializers.CharField(source='designation.title', read_only=True)
-    manager_name = serializers.CharField(source='reporting_manager.full_name', read_only=True)
     
     class Meta:
         model = Employee
@@ -56,38 +55,36 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'id', 'employee_id', 'first_name', 'last_name', 'full_name', 'email', 
             'phone', 'date_of_birth', 'gender', 'department', 'department_name',
             'designation', 'designation_title', 'employment_type', 'work_mode',
-            'date_of_joining', 'date_of_leaving', 'status', 'reporting_manager',
-            'manager_name', 'base_salary', 'currency', 'address_line1', 'address_line2',
+            'date_of_joining', 'date_of_leaving', 'status',
+            'base_salary', 'currency', 'address_line1', 'address_line2',
             'city', 'state', 'pincode', 'country', 'aadhar_number', 'pan_number',
             'pf_number', 'uan_number', 'esi_number', 'bank_name', 'bank_account_number',
             'bank_ifsc_code', 'bank_branch', 'emergency_contact_name', 'emergency_contact_relationship',
             'emergency_contact_phone', 'emergency_contact_address', 'skills', 'performance_score', 
-            'engagement_score', 'retention_risk', 'profile_picture', 'face_photo', 'face_encoding', 
-            'created_at', 'updated_at'
+            'engagement_score', 'retention_risk', 'profile_picture', 'face_photo', 'face_encoding',
+            'mobile_app_enabled', 'last_mobile_login', 'mobile_device_id', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'employee_id', 'full_name', 'created_at', 'updated_at']
 
 
 class EmployeeCreateSerializer(serializers.ModelSerializer):
+    
     class Meta:
         model = Employee
         fields = [
             'first_name', 'last_name', 'email', 'phone', 'date_of_birth', 'gender',
             'department', 'designation', 'employment_type', 'work_mode', 'date_of_joining',
-            'reporting_manager', 'base_salary', 'address_line1', 'address_line2',
+            'base_salary', 'address_line1', 'address_line2',
             'city', 'state', 'pincode', 'country', 'aadhar_number', 'pan_number',
             'pf_number', 'uan_number', 'esi_number', 'bank_name', 'bank_account_number',
             'bank_ifsc_code', 'bank_branch', 'emergency_contact_name', 'emergency_contact_relationship',
-            'emergency_contact_phone', 'emergency_contact_address', 'skills', 'profile_picture', 'face_photo'
+            'emergency_contact_phone', 'emergency_contact_address', 'skills'
         ]
     
     def validate_email(self, value):
         if Employee.objects.filter(email=value).exists():
             raise serializers.ValidationError("Employee with this email already exists.")
         return value
-    
-    def validate(self, data):
-        return data
 
 
 class JobPostingSerializer(serializers.ModelSerializer):

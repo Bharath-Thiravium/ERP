@@ -47,6 +47,27 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     }
   }
 
+  const handleDeleteEmployee = async (employee: Employee) => {
+    if (!sessionKey) return
+    
+    if (!confirm(`Are you sure you want to delete ${employee.full_name}? This action cannot be undone.`)) {
+      return
+    }
+    
+    try {
+      await api.delete(`/api/hr/employees/${employee.id}/`, {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      
+      toast.success('Employee deleted successfully')
+      fetchEmployees() // Refresh the list
+    } catch (error) {
+      console.error('Error deleting employee:', error)
+      toast.error('Failed to delete employee')
+    }
+  }
+
   useEffect(() => {
     fetchEmployees()
   }, [sessionKey, filters])
@@ -161,6 +182,17 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                       <div className="text-sm text-gray-500 dark:text-gray-400">
                         Performance: {employee.performance_score}/10
                       </div>
+                      <div className="flex items-center space-x-2 mt-1">
+                        {employee.mobile_app_enabled ? (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                            📱 Mobile Enabled
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                            📱 Mobile Disabled
+                          </span>
+                        )}
+                      </div>
                     </div>
                     
                     <div className="flex items-center space-x-2">
@@ -183,6 +215,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                       <Button 
                         variant="ghost" 
                         size="sm" 
+                        onClick={() => handleDeleteEmployee(employee)}
                         className="text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900"
                       >
                         <Trash2 className="h-4 w-4" />

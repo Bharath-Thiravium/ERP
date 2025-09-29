@@ -1,5 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
+
+const DropdownContext = createContext<{
+  closeDropdown: () => void
+} | null>(null)
 
 interface DropdownMenuProps {
   trigger: React.ReactNode
@@ -26,6 +30,8 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
   const [position, setPosition] = useState({ top: 0, left: 0 })
   const triggerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  
+  const closeDropdown = () => setIsOpen(false)
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -89,7 +95,9 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
               left: position.left,
             }}
           >
-            {children}
+            <DropdownContext.Provider value={{ closeDropdown }}>
+              {children}
+            </DropdownContext.Provider>
           </div>,
           document.body
         )}
@@ -104,6 +112,7 @@ export const DropdownMenuItem: React.FC<DropdownMenuItemProps> = ({
   variant = 'default',
   disabled = false
 }) => {
+  const context = useContext(DropdownContext)
   const baseClasses = 'w-full px-4 py-2 text-left text-sm transition-colors duration-150 flex items-center gap-2'
   const variantClasses = {
     default: 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700',
@@ -114,6 +123,8 @@ export const DropdownMenuItem: React.FC<DropdownMenuItemProps> = ({
   const handleClick = () => {
     if (!disabled && onClick) {
       onClick()
+      // Close dropdown after click
+      context?.closeDropdown()
     }
   }
 

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -7,7 +7,7 @@ import { useMutation } from '@tanstack/react-query'
 import {
   Building2, Users, DollarSign, Globe, FileText, Phone, Mail, User,
   Briefcase, Receipt, CreditCard, Star, Sparkles,
-  CheckCircle, ArrowRight, Shield, Zap, LogOut
+  CheckCircle, ArrowRight, Shield, Zap, LogOut, Upload, X, File
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { apiClient } from '../../lib/api'
@@ -23,6 +23,10 @@ const detailedInfoSchema = z.object({
   annual_revenue: z.number().min(0, 'Annual revenue must be positive'),
   website: z.string().url('Please enter a valid website URL').optional().or(z.literal('')),
   tax_id: z.string().min(5, 'Tax ID is required'),
+  pan_number: z.string()
+    .regex(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'Please enter a valid PAN number (e.g., ABCDE1234F)')
+    .optional()
+    .or(z.literal('')),
   gst_number: z.string()
     .regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, 'Please enter a valid GST number (e.g., 22AAAAA0000A1Z5)')
     .optional()
@@ -41,6 +45,16 @@ type DetailedInfoFormData = z.infer<typeof detailedInfoSchema>
 const DetailedInfoForm: React.FC = () => {
   const navigate = useNavigate()
   const { user, setFirstLoginRequired, logout } = useAuthStore()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [documents, setDocuments] = useState<{
+    business_license?: File
+    tax_certificate?: File
+    pan_certificate?: File
+    gst_certificate?: File
+    incorporation_certificate?: File
+    bank_statement?: File
+    other_documents?: File[]
+  }>({})
 
   const {
     register,
@@ -51,21 +65,101 @@ const DetailedInfoForm: React.FC = () => {
   })
 
   const submitDetailedInfoMutation = useMutation({
-    mutationFn: (data: DetailedInfoFormData) => 
-      apiClient.submitDetailedInfo(user?.company_id!, data),
+    mutationFn: async (data: DetailedInfoFormData) => {
+      const formData = new FormData()
+      
+      // Add form fields
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          formData.append(key, value.toString())
+        }
+      })
+      
+      // Add documents
+      Object.entries(documents).forEach(([key, file]) => {
+        if (file) {
+          if (Array.isArray(file)) {
+            file.forEach((f, index) => {
+              formData.append(`${key}_${index}`, f)
+            })
+          } else {
+            formData.append(key, file)
+          }
+        }
+      })
+      
+      return apiClient.submitDetailedInfo(user?.company_id!, formData)
+    },
     onSuccess: () => {
-      toast.success('Company information submitted successfully!')
+      toast.success('Company information and documents submitted successfully!')
       setFirstLoginRequired(false)
       navigate('/company/waiting-approval')
     },
     onError: (error: any) => {
       const message = error.response?.data?.message || 'Failed to submit information'
       toast.error(message)
+      setIsSubmitting(false)
     },
+    onSettled: () => {
+      setIsSubmitting(false)
+    },
+    retry: false, // Disable automatic retries
   })
 
   const onSubmit = (data: DetailedInfoFormData) => {
+    if (submitDetailedInfoMutation.isPending || isSubmitting) {
+      return // Prevent double submission
+    }
+    setIsSubmitting(true)
     submitDetailedInfoMutation.mutate(data)
+  }
+
+  const handleFileUpload = (type: string, file: File | null) => {
+    if (file) {
+      // Validate file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('File size must be less than 5MB')
+        return
+      }
+      
+      // Validate file type
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
+      if (!allowedTypes.includes(file.type)) {
+        toast.error('Only PDF, JPEG, and PNG files are allowed')
+        return
+      }
+    }
+    
+    setDocuments(prev => ({
+      ...prev,
+      [type]: file || undefined
+    }))
+  }
+
+  const handleMultipleFileUpload = (files: FileList | null) => {
+    if (!files) return
+    
+    const validFiles: File[] = []
+    
+    Array.from(files).forEach(file => {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`${file.name}: File size must be less than 5MB`)
+        return
+      }
+      
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
+      if (!allowedTypes.includes(file.type)) {
+        toast.error(`${file.name}: Only PDF, JPEG, and PNG files are allowed`)
+        return
+      }
+      
+      validFiles.push(file)
+    })
+    
+    setDocuments(prev => ({
+      ...prev,
+      other_documents: validFiles
+    }))
   }
 
   const businessTypes = [
@@ -275,6 +369,15 @@ const DetailedInfoForm: React.FC = () => {
                   />
 
                   <Input
+                    {...register('pan_number')}
+                    label="PAN Number"
+                    placeholder="ABCDE1234F"
+                    icon={<CreditCard className="h-4 w-4" />}
+                    error={errors.pan_number?.message}
+                    helperText="Enter your PAN card number (optional)"
+                  />
+
+                  <Input
                     {...register('gst_number')}
                     label="GST Number"
                     placeholder="22AAAAA0000A1Z5"
@@ -349,6 +452,324 @@ const DetailedInfoForm: React.FC = () => {
                   />
                 </div>
               </div>
+
+                {/* Document Upload Section */}
+                <div className="relative">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2.5 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl shadow-lg">
+                      <Upload className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                        Document Upload
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Upload required business documents for verification
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Business License */}
+                    <div className="group">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Business License *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => handleFileUpload('business_license', e.target.files?.[0] || null)}
+                          className="hidden"
+                          id="business_license"
+                        />
+                        <label
+                          htmlFor="business_license"
+                          className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-orange-500 dark:hover:border-orange-400 transition-colors bg-gray-50 dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                        >
+                          {documents.business_license ? (
+                            <div className="text-center">
+                              <File className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                              <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                                {documents.business_license.name}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {(documents.business_license.size / 1024 / 1024).toFixed(2)} MB
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="text-center">
+                              <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                              <p className="text-sm text-gray-600 dark:text-gray-400">
+                                Click to upload business license
+                              </p>
+                              <p className="text-xs text-gray-500">PDF, JPG, PNG (Max 5MB)</p>
+                            </div>
+                          )}
+                        </label>
+                        {documents.business_license && (
+                          <button
+                            type="button"
+                            onClick={() => handleFileUpload('business_license', null)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Tax Certificate */}
+                    <div className="group">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Tax Certificate *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => handleFileUpload('tax_certificate', e.target.files?.[0] || null)}
+                          className="hidden"
+                          id="tax_certificate"
+                        />
+                        <label
+                          htmlFor="tax_certificate"
+                          className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-orange-500 dark:hover:border-orange-400 transition-colors bg-gray-50 dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                        >
+                          {documents.tax_certificate ? (
+                            <div className="text-center">
+                              <File className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                              <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                                {documents.tax_certificate.name}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {(documents.tax_certificate.size / 1024 / 1024).toFixed(2)} MB
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="text-center">
+                              <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                              <p className="text-sm text-gray-600 dark:text-gray-400">
+                                Click to upload tax certificate
+                              </p>
+                              <p className="text-xs text-gray-500">PDF, JPG, PNG (Max 5MB)</p>
+                            </div>
+                          )}
+                        </label>
+                        {documents.tax_certificate && (
+                          <button
+                            type="button"
+                            onClick={() => handleFileUpload('tax_certificate', null)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* PAN Certificate */}
+                    <div className="group">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        PAN Certificate
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => handleFileUpload('pan_certificate', e.target.files?.[0] || null)}
+                          className="hidden"
+                          id="pan_certificate"
+                        />
+                        <label
+                          htmlFor="pan_certificate"
+                          className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-orange-500 dark:hover:border-orange-400 transition-colors bg-gray-50 dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                        >
+                          {documents.pan_certificate ? (
+                            <div className="text-center">
+                              <File className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                              <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                                {documents.pan_certificate.name}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {(documents.pan_certificate.size / 1024 / 1024).toFixed(2)} MB
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="text-center">
+                              <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                              <p className="text-sm text-gray-600 dark:text-gray-400">
+                                Click to upload PAN certificate
+                              </p>
+                              <p className="text-xs text-gray-500">PDF, JPG, PNG (Max 5MB)</p>
+                            </div>
+                          )}
+                        </label>
+                        {documents.pan_certificate && (
+                          <button
+                            type="button"
+                            onClick={() => handleFileUpload('pan_certificate', null)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* GST Certificate */}
+                    <div className="group">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        GST Certificate
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => handleFileUpload('gst_certificate', e.target.files?.[0] || null)}
+                          className="hidden"
+                          id="gst_certificate"
+                        />
+                        <label
+                          htmlFor="gst_certificate"
+                          className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-orange-500 dark:hover:border-orange-400 transition-colors bg-gray-50 dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                        >
+                          {documents.gst_certificate ? (
+                            <div className="text-center">
+                              <File className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                              <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                                {documents.gst_certificate.name}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {(documents.gst_certificate.size / 1024 / 1024).toFixed(2)} MB
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="text-center">
+                              <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                              <p className="text-sm text-gray-600 dark:text-gray-400">
+                                Click to upload GST certificate
+                              </p>
+                              <p className="text-xs text-gray-500">PDF, JPG, PNG (Max 5MB)</p>
+                            </div>
+                          )}
+                        </label>
+                        {documents.gst_certificate && (
+                          <button
+                            type="button"
+                            onClick={() => handleFileUpload('gst_certificate', null)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Incorporation Certificate */}
+                    <div className="group">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Incorporation Certificate *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => handleFileUpload('incorporation_certificate', e.target.files?.[0] || null)}
+                          className="hidden"
+                          id="incorporation_certificate"
+                        />
+                        <label
+                          htmlFor="incorporation_certificate"
+                          className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-orange-500 dark:hover:border-orange-400 transition-colors bg-gray-50 dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                        >
+                          {documents.incorporation_certificate ? (
+                            <div className="text-center">
+                              <File className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                              <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                                {documents.incorporation_certificate.name}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {(documents.incorporation_certificate.size / 1024 / 1024).toFixed(2)} MB
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="text-center">
+                              <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                              <p className="text-sm text-gray-600 dark:text-gray-400">
+                                Click to upload incorporation certificate
+                              </p>
+                              <p className="text-xs text-gray-500">PDF, JPG, PNG (Max 5MB)</p>
+                            </div>
+                          )}
+                        </label>
+                        {documents.incorporation_certificate && (
+                          <button
+                            type="button"
+                            onClick={() => handleFileUpload('incorporation_certificate', null)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Other Documents */}
+                  <div className="mt-6">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Additional Documents (Optional)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        multiple
+                        onChange={(e) => handleMultipleFileUpload(e.target.files)}
+                        className="hidden"
+                        id="other_documents"
+                      />
+                      <label
+                        htmlFor="other_documents"
+                        className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-orange-500 dark:hover:border-orange-400 transition-colors bg-gray-50 dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                      >
+                        <div className="text-center">
+                          <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Click to upload additional documents
+                          </p>
+                          <p className="text-xs text-gray-500">Multiple files allowed • PDF, JPG, PNG (Max 5MB each)</p>
+                        </div>
+                      </label>
+                    </div>
+                    {documents.other_documents && documents.other_documents.length > 0 && (
+                      <div className="mt-4 space-y-2">
+                        {documents.other_documents.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <File className="h-5 w-5 text-blue-500" />
+                              <div>
+                                <p className="text-sm font-medium text-gray-900 dark:text-white">{file.name}</p>
+                                <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newFiles = documents.other_documents?.filter((_, i) => i !== index)
+                                setDocuments(prev => ({ ...prev, other_documents: newFiles }))
+                              }}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 {/* Additional Information Section */}
                 <div className="relative">
@@ -426,8 +847,8 @@ const DetailedInfoForm: React.FC = () => {
                       <div className="absolute inset-0 bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-500 rounded-2xl blur opacity-60 group-hover:opacity-80 transition duration-300"></div>
                       <button
                         type="submit"
-                        disabled={submitDetailedInfoMutation.isPending}
-                        className="relative px-12 py-4 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 hover:from-blue-700 hover:via-purple-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold rounded-2xl shadow-2xl shadow-blue-500/30 hover:shadow-3xl hover:shadow-purple-500/50 transition-all duration-500 hover:-translate-y-1 hover:scale-105 disabled:hover:translate-y-0 disabled:hover:scale-100 disabled:hover:shadow-2xl flex items-center justify-center gap-3 min-w-[240px] overflow-hidden"
+                        disabled={submitDetailedInfoMutation.isPending || isSubmitting}
+                        className="relative px-12 py-4 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 hover:from-blue-700 hover:via-purple-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold rounded-2xl shadow-2xl shadow-blue-500/30 hover:shadow-3xl hover:shadow-purple-500/50 transition-all duration-500 hover:-translate-y-1 hover:scale-105 disabled:hover:translate-y-0 disabled:hover:scale-100 disabled:hover:shadow-2xl flex items-center justify-center gap-3 min-w-[240px] overflow-hidden disabled:cursor-not-allowed"
                       >
                         {/* Button Background Animation */}
                         <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>

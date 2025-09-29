@@ -46,21 +46,31 @@ export default defineConfig({
     sourcemap: false,
     minify: 'terser',
     target: 'es2020',
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks: {
-          // Vendor chunks
-          vendor: ['react', 'react-dom'],
-          router: ['react-router-dom'],
-          ui: ['@headlessui/react', 'framer-motion'],
-          charts: ['recharts'],
-          forms: ['react-hook-form', '@hookform/resolvers', 'zod'],
-          query: ['@tanstack/react-query'],
-          icons: ['lucide-react'],
+          // Core vendor chunks
+          'react-vendor': ['react', 'react-dom'],
+          'router': ['react-router-dom'],
+          'query': ['@tanstack/react-query'],
+          'ui': ['@headlessui/react', 'framer-motion', 'lucide-react'],
+          'forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
+          'charts': ['recharts'],
+          'http': ['axios'],
+          'state': ['zustand'],
         },
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
       },
     },
-
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+      },
+    },
   },
 
   // Preview server (for production build testing)
@@ -92,5 +102,11 @@ export default defineConfig({
       'clsx',
       'tailwind-merge',
     ],
+    force: true,
+  },
+
+  // Performance optimizations
+  esbuild: {
+    drop: ['console', 'debugger'],
   },
 })

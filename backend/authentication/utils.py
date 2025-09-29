@@ -93,6 +93,10 @@ def initialize_company_auto_codes(company_id):
             'quotation',
             'customer',
             'vendor',
+            'supplier',
+            'warehouse',
+            'category',
+            'audit',
             'asset',
             'proforma_invoice',
             'payment'

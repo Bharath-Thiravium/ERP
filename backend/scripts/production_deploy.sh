@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Production Deployment Script for Hostinger VPS
 

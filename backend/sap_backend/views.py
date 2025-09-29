@@ -3,6 +3,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.conf import settings
 from django.http import HttpResponse
+import html
 
 def home(request):
     """Root URL handler"""
@@ -40,14 +41,14 @@ def home(request):
                 <div class="endpoint">⚙️ <a href="/admin/">Admin Panel</a></div>
             </div>
             
-            <p><strong>Server:</strong> {server_ip}</p>
-            <p><strong>Debug Mode:</strong> {debug_mode}</p>
+            <p><strong>Server:</strong> {{ server_ip|escape }}</p>
+            <p><strong>Debug Mode:</strong> {{ debug_mode|escape }}</p>
         </div>
     </body>
     </html>
     """.format(
-        server_ip=request.get_host(),
-        debug_mode="Enabled" if settings.DEBUG else "Disabled"
+        server_ip=html.escape(request.get_host()),
+        debug_mode=html.escape("Enabled" if settings.DEBUG else "Disabled")
     ))
 
 @api_view(['GET'])

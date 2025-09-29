@@ -18,14 +18,23 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
 from . import views
+from rest_framework_simplejwt.views import TokenRefreshView
+
+from django.utils import timezone
 
 urlpatterns = [
     # Root URL - serves basic info
     path('', views.home, name='home'),
     
+
+    
     # Admin
     path('admin/', admin.site.urls),
+    
+    # JWT Token endpoints
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     
     # API endpoints
     path('api/auth/', include('authentication.urls')),
@@ -36,8 +45,10 @@ urlpatterns = [
     path('api/analytics/', include('analytics.urls')),
     path('api/reports/', include('reports.urls')),
     path('api/notifications/', include('notifications.urls')),
-    path('api/deployment/', include('deployment.urls')),
     path('api/public/', include('hr.public_urls')),
+    path('api/ai/', include('ai_assistant.urls')),
+    path('api/company-dashboard/', include('company_dashboard.urls')),
+    path('', include('configuration.urls')),
 ]
 
 # Serve static and media files in development

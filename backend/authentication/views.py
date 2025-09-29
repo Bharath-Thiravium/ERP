@@ -1,4 +1,5 @@
 from rest_framework import status, permissions
+from django.utils._os import safe_join
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import api_view, permission_classes
@@ -20,6 +21,7 @@ from datetime import timedelta
 import secrets
 import string
 from .utils import safe_join, validate_filename, get_safe_scripts_path
+from .security_fixes import secure_path_join, sanitize_filename, escape_content, secure_file_write
 
 from .models import (
     MasterAdmin, Company, Service, CompanyService,
@@ -263,6 +265,60 @@ class CompanyDetailView(RetrieveUpdateDestroyAPIView):
         elif hasattr(self.request.user, 'company_user'):
             return Company.objects.filter(id=self.request.user.company_user.company.id)
         return Company.objects.none()
+    
+    def update(self, request, *args, **kwargs):
+        """Update company with service management"""
+        # Only master admins can update companies
+        if not hasattr(request.user, 'master_admin'):
+            return Response(
+                {'error': 'Only master admins can update companies.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        instance = self.get_object()
+        
+        # Handle services update if provided
+        services_data = request.data.get('services')
+        if services_data is not None:
+            with transaction.atomic():
+                # Get current service IDs
+                current_service_ids = set(
+                    instance.company_services.filter(is_active=True).values_list('service_id', flat=True)
+                )
+                
+                # Get new service IDs from request
+                new_service_ids = set(services_data)
+                
+                # Services to add
+                services_to_add = new_service_ids - current_service_ids
+                # Services to remove
+                services_to_remove = current_service_ids - new_service_ids
+                
+                # Add new services
+                for service_id in services_to_add:
+                    try:
+                        service = Service.objects.get(id=service_id, is_active=True)
+                        CompanyService.objects.create(
+                            company=instance,
+                            service=service,
+                            assigned_by=request.user,
+                            service_password=make_password(''),  # Empty - company will create service credentials
+                            password_expires_at=timezone.now() + timedelta(days=365)
+                        )
+                    except Service.DoesNotExist:
+                        continue
+                
+                # Remove services
+                instance.company_services.filter(
+                    service_id__in=services_to_remove
+                ).update(is_active=False)
+        
+        # Update other company fields
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return Response(serializer.data)
 
     def perform_destroy(self, instance):
         """Custom delete logic with security logging and proper cascade deletion"""
@@ -328,6 +384,8 @@ class CompanyDetailView(RetrieveUpdateDestroyAPIView):
             try:
                 # Validate filename before using
                 safe_filename = validate_filename(filename)
+                # Validate filename before using
+                safe_filename = validate_filename(filename)
                 filepath = safe_join(scripts_dir, safe_filename)
                 
                 if os.path.exists(filepath):
@@ -342,7 +400,7 @@ class CompanyDetailView(RetrieveUpdateDestroyAPIView):
 
 
 class CompanyDetailedInfoView(APIView):
-    """Company detailed information submission"""
+    """Company detailed information submission with document upload"""
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request, company_id):
@@ -361,11 +419,57 @@ class CompanyDetailedInfoView(APIView):
             )
 
         company = company_user.company
-        serializer = CompanyDetailedInfoSerializer(company, data=request.data, partial=True)
+        
+        # Handle file uploads
+        uploaded_files = {}
+        for key, file in request.FILES.items():
+            if file:
+                # Save file with secure naming
+                import os
+                from django.core.files.storage import default_storage
+                from django.utils import timezone
+                
+                # Create secure filename
+                timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"company_{company.id}_{key}_{timestamp}_{file.name}"
+                
+                # Save file
+                file_path = default_storage.save(f"company_documents/{filename}", file)
+                uploaded_files[key] = file_path
+        
+        # Prepare data for serializer (exclude files from form_data)
+        form_data = {}
+        for key, value in request.data.items():
+            if key not in request.FILES:
+                form_data[key] = value
+        
+        if uploaded_files:
+            form_data['uploaded_documents'] = uploaded_files
+        
+        serializer = CompanyDetailedInfoSerializer(company, data=form_data, partial=True)
 
         if serializer.is_valid():
             with transaction.atomic():
                 updated_company = serializer.save()
+                
+                # Store document paths in company model if needed
+                if uploaded_files:
+                    # You can add a JSONField to Company model to store document paths
+                    # For now, we'll store in special_requirements as a JSON string
+                    import json
+                    existing_docs = {}
+                    if company.special_requirements:
+                        try:
+                            existing_docs = json.loads(company.special_requirements)
+                        except:
+                            existing_docs = {}
+                    
+                    if 'documents' not in existing_docs:
+                        existing_docs['documents'] = {}
+                    
+                    existing_docs['documents'].update(uploaded_files)
+                    company.special_requirements = json.dumps(existing_docs)
+                    company.save()
 
                 # Mark first login as completed
                 if not company_user.first_login_completed:
@@ -1572,6 +1676,13 @@ class GenerateAutoCodeView(APIView):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def mobile_logout(request):
+    """Simple mobile logout endpoint"""
+    return Response({'message': 'Logged out successfully'})
 
 
 class GenerateAutoCodeView(APIView):

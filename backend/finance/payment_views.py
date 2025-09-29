@@ -1,4 +1,5 @@
 from rest_framework import status
+from django.utils._os import safe_join
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -60,7 +61,7 @@ def update_invoice_payment(request, invoice_id):
                 'message': 'Payment updated successfully',
                 'payment_id': payment.id,
                 'payment_number': payment.payment_number,
-                'invoice_outstanding': float(invoice.outstanding_amount)
+                'invoice_outstanding': float(invoice.outstanding_amount) if str(invoice.outstanding_amount).lower() != "nan" else 0.0
             })
         else:
             return Response({'errors': serializer.errors}, status=400)
@@ -122,7 +123,7 @@ def update_proforma_payment(request, proforma_id):
                 'message': 'Payment updated successfully',
                 'payment_id': payment.id,
                 'payment_number': payment.payment_number,
-                'proforma_outstanding': float(proforma.outstanding_amount)
+                'proforma_outstanding': float(proforma.outstanding_amount) if str(proforma.outstanding_amount).lower() != "nan" else 0.0
             })
         else:
             return Response({'errors': serializer.errors}, status=400)
@@ -174,7 +175,7 @@ def unified_payment_update(request, invoice_id):
                     'message': 'Payment updated successfully',
                     'payment_id': payment.id,
                     'payment_number': payment.payment_number,
-                    'invoice_outstanding': float(invoice.outstanding_amount)
+                    'invoice_outstanding': float(invoice.outstanding_amount) if str(invoice.outstanding_amount).lower() != "nan" else 0.0
                 })
             else:
                 return Response({'errors': serializer.errors}, status=400)
@@ -207,7 +208,7 @@ def unified_payment_update(request, invoice_id):
                     'message': 'Payment updated successfully',
                     'payment_id': payment.id,
                     'payment_number': payment.payment_number,
-                    'proforma_outstanding': float(proforma.outstanding_amount)
+                    'proforma_outstanding': float(proforma.outstanding_amount) if str(proforma.outstanding_amount).lower() != "nan" else 0.0
                 })
             else:
                 return Response({'errors': serializer.errors}, status=400)

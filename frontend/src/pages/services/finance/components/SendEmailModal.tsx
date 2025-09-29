@@ -39,30 +39,45 @@ const SendEmailModal: React.FC<SendEmailModalProps> = ({
       return;
     }
 
+    if (!sessionKey) {
+      toast.error('Session expired. Please refresh the page.');
+      return;
+    }
+
     setLoading(true);
     try {
+      console.log('🔍 DEBUG: Sending email with:', {
+        invoiceId,
+        invoiceType,
+        email: email.trim(),
+        sessionKey: sessionKey?.substring(0, 10) + '...'
+      });
+
       const payload = {
         email: email.trim(),
         message: message.trim(),
         session_key: sessionKey
       };
 
+      let response;
       if (invoiceType === 'tax_invoice') {
-        await apiClient.sendInvoiceEmail(invoiceId, payload);
+        response = await apiClient.sendInvoiceEmail(invoiceId, payload);
       } else if (invoiceType === 'proforma_invoice') {
-        await apiClient.sendProformaEmail(invoiceId, payload);
+        response = await apiClient.sendProformaEmail(invoiceId, payload);
       } else if (invoiceType === 'quotation') {
-        await apiClient.sendQuotationEmail(invoiceId, payload);
+        response = await apiClient.sendQuotationEmail(invoiceId, payload);
       }
 
-      toast.success('Email sent successfully!');
+      console.log('✅ Email API Response:', response?.data);
+      toast.success(response?.data?.message || 'Email sent successfully!');
       onClose();
       if (onSuccess) {
         onSuccess();
       }
     } catch (error: any) {
-      console.error('Error sending email:', error);
-      toast.error(error.response?.data?.error || 'Failed to send email');
+      console.error('❌ Error sending email:', error);
+      console.error('❌ Error response:', error.response?.data);
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to send email');
     } finally {
       setLoading(false);
     }

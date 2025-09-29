@@ -48,7 +48,7 @@ export function generatePassword(length: number = 12): string {
   const lowercase = 'abcdefghijklmnopqrstuvwxyz'
   const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
   const numbers = '0123456789'
-  const special = '@$!%*?&'  // Match backend allowed special characters
+  const special = import.meta.env.VITE_SPECIAL_CHARS || '@$!%*?&'  // Match backend allowed special characters
   const allChars = lowercase + uppercase + numbers + special
 
   let password = ''

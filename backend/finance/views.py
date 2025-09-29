@@ -1,4 +1,5 @@
 from rest_framework import status, permissions
+from django.utils._os import safe_join
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
@@ -160,14 +161,13 @@ class CustomerListCreateView(ListCreateAPIView):
                 logger.error(f"Customer creation failed for company {session.service_user.company.name}: {str(e)}")
                 logger.error(f"Request data: {request.data}")
                 
-                # Return detailed error for debugging
+                # Return generic error to prevent information disclosure
                 return Response(
                     {
                         'error': 'Customer creation failed',
-                        'details': str(e),
-                        'company': session.service_user.company.name
+                        'message': 'Please check your input and try again'
                     },
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    status=status.HTTP_400_BAD_REQUEST
                 )
 
         except ServiceUserSession.DoesNotExist:
@@ -569,7 +569,12 @@ class HSNCodeSearchView(APIView):
             )
 
             search = request.query_params.get('search', '')
-            limit = int(request.query_params.get('limit', 20))
+            # Validate and sanitize limit parameter
+            try:
+                limit = int(request.query_params.get('limit', 20))
+                limit = max(1, min(limit, 100))  # Ensure limit is between 1 and 100
+            except (ValueError, TypeError):
+                limit = 20
 
             queryset = HSNCode.objects.all()
 
@@ -616,7 +621,12 @@ class SACCodeSearchView(APIView):
             )
 
             search = request.query_params.get('search', '')
-            limit = int(request.query_params.get('limit', 20))
+            # Validate and sanitize limit parameter
+            try:
+                limit = int(request.query_params.get('limit', 20))
+                limit = max(1, min(limit, 100))  # Ensure limit is between 1 and 100
+            except (ValueError, TypeError):
+                limit = 20
 
             queryset = SACCode.objects.all()
 
@@ -2014,13 +2024,13 @@ def payment_stats(request):
 
         return Response({
             'total_payments': total_payments,
-            'total_amount': float(total_amount),
+            'total_amount': float(total_amount) if str(total_amount).lower() != "nan" else 0.0,
             'pending_payments': pending_count,
-            'pending_amount': float(pending_amount),
+            'pending_amount': float(pending_amount) if str(pending_amount).lower() != "nan" else 0.0,
             'completed_payments': completed_count,
-            'completed_amount': float(completed_amount),
+            'completed_amount': float(completed_amount) if str(completed_amount).lower() != "nan" else 0.0,
             'failed_payments': failed_count,
-            'failed_amount': float(failed_amount),
+            'failed_amount': float(failed_amount) if str(failed_amount).lower() != "nan" else 0.0,
         })
 
     except ServiceUserSession.DoesNotExist:
@@ -2084,7 +2094,7 @@ def customer_ledger(request):
                 'document_type': 'Invoice',
                 'document_number': invoice.invoice_number,
                 'description': f'Invoice for services/products',
-                'debit_amount': float(invoice.total_amount),
+                'debit_amount': float(invoice.total_amount) if str(invoice.total_amount).lower() != "nan" else 0.0,
                 'credit_amount': 0,
                 'balance': 0,  # Will be calculated later
                 'status': invoice.payment_status,
@@ -2110,7 +2120,7 @@ def customer_ledger(request):
                 'document_number': payment.payment_number,
                 'description': f'Payment received - {payment.payment_method}',
                 'debit_amount': 0,
-                'credit_amount': float(payment.amount),
+                'credit_amount': float(payment.amount) if str(payment.amount).lower() != "nan" else 0.0,
                 'balance': 0,  # Will be calculated later
                 'status': payment.status,
             })
@@ -2125,8 +2135,8 @@ def customer_ledger(request):
             entry['balance'] = balance
 
         # Calculate summary statistics
-        total_invoiced = sum(float(inv.total_amount) for inv in invoices)
-        total_paid = sum(float(pay.amount) for pay in payments if pay.status == 'completed')
+        total_invoiced = sum(float(inv.total_amount) if str(inv.total_amount).lower() != "nan" else 0.0 for inv in invoices)
+        total_paid = sum(float(pay.amount) if str(pay.amount).lower() != "nan" else 0.0 for pay in payments if pay.status == 'completed')
         outstanding_amount = total_invoiced - total_paid
 
         # Get customer credit limit (default to 100000 if not set)
@@ -2359,10 +2369,10 @@ def purchase_order_payment_details(request, po_id):
                 payments.append({
                     'payment_number': payment.payment_number,
                     'payment_date': payment.payment_date.strftime('%Y-%m-%d'),
-                    'amount': float(payment.amount),
-                    'net_amount_received': float(payment.net_amount_received),
-                    'tds_amount': float(payment.tds_amount),
-                    'tds_percentage': float(payment.tds_percentage),
+                    'amount': float(payment.amount) if str(payment.amount).lower() != "nan" else 0.0,
+                    'net_amount_received': float(payment.net_amount_received) if str(payment.net_amount_received).lower() != "nan" else 0.0,
+                    'tds_amount': float(payment.tds_amount) if str(payment.tds_amount).lower() != "nan" else 0.0,
+                    'tds_percentage': float(payment.tds_percentage) if str(payment.tds_percentage).lower() != "nan" else 0.0,
                     'tds_section': payment.tds_section,
                     'is_tds_received': payment.is_tds_received,
                     'payment_method': payment.payment_method,
@@ -2373,9 +2383,9 @@ def purchase_order_payment_details(request, po_id):
                 'id': pf.id,
                 'proforma_number': pf.proforma_number,
                 'proforma_date': pf.proforma_date.strftime('%Y-%m-%d'),
-                'total_amount': float(pf.total_amount),
-                'paid_amount': float(pf.paid_amount),
-                'outstanding_amount': float(pf.outstanding_amount),
+                'total_amount': float(pf.total_amount) if str(pf.total_amount).lower() != "nan" else 0.0,
+                'paid_amount': float(pf.paid_amount) if str(pf.paid_amount).lower() != "nan" else 0.0,
+                'outstanding_amount': float(pf.outstanding_amount) if str(pf.outstanding_amount).lower() != "nan" else 0.0,
                 'payment_status': pf.payment_status,
                 'payments': payments,
                 'total_tds_deducted': sum(p['tds_amount'] for p in payments),
@@ -2390,10 +2400,10 @@ def purchase_order_payment_details(request, po_id):
                 payments.append({
                     'payment_number': payment.payment_number,
                     'payment_date': payment.payment_date.strftime('%Y-%m-%d'),
-                    'amount': float(payment.amount),
-                    'net_amount_received': float(payment.net_amount_received),
-                    'tds_amount': float(payment.tds_amount),
-                    'tds_percentage': float(payment.tds_percentage),
+                    'amount': float(payment.amount) if str(payment.amount).lower() != "nan" else 0.0,
+                    'net_amount_received': float(payment.net_amount_received) if str(payment.net_amount_received).lower() != "nan" else 0.0,
+                    'tds_amount': float(payment.tds_amount) if str(payment.tds_amount).lower() != "nan" else 0.0,
+                    'tds_percentage': float(payment.tds_percentage) if str(payment.tds_percentage).lower() != "nan" else 0.0,
                     'tds_section': payment.tds_section,
                     'is_tds_received': payment.is_tds_received,
                     'payment_method': payment.payment_method,
@@ -2404,9 +2414,9 @@ def purchase_order_payment_details(request, po_id):
                 'id': inv.id,
                 'invoice_number': inv.invoice_number,
                 'invoice_date': inv.invoice_date.strftime('%Y-%m-%d'),
-                'total_amount': float(inv.total_amount),
-                'paid_amount': float(inv.paid_amount),
-                'outstanding_amount': float(inv.outstanding_amount),
+                'total_amount': float(inv.total_amount) if str(inv.total_amount).lower() != "nan" else 0.0,
+                'paid_amount': float(inv.paid_amount) if str(inv.paid_amount).lower() != "nan" else 0.0,
+                'outstanding_amount': float(inv.outstanding_amount) if str(inv.outstanding_amount).lower() != "nan" else 0.0,
                 'payment_status': inv.payment_status,
                 'payments': payments,
                 'total_tds_deducted': sum(p['tds_amount'] for p in payments),
@@ -2425,7 +2435,7 @@ def purchase_order_payment_details(request, po_id):
                 'internal_po_number': po.internal_po_number,
                 'po_number': po.po_number,
                 'customer_name': po.customer.name,
-                'total_po_amount': float(po.total_amount),
+                'total_po_amount': float(po.total_amount) if str(po.total_amount).lower() != "nan" else 0.0,
             },
             'proforma_invoices': proforma_invoices,
             'tax_invoices': tax_invoices,
@@ -2619,8 +2629,8 @@ def world_class_po_payment_dashboard(request, po_id):
             'tax_invoices': invoices,
             'world_class_insights': {
                 'total_invoices_created': len(proformas) + len(invoices),
-                'advance_payment_percentage': float((payment_summary['proforma_payments'] / po.subtotal) * 100) if po.subtotal > 0 else 0,
-                'tax_payment_percentage': float((payment_summary['invoice_payments'] / po.total_tax) * 100) if po.total_tax > 0 else 0,
+                'advance_payment_percentage': float((payment_summary['proforma_payments'] / po.subtotal) * 100) if po.subtotal > 0 else 0.0,
+                'tax_payment_percentage': float((payment_summary['invoice_payments'] / po.total_tax) * 100) if po.total_tax > 0 else 0.0,
                 'overall_completion': payment_summary['payment_completion_percentage'],
                 'next_action': 'Create more invoices' if payment_summary['total_outstanding'] > 0 else 'PO fully paid'
             }
@@ -2664,7 +2674,7 @@ def sophisticated_po_claiming_status(request, po_id):
                 'proforma_date': pf.proforma_date,
                 'subtotal': pf.subtotal,
                 'total_amount': pf.total_amount,
-                'percentage_of_original': float((pf.subtotal / po.subtotal) * 100) if po.subtotal > 0 else 0,
+                'percentage_of_original': float((pf.subtotal / po.subtotal) * 100) if po.subtotal > 0 else 0.0,
                 'payment_status': pf.payment_status,
                 'paid_amount': pf.paid_amount,
                 'outstanding_amount': pf.outstanding_amount
@@ -2677,7 +2687,7 @@ def sophisticated_po_claiming_status(request, po_id):
                 'invoice_date': inv.invoice_date,
                 'subtotal': inv.subtotal,
                 'total_amount': inv.total_amount,
-                'percentage_of_original': float((inv.total_amount / po.total_amount) * 100) if po.total_amount > 0 else 0,
+                'percentage_of_original': float((inv.total_amount / po.total_amount) * 100) if po.total_amount > 0 else 0.0,
                 'payment_status': inv.payment_status,
                 'paid_amount': inv.paid_amount,
                 'outstanding_amount': inv.outstanding_amount
@@ -2702,12 +2712,12 @@ def sophisticated_po_claiming_status(request, po_id):
                 'total_generated_bills': total_generated_bills,
                 'total_received_payments': total_received_payments,
                 'total_receivable_amount': total_receivable,
-                'receivable_percentage': float((total_receivable / total_generated_bills) * 100) if total_generated_bills > 0 else 0
+                'receivable_percentage': float((total_receivable / total_generated_bills) * 100) if total_generated_bills > 0 else 0.0
             },
             'world_class_insights': {
                 'proforma_vs_tax_invoice_ratio': f"{len(proforma_invoices)}:{len(tax_invoices)}",
                 'claiming_efficiency': claiming_status['po_completion_percentage'],
-                'payment_efficiency': float((total_received_payments / total_generated_bills) * 100) if total_generated_bills > 0 else 0,
+                'payment_efficiency': float((total_received_payments / total_generated_bills) * 100) if total_generated_bills > 0 else 0.0,
                 'next_recommended_action': _get_next_action_recommendation(claiming_status, total_receivable)
             }
         })

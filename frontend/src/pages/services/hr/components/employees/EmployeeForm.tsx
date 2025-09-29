@@ -31,7 +31,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
   const [loading, setLoading] = useState(false)
   const [departments, setDepartments] = useState<Department[]>([])
   const [designations, setDesignations] = useState<Designation[]>([])
-  const [managers, setManagers] = useState<any[]>([])
+
   
   const [formData, setFormData] = useState<EmployeeFormData>({
     first_name: employee?.first_name || '',
@@ -45,7 +45,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     employment_type: employee?.employment_type || 'full_time',
     work_mode: employee?.work_mode || 'office',
     date_of_joining: employee?.date_of_joining || '',
-    reporting_manager: employee?.reporting_manager || undefined,
+
     base_salary: employee?.base_salary || 0,
     address_line1: employee?.address_line1 || '',
     address_line2: employee?.address_line2 || '',
@@ -109,22 +109,17 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     setLoadingDropdowns(true)
     try {
       console.log('Fetching dropdown data with session key:', sessionKey)
-      const [deptResponse, managersResponse] = await Promise.all([
+      const [deptResponse] = await Promise.all([
         api.get('/api/hr/api/departments/', {
           headers: { Authorization: `Bearer ${sessionKey}` },
           params: { session_key: sessionKey }
         }),
-        api.get('/api/hr/api/managers/', {
-          headers: { Authorization: `Bearer ${sessionKey}` },
-          params: { session_key: sessionKey }
-        })
+
       ])
 
       console.log('Departments response:', deptResponse.data)
-      console.log('Managers response:', managersResponse.data)
       
       setDepartments(deptResponse.data)
-      setManagers(managersResponse.data)
     } catch (error) {
       console.error('Error fetching dropdown data:', error)
       console.error('Error details:', (error as any).response?.data)
@@ -753,23 +748,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                 {errors.date_of_joining && <p className="text-red-500 text-xs mt-1">{errors.date_of_joining}</p>}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Reporting Manager
-                </label>
-                <select
-                  value={formData.reporting_manager || ''}
-                  onChange={(e) => handleInputChange('reporting_manager', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                >
-                  <option value="">Select Manager</option>
-                  {managers.map(manager => (
-                    <option key={manager.id} value={manager.id}>
-                      {manager.full_name} ({manager.employee_id})
-                    </option>
-                  ))}
-                </select>
-              </div>
+
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

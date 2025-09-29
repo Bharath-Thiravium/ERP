@@ -1,6 +1,8 @@
 from rest_framework import viewsets, status, permissions
+from django.utils._os import safe_join
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
+from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView, ListAPIView, RetrieveAPIView, CreateAPIView
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Count, Avg
@@ -168,25 +170,46 @@ class EmployeeListCreateView(ListCreateAPIView):
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             service_user = session.service_user
 
+            # Create a mutable copy of request data
+            if hasattr(request.data, '_mutable'):
+                request.data._mutable = True
+            
+            # Handle reporting manager service user case
+            if 'reporting_manager' in request.data:
+                manager_value = request.data['reporting_manager']
+                if isinstance(manager_value, str) and (manager_value.startswith('service_user_') or manager_value == ''):
+                    request.data['reporting_manager'] = None
+                elif manager_value == 'null' or manager_value == 'undefined':
+                    request.data['reporting_manager'] = None
+            
             # Handle skills JSON parsing
-            data = request.data.copy()
-            if 'skills' in data and isinstance(data['skills'], str):
+            if 'skills' in request.data and isinstance(request.data['skills'], str):
                 try:
                     import json
-                    data['skills'] = json.loads(data['skills'])
+                    request.data['skills'] = json.loads(request.data['skills'])
                 except json.JSONDecodeError:
-                    data['skills'] = []
+                    request.data['skills'] = []
 
-            serializer = self.get_serializer(data=data)
+            serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
-            employee = serializer.save(
-                company=service_user.company,
-                created_by=service_user
-            )
+            with transaction.atomic():
+                employee = serializer.save(
+                    company=service_user.company,
+                    created_by=service_user
+                )
 
-            detail_serializer = EmployeeDetailSerializer(employee)
-            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+            # Return simple response to avoid serialization issues
+            return Response({
+                'id': employee.id,
+                'employee_id': employee.employee_id,
+                'first_name': employee.first_name,
+                'last_name': employee.last_name,
+                'email': employee.email,
+                'department': employee.department.name,
+                'designation': employee.designation.title,
+                'message': 'Employee created successfully'
+            }, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -225,22 +248,31 @@ class EmployeeDetailView(RetrieveUpdateDestroyAPIView):
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             
+            # Create a mutable copy of request data
+            if hasattr(request.data, '_mutable'):
+                request.data._mutable = True
+            
             # Handle skills JSON parsing
-            data = request.data.copy()
-            if 'skills' in data and isinstance(data['skills'], str):
+            if 'skills' in request.data and isinstance(request.data['skills'], str):
                 try:
                     import json
-                    data['skills'] = json.loads(data['skills'])
+                    request.data['skills'] = json.loads(request.data['skills'])
                 except json.JSONDecodeError:
-                    data['skills'] = []
+                    request.data['skills'] = []
 
             partial = kwargs.pop('partial', False)
             instance = self.get_object()
-            serializer = self.get_serializer(instance, data=data, partial=partial)
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
             serializer.is_valid(raise_exception=True)
             self.perform_update(serializer)
 
-            return Response(serializer.data)
+            return Response({
+                'id': instance.id,
+                'employee_id': instance.employee_id,
+                'first_name': instance.first_name,
+                'last_name': instance.last_name,
+                'message': 'Employee updated successfully'
+            })
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -595,11 +627,133 @@ class PublicJobApplicationView(CreateAPIView):
         )
 
 
+
+
+
+# Mobile App Authentication APIs
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def employee_mobile_login(request):
+    """Employee login for mobile app"""
+    employee_id = request.data.get('employee_id')
+    password = request.data.get('password')
+    device_id = request.data.get('device_id', '')
+    
+    if not employee_id or not password:
+        return Response(
+            {'error': 'Employee ID and password are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        employee = Employee.objects.select_related('company', 'department', 'designation').get(
+            employee_id=employee_id,
+            status='active',
+            mobile_app_enabled=True
+        )
+        
+        # Verify password with proper hashing
+        from django.contrib.auth.hashers import check_password
+        if not check_password(password, employee.mobile_app_password):
+            return Response(
+                {'error': 'Invalid credentials'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Update last login and device
+        from django.utils import timezone
+        employee.last_mobile_login = timezone.now()
+        employee.mobile_device_id = device_id
+        employee.save()
+        
+        # Generate secure session key for mobile
+        import secrets
+        session_key = secrets.token_urlsafe(32)
+        
+        response_data = {
+            'success': True,
+            'session_key': session_key,
+            'employee': {
+                'id': employee.id,
+                'employee_id': employee.employee_id,
+                'first_name': employee.first_name,
+                'last_name': employee.last_name,
+                'email': employee.email,
+                'phone': employee.phone,
+                'department': employee.department.name,
+                'designation': employee.designation.title,
+                'profile_picture': employee.profile_picture.url if employee.profile_picture else None,
+            },
+            'company': {
+                'id': employee.company.id,
+                'name': employee.company.name,
+                'company_code': employee.company.company_prefix,
+                'logo': employee.company.logo.url if employee.company.logo else None,
+            }
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Employee.DoesNotExist:
+        return Response(
+            {'error': 'Invalid credentials or mobile access not enabled'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def set_mobile_password(request):
+    """Set mobile app password for employee"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.data.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    employee_id = request.data.get('employee_id')
+    password = request.data.get('password')
+    
+    if not employee_id or not password:
+        return Response(
+            {'error': 'Employee ID and password are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        employee = Employee.objects.get(
+            employee_id=employee_id,
+            company=session.service_user.company
+        )
+        
+        # Set mobile password with proper hashing and enable mobile access
+        from django.contrib.auth.hashers import make_password
+        employee.mobile_app_password = make_password(password)
+        employee.mobile_app_enabled = True
+        employee.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Mobile app password set successfully',
+            'employee_id': employee.employee_id,
+            'mobile_enabled': True
+        })
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Employee.DoesNotExist:
+        return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([permissions.AllowAny])
-def get_managers(request):
-    """Get all employees who can be managers"""
+def download_mobile_credentials(request):
+    """Download mobile credentials as text file"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not session_key:
         session_key = request.query_params.get('session_key')
@@ -607,24 +761,62 @@ def get_managers(request):
     if not session_key:
         return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
     
+    employee_id = request.query_params.get('employee_id')
+    
+    if not employee_id:
+        return Response(
+            {'error': 'Employee ID is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
     try:
         session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        managers = Employee.objects.filter(
+        employee = Employee.objects.get(
+            employee_id=employee_id,
             company=session.service_user.company,
-            status='active'
-        ).select_related('designation')
+            mobile_app_enabled=True
+        )
         
-        managers_data = []
-        for manager in managers:
-            managers_data.append({
-                'id': manager.id,
-                'employee_id': manager.employee_id,
-                'first_name': manager.first_name,
-                'last_name': manager.last_name,
-                'full_name': manager.full_name,
-                'designation__title': manager.designation.title
-            })
+        from django.http import HttpResponse
+        from django.utils import timezone
         
-        return Response(managers_data)
+        # Create credentials text content
+        credentials_content = f"""Employee Mobile App Credentials
+========================================
+
+Company: {employee.company.name}
+Employee ID: {employee.employee_id}
+Employee Name: {employee.full_name}
+Department: {employee.department.name}
+Designation: {employee.designation.title}
+
+Mobile App Login Credentials:
+----------------------------
+Employee ID: {employee.employee_id}
+Password: {employee.mobile_app_password}
+
+App Download:
+------------
+Download the Employee Attendance App from your company's internal portal.
+
+Support:
+--------
+For technical support, contact your HR department.
+
+Generated on: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Note: Keep these credentials secure and do not share with others.
+"""
+        
+        response = HttpResponse(credentials_content, content_type='text/plain')
+        # Validate filename to prevent path traversal
+        from authentication.utils import validate_filename
+        safe_filename = validate_filename(f"{employee.employee_id}_mobile_credentials.txt")
+        response['Content-Disposition'] = f'attachment; filename="{safe_filename}"'
+        
+        return response
+        
     except ServiceUserSession.DoesNotExist:
         return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Employee.DoesNotExist:
+        return Response({'error': 'Employee not found or mobile access not enabled'}, status=status.HTTP_404_NOT_FOUND)

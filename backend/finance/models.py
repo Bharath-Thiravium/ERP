@@ -1,3 +1,4 @@
+from html import escape
 from django.db import models
 from django.core.validators import RegexValidator, EmailValidator
 from django.utils import timezone
@@ -17,7 +18,7 @@ class HSNCode(models.Model):
         ordering = ['code']
 
     def __str__(self):
-        return f"{self.code} - {self.description[:50]}"
+        return escape(f"{self.code} - {self.description[:50]}")
 
 
 class SACCode(models.Model):
@@ -34,7 +35,7 @@ class SACCode(models.Model):
         ordering = ['code']
 
     def __str__(self):
-        return f"{self.code} - {self.service_name}"
+        return escape(f"{self.code} - {self.service_name}")
 
 
 class Product(models.Model):
@@ -95,7 +96,7 @@ class Product(models.Model):
         unique_together = ['company', 'product_code']
 
     def __str__(self):
-        return f"{self.product_code} - {self.name}"
+        return escape(f"{self.product_code} - {self.name}")
 
     def save(self, *args, **kwargs):
         # Auto-generate product code if not provided
@@ -263,7 +264,8 @@ class Customer(models.Model):
         verbose_name_plural = 'Customers'
 
     def __str__(self):
-        return f"{self.customer_code} - {self.name}"
+        from .security_fixes import sanitize_customer_name
+        return escape(f"{self.customer_code} - {sanitize_customer_name(self.name)}")
 
     def save(self, *args, **kwargs):
         if not self.customer_code:
@@ -367,7 +369,7 @@ class CustomerShippingAddress(models.Model):
         verbose_name_plural = 'Customer Shipping Addresses'
 
     def __str__(self):
-        return f"{self.customer.name} - {self.label}"
+        return escape(f"{self.customer.name} - {self.label}")
 
     @property
     def full_address(self):
@@ -474,7 +476,7 @@ class Quotation(models.Model):
         unique_together = ['company', 'quotation_number']
 
     def __str__(self):
-        return f"{self.quotation_number} - {self.customer.name}"
+        return escape(f"{self.quotation_number} - {self.customer.name}")
 
     def save(self, *args, **kwargs):
         # Auto-generate quotation number if not provided
@@ -627,7 +629,7 @@ class QuotationItem(models.Model):
         unique_together = ['quotation', 'line_number']
 
     def __str__(self):
-        return f"{self.quotation.quotation_number} - {self.product_name}"
+        return escape(f"{self.quotation.quotation_number} - {self.product_name}")
 
     def save(self, *args, **kwargs):
         # Extract skip_totals_calculation before passing to parent save
@@ -808,7 +810,7 @@ class PurchaseOrder(models.Model):
         unique_together = ['company', 'internal_po_number']
 
     def __str__(self):
-        return f"{self.internal_po_number} - {self.customer.name}"
+        return escape(f"{self.internal_po_number} - {self.customer.name}")
 
     def save(self, *args, **kwargs):
         # Generate internal PO number if not provided
@@ -1147,7 +1149,7 @@ class PurchaseOrderItem(models.Model):
         unique_together = ['purchase_order', 'line_number']
 
     def __str__(self):
-        return f"{self.purchase_order.internal_po_number} - {self.product_name}"
+        return escape(f"{self.purchase_order.internal_po_number} - {self.product_name}")
 
     def save(self, *args, **kwargs):
         # Extract skip_totals_calculation before passing to parent save
@@ -1327,7 +1329,7 @@ class ProformaInvoice(models.Model):
         unique_together = ['company', 'proforma_number']
 
     def __str__(self):
-        return f"{self.proforma_number} - {self.customer.name}"
+        return escape(f"{self.proforma_number} - {self.customer.name}")
 
     def save(self, *args, **kwargs):
         # Generate proforma number if not provided
@@ -1457,7 +1459,7 @@ class ProformaInvoiceItem(models.Model):
         unique_together = ['proforma_invoice', 'line_number']
 
     def __str__(self):
-        return f"{self.proforma_invoice.proforma_number} - {self.product_name}"
+        return escape(f"{self.proforma_invoice.proforma_number} - {self.product_name}")
 
     @property
     def rate(self):
@@ -1599,7 +1601,7 @@ class Invoice(models.Model):
         unique_together = ['company', 'invoice_number']
 
     def __str__(self):
-        return f"{self.invoice_number} - {self.customer.name}"
+        return escape(f"{self.invoice_number} - {self.customer.name}")
 
     def save(self, *args, **kwargs):
         # Generate invoice number if not provided
@@ -1797,7 +1799,7 @@ class Payment(models.Model):
 
     def __str__(self):
         invoice_info = f"INV: {self.invoice.invoice_number}" if self.invoice else f"PI: {self.proforma_invoice.proforma_number}" if self.proforma_invoice else "No Invoice"
-        return f"{self.payment_number} - ₹{self.amount} - {invoice_info}"
+        return escape(f"{self.payment_number} - ₹{self.amount} - {invoice_info}")
 
     def save(self, *args, **kwargs):
         # Generate payment number if not provided
@@ -1934,7 +1936,7 @@ class InvoiceItem(models.Model):
         unique_together = ['invoice', 'line_number']
 
     def __str__(self):
-        return f"{self.invoice.invoice_number} - {self.product_name}"
+        return escape(f"{self.invoice.invoice_number} - {self.product_name}")
 
     @property
     def rate(self):

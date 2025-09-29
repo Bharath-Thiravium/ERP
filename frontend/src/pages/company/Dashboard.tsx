@@ -44,6 +44,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner'
 import { sanitizeUserInput } from '../../lib/sanitizer'
 import toast from 'react-hot-toast'
+import ServiceManagement from '../../components/company/ServiceManagement'
+import ServiceUserManagement from '../../components/company/ServiceUserManagement'
+import CompanyAnalytics from '../../components/company/CompanyAnalytics'
+import ActivityMonitor from '../../components/company/ActivityMonitor'
+import NotificationCenter from '../../components/company/NotificationCenter'
+import EmailSettings from '../../components/company/EmailSettings'
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -59,6 +65,13 @@ const CompanyDashboard: React.FC = () => {
   const [showCreateUserModal, setShowCreateUserModal] = useState(false)
   const [selectedService, setSelectedService] = useState<any>(null)
   const [showCredentials, setShowCredentials] = useState<{[key: string]: boolean}>({})
+  
+  // New state for enhanced features
+  const [dashboardOverview, setDashboardOverview] = useState<any>(null)
+  const [serviceUtilization, setServiceUtilization] = useState<any[]>([])
+  const [userActivities, setUserActivities] = useState<any[]>([])
+  const [activityLogs, setActivityLogs] = useState<any[]>([])
+  const [notifications, setNotifications] = useState<any[]>([])
   const [newUserForm, setNewUserForm] = useState({
     username: '',
     email: '',
@@ -94,6 +107,51 @@ const CompanyDashboard: React.FC = () => {
   // Handle paginated response from ListAPIView (axios wraps response in .data)
   const servicesData = services?.data?.results || services?.data || []
   const serviceUsersData = serviceUsers?.data?.results || serviceUsers?.data || []
+  
+  // Fetch enhanced dashboard data
+  const { data: overviewData, isLoading: overviewLoading } = useQuery({
+    queryKey: ['company-dashboard-overview'],
+    queryFn: () => apiClient.get('/api/company-dashboard/overview/'),
+  })
+  
+  const { data: utilizationData, isLoading: utilizationLoading } = useQuery({
+    queryKey: ['service-utilization'],
+    queryFn: () => apiClient.get('/api/company-dashboard/service-utilization/'),
+  })
+  
+  const { data: activitiesData, isLoading: activitiesLoading } = useQuery({
+    queryKey: ['user-activities'],
+    queryFn: () => apiClient.get('/api/company-dashboard/user-activities/'),
+  })
+  
+  const { data: logsData, isLoading: logsLoading } = useQuery({
+    queryKey: ['activity-logs'],
+    queryFn: () => apiClient.get('/api/company-dashboard/activity-logs/'),
+  })
+  
+  const { data: notificationsData, isLoading: notificationsLoading } = useQuery({
+    queryKey: ['company-notifications'],
+    queryFn: () => apiClient.get('/api/company-dashboard/notifications/'),
+  })
+  
+  // Process enhanced data
+  React.useEffect(() => {
+    if (overviewData?.data) {
+      setDashboardOverview(overviewData.data)
+    }
+    if (utilizationData?.data) {
+      setServiceUtilization(utilizationData.data)
+    }
+    if (activitiesData?.data) {
+      setUserActivities(activitiesData.data)
+    }
+    if (logsData?.data) {
+      setActivityLogs(logsData.data)
+    }
+    if (notificationsData?.data) {
+      setNotifications(notificationsData.data.results || notificationsData.data)
+    }
+  }, [overviewData, utilizationData, activitiesData, logsData, notificationsData])
 
   const getServiceIcon = (serviceType: string) => {
     switch (serviceType.toLowerCase()) {
@@ -238,9 +296,20 @@ Website: https://athenas.co.in
     }))
   }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast.success('Copied to clipboard!')
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success('Copied to clipboard!')
+    } catch (error) {
+      // Fallback for browsers that don't support clipboard API
+      const textArea = document.createElement('textarea')
+      textArea.value = text
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+      toast.success('Copied to clipboard!')
+    }
   }
 
   // Navigation tabs
@@ -267,11 +336,11 @@ Website: https://athenas.co.in
 
   const handleLogoUpload = async () => {
     if (!logoFile || !user?.company_id) {
-      console.error('Missing logoFile or company_id:', { logoFile: !!logoFile, company_id: user?.company_id })
+      toast.error('Missing required data for upload')
       return
     }
 
-    console.log('🔍 Starting logo upload for:', logoFile.name)
+    // Starting logo upload
 
     setIsUploadingLogo(true)
     try {
@@ -279,11 +348,11 @@ Website: https://athenas.co.in
       formData.append('logo', logoFile)
 
       const response = await apiClient.uploadCompanyLogo(formData)
-      console.log('🔍 Logo upload successful')
+      // Logo upload successful
 
       // Update user data with new logo
       if (response.data.user) {
-        console.log('🔍 Updating user with new logo:', response.data.user.company_logo)
+        // Updating user with new logo
         updateUser(response.data.user)
       }
 
@@ -295,9 +364,7 @@ Website: https://athenas.co.in
       }
       queryClient.invalidateQueries({ queryKey: ['company-profile'] })
     } catch (error: any) {
-      console.error('🔍 Error uploading logo:', error)
-      console.error('🔍 Error response:', error.response?.data)
-      console.error('🔍 Error status:', error.response?.status)
+      // Error uploading logo - details logged securely
 
       const errorMessage = error.response?.data?.error ||
                           error.response?.data?.message ||
@@ -309,12 +376,25 @@ Website: https://athenas.co.in
     }
   }
 
+  // Enhanced navigation tabs with new features
   const navigationTabs = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'services', label: 'Services', icon: Settings },
     { id: 'users', label: 'Service Users', icon: Users },
+    { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+    { id: 'activity', label: 'Activity', icon: Activity },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'settings', label: 'Settings', icon: Shield }
   ]
+
+  const settingsTabs = [
+    { id: 'general', label: 'General', icon: Shield },
+    { id: 'email', label: 'Email Settings', icon: Bell },
+    { id: 'logo', label: 'Company Logo', icon: Image },
+    { id: 'password', label: 'Password', icon: Key }
+  ]
+
+  const [activeSettingsTab, setActiveSettingsTab] = useState('general')
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -337,7 +417,7 @@ Website: https://athenas.co.in
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {sanitizeUserInput(user?.company_name || 'Your Company')}
+                  {user?.company_name ? sanitizeUserInput(user.company_name) : 'Your Company'}
                 </h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Business Management Portal
@@ -456,13 +536,13 @@ Website: https://athenas.co.in
                   </div>
                   <div>
                     <p className="text-white/80 text-sm font-medium mb-1">Service Users</p>
-                    <p className="text-3xl font-bold">{serviceUsersData.length}</p>
+                    <p className="text-3xl font-bold">{dashboardOverview?.total_service_users || serviceUsersData.length}</p>
                     <p className="text-white/70 text-xs mt-2">Active accounts</p>
                   </div>
                 </div>
               </div>
 
-              {/* Active Services Card */}
+              {/* Service Utilization Card */}
               <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-500 via-purple-600 to-purple-700 p-6 text-white shadow-xl shadow-purple-500/25 hover:shadow-2xl hover:shadow-purple-500/40 transition-all duration-300 hover:-translate-y-1">
                 <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10 backdrop-blur-sm"></div>
                 <div className="relative">
@@ -473,14 +553,14 @@ Website: https://athenas.co.in
                     <Zap className="h-5 w-5 text-white/70" />
                   </div>
                   <div>
-                    <p className="text-white/80 text-sm font-medium mb-1">Active Services</p>
-                    <p className="text-3xl font-bold">{servicesData.filter((s: any) => s.is_active).length}</p>
-                    <p className="text-white/70 text-xs mt-2">Currently running</p>
+                    <p className="text-white/80 text-sm font-medium mb-1">Service Utilization</p>
+                    <p className="text-3xl font-bold">{dashboardOverview?.service_utilization_rate || 0}%</p>
+                    <p className="text-white/70 text-xs mt-2">Overall adoption</p>
                   </div>
                 </div>
               </div>
 
-              {/* Company Status Card */}
+              {/* System Health Card */}
               <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 p-6 text-white shadow-xl shadow-orange-500/25 hover:shadow-2xl hover:shadow-orange-500/40 transition-all duration-300 hover:-translate-y-1">
                 <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10 backdrop-blur-sm"></div>
                 <div className="relative">
@@ -491,8 +571,8 @@ Website: https://athenas.co.in
                     <CheckCircle className="h-5 w-5 text-white/70" />
                   </div>
                   <div>
-                    <p className="text-white/80 text-sm font-medium mb-1">Company Status</p>
-                    <p className="text-2xl font-bold">Active</p>
+                    <p className="text-white/80 text-sm font-medium mb-1">System Health</p>
+                    <p className="text-2xl font-bold capitalize">{dashboardOverview?.system_health || 'Good'}</p>
                     <p className="text-white/70 text-xs mt-2">All systems operational</p>
                   </div>
                 </div>
@@ -581,280 +661,57 @@ Website: https://athenas.co.in
         )}
 
         {activeTab === 'services' && (
-          <div className="space-y-8">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Service Management
-                </h2>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Access and manage your assigned services
-                </p>
-              </div>
-            </div>
-
-            {/* Services Grid */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Shield className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                  <span>Your ᗩTᕼᙓᑎᗩ'𝔖 Services</span>
-                </CardTitle>
-                <CardDescription>
-                  Click on any service to access its dashboard and features
-                </CardDescription>
-              </CardHeader>
-            
-            <CardContent>
-              {servicesLoading ? (
-                <div className="flex justify-center py-12">
-                  <LoadingSpinner size="lg" text="Loading your services..." />
-                </div>
-              ) : !Array.isArray(servicesData) || servicesData.length === 0 ? (
-                <div className="text-center py-12">
-                  <Settings className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                    No Services Assigned
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 mb-6">
-                    No services have been assigned to your company yet. You can request access to available services.
-                  </p>
-                  <Button
-                    onClick={() => navigate('/company/services')}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    Request Service Access
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {Array.isArray(servicesData) && servicesData.map((service: any) => {
-                    const serviceUsers = serviceUsersData.filter((user: any) => user.service_type === service.service_type);
-                    return (
-                      <div
-                        key={service.id}
-                        className="group relative overflow-hidden rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer"
-                        onClick={() => handleServiceAccess(service)}
-                      >
-                        {/* Service Header */}
-                        <div className="p-6 pb-4">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center space-x-3">
-                              <div className="text-3xl">{getServiceIcon(service.service_type)}</div>
-                              <div>
-                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                                  {service.name}
-                                </h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 capitalize">
-                                  {service.service_type.replace('_', ' ')}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                service.is_active
-                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
-                              }`}>
-                                {service.is_active ? 'Active' : 'Inactive'}
-                              </span>
-                              <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
-                            </div>
-                          </div>
-
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
-                            {service.description}
-                          </p>
-                        </div>
-
-                        {/* Service Stats */}
-                        <div className="px-6 pb-4">
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center space-x-2">
-                              <Users className="h-4 w-4 text-gray-400" />
-                              <span className="text-gray-600 dark:text-gray-400">
-                                {serviceUsers.length} user{serviceUsers.length !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Activity className="h-4 w-4 text-green-500" />
-                              <span className="text-green-600 dark:text-green-400 font-medium">
-                                Ready
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Service Features */}
-                        {service.features && service.features.length > 0 && (
-                          <div className="px-6 pb-6">
-                            <div className="flex flex-wrap gap-1">
-                              {service.features.slice(0, 3).map((feature: string, index: number) => (
-                                <span
-                                  key={index}
-                                  className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
-                                >
-                                  {feature}
-                                </span>
-                              ))}
-                              {service.features.length > 3 && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-50 text-gray-600 dark:bg-gray-900/20 dark:text-gray-400">
-                                  +{service.features.length - 3} more
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Hover Effect */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          </div>
+          <ServiceManagement
+            servicesData={servicesData}
+            serviceUsersData={serviceUsersData}
+            servicesLoading={servicesLoading}
+            onServiceAccess={handleServiceAccess}
+            getServiceIcon={getServiceIcon}
+          />
         )}
 
         {activeTab === 'users' && (
-          <div className="space-y-8">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Service Users Management
-                </h2>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Create and manage users for your services
-                </p>
-              </div>
-              <Button
-                onClick={() => setShowCreateUserModal(true)}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Service User
-              </Button>
-            </div>
+          <ServiceUserManagement
+            serviceUsersData={serviceUsersData}
+            usersLoading={usersLoading}
+            showCredentials={showCredentials}
+            onCreateUser={() => setShowCreateUserModal(true)}
+            onToggleCredentials={toggleCredentialVisibility}
+            onCopyToClipboard={copyToClipboard}
+            onDeleteUser={(userId) => deleteServiceUserMutation.mutate(userId)}
+          />
+        )}
 
-            {/* Service Users Grid */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                  <span>Service Users</span>
-                </CardTitle>
-                <CardDescription>
-                  Users created for accessing specific services
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {usersLoading ? (
-                  <div className="flex justify-center py-12">
-                    <LoadingSpinner size="lg" text="Loading service users..." />
-                  </div>
-                ) : serviceUsersData.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                      No Service Users Created
-                    </h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-6">
-                      Create service users to give them access to specific services
-                    </p>
-                    <Button
-                      onClick={() => setShowCreateUserModal(true)}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create First User
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {serviceUsersData.map((user: any) => (
-                      <Card key={user.id} className="border-2 border-gray-200 dark:border-gray-700">
-                        <CardContent className="p-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/20 rounded-full flex items-center justify-center">
-                                <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                              </div>
-                              <div>
-                                <h3 className="font-semibold text-gray-900 dark:text-white">
-                                  {user.full_name}
-                                </h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">
-                                  {user.username}
-                                </p>
-                              </div>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => deleteServiceUserMutation.mutate(user.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+        {activeTab === 'analytics' && (
+          <CompanyAnalytics
+            analyticsData={dashboardOverview}
+            serviceUtilization={serviceUtilization}
+            isLoading={overviewLoading || utilizationLoading}
+          />
+        )}
 
-                          <div className="space-y-2">
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              <strong>Email:</strong> {user.email}
-                            </p>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              <strong>Service:</strong> {user.service_name}
-                            </p>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              <strong>Role:</strong> {user.role}
-                            </p>
-                          </div>
+        {activeTab === 'activity' && (
+          <ActivityMonitor
+            userActivities={userActivities}
+            activityLogs={activityLogs}
+            isLoading={activitiesLoading || logsLoading}
+          />
+        )}
 
-                          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <div className="flex items-center justify-between">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                user.is_active
-                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                                  : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-                              }`}>
-                                {user.is_active ? 'Active' : 'Inactive'}
-                              </span>
-
-                              <div className="flex space-x-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => toggleCredentialVisibility(user.id)}
-                                >
-                                  {showCredentials[user.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                </Button>
-                                {user.password && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => copyToClipboard(user.password)}
-                                  >
-                                    <Copy className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-
-                            {showCredentials[user.id] && user.password && (
-                              <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm">
-                                <strong>Password:</strong> {user.password}
-                              </div>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+        {activeTab === 'notifications' && (
+          <NotificationCenter
+            notifications={notifications}
+            isLoading={notificationsLoading}
+            onMarkAsRead={async (notificationId) => {
+              try {
+                await apiClient.post(`/api/company-dashboard/notifications/${notificationId}/read/`)
+                queryClient.invalidateQueries({ queryKey: ['company-notifications'] })
+                toast.success('Notification marked as read')
+              } catch (error) {
+                toast.error('Failed to mark notification as read')
+              }
+            }}
+          />
         )}
 
         {activeTab === 'settings' && (
@@ -868,30 +725,65 @@ Website: https://athenas.co.in
               </p>
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Company Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Company Name
-                    </label>
-                    <p className="text-gray-900 dark:text-white">{user?.company_name}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Email
-                    </label>
-                    <p className="text-gray-900 dark:text-white">{user?.email}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Settings Sub-Navigation */}
+            <div className="border-b border-gray-200 dark:border-gray-700">
+              <nav className="flex space-x-8">
+                {settingsTabs.map((tab) => {
+                  const Icon = tab.icon
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveSettingsTab(tab.id)}
+                      className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                        activeSettingsTab === tab.id
+                          ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span>{tab.label}</span>
+                    </button>
+                  )
+                })}
+              </nav>
+            </div>
 
-            {/* Company Logo Section */}
-            <Card>
+            {/* Settings Content */}
+            {activeSettingsTab === 'email' && (
+              <EmailSettings onSettingsUpdate={() => {
+                // Refresh any necessary data
+                queryClient.invalidateQueries({ queryKey: ['company-notifications'] })
+              }} />
+            )}
+
+            {activeSettingsTab === 'general' && (
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Company Information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Company Name
+                      </label>
+                      <p className="text-gray-900 dark:text-white">{user?.company_name}</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Email
+                      </label>
+                      <p className="text-gray-900 dark:text-white">{user?.email}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSettingsTab === 'logo' && (
+
+              <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Image className="h-5 w-5 text-purple-600 dark:text-purple-400" />
@@ -1002,10 +894,11 @@ Website: https://athenas.co.in
                   </div>
                 </div>
               </CardContent>
-            </Card>
+              </Card>
+            )}
 
-            {/* Password Change Section */}
-            <Card>
+            {activeSettingsTab === 'password' && (
+              <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Key className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -1124,9 +1017,11 @@ Website: https://athenas.co.in
                   </div>
                 </form>
               </CardContent>
-            </Card>
+              </Card>
+            )}
 
-            <Card>
+            {activeSettingsTab === 'general' && (
+              <Card>
               <CardHeader>
                 <CardTitle>Quick Actions</CardTitle>
               </CardHeader>
@@ -1169,7 +1064,8 @@ Website: https://athenas.co.in
                   </Button>
                 </div>
               </CardContent>
-            </Card>
+              </Card>
+            )}
           </div>
         )}
       </main>

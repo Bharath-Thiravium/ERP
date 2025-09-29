@@ -42,8 +42,8 @@ class AttendanceDeviceSerializer(serializers.ModelSerializer):
 class MobileAttendanceSerializer(serializers.Serializer):
     employee_id = serializers.CharField()
     action = serializers.ChoiceField(choices=[('checkin', 'Check In'), ('checkout', 'Check Out')])
-    latitude = serializers.DecimalField(max_digits=10, decimal_places=8, required=False)
-    longitude = serializers.DecimalField(max_digits=11, decimal_places=8, required=False)
+    latitude = serializers.FloatField(required=False)
+    longitude = serializers.FloatField(required=False)
     location_name = serializers.CharField(max_length=255, required=False)
     face_image = serializers.ImageField(required=False)
     notes = serializers.CharField(max_length=500, required=False)

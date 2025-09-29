@@ -1,3 +1,4 @@
+from html import escape
 import os
 from io import BytesIO
 from django.conf import settings

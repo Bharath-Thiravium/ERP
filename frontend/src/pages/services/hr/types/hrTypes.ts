@@ -50,8 +50,7 @@ export interface Employee {
   date_of_joining: string;
   date_of_leaving?: string;
   status: 'active' | 'inactive' | 'terminated' | 'resigned' | 'on_leave';
-  reporting_manager?: number;
-  manager_name?: string;
+
   base_salary: number;
   currency: string;
   address_line1?: string;
@@ -80,6 +79,10 @@ export interface Employee {
   profile_picture?: string;
   face_photo?: string;
   face_encoding?: number[];
+  mobile_app_password?: string;
+  mobile_app_enabled: boolean;
+  last_mobile_login?: string;
+  mobile_device_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -254,7 +257,7 @@ export interface EmployeeFormData {
   employment_type: string;
   work_mode: string;
   date_of_joining: string;
-  reporting_manager?: number;
+
   base_salary: number;
   address_line1?: string;
   address_line2?: string;

@@ -4,6 +4,7 @@ import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import EmployeeList from '../components/employees/EmployeeList'
 import EmployeeForm from '../components/employees/EmployeeForm'
+import MobileAccessManager from '../components/employees/MobileAccessManager'
 import { Employee } from '../types/hrTypes'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import api from '../../../../lib/api'
@@ -14,6 +15,7 @@ const Employees: React.FC = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>()
   const [refreshKey, setRefreshKey] = useState(0)
   const [activeView, setActiveView] = useState('overview')
+  const [employees, setEmployees] = useState<Employee[]>([])
   const [stats, setStats] = useState({
     totalEmployees: 0,
     activeEmployees: 0,
@@ -34,24 +36,25 @@ const Employees: React.FC = () => {
         params: { session_key: sessionKey }
       })
       
-      const employees = response.data.results || []
-      const activeEmployees = employees.filter((emp: Employee) => emp.status === 'active')
+      const employeesData = response.data.results || []
+      setEmployees(employeesData)
+      const activeEmployees = employeesData.filter((emp: Employee) => emp.status === 'active')
       const highPerformers = employees.filter((emp: Employee) => emp.performance_score >= 8)
       const atRisk = employees.filter((emp: Employee) => emp.retention_risk === 'high')
-      const avgPerformance = employees.length > 0 
-        ? employees.reduce((sum: number, emp: Employee) => sum + emp.performance_score, 0) / employees.length 
+      const avgPerformance = employeesData.length > 0 
+        ? employeesData.reduce((sum: number, emp: Employee) => sum + emp.performance_score, 0) / employeesData.length 
         : 0
       
       setStats({
-        totalEmployees: employees.length,
+        totalEmployees: employeesData.length,
         activeEmployees: activeEmployees.length,
-        newHires: employees.filter((emp: Employee) => {
+        newHires: employeesData.filter((emp: Employee) => {
           const joinDate = new Date(emp.date_of_joining)
           const monthAgo = new Date()
           monthAgo.setMonth(monthAgo.getMonth() - 1)
           return joinDate >= monthAgo
         }).length,
-        departments: new Set(employees.map((emp: Employee) => emp.department)).size,
+        departments: new Set(employeesData.map((emp: Employee) => emp.department)).size,
         avgPerformance: Math.round(avgPerformance * 10) / 10,
         highPerformers: highPerformers.length,
         atRisk: atRisk.length,
@@ -259,17 +262,35 @@ const Employees: React.FC = () => {
         >
           Employee List
         </button>
+        <button
+          onClick={() => setActiveView('mobile')}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeView === 'mobile'
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          Mobile Access
+        </button>
       </div>
 
       {/* Content */}
       {activeView === 'overview' ? (
         renderOverview()
-      ) : (
+      ) : activeView === 'list' ? (
         <EmployeeList
           key={refreshKey}
           onAddEmployee={handleAddEmployee}
           onEditEmployee={handleEditEmployee}
           onViewEmployee={handleViewEmployee}
+        />
+      ) : (
+        <MobileAccessManager
+          employees={employees}
+          onRefresh={() => {
+            setRefreshKey(prev => prev + 1)
+            fetchEmployeeStats()
+          }}
         />
       )}
       

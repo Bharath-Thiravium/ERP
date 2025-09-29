@@ -81,17 +81,62 @@ const CompanyDeleteModal: React.FC<CompanyDeleteModalProps> = ({
 
           {/* Content */}
           <div className="p-6">
-            {/* Company Info */}
-            <div className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg mb-6">
-              <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-lg">
-                {company.name.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">{company.name}</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{company.email}</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">
-                  Created: {new Date(company.created_at).toLocaleDateString()}
-                </p>
+            {/* Enhanced Company Info */}
+            <div className="bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20 rounded-xl p-6 mb-6 border border-red-200/50 dark:border-red-700/50">
+              <div className="flex items-start space-x-4">
+                <div className="relative">
+                  <div className="h-16 w-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                    {company.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-red-500 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-800">
+                    <AlertTriangle className="h-3 w-3 text-white" />
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{company.name}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-gray-500 dark:text-gray-400">Email</p>
+                      <p className="font-medium text-gray-900 dark:text-white">{company.email}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 dark:text-gray-400">Company ID</p>
+                      <p className="font-medium text-gray-900 dark:text-white">{company.id}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 dark:text-gray-400">Status</p>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        company.approval_status === 'approved' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' :
+                        company.approval_status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' :
+                        'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                      }`}>
+                        {company.approval_status}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 dark:text-gray-400">Created</p>
+                      <p className="font-medium text-gray-900 dark:text-white">
+                        {new Date(company.created_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                    {company.phone && (
+                      <div>
+                        <p className="text-gray-500 dark:text-gray-400">Phone</p>
+                        <p className="font-medium text-gray-900 dark:text-white">{company.phone}</p>
+                      </div>
+                    )}
+                    {company.services && (
+                      <div>
+                        <p className="text-gray-500 dark:text-gray-400">Services</p>
+                        <p className="font-medium text-gray-900 dark:text-white">{company.services.length} assigned</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -139,13 +184,30 @@ const CompanyDeleteModal: React.FC<CompanyDeleteModalProps> = ({
               )}
             </div>
 
-            {/* Additional Info */}
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-6">
-              <p>Company ID: {company.id}</p>
-              <p>Status: {company.approval_status}</p>
-              {company.services && (
-                <p>Services: {company.services.length} assigned</p>
-              )}
+            {/* Impact Summary */}
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-6">
+              <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                Deletion Impact Summary
+              </h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Company Data</span>
+                  <span className="font-medium text-red-600 dark:text-red-400">Will be deleted</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">User Accounts</span>
+                  <span className="font-medium text-red-600 dark:text-red-400">Will be removed</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Service Access</span>
+                  <span className="font-medium text-red-600 dark:text-red-400">Will be revoked</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Documents</span>
+                  <span className="font-medium text-red-600 dark:text-red-400">Will be deleted</span>
+                </div>
+              </div>
             </div>
           </div>
 

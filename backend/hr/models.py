@@ -1,3 +1,4 @@
+from html import escape
 from django.db import models
 from django.core.validators import RegexValidator, EmailValidator
 from django.utils import timezone
@@ -21,7 +22,8 @@ class Department(models.Model):
         ordering = ['name']
 
     def __str__(self):
-        return f"{self.code} - {self.name}"
+        from .security_fixes import sanitize_department_name
+        return escape(f"{self.code} - {sanitize_department_name(self.name)}")
 
 
 class Designation(models.Model):
@@ -51,7 +53,8 @@ class Designation(models.Model):
         ordering = ['title']
 
     def __str__(self):
-        return f"{self.title} - {self.department.name}"
+        from .security_fixes import sanitize_designation_title, sanitize_department_name
+        return escape(f"{sanitize_designation_title(self.title)} - {sanitize_department_name(self.department.name)}")
 
 
 class Employee(models.Model):
@@ -160,6 +163,12 @@ class Employee(models.Model):
     face_photo = models.ImageField(upload_to='employee_faces/', null=True, blank=True, help_text="Photo for face recognition attendance")
     face_encoding = models.JSONField(default=list, blank=True, help_text="Face encoding data for recognition")
 
+    # Mobile App Authentication
+    mobile_app_password = models.CharField(max_length=128, blank=True, help_text="Password for mobile app login")
+    mobile_app_enabled = models.BooleanField(default=False, help_text="Enable mobile app access")
+    last_mobile_login = models.DateTimeField(null=True, blank=True)
+    mobile_device_id = models.CharField(max_length=255, blank=True, help_text="Last registered mobile device")
+
     # Audit Fields
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_employees')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -170,11 +179,12 @@ class Employee(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.employee_id} - {self.first_name} {self.last_name}"
+        from .security_fixes import sanitize_employee_name
+        return escape(f"{self.employee_id} - {sanitize_employee_name(self.first_name)} {sanitize_employee_name(self.last_name)}")
 
     @property
     def full_name(self):
-        return f"{self.first_name} {self.last_name}"
+        return escape(f"{self.first_name} {self.last_name}")
 
     def save(self, *args, **kwargs):
         if not self.employee_id:
@@ -238,7 +248,8 @@ class JobPosting(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.title} - {self.department.name}"
+        from .security_fixes import sanitize_job_title, sanitize_department_name
+        return escape(f"{sanitize_job_title(self.title)} - {sanitize_department_name(self.department.name)}")
 
 
 class JobApplication(models.Model):
@@ -284,11 +295,11 @@ class JobApplication(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.first_name} {self.last_name} - {self.job_posting.title}"
+        return escape(f"{self.first_name} {self.last_name} - {self.job_posting.title}")
 
     @property
     def full_name(self):
-        return f"{self.first_name} {self.last_name}"
+        return escape(f"{self.first_name} {self.last_name}")
 
 
 class AttendanceSystem(models.Model):
@@ -312,8 +323,8 @@ class AttendanceSystem(models.Model):
     
     # Geo-location settings
     enable_geo_fencing = models.BooleanField(default=False)
-    office_latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True)
-    office_longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    office_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    office_longitude = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
     geo_fence_radius = models.IntegerField(default=100, help_text="Radius in meters")
     
     # Time settings
@@ -330,7 +341,7 @@ class AttendanceSystem(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"{self.company.name} - {self.get_system_type_display()}"
+        return escape(f"{self.company.name} - {self.get_system_type_display()}")
 
 
 class Attendance(models.Model):
@@ -405,7 +416,7 @@ class Attendance(models.Model):
         ordering = ['-date']
 
     def __str__(self):
-        return f"{self.employee.full_name} - {self.date}"
+        return escape(f"{self.employee.full_name} - {self.date}")
     
     def calculate_hours(self):
         """Calculate total working hours"""
@@ -468,7 +479,7 @@ class PerformanceReview(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.employee.full_name} - {self.review_period_start} to {self.review_period_end}"
+        return escape(f"{self.employee.full_name} - {self.review_period_start} to {self.review_period_end}")
 
 
 class AttendanceDevice(models.Model):
@@ -494,7 +505,7 @@ class AttendanceDevice(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"{self.device_name} ({self.device_id})"
+        return escape(f"{self.device_name} ({self.device_id})")
 
 
 class AttendanceLog(models.Model):
@@ -512,7 +523,7 @@ class AttendanceLog(models.Model):
         ordering = ['-timestamp']
     
     def __str__(self):
-        return f"{self.employee.full_name} - {self.log_type} - {self.timestamp}"
+        return escape(f"{self.employee.full_name} - {self.log_type} - {self.timestamp}")
 
 
 class SalaryComponent(models.Model):
@@ -536,7 +547,7 @@ class SalaryComponent(models.Model):
         unique_together = ['company', 'code']
     
     def __str__(self):
-        return f"{self.name} ({self.component_type})"
+        return escape(f"{self.name} ({self.component_type})")
 
 
 class PayrollSettings(models.Model):
@@ -617,7 +628,7 @@ class PayrollCycle(models.Model):
         unique_together = ['company', 'name']
 
     def __str__(self):
-        return f"{self.name} - {self.company.name}"
+        return escape(f"{self.name} - {self.company.name}")
 
 
 class Payslip(models.Model):
@@ -694,7 +705,7 @@ class Payslip(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.emp_name} - {self.payroll_cycle.name}"
+        return escape(f"{self.emp_name} - {self.payroll_cycle.name}")
     
     def calculate_salary(self):
         """AI-powered salary calculation"""
@@ -801,4 +812,4 @@ class PayrollReport(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
-        return f"{self.get_report_type_display()} - {self.payroll_cycle.name}"
+        return escape(f"{self.get_report_type_display()} - {self.payroll_cycle.name}")

@@ -32,7 +32,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-rh@5hj9e1o7sdlca##9(l
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.29.133', '0.0.0.0', '*']
 
 
 # Application definition
@@ -62,7 +62,9 @@ INSTALLED_APPS = [
     'analytics',
     'reports',
     'notifications',
-    'deployment',
+    'ai_assistant',
+    'configuration',
+    'company_dashboard',
 ]
 
 MIDDLEWARE = [
@@ -217,6 +219,18 @@ SIMPLE_JWT = {
 # CORS Configuration
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000').split(',')
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins for mobile app development
+CORS_ALLOWED_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # Channels Configuration
 ASGI_APPLICATION = 'sap_backend.asgi.application'
@@ -230,15 +244,20 @@ CHANNEL_LAYERS = {
     },
 }
 
-# Email Configuration
-if config('EMAIL_HOST_USER', default='') and config('EMAIL_HOST_PASSWORD', default=''):
-    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-    EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
-    EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
-    EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
-    EMAIL_HOST_USER = config('EMAIL_HOST_USER')
-    EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
-    DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER)
-else:
-    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    DEFAULT_FROM_EMAIL = 'noreply@example.com'
+# Email Configuration - Per-Company Email Settings
+# Global email configuration removed - each company configures their own email service
+# Console backend used as fallback for system notifications only
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = 'system@athenas.co.in'
+EMAIL_TIMEOUT = 30
+
+# Note: Business emails (invoices, quotations) now use company-specific email settings
+# configured in Company Dashboard > Settings > Email Settings
+
+# Email Encryption Key for Company Email Settings
+# In production, this should be stored securely (e.g., AWS Secrets Manager, environment variable)
+EMAIL_ENCRYPTION_KEY = config('EMAIL_ENCRYPTION_KEY', default=b'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=')
+
+# Configuration Settings
+BACKUP_DIR = config('BACKUP_DIR', default=BASE_DIR / 'backups')
+DJANGO_VERSION = '5.2.6'

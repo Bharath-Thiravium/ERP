@@ -44,6 +44,7 @@ urlpatterns = [
     # Mobile & Device Attendance APIs (no authentication)
     path('attendance/mobile/', attendance_views.mobile_attendance, name='mobile-attendance'),
     path('attendance/face-recognition/', attendance_views.face_recognition_attendance, name='face-recognition-attendance'),
+    path('attendance/validate-location/', attendance_views.validate_location, name='validate-location'),
     path('attendance/biometric-sync/', attendance_views.biometric_sync, name='biometric-sync'),
     
     # Payroll Analytics
@@ -61,5 +62,9 @@ urlpatterns = [
     # Dropdown APIs
     path('api/departments/', views.get_departments, name='get-departments'),
     path('api/designations/', views.get_designations, name='get-designations'),
-    path('api/managers/', views.get_managers, name='get-managers'),
+    
+    # Mobile App Authentication APIs
+    path('employee-login/', views.employee_mobile_login, name='employee-mobile-login'),
+    path('set-mobile-password/', views.set_mobile_password, name='set-mobile-password'),
+    path('download-mobile-credentials/', views.download_mobile_credentials, name='download-mobile-credentials'),
 ]

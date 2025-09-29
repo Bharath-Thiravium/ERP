@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils._os import safe_join
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password, check_password
@@ -184,13 +185,25 @@ class CompanyListSerializer(serializers.ModelSerializer):
 
 class CompanyDetailSerializer(serializers.ModelSerializer):
     """Detailed company serializer"""
-    services = ServiceSerializer(source='company_services.service', many=True, read_only=True)
+    services = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     approved_by_name = serializers.CharField(source='approved_by.get_full_name', read_only=True)
     
     class Meta:
         model = Company
         fields = '__all__'
+    
+    def get_services(self, obj):
+        """Get assigned services for the company"""
+        company_services = obj.company_services.filter(is_active=True).select_related('service')
+        return [{
+            'id': cs.service.id,
+            'name': cs.service.name,
+            'service_type': cs.service.service_type,
+            'description': cs.service.description,
+            'base_price': cs.service.base_price,
+            'assigned_at': cs.assigned_at
+        } for cs in company_services]
 
 
 class CompanyDetailedInfoSerializer(serializers.ModelSerializer):
@@ -199,7 +212,7 @@ class CompanyDetailedInfoSerializer(serializers.ModelSerializer):
         model = Company
         fields = [
             'business_type', 'industry', 'employee_count', 'annual_revenue',
-            'website', 'tax_id', 'gst_number', 'registration_number', 'contact_person_name',
+            'website', 'tax_id', 'pan_number', 'gst_number', 'registration_number', 'contact_person_name',
             'contact_person_title', 'contact_person_email', 'contact_person_phone',
             'description', 'special_requirements'
         ]

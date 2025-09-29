@@ -6,7 +6,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 // Create axios instance
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -40,9 +40,10 @@ api.interceptors.request.use(
                            config.url?.includes('/health/')
 
     if (!isLoginEndpoint) {
-      // Check if this is a service user endpoint (HR, Finance)
+      // Check if this is a service user endpoint (HR, Finance, Inventory)
       const isServiceUserEndpoint = config.url?.includes('/api/hr/') ||
-                                   config.url?.includes('/api/finance/')
+                                   config.url?.includes('/api/finance/') ||
+                                   config.url?.includes('/api/inventory/')
       
       if (isServiceUserEndpoint) {
         // Use session key as query parameter for service user endpoints
@@ -83,9 +84,10 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
 
-      // Skip token refresh for service user endpoints (HR, Finance)
+      // Skip token refresh for service user endpoints (HR, Finance, Inventory)
       const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
-                                   originalRequest.url?.includes('/api/finance/')
+                                   originalRequest.url?.includes('/api/finance/') ||
+                                   originalRequest.url?.includes('/api/inventory/')
       
       if (isServiceUserEndpoint) {
         // For service user endpoints, don't try JWT refresh, just return the error
@@ -118,7 +120,8 @@ api.interceptors.response.use(
       } else {
         // No refresh token, redirect to login (but not for service user endpoints)
         const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
-                                     originalRequest.url?.includes('/api/finance/')
+                                     originalRequest.url?.includes('/api/finance/') ||
+                                     originalRequest.url?.includes('/api/inventory/')
         
         if (!isServiceUserEndpoint) {
           clearTokens()
@@ -220,9 +223,56 @@ export const apiClient = {
   changeMasterAdminPassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
     api.post('/api/auth/master-admin/change-password/', data),
 
+  // Ultra-Secure Master Admin Settings
+  getMasterAdminUltraSettings: () =>
+    api.get('/api/auth/master-admin/settings/'),
+
+  changeMasterAdminUltraPassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
+    api.post('/api/auth/master-admin/settings/password/', data),
+
+  getMasterAdminApiKey: () =>
+    api.get('/api/auth/master-admin/settings/api-key/'),
+
+  regenerateMasterAdminApiKey: (data: { current_password: string }) =>
+    api.post('/api/auth/master-admin/settings/api-key/', data),
+
+  getMasterAdminRecoveryCodes: () =>
+    api.get('/api/auth/master-admin/settings/recovery-codes/'),
+
+  regenerateMasterAdminRecoveryCodes: (data: { current_password: string }) =>
+    api.post('/api/auth/master-admin/settings/recovery-codes/', data),
+
+  getMasterAdminTwoFactor: () =>
+    api.get('/api/auth/master-admin/settings/two-factor/'),
+
+  toggleMasterAdminTwoFactor: (data: { action: 'enable' | 'disable'; current_password: string; totp_code?: string }) =>
+    api.post('/api/auth/master-admin/settings/two-factor/', data),
+
+  getMasterAdminSecurityLog: (params?: { days?: number }) =>
+    api.get('/api/auth/master-admin/settings/security-log/', { params }),
+
+  getMasterAdminSecurityStatus: () =>
+    api.get('/api/auth/master-admin/settings/security-status/'),
+
   // Services
   getServices: () =>
     api.get('/api/auth/services/'),
+
+  // Services Management (Master Admin)
+  getAllServices: () =>
+    api.get('/api/auth/master-admin/services/'),
+
+  createService: (data: any) =>
+    api.post('/api/auth/master-admin/services/create/', data),
+
+  updateService: (id: number, data: any) =>
+    api.put(`/api/auth/master-admin/services/${id}/update/`, data),
+
+  deleteService: (id: number) =>
+    api.delete(`/api/auth/master-admin/services/${id}/delete/`),
+
+  toggleServiceStatus: (id: number) =>
+    api.post(`/api/auth/master-admin/services/${id}/toggle/`),
 
   // Companies (Master Admin)
   getCompanies: (params?: any) =>
@@ -250,8 +300,12 @@ export const apiClient = {
     api.post(`/api/auth/companies/${companyId}/service-credentials/`),
 
   // Company Operations
-  submitDetailedInfo: (companyId: number, data: any) =>
-    api.patch(`/api/auth/companies/${companyId}/detailed-info/`, data),
+  submitDetailedInfo: (companyId: number, data: any) => {
+    const config = data instanceof FormData ? {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    } : {}
+    return api.patch(`/api/auth/companies/${companyId}/detailed-info/`, data, config)
+  },
 
   getCompanyServices: () =>
     api.get('/api/auth/company/services/'),
@@ -685,6 +739,151 @@ export const apiClient = {
 
   createLeaveBalance: (data: any) =>
     api.post('/api/hr/leave-balances/', data),
+
+  // Inventory Service APIs
+  // Dashboard
+  getInventoryDashboard: (params?: any) =>
+    api.get('/api/inventory/dashboard/', { params }),
+
+  // Categories
+  getInventoryCategories: (params?: any) =>
+    api.get('/api/inventory/categories/', { params }),
+
+  createInventoryCategory: (data: any) =>
+    api.post('/api/inventory/categories/', data),
+
+  getInventoryCategory: (id: number, params?: any) =>
+    api.get(`/api/inventory/categories/${id}/`, { params }),
+
+  updateInventoryCategory: (id: number, data: any) =>
+    api.put(`/api/inventory/categories/${id}/`, data),
+
+  deleteInventoryCategory: (id: number, params?: any) =>
+    api.delete(`/api/inventory/categories/${id}/`, { params }),
+
+  // Suppliers
+  getInventorySuppliers: (params?: any) =>
+    api.get('/api/inventory/suppliers/', { params }),
+
+  createInventorySupplier: (data: any) =>
+    api.post('/api/inventory/suppliers/', data),
+
+  getInventorySupplier: (id: number, params?: any) =>
+    api.get(`/api/inventory/suppliers/${id}/`, { params }),
+
+  updateInventorySupplier: (id: number, data: any) =>
+    api.put(`/api/inventory/suppliers/${id}/`, data),
+
+  deleteInventorySupplier: (id: number, params?: any) =>
+    api.delete(`/api/inventory/suppliers/${id}/`, { params }),
+
+  // Warehouses
+  getInventoryWarehouses: (params?: any) =>
+    api.get('/api/inventory/warehouses/', { params }),
+
+  createInventoryWarehouse: (data: any) =>
+    api.post('/api/inventory/warehouses/', data),
+
+  getInventoryWarehouse: (id: number, params?: any) =>
+    api.get(`/api/inventory/warehouses/${id}/`, { params }),
+
+  updateInventoryWarehouse: (id: number, data: any) =>
+    api.put(`/api/inventory/warehouses/${id}/`, data),
+
+  deleteInventoryWarehouse: (id: number, params?: any) =>
+    api.delete(`/api/inventory/warehouses/${id}/`, { params }),
+
+  // Products
+  getInventoryProducts: (params?: any) =>
+    api.get('/api/inventory/products/', { params }),
+
+  createInventoryProduct: (data: any) =>
+    api.post('/api/inventory/products/', data),
+
+  getInventoryProduct: (id: number, params?: any) =>
+    api.get(`/api/inventory/products/${id}/`, { params }),
+
+  updateInventoryProduct: (id: number, data: any) =>
+    api.put(`/api/inventory/products/${id}/`, data),
+
+  deleteInventoryProduct: (id: number, params?: any) =>
+    api.delete(`/api/inventory/products/${id}/`, { params }),
+
+  // Stock Movements
+  getStockMovements: (params?: any) =>
+    api.get('/api/inventory/stock-movements/', { params }),
+
+  createStockMovement: (data: any) =>
+    api.post('/api/inventory/stock-movements/', data),
+
+  // Stock Alerts
+  getStockAlerts: (params?: any) =>
+    api.get('/api/inventory/stock-alerts/', { params }),
+
+  // Dropdown APIs
+  getInventoryCategoriesDropdown: (params?: any) =>
+    api.get('/api/inventory/api/categories/', { params }),
+
+  getInventorySuppliersDropdown: (params?: any) =>
+    api.get('/api/inventory/api/suppliers/', { params }),
+
+  getInventoryWarehousesDropdown: (params?: any) =>
+    api.get('/api/inventory/api/warehouses/', { params }),
+
+  // Inventory Reports
+  getInventoryLowStockReport: (params?: any) =>
+    api.get('/api/inventory/reports/low-stock/', { params }),
+
+  getInventoryStockValuationReport: (params?: any) =>
+    api.get('/api/inventory/reports/stock-valuation/', { params }),
+
+  getInventoryABCAnalysisReport: (params?: any) =>
+    api.get('/api/inventory/reports/abc-analysis/', { params }),
+
+  // Barcode Generation
+  generateInventoryProductBarcode: (productId: number, params?: any) =>
+    api.post(`/api/inventory/products/${productId}/generate-barcode/`, {}, { params }),
+
+  // Company Dashboard APIs
+  getCompanyDashboardOverview: () =>
+    api.get('/api/company-dashboard/overview/'),
+
+  getServiceUtilizationStats: () =>
+    api.get('/api/company-dashboard/service-utilization/'),
+
+  getServiceUserActivities: () =>
+    api.get('/api/company-dashboard/user-activities/'),
+
+  getCompanyActivityLogs: () =>
+    api.get('/api/company-dashboard/activity-logs/'),
+
+  logCompanyActivity: (data: any) =>
+    api.post('/api/company-dashboard/log-activity/', data),
+
+  getCompanyNotifications: () =>
+    api.get('/api/company-dashboard/notifications/'),
+
+  markCompanyNotificationRead: (notificationId: number) =>
+    api.post(`/api/company-dashboard/notifications/${notificationId}/read/`),
+
+  getCompanyAnalyticsDashboard: () =>
+    api.get('/api/company-dashboard/analytics/'),
+
+  // Company Email Settings
+  getCompanyEmailSettings: () =>
+    api.get('/api/company-dashboard/email-settings/'),
+
+  updateCompanyEmailSettings: (data: any) =>
+    api.put('/api/company-dashboard/email-settings/', data),
+
+  testCompanyEmailConfiguration: () =>
+    api.post('/api/company-dashboard/email-settings/test/'),
+
+  getEmailProviderTemplates: () =>
+    api.get('/api/company-dashboard/email-settings/providers/'),
+
+  getEmailUsageStats: () =>
+    api.get('/api/company-dashboard/email-settings/usage/'),
 
   // Convenience methods for backward compatibility
   getEmployees: (params?: any) => apiClient.getHREmployees(params),

@@ -70,8 +70,8 @@ const AttendanceSystemConfig: React.FC<AttendanceSystemConfigProps> = ({ onSucce
     try {
       const payload = {
         ...config,
-        office_latitude: config.office_latitude ? parseFloat(config.office_latitude) : null,
-        office_longitude: config.office_longitude ? parseFloat(config.office_longitude) : null,
+        office_latitude: config.office_latitude ? parseFloat(parseFloat(config.office_latitude).toFixed(6)) : null,
+        office_longitude: config.office_longitude ? parseFloat(parseFloat(config.office_longitude).toFixed(6)) : null,
         session_key: sessionKey
       }
 
@@ -103,8 +103,8 @@ const AttendanceSystemConfig: React.FC<AttendanceSystemConfigProps> = ({ onSucce
         (position) => {
           setConfig({
             ...config,
-            office_latitude: position.coords.latitude.toString(),
-            office_longitude: position.coords.longitude.toString()
+            office_latitude: position.coords.latitude.toFixed(6),
+            office_longitude: position.coords.longitude.toFixed(6)
           })
           toast.success('Location captured successfully')
         },
@@ -385,11 +385,11 @@ const AttendanceSystemConfig: React.FC<AttendanceSystemConfigProps> = ({ onSucce
                   </label>
                   <input
                     type="number"
-                    step="any"
+                    step="0.000001"
                     value={config.office_latitude}
                     onChange={(e) => setConfig({ ...config, office_latitude: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    placeholder="e.g. 19.0760"
+                    placeholder="e.g. 9.981298"
                   />
                 </div>
                 
@@ -399,11 +399,11 @@ const AttendanceSystemConfig: React.FC<AttendanceSystemConfigProps> = ({ onSucce
                   </label>
                   <input
                     type="number"
-                    step="any"
+                    step="0.000001"
                     value={config.office_longitude}
                     onChange={(e) => setConfig({ ...config, office_longitude: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    placeholder="e.g. 72.8777"
+                    placeholder="e.g. 78.143374"
                   />
                 </div>
               </div>

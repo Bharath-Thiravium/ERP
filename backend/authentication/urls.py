@@ -1,6 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from . import master_admin_settings
+from . import services_management
 
 # Create router for ViewSets
 router = DefaultRouter()
@@ -12,6 +14,15 @@ urlpatterns = [
     path('master-admin/login/', views.MasterAdminLoginView.as_view(), name='master_admin_login'),
     path('master-admin/change-password/', views.MasterAdminPasswordChangeView.as_view(), name='master_admin_password_change'),
     path('master-admin/profile/', views.MasterAdminProfileView.as_view(), name='master_admin_profile'),
+    
+    # Ultra-Secure Master Admin Settings Dashboard
+    path('master-admin/settings/', master_admin_settings.MasterAdminSettingsView.as_view(), name='master_admin_settings'),
+    path('master-admin/settings/password/', master_admin_settings.MasterAdminPasswordChangeView.as_view(), name='master_admin_ultra_password_change'),
+    path('master-admin/settings/api-key/', master_admin_settings.MasterAdminAPIKeyManagementView.as_view(), name='master_admin_api_key'),
+    path('master-admin/settings/recovery-codes/', master_admin_settings.MasterAdminRecoveryCodesView.as_view(), name='master_admin_recovery_codes'),
+    path('master-admin/settings/two-factor/', master_admin_settings.MasterAdminTwoFactorView.as_view(), name='master_admin_two_factor'),
+    path('master-admin/settings/security-log/', master_admin_settings.MasterAdminSecurityLogView.as_view(), name='master_admin_security_log'),
+    path('master-admin/settings/security-status/', master_admin_settings.MasterAdminSecurityStatusView.as_view(), name='master_admin_security_status'),
 
     # Company User endpoints
     path('company/login/', views.CompanyUserLoginView.as_view(), name='company_user_login'),
@@ -31,6 +42,13 @@ urlpatterns = [
 
     # Services
     path('services/', views.ServiceListView.as_view(), name='service_list'),
+    
+    # Services Management (Master Admin)
+    path('master-admin/services/', services_management.get_all_services, name='master_admin_services'),
+    path('master-admin/services/create/', services_management.create_service, name='master_admin_create_service'),
+    path('master-admin/services/<int:service_id>/update/', services_management.update_service, name='master_admin_update_service'),
+    path('master-admin/services/<int:service_id>/delete/', services_management.delete_service, name='master_admin_delete_service'),
+    path('master-admin/services/<int:service_id>/toggle/', services_management.toggle_service_status, name='master_admin_toggle_service'),
 
     # Companies (Master Admin)
     path('companies/', views.CompanyListCreateView.as_view(), name='company_list_create'),
@@ -51,6 +69,9 @@ urlpatterns = [
 
     # Token validation
     path('validate-token/', views.ValidateTokenView.as_view(), name='validate_token'),
+    
+    # Mobile app logout
+    path('logout/', views.mobile_logout, name='mobile_logout'),
     
     # Auto-code generation (testing)
     path('generate-auto-code/', views.GenerateAutoCodeView.as_view(), name='generate_auto_code'),

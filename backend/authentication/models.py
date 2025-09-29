@@ -1,3 +1,4 @@
+from html import escape
 from django.db import models
 from django.contrib.auth.models import AbstractUser, User
 from django.utils import timezone
@@ -22,8 +23,8 @@ class MasterAdmin(models.Model):
     two_factor_secret = models.CharField(max_length=32, blank=True)
 
     def __str__(self):
-        from .sanitizers import sanitize_html_input
-        return f"Master Admin - {sanitize_html_input(self.company_name)}"
+        from html import escape
+        return escape(f"Master Admin - {self.company_name}")
 
     def is_password_expired(self):
         return timezone.now() > self.password_expires_at
@@ -67,6 +68,7 @@ class Company(models.Model):
     annual_revenue = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     website = models.URLField(blank=True)
     tax_id = models.CharField(max_length=50, blank=True)
+    pan_number = models.CharField(max_length=10, blank=True, help_text="PAN Card Number")
     gst_number = models.CharField(max_length=15, blank=True, help_text="GST Registration Number")
     registration_number = models.CharField(max_length=50, blank=True)
 
@@ -99,16 +101,21 @@ class CompanyAutoCodeSettings(models.Model):
         ('product', 'Product Code'),
         ('invoice', 'Invoice Number'),
         ('purchase_order', 'Purchase Order'),
+        ('inventory_purchase_order', 'Inventory Purchase Order'),
         ('quotation', 'Quotation Number'),
         ('customer', 'Customer ID'),
         ('vendor', 'Vendor ID'),
+        ('supplier', 'Supplier Code'),
+        ('warehouse', 'Warehouse Code'),
+        ('category', 'Category Code'),
+        ('audit', 'Audit Number'),
         ('asset', 'Asset Code'),
         ('proforma_invoice', 'Proforma Invoice'),
         ('payment', 'Payment Number'),
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='auto_code_settings')
-    code_type = models.CharField(max_length=20, choices=CODE_TYPES)
+    code_type = models.CharField(max_length=30, choices=CODE_TYPES)
     current_number = models.IntegerField(default=0)
     number_length = models.IntegerField(default=3, help_text="Number of digits (e.g., 3 for 001)")
     is_active = models.BooleanField(default=True)
@@ -121,7 +128,7 @@ class CompanyAutoCodeSettings(models.Model):
         verbose_name_plural = 'Company Auto Code Settings'
 
     def __str__(self):
-        return f"{self.company.name} - {self.get_code_type_display()}"
+        return escape(f"{self.company.name} - {self.get_code_type_display()}")
 
     def get_next_code(self):
         """Generate next auto code for this type"""
@@ -135,16 +142,21 @@ class CompanyAutoCodeSettings(models.Model):
             'product': 'PRD',
             'invoice': 'INV',
             'purchase_order': 'POU',
+            'inventory_purchase_order': 'IPO',
             'quotation': 'QUO',
             'customer': 'CUS',
             'vendor': 'VEN',
+            'supplier': 'SUP',
+            'warehouse': 'WH',
+            'category': 'CAT',
+            'audit': 'AUD',
             'asset': 'AST',
             'proforma_invoice': 'PFI',
             'payment': 'PAY',
         }
         
         prefix = code_prefixes.get(self.code_type, self.code_type.upper()[:3])
-        return f"{self.company.company_prefix}{prefix}{number_str}"
+        return escape(f"{self.company.company_prefix}{prefix}{number_str}")
 
 
 class Service(models.Model):
@@ -195,7 +207,7 @@ class CompanyService(models.Model):
         unique_together = ['company', 'service']
 
     def __str__(self):
-        return f"{self.company.name} - {self.service.name}"
+        return escape(f"{self.company.name} - {self.service.name}")
 
 
 class CompanyUser(models.Model):
@@ -220,7 +232,7 @@ class CompanyUser(models.Model):
     must_change_password = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.user.email} - {self.company.name}"
+        return escape(f"{self.user.email} - {self.company.name}")
 
     def is_password_expired(self):
         return timezone.now() > self.password_expires_at
@@ -262,7 +274,7 @@ class CompanyServiceUser(models.Model):
         verbose_name_plural = 'Company Service Users'
 
     def __str__(self):
-        return f"{self.username} - {self.service.name} ({self.company.name})"
+        return escape(f"{self.username} - {self.service.name} ({self.company.name})")
 
     def is_password_expired(self):
         return timezone.now() > self.password_expires_at
@@ -283,7 +295,7 @@ class ServiceUserSession(models.Model):
         verbose_name_plural = 'Service User Sessions'
 
     def __str__(self):
-        return f"{self.service_user.username} - {self.login_time}"
+        return escape(f"{self.service_user.username} - {self.login_time}")
 
 
 class SecurityLog(models.Model):
@@ -315,4 +327,4 @@ class SecurityLog(models.Model):
         ordering = ['-timestamp']
 
     def __str__(self):
-        return f"{self.event_type} - {self.timestamp}"
+        return escape(f"{self.event_type} - {self.timestamp}")

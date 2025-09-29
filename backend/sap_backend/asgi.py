@@ -16,7 +16,12 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'sap_backend.settings')
 
 django_asgi_app = get_asgi_application()
 
-from notifications.routing import websocket_urlpatterns
+# Import WebSocket URL patterns
+from notifications.routing import websocket_urlpatterns as notifications_ws
+from analytics.routing import websocket_urlpatterns as analytics_ws
+
+# Combine all WebSocket URL patterns
+websocket_urlpatterns = notifications_ws + analytics_ws
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,

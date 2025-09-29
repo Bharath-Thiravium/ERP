@@ -7,7 +7,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 const LoginPage = React.lazy(() => import('../pages/auth/LoginPage'))
 const ServiceUserLogin = React.lazy(() => import('../pages/auth/ServiceUserLogin'))
 const MasterAdminDashboard = React.lazy(() => import('../pages/master-admin/EnhancedDashboard'))
-const MasterAdminSettings = React.lazy(() => import('../pages/master-admin/Settings'))
+const UltraSecureMasterAdminSettings = React.lazy(() => import('../pages/master-admin/UltraSecureSettings'))
 const CompanyDashboard = React.lazy(() => import('../pages/company/Dashboard'))
 const DetailedInfoForm = React.lazy(() => import('../pages/company/DetailedInfoForm'))
 const ServiceSelection = React.lazy(() => import('../pages/company/ServiceSelection'))
@@ -73,54 +73,26 @@ interface PublicRouteProps {
 const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
   const { isAuthenticated, user, firstLoginRequired, approvalPending } = useAuthStore()
 
-  console.log('🔍 DEBUG: PublicRoute render', {
-    isAuthenticated,
-    user: user ? {
-      email: user.email,
-      is_master_admin: user.is_master_admin,
-      is_company_user: user.is_company_user
-    } : null,
-    firstLoginRequired,
-    approvalPending
-  })
-
   if (isAuthenticated && user) {
-    console.log('🔍 DEBUG: User is authenticated, redirecting...')
     // Redirect based on user type and status
     if (user.is_master_admin) {
-      console.log('🔍 DEBUG: Redirecting to master-admin dashboard')
       return <Navigate to="/master-admin" replace />
     }
     
     if (user.is_company_user) {
-      console.log('🔍 DEBUG: Company user detected')
-      console.log('🔍 DEBUG: firstLoginRequired:', firstLoginRequired)
-      console.log('🔍 DEBUG: approvalPending:', approvalPending)
-
       if (firstLoginRequired) {
-        console.log('🔍 DEBUG: Redirecting to /company/detailed-info')
         return <Navigate to="/company/detailed-info" replace />
       }
 
       if (approvalPending) {
-        console.log('🔍 DEBUG: Redirecting to /company/waiting-approval')
         return <Navigate to="/company/waiting-approval" replace />
       }
 
       // For approved company users, redirect to dashboard
-      // The dashboard will handle checking if services are assigned
-      console.log('🔍 DEBUG: Company approved, redirecting to dashboard')
       return <Navigate to="/company" replace />
     }
-
-    console.log('🔍 DEBUG: User type not recognized or missing flags:', {
-      is_master_admin: user.is_master_admin,
-      is_company_user: user.is_company_user,
-      user
-    })
   }
 
-  console.log('🔍 DEBUG: Showing login page (not authenticated)')
   return <>{children}</>
 }
 
@@ -166,7 +138,7 @@ export const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute requireMasterAdmin>
             <SuspenseWrapper>
-              <MasterAdminSettings />
+              <UltraSecureMasterAdminSettings />
             </SuspenseWrapper>
           </ProtectedRoute>
         }
@@ -294,7 +266,7 @@ export const AppRouter: React.FC = () => {
         path="/services/inventory/dashboard"
         element={
           <SuspenseWrapper>
-            <InventoryDashboard service={{ name: 'Inventory Management', service_type: 'inventory' }} />
+            <InventoryDashboard />
           </SuspenseWrapper>
         }
       />

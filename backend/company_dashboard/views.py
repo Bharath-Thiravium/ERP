@@ -19,45 +19,43 @@ from authentication.models import Company, Service, CompanyServiceUser
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def company_dashboard_overview(request):
-    """Get comprehensive company dashboard overview"""
+    """Get comprehensive company dashboard overview - real data only"""
     try:
         company = request.user.company_user.company
         
-        # Basic stats
+        # Basic stats - only real data for this company
         total_services = company.company_services.filter(is_active=True).count()
         total_service_users = CompanyServiceUser.objects.filter(company=company, is_active=True).count()
         
-        # Service utilization
+        # Service utilization - only for this company
         service_utilizations = ServiceUtilization.objects.filter(company=company)
         
-        # Calculate enhanced metrics
+        # Calculate enhanced metrics - real data only
         active_services = service_utilizations.filter(active_users__gt=0).count()
         total_data_entries = service_utilizations.aggregate(Sum('data_volume'))['data_volume__sum'] or 0
         
-        # Most/least used services
-        most_used = service_utilizations.order_by('-usage_percentage').first()
-        least_used = service_utilizations.order_by('usage_percentage').first()
+        # Most/least used services - only from this company's services
+        most_used = service_utilizations.filter(usage_percentage__gt=0).order_by('-usage_percentage').first()
+        least_used = service_utilizations.filter(usage_percentage__gt=0).order_by('usage_percentage').first()
         
-        # Active users today
+        # Active users today - only this company's service users
         today = timezone.now().date()
         active_users_today = ServiceUserActivity.objects.filter(
             service_user__company=company,
+            service_user__is_active=True,
             last_login__date=today
         ).count()
         
-        # Enhanced system health calculation
+        # Enhanced system health calculation - based on real usage
         health_score = 0
-        health_factors = 0
         
         # Factor 1: Service availability (40% weight)
         if total_services > 0:
             health_score += 40
-            health_factors += 1
         
         # Factor 2: Service users created (30% weight)
         if total_service_users > 0:
             health_score += 30
-            health_factors += 1
         
         # Factor 3: Service utilization (20% weight)
         avg_usage = service_utilizations.aggregate(Avg('usage_percentage'))['usage_percentage__avg'] or 0
@@ -68,12 +66,10 @@ def company_dashboard_overview(request):
                 health_score += 15
             else:
                 health_score += 10
-            health_factors += 1
         
         # Factor 4: Recent activity (10% weight)
         if active_users_today > 0:
             health_score += 10
-            health_factors += 1
         
         # Calculate final health status
         if health_score >= 85:
@@ -85,18 +81,28 @@ def company_dashboard_overview(request):
         else:
             system_health = 'poor'
         
-        # Monthly growth calculation
+        # Monthly growth calculation - only company activities
         last_month = timezone.now() - timedelta(days=30)
-        current_entries = total_data_entries
-        last_month_entries = ActivityLog.objects.filter(
+        current_month_activities = ActivityLog.objects.filter(
             company=company,
             timestamp__gte=last_month
         ).count()
         
-        monthly_growth = ((current_entries - last_month_entries) / max(last_month_entries, 1)) * 100 if last_month_entries > 0 else 0
+        previous_month = timezone.now() - timedelta(days=60)
+        previous_month_activities = ActivityLog.objects.filter(
+            company=company,
+            timestamp__gte=previous_month,
+            timestamp__lt=last_month
+        ).count()
+        
+        monthly_growth = 0
+        if previous_month_activities > 0:
+            monthly_growth = ((current_month_activities - previous_month_activities) / previous_month_activities) * 100
+        elif current_month_activities > 0:
+            monthly_growth = 100  # 100% growth if no previous data but current activity exists
         
         # Service utilization percentage
-        service_utilization_rate = (active_services / max(total_services, 1)) * 100
+        service_utilization_rate = (active_services / max(total_services, 1)) * 100 if total_services > 0 else 0
         
         overview_data = {
             'total_services': total_services,
@@ -107,8 +113,8 @@ def company_dashboard_overview(request):
             'active_users_today': active_users_today,
             'monthly_growth': round(monthly_growth, 2),
             'system_health': system_health,
-            'most_used_service': most_used.service.name if most_used else '',
-            'least_used_service': least_used.service.name if least_used else '',
+            'most_used_service': most_used.service.name if most_used else 'None',
+            'least_used_service': least_used.service.name if least_used else 'None',
         }
         
         return Response(overview_data)
@@ -151,11 +157,14 @@ def service_utilization_stats(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def service_user_activities(request):
-    """Get service user activity monitoring data"""
+    """Get service user activity monitoring data - only for current company"""
     try:
         company = request.user.company_user.company
+        
+        # Only get activities for service users belonging to this company
         activities = ServiceUserActivity.objects.filter(
-            service_user__company=company
+            service_user__company=company,
+            service_user__is_active=True
         ).select_related('service_user')
         
         activity_data = []
@@ -214,10 +223,16 @@ def mark_notification_read(request, notification_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def activity_logs(request):
-    """Get company activity logs"""
+    """Get company activity logs - only for current company and its users"""
     try:
         company = request.user.company_user.company
-        logs = ActivityLog.objects.filter(company=company)[:50]  # Last 50 activities
+        
+        # Get logs for this company only, exclude superuser activities
+        logs = ActivityLog.objects.filter(
+            company=company
+        ).exclude(
+            user__is_superuser=True
+        ).select_related('user')[:50]
         
         log_data = []
         for log in logs:

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   Shield, 
   Lock, 
@@ -10,14 +11,48 @@ import {
   Settings,
   Users,
   Clock,
-
+  Edit,
+  Save
 } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
+import { LoadingSpinner } from '../../../components/ui/LoadingSpinner'
+import { apiClient } from '../../../lib/api'
+import toast from 'react-hot-toast'
 
 
 const SecurityConfig: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview')
-  useState<{ [key: string]: boolean }>({})
+  const [editingConfig, setEditingConfig] = useState<any>(null)
+  const queryClient = useQueryClient()
+
+  // Fetch security configurations
+  const { data: securityConfigsData, isLoading } = useQuery({
+    queryKey: ['security-configurations'],
+    queryFn: () => apiClient.get('/api/configuration/system-config/by_category/?category=security'),
+  })
+
+  const securityConfigs = securityConfigsData?.data || []
+
+  // Update configuration mutation
+  const updateConfigMutation = useMutation({
+    mutationFn: (data: any) => apiClient.put(`/api/configuration/system-config/${data.id}/`, data),
+    onSuccess: () => {
+      toast.success('Security configuration updated successfully!')
+      queryClient.invalidateQueries({ queryKey: ['security-configurations'] })
+      setEditingConfig(null)
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update configuration')
+    }
+  })
+
+  const handleEditConfig = (config: any) => {
+    setEditingConfig(config)
+  }
+
+  const handleSaveConfig = (updatedConfig: any) => {
+    updateConfigMutation.mutate(updatedConfig)
+  }
 
   const securityTabs = [
     { id: 'overview', label: 'Security Overview', icon: Shield },
@@ -41,36 +76,19 @@ const SecurityConfig: React.FC = () => {
     security_alerts: 2
   }
 
-  const securitySettings = [
-    {
-      category: 'Authentication',
-      settings: [
-        { key: 'password_min_length', value: '12', description: 'Minimum password length' },
-        { key: 'password_complexity', value: 'true', description: 'Require complex passwords' },
-        { key: 'session_timeout', value: '3600', description: 'Session timeout (seconds)' },
-        { key: 'max_login_attempts', value: '5', description: 'Maximum failed login attempts' },
-        { key: 'lockout_duration', value: '900', description: 'Account lockout duration (seconds)' }
-      ]
-    },
-    {
-      category: 'Encryption',
-      settings: [
-        { key: 'database_encryption', value: 'AES-256', description: 'Database encryption algorithm' },
-        { key: 'backup_encryption', value: 'true', description: 'Encrypt database backups' },
-        { key: 'ssl_tls_version', value: 'TLS 1.3', description: 'Minimum SSL/TLS version' },
-        { key: 'api_encryption', value: 'true', description: 'Encrypt API communications' }
-      ]
-    },
-    {
-      category: 'Access Control',
-      settings: [
-        { key: 'rbac_enabled', value: 'true', description: 'Role-based access control' },
-        { key: 'ip_whitelist', value: '192.168.1.0/24', description: 'Allowed IP ranges' },
-        { key: 'api_rate_limit', value: '1000', description: 'API requests per hour' },
-        { key: 'cors_origins', value: 'https://app.example.com', description: 'Allowed CORS origins' }
-      ]
+  // Group security configurations by subcategory
+  const groupedConfigs = securityConfigs.reduce((acc: any, config: any) => {
+    const subcategory = config.key.includes('password') ? 'Authentication' :
+                       config.key.includes('session') || config.key.includes('login') || config.key.includes('lockout') ? 'Authentication' :
+                       config.key.includes('encryption') || config.key.includes('ssl') || config.key.includes('tls') ? 'Encryption' :
+                       'Access Control'
+    
+    if (!acc[subcategory]) {
+      acc[subcategory] = []
     }
-  ]
+    acc[subcategory].push(config)
+    return acc
+  }, {})
 
   const auditLogs = [
     {
@@ -230,37 +248,63 @@ const SecurityConfig: React.FC = () => {
     </div>
   )
 
-  const renderSecuritySettings = () => (
-    <div className="space-y-6">
-      {securitySettings.map((category) => (
-        <div key={category.category} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{category.category}</h3>
-          </div>
-          <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            {category.settings.map((setting) => (
-              <div key={setting.key} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h4 className="text-sm font-medium text-gray-900 dark:text-white">{setting.key}</h4>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">{setting.description}</p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <code className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm">
-                      {setting.value}
-                    </code>
-                    <Button size="sm" variant="outline">
-                      <Settings className="h-4 w-4" />
-                    </Button>
+  const renderSecuritySettings = () => {
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <LoadingSpinner />
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-6">
+        {Object.entries(groupedConfigs).map(([categoryName, configs]: [string, any]) => (
+          <div key={categoryName} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{categoryName}</h3>
+            </div>
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              {configs.map((config: any) => (
+                <div key={config.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h4 className="text-sm font-medium text-gray-900 dark:text-white">{config.key}</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">{config.description || 'Security configuration setting'}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Updated: {new Date(config.updated_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <code className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm">
+                        {config.is_encrypted ? '***ENCRYPTED***' : config.value}
+                      </code>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleEditConfig(config)}
+                        disabled={updateConfigMutation.isPending}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
-    </div>
-  )
+        ))}
+        
+        {Object.keys(groupedConfigs).length === 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 border border-gray-200 dark:border-gray-700 text-center">
+            <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Security Configurations</h3>
+            <p className="text-gray-600 dark:text-gray-400">No security settings found. Add security configurations in the System tab.</p>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   const renderAuditLogs = () => (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -312,15 +356,123 @@ const SecurityConfig: React.FC = () => {
     </div>
   )
 
+  const renderAuthentication = () => {
+    const authConfigs = securityConfigs.filter((config: any) => 
+      config.key.includes('password') || config.key.includes('session') || 
+      config.key.includes('login') || config.key.includes('lockout')
+    )
+
+    return (
+      <div className="space-y-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <Lock className="h-5 w-5 text-blue-500" />
+              Authentication Settings
+            </h3>
+          </div>
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            {authConfigs.map((config: any) => (
+              <div key={config.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-white">{config.key}</h4>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{config.description}</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <code className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm">
+                      {config.value}
+                    </code>
+                    <Button size="sm" variant="outline" onClick={() => handleEditConfig(config)}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderSecurityPolicies = () => (
+    <div className="space-y-6">
+      {/* Password Policy */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <Shield className="h-5 w-5 text-green-500" />
+          Password Policy
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+            <h4 className="font-medium text-green-900 dark:text-green-100">Minimum Length</h4>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">12 characters</p>
+          </div>
+          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <h4 className="font-medium text-blue-900 dark:text-blue-100">Complexity Required</h4>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">Yes</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Session Policy */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <Clock className="h-5 w-5 text-orange-500" />
+          Session Policy
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+            <h4 className="font-medium text-orange-900 dark:text-orange-100">Session Timeout</h4>
+            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">1 hour</p>
+          </div>
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+            <h4 className="font-medium text-red-900 dark:text-red-100">Max Login Attempts</h4>
+            <p className="text-2xl font-bold text-red-600 dark:text-red-400">5</p>
+          </div>
+          <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+            <h4 className="font-medium text-purple-900 dark:text-purple-100">Lockout Duration</h4>
+            <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">15 min</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Security Compliance */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <CheckCircle className="h-5 w-5 text-green-500" />
+          Security Compliance
+        </h3>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+            <span className="font-medium text-green-900 dark:text-green-100">GDPR Compliance</span>
+            <CheckCircle className="h-5 w-5 text-green-500" />
+          </div>
+          <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+            <span className="font-medium text-green-900 dark:text-green-100">SOC 2 Type II</span>
+            <CheckCircle className="h-5 w-5 text-green-500" />
+          </div>
+          <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+            <span className="font-medium text-green-900 dark:text-green-100">ISO 27001</span>
+            <CheckCircle className="h-5 w-5 text-green-500" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview':
         return renderSecurityOverview()
       case 'authentication':
+        return renderAuthentication()
       case 'authorization':
       case 'encryption':
-      case 'policies':
         return renderSecuritySettings()
+      case 'policies':
+        return renderSecurityPolicies()
       case 'audit':
         return renderAuditLogs()
       default:
@@ -361,6 +513,125 @@ const SecurityConfig: React.FC = () => {
       {/* Tab Content */}
       <div className="min-h-[600px]">
         {renderTabContent()}
+      </div>
+
+      {/* Edit Configuration Modal */}
+      {editingConfig && (
+        <EditConfigModal
+          config={editingConfig}
+          onClose={() => setEditingConfig(null)}
+          onSave={handleSaveConfig}
+          isLoading={updateConfigMutation.isPending}
+        />
+      )}
+    </div>
+  )
+}
+
+// Edit Configuration Modal
+const EditConfigModal: React.FC<{
+  config: any
+  onClose: () => void
+  onSave: (config: any) => void
+  isLoading: boolean
+}> = ({ config, onClose, onSave, isLoading }) => {
+  const [value, setValue] = useState(config.value)
+  const [description, setDescription] = useState(config.description || '')
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onSave({
+      ...config,
+      value,
+      description
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Edit Security Configuration
+        </h3>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Configuration Key
+            </label>
+            <input
+              type="text"
+              value={config.key}
+              disabled
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Value *
+            </label>
+            <input
+              type={config.is_encrypted ? 'password' : 'text'}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              rows={2}
+            />
+          </div>
+
+          {config.is_encrypted && (
+            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <div className="flex items-center space-x-2 text-yellow-700 dark:text-yellow-300">
+                <Lock className="h-4 w-4" />
+                <span className="text-sm font-medium">Encrypted Configuration</span>
+              </div>
+              <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-1">
+                This value is encrypted and will be securely stored.
+              </p>
+            </div>
+          )}
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   )

@@ -3,16 +3,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   Database, 
   Download, 
-  Upload, 
   RefreshCw, 
   Calendar, 
   Clock, 
   CheckCircle, 
   XCircle, 
   Plus, 
-  Play, 
   Trash2, 
-  HardDrive
+  HardDrive,
+  Building2,
+  Server,
+  Table,
+  FileUp,
+  RotateCcw,
+  Shield,
+  AlertTriangle
 } from 'lucide-react'
 import { apiClient } from '../../../lib/api'
 import { Button } from '../../../components/ui/Button'
@@ -21,20 +26,41 @@ import toast from 'react-hot-toast'
 
 const DatabaseBackup: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [, setShowScheduleModal] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [showRestoreModal, setShowRestoreModal] = useState(false)
+  const [selectedBackupLevel, setSelectedBackupLevel] = useState('system')
+  const [selectedBackup, setSelectedBackup] = useState<any>(null)
   const queryClient = useQueryClient()
 
-  // Fetch backups
+  // Fetch enhanced backups
   const { data: backupsData, isLoading: backupsLoading } = useQuery({
     queryKey: ['database-backups'],
     queryFn: () => apiClient.get('/api/configuration/backups/'),
     refetchInterval: 10000,
   })
 
-  // Fetch backup schedules
-  const { data: schedulesData, isLoading: schedulesLoading } = useQuery({
-    queryKey: ['backup-schedules'],
-    queryFn: () => apiClient.get('/api/configuration/backup-schedules/'),
+  // Fetch companies for backup selection
+  const { data: companiesData } = useQuery({
+    queryKey: ['backup-companies'],
+    queryFn: () => apiClient.get('/api/configuration/backups/companies/'),
+  })
+
+  // Fetch available tables
+  const { data: tablesData } = useQuery({
+    queryKey: ['available-tables'],
+    queryFn: () => apiClient.get('/api/configuration/backups/available_tables/'),
+  })
+
+  // Fetch uploads
+  const { data: uploadsData } = useQuery({
+    queryKey: ['backup-uploads'],
+    queryFn: () => apiClient.get('/api/configuration/backup-uploads/'),
+  })
+
+  // Fetch restore operations
+  const { data: restoreOpsData } = useQuery({
+    queryKey: ['restore-operations'],
+    queryFn: () => apiClient.get('/api/configuration/restore-operations/'),
   })
 
   // Fetch backup statistics
@@ -45,36 +71,95 @@ const DatabaseBackup: React.FC = () => {
   })
 
   const backups = backupsData?.data?.results || []
-  const schedules = schedulesData?.data?.results || []
+  const companies = companiesData?.data || []
+  const tables = tablesData?.data || {}
+  const uploads = uploadsData?.data?.results || []
+  const restoreOps = restoreOpsData?.data?.results || []
   const stats = statsData?.data || {}
 
-  // Create backup mutation
-  const createBackupMutation = useMutation({
-    mutationFn: (data: any) => apiClient.post('/api/configuration/backups/create_backup/', data),
+  // Create system backup
+  const createSystemBackupMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post('/api/configuration/backups/create_system_backup/', data),
     onSuccess: () => {
-      toast.success('Backup created successfully!')
+      toast.success('System backup created successfully!')
       queryClient.invalidateQueries({ queryKey: ['database-backups'] })
       queryClient.invalidateQueries({ queryKey: ['backup-statistics'] })
       setShowCreateModal(false)
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to create backup')
+      toast.error(error.response?.data?.error || 'Failed to create system backup')
     }
   })
 
-  // Restore backup mutation
-  const restoreBackupMutation = useMutation({
-    mutationFn: (backupId: string) => apiClient.post(`/api/configuration/backups/${backupId}/restore/`),
+  // Create company backup
+  const createCompanyBackupMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post('/api/configuration/backups/create_company_backup/', data),
     onSuccess: () => {
-      toast.success('Database restored successfully!')
+      toast.success('Company backup created successfully!')
       queryClient.invalidateQueries({ queryKey: ['database-backups'] })
+      queryClient.invalidateQueries({ queryKey: ['backup-statistics'] })
+      setShowCreateModal(false)
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to restore backup')
+      toast.error(error.response?.data?.error || 'Failed to create company backup')
     }
   })
 
-  // Delete backup mutation
+  // Create service backup
+  const createServiceBackupMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post('/api/configuration/backups/create_service_backup/', data),
+    onSuccess: () => {
+      toast.success('Service backup created successfully!')
+      queryClient.invalidateQueries({ queryKey: ['database-backups'] })
+      queryClient.invalidateQueries({ queryKey: ['backup-statistics'] })
+      setShowCreateModal(false)
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to create service backup')
+    }
+  })
+
+  // Create table backup
+  const createTableBackupMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post('/api/configuration/backups/create_table_backup/', data),
+    onSuccess: () => {
+      toast.success('Table backup created successfully!')
+      queryClient.invalidateQueries({ queryKey: ['database-backups'] })
+      queryClient.invalidateQueries({ queryKey: ['backup-statistics'] })
+      setShowCreateModal(false)
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to create table backup')
+    }
+  })
+
+  // Upload backup
+  const uploadBackupMutation = useMutation({
+    mutationFn: (formData: FormData) => apiClient.post('/api/configuration/backup-uploads/upload_backup/', formData),
+    onSuccess: () => {
+      toast.success('Backup uploaded successfully!')
+      queryClient.invalidateQueries({ queryKey: ['backup-uploads'] })
+      setShowUploadModal(false)
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to upload backup')
+    }
+  })
+
+  // Restore from backup
+  const restoreBackupMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post('/api/configuration/restore-operations/restore_from_backup/', data),
+    onSuccess: () => {
+      toast.success('Restore operation started!')
+      queryClient.invalidateQueries({ queryKey: ['restore-operations'] })
+      setShowRestoreModal(false)
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to start restore')
+    }
+  })
+
+  // Delete backup
   const deleteBackupMutation = useMutation({
     mutationFn: (backupId: string) => apiClient.delete(`/api/configuration/backups/${backupId}/`),
     onSuccess: () => {
@@ -88,12 +173,90 @@ const DatabaseBackup: React.FC = () => {
   })
 
   const handleCreateBackup = (formData: any) => {
-    createBackupMutation.mutate(formData)
+    if (formData.backup_level === 'system') {
+      createSystemBackupMutation.mutate(formData)
+    } else if (formData.backup_level === 'company') {
+      createCompanyBackupMutation.mutate(formData)
+    } else if (formData.backup_level === 'service') {
+      createServiceBackupMutation.mutate(formData)
+    } else if (formData.backup_level === 'table') {
+      createTableBackupMutation.mutate(formData)
+    }
+  }
+
+  const handleUploadBackup = (formData: FormData) => {
+    uploadBackupMutation.mutate(formData)
   }
 
   const handleRestoreBackup = (backup: any) => {
-    if (window.confirm(`Are you sure you want to restore from "${backup.name}"? This will overwrite the current database.`)) {
-      restoreBackupMutation.mutate(backup.id)
+    const warnings = [
+      `⚠️ CRITICAL WARNING: RESTORE FROM "${backup.name}"`,
+      '',
+      '🚨 THIS WILL PERMANENTLY DELETE CURRENT DATA',
+      '🚨 ALL RECENT TRANSACTIONS WILL BE LOST',
+      '🚨 THIS ACTION CANNOT BE UNDONE',
+      '',
+      `📅 Backup Date: ${new Date(backup.created_at).toLocaleString()}`,
+      `💾 Backup Size: ${backup.file_size_mb || 'Unknown'} MB`,
+      `🏢 Scope: ${backup.scope_display || backup.backup_level}`,
+      '',
+      '⚡ RECOMMENDATION: Create a current backup first!',
+      '',
+      'Type "RESTORE" to confirm this dangerous operation:'
+    ].join('\n')
+    
+    const confirmation = window.prompt(warnings)
+    
+    if (confirmation === 'RESTORE') {
+      const finalConfirm = window.confirm(
+        '🔥 FINAL CONFIRMATION: You typed RESTORE.\n\n' +
+        'This will DESTROY current data and replace it with backup data.\n\n' +
+        'Click OK to proceed with data destruction.'
+      )
+      
+      if (finalConfirm) {
+        setSelectedBackup(backup)
+        setShowRestoreModal(true)
+      }
+    } else if (confirmation !== null) {
+      toast.error('Restore cancelled - you must type "RESTORE" exactly to confirm')
+    }
+  }
+
+  const handleDownloadBackup = async (backup: any) => {
+    try {
+      const token = sessionStorage.getItem('_at')
+      if (!token) {
+        toast.error('Authentication required')
+        return
+      }
+
+      const decryptedToken = atob(token)
+
+      const response = await fetch(`/api/configuration/backups/${backup.id}/download/`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${decryptedToken}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = backup.file_path ? backup.file_path.split('/').pop() : `backup_${backup.id}.sql`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      toast.success('Backup downloaded successfully!')
+    } catch (error: any) {
+      toast.error('Failed to download backup')
     }
   }
 
@@ -101,10 +264,6 @@ const DatabaseBackup: React.FC = () => {
     if (window.confirm(`Are you sure you want to delete backup "${backup.name}"?`)) {
       deleteBackupMutation.mutate(backup.id)
     }
-  }
-
-  const handleDownloadBackup = (backup: any) => {
-    window.open(`/api/configuration/backups/${backup.id}/download/`, '_blank')
   }
 
   const getStatusIcon = (status: string) => {
@@ -130,6 +289,21 @@ const DatabaseBackup: React.FC = () => {
         return 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'
       default:
         return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300'
+    }
+  }
+
+  const getLevelIcon = (level: string) => {
+    switch (level) {
+      case 'system':
+        return <Database className="h-4 w-4 text-purple-500" />
+      case 'company':
+        return <Building2 className="h-4 w-4 text-blue-500" />
+      case 'service':
+        return <Server className="h-4 w-4 text-green-500" />
+      case 'table':
+        return <Table className="h-4 w-4 text-orange-500" />
+      default:
+        return <Database className="h-4 w-4 text-gray-500" />
     }
   }
 
@@ -179,7 +353,7 @@ const DatabaseBackup: React.FC = () => {
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Enhanced Action Buttons */}
       <div className="flex flex-wrap gap-4">
         <Button
           onClick={() => setShowCreateModal(true)}
@@ -189,11 +363,11 @@ const DatabaseBackup: React.FC = () => {
           Create Backup
         </Button>
         <Button
-          onClick={() => setShowScheduleModal(true)}
+          onClick={() => setShowUploadModal(true)}
           variant="outline"
         >
-          <Calendar className="h-4 w-4 mr-2" />
-          Schedule Backup
+          <FileUp className="h-4 w-4 mr-2" />
+          Upload Backup
         </Button>
         <Button
           onClick={() => queryClient.invalidateQueries({ queryKey: ['database-backups'] })}
@@ -204,12 +378,38 @@ const DatabaseBackup: React.FC = () => {
         </Button>
       </div>
 
-      {/* Backups List */}
+      {/* Backup Level Filter */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { value: 'all', label: 'All Backups', icon: Database },
+            { value: 'system', label: 'System', icon: Database },
+            { value: 'company', label: 'Company', icon: Building2 },
+            { value: 'service', label: 'Service', icon: Server },
+            { value: 'table', label: 'Table', icon: Table }
+          ].map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              onClick={() => setSelectedBackupLevel(value)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                selectedBackupLevel === value
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'
+                  : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Enhanced Backups List */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="p-6 border-b border-gray-200 dark:border-gray-700">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-            <Database className="h-5 w-5 text-blue-500" />
-            Database Backups
+            <Shield className="h-5 w-5 text-blue-500" />
+            Enhanced Database Backups
           </h3>
         </div>
 
@@ -225,11 +425,14 @@ const DatabaseBackup: React.FC = () => {
           </div>
         ) : (
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            {backups.map((backup: any) => (
+            {backups
+              .filter((backup: any) => selectedBackupLevel === 'all' || backup.backup_level === selectedBackupLevel)
+              .map((backup: any) => (
               <div key={backup.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 flex items-center space-x-2">
+                      {getLevelIcon(backup.backup_level)}
                       {getStatusIcon(backup.status)}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -239,6 +442,9 @@ const DatabaseBackup: React.FC = () => {
                         </h4>
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(backup.status)}`}>
                           {backup.status}
+                        </span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300">
+                          {backup.backup_level}
                         </span>
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
                           {backup.backup_type}
@@ -261,6 +467,9 @@ const DatabaseBackup: React.FC = () => {
                             <span>Duration: {backup.duration}</span>
                           </span>
                         )}
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        <span className="font-medium">Scope:</span> {backup.scope_display || backup.backup_level}
                       </div>
                       {backup.description && (
                         <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
@@ -289,8 +498,9 @@ const DatabaseBackup: React.FC = () => {
                           variant="outline"
                           onClick={() => handleRestoreBackup(backup)}
                           disabled={restoreBackupMutation.isPending}
+                          className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-900/20"
                         >
-                          <Upload className="h-4 w-4" />
+                          <RotateCcw className="h-4 w-4" />
                         </Button>
                       </>
                     )}
@@ -311,96 +521,161 @@ const DatabaseBackup: React.FC = () => {
         )}
       </div>
 
-      {/* Backup Schedules */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-purple-500" />
-            Backup Schedules
-          </h3>
-        </div>
-
-        {schedulesLoading ? (
-          <div className="p-8 text-center">
-            <LoadingSpinner />
+      {/* Uploaded Backups Section */}
+      {uploads.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <FileUp className="h-5 w-5 text-green-500" />
+              Uploaded Backups
+            </h3>
           </div>
-        ) : schedules.length === 0 ? (
-          <div className="p-8 text-center">
-            <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No schedules found</h3>
-            <p className="text-gray-600 dark:text-gray-400">Set up automated backup schedules</p>
-          </div>
-        ) : (
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            {schedules.map((schedule: any) => (
-              <div key={schedule.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+            {uploads.map((upload: any) => (
+              <div key={upload.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
-                    <div className={`w-3 h-3 rounded-full ${schedule.is_active ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                    <FileUp className="h-5 w-5 text-green-500" />
                     <div>
                       <h4 className="text-lg font-medium text-gray-900 dark:text-white">
-                        {schedule.name}
+                        {upload.name}
                       </h4>
-                      <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
-                        <span>{schedule.frequency} at {schedule.time}</span>
-                        <span>{schedule.backup_type} backup</span>
-                        <span>Retention: {schedule.retention_days} days</span>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        Status: {upload.status} | Size: {Math.round(upload.file_size / (1024 * 1024))} MB
                       </div>
-                      {schedule.last_run && (
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          Last run: {new Date(schedule.last_run).toLocaleString()}
-                        </p>
-                      )}
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  {upload.status === 'ready' && (
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        // Run schedule now
-                        apiClient.post(`/api/configuration/backup-schedules/${schedule.id}/run_now/`)
-                          .then(() => {
-                            toast.success('Backup started')
-                            queryClient.invalidateQueries({ queryKey: ['database-backups'] })
-                          })
-                          .catch(() => toast.error('Failed to start backup'))
+                        restoreBackupMutation.mutate({
+                          upload_id: upload.id,
+                          restore_type: 'full_replace'
+                        })
                       }}
+                      className="text-orange-600 hover:text-orange-700"
                     >
-                      <Play className="h-4 w-4" />
+                      <RotateCcw className="h-4 w-4 mr-1" />
+                      Restore
                     </Button>
-                  </div>
+                  )}
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Create Backup Modal */}
+      {/* Restore Operations Section */}
+      {restoreOps.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-orange-500" />
+              Restore Operations
+            </h3>
+          </div>
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            {restoreOps.map((restoreOp: any) => (
+              <div key={restoreOp.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <RotateCcw className="h-5 w-5 text-orange-500" />
+                    <div>
+                      <h4 className="text-lg font-medium text-gray-900 dark:text-white">
+                        {restoreOp.name}
+                      </h4>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        Status: {restoreOp.status} | Type: {restoreOp.restore_type}
+                        {restoreOp.progress_percentage > 0 && (
+                          <span> | Progress: {restoreOp.progress_percentage}%</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {restoreOp.status === 'completed' && restoreOp.pre_restore_backup && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (window.confirm('Are you sure you want to rollback this restore operation?')) {
+                          apiClient.post(`/api/configuration/restore-operations/${restoreOp.id}/rollback/`)
+                            .then(() => {
+                              toast.success('Rollback initiated')
+                              queryClient.invalidateQueries({ queryKey: ['restore-operations'] })
+                            })
+                            .catch(() => toast.error('Rollback failed'))
+                        }
+                      }}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <AlertTriangle className="h-4 w-4 mr-1" />
+                      Rollback
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
       {showCreateModal && (
         <CreateBackupModal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
           onSubmit={handleCreateBackup}
-          isLoading={createBackupMutation.isPending}
+          companies={companies}
+          tables={tables}
+          isLoading={createSystemBackupMutation.isPending || createCompanyBackupMutation.isPending || createServiceBackupMutation.isPending || createTableBackupMutation.isPending}
+        />
+      )}
+
+      {showUploadModal && (
+        <UploadBackupModal
+          isOpen={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
+          onSubmit={handleUploadBackup}
+          isLoading={uploadBackupMutation.isPending}
+        />
+      )}
+
+      {showRestoreModal && selectedBackup && (
+        <RestoreModal
+          isOpen={showRestoreModal}
+          onClose={() => {
+            setShowRestoreModal(false)
+            setSelectedBackup(null)
+          }}
+          backup={selectedBackup}
+          onSubmit={(data) => restoreBackupMutation.mutate(data)}
+          isLoading={restoreBackupMutation.isPending}
         />
       )}
     </div>
   )
 }
 
-// Create Backup Modal Component
+// Enhanced Create Backup Modal
 const CreateBackupModal: React.FC<{
   isOpen: boolean
   onClose: () => void
   onSubmit: (data: any) => void
+  companies: any[]
+  tables: any
   isLoading: boolean
-}> = ({ isOpen, onClose, onSubmit, isLoading }) => {
+}> = ({ isOpen, onClose, onSubmit, companies, tables, isLoading }) => {
   const [formData, setFormData] = useState({
     name: '',
-    backup_type: 'full',
     description: '',
+    backup_level: 'system',
+    backup_type: 'full',
+    service_type: 'all',
+    company_id: '',
+    selected_tables: [] as string[],
     compression: 'gzip'
   })
 
@@ -413,9 +688,9 @@ const CreateBackupModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md">
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Create Database Backup
+          Create Enhanced Backup
         </h3>
         
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -432,6 +707,98 @@ const CreateBackupModal: React.FC<{
               required
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Backup Level
+            </label>
+            <select
+              value={formData.backup_level}
+              onChange={(e) => setFormData({ ...formData, backup_level: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              <option value="system">Complete System</option>
+              <option value="company">Company Data</option>
+              <option value="service">Service Data</option>
+              <option value="table">Specific Tables</option>
+            </select>
+          </div>
+
+          {formData.backup_level === 'company' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Select Company
+              </label>
+              <select
+                value={formData.company_id}
+                onChange={(e) => setFormData({ ...formData, company_id: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                required
+              >
+                <option value="">Select a company</option>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {formData.backup_level === 'service' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Select Service
+              </label>
+              <select
+                value={formData.service_type}
+                onChange={(e) => setFormData({ ...formData, service_type: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              >
+                <option value="finance">Finance Service</option>
+                <option value="hr">HR Service</option>
+                <option value="inventory">Inventory Service</option>
+              </select>
+            </div>
+          )}
+
+          {formData.backup_level === 'table' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Select Tables
+              </label>
+              <div className="max-h-40 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-lg p-2">
+                {Object.entries(tables).map(([service, serviceTables]: [string, any]) => (
+                  <div key={service} className="mb-2">
+                    <h4 className="font-medium text-gray-900 dark:text-white capitalize">{service}</h4>
+                    {serviceTables.map((table: string) => (
+                      <label key={table} className="flex items-center space-x-2 ml-4">
+                        <input
+                          type="checkbox"
+                          checked={formData.selected_tables.includes(table)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFormData({
+                                ...formData,
+                                selected_tables: [...formData.selected_tables, table]
+                              })
+                            } else {
+                              setFormData({
+                                ...formData,
+                                selected_tables: formData.selected_tables.filter(t => t !== table)
+                              })
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <span className="text-sm text-gray-600 dark:text-gray-400">{table}</span>
+                      </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -484,6 +851,193 @@ const CreateBackupModal: React.FC<{
                 <>
                   <Database className="h-4 w-4 mr-2" />
                   Create Backup
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// Upload Backup Modal
+const UploadBackupModal: React.FC<{
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (data: FormData) => void
+  isLoading: boolean
+}> = ({ isOpen, onClose, onSubmit, isLoading }) => {
+  const [file, setFile] = useState<File | null>(null)
+  const [name, setName] = useState('')
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!file) return
+
+    const formData = new FormData()
+    formData.append('backup_file', file)
+    formData.append('name', name || file.name)
+    
+    onSubmit(formData)
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Upload Backup File
+        </h3>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Backup Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              placeholder="Enter backup name"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Backup File (.sql or .sql.gz)
+            </label>
+            <input
+              type="file"
+              accept=".sql,.gz"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              required
+            />
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isLoading || !file}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {isLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <FileUp className="h-4 w-4 mr-2" />
+                  Upload Backup
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// Restore Modal
+const RestoreModal: React.FC<{
+  isOpen: boolean
+  onClose: () => void
+  backup: any
+  onSubmit: (data: any) => void
+  isLoading: boolean
+}> = ({ isOpen, onClose, backup, onSubmit, isLoading }) => {
+  const [restoreType, setRestoreType] = useState('full_replace')
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onSubmit({
+      backup_id: backup.id,
+      restore_type: restoreType
+    })
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Restore Configuration
+        </h3>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <div className="flex items-center space-x-2 text-red-800 dark:text-red-200">
+              <AlertTriangle className="h-5 w-5" />
+              <span className="font-medium">Warning</span>
+            </div>
+            <p className="text-red-700 dark:text-red-300 text-sm mt-1">
+              This will overwrite existing data. A pre-restore backup will be created for rollback.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Restore Type
+            </label>
+            <select
+              value={restoreType}
+              onChange={(e) => setRestoreType(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              <option value="full_replace">Full Replace</option>
+              <option value="selective_merge">Selective Merge</option>
+              <option value="company_only">Company Data Only</option>
+              <option value="service_only">Service Data Only</option>
+            </select>
+          </div>
+
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <h4 className="font-medium text-gray-900 dark:text-white">Backup Details</h4>
+            <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              <p>Name: {backup.name}</p>
+              <p>Level: {backup.backup_level}</p>
+              <p>Size: {backup.file_size_mb} MB</p>
+              <p>Created: {new Date(backup.created_at).toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              {isLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Restoring...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Start Restore
                 </>
               )}
             </Button>

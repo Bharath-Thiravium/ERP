@@ -46,7 +46,7 @@ const SystemSettings: React.FC = () => {
   })
 
   const configurations = configurationsData?.data?.results || configurationsData?.data || []
-  const categories = categoriesData?.data?.categories || []
+  const categories: string[] = [...new Set((categoriesData?.data?.categories || []) as string[])]
 
   // Create/Update configuration mutation
   const saveConfigMutation = useMutation({
@@ -161,9 +161,9 @@ const SystemSettings: React.FC = () => {
           >
             All Categories
           </button>
-          {categories.map((category: string, index: number) => (
+          {categories.map((category: string) => (
             <button
-              key={`category-${category}-${index}`}
+              key={category}
               onClick={() => setSelectedCategory(category)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
                 selectedCategory === category
@@ -380,16 +380,11 @@ const ConfigurationModal: React.FC<{
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="general">General</option>
-              {categories.map((category, index) => (
-                <option key={`modal-category-${category}-${index}`} value={category}>
+              {categories.map((category) => (
+                <option key={category} value={category}>
                   {category}
                 </option>
               ))}
-              <option value="database">Database</option>
-              <option value="email">Email</option>
-              <option value="security">Security</option>
-              <option value="api">API</option>
-              <option value="server">Server</option>
             </select>
           </div>
 

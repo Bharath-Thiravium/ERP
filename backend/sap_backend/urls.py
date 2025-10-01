@@ -48,7 +48,7 @@ urlpatterns = [
     path('api/public/', include('hr.public_urls')),
     path('api/ai/', include('ai_assistant.urls')),
     path('api/company-dashboard/', include('company_dashboard.urls')),
-    path('', include('configuration.urls')),
+    path('api/', include('configuration.urls')),
 ]
 
 # Serve static and media files in development

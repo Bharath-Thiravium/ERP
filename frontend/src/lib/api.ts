@@ -162,11 +162,11 @@ function validateUrl(url: string): boolean {
 // API methods
 export const apiClient = {
   // Generic methods
-  get: <T = any>(url: string, params?: any): Promise<AxiosResponse<T>> => {
+  get: <T = any>(url: string, config?: any): Promise<AxiosResponse<T>> => {
     if (!validateUrl(url)) {
       throw new Error('Invalid URL: SSRF protection')
     }
-    return api.get(url, { params })
+    return api.get(url, config)
   },
   
   post: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> => {

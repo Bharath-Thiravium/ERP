@@ -34,7 +34,10 @@ Thumbs.db
 
 # Backup files
 *.sql
-backup_*
+backup_*.sql
+backup_*.gz
+backups/
+!backup_manager.py
 
 # Logs
 logs/

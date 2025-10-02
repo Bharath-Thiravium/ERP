@@ -318,3 +318,50 @@ def analytics_dashboard(request):
             {'error': str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def company_domain_settings(request):
+    """Get or update company domain settings"""
+    try:
+        company = request.user.company_user.company
+        
+        if request.method == 'GET':
+            return Response({
+                'domain_name': company.domain_name or '',
+                'company_name': company.name
+            })
+        
+        elif request.method == 'POST':
+            domain_name = request.data.get('domain_name', '').strip()
+            
+            # Basic validation
+            if domain_name and not domain_name.replace('.', '').replace('-', '').isalnum():
+                return Response(
+                    {'message': 'Invalid domain format'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            company.domain_name = domain_name
+            company.save()
+            
+            # Log activity
+            ActivityLog.objects.create(
+                company=company,
+                user=request.user,
+                action_type='update_settings',
+                description=f'Updated company domain to: {domain_name}',
+                ip_address=request.META.get('REMOTE_ADDR'),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')
+            )
+            
+            return Response({
+                'message': 'Domain updated successfully',
+                'domain_name': company.domain_name
+            })
+            
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

@@ -49,6 +49,7 @@ urlpatterns = [
     path('api/ai/', include('ai_assistant.urls')),
     path('api/company-dashboard/', include('company_dashboard.urls')),
     path('api/', include('configuration.urls')),
+    path('api/crm/', include('crm.urls')),
 ]
 
 # Serve static and media files in development

@@ -23,4 +23,7 @@ urlpatterns = [
     path('email-settings/test/', email_views.test_email_configuration, name='test_email_configuration'),
     path('email-settings/providers/', email_views.email_provider_templates, name='email_provider_templates'),
     path('email-settings/usage/', email_views.email_usage_stats, name='email_usage_stats'),
+    
+    # Domain Settings
+    path('domain/', views.company_domain_settings, name='company_domain_settings'),
 ]

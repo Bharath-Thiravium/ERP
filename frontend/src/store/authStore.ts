@@ -102,12 +102,17 @@ export const useAuthStore = create<AuthState>()(
           approvalStatus: null,
         })
 
+        // Clear browser history to prevent back button access
+        if (window.history.length > 1) {
+          window.history.replaceState(null, '', '/login')
+        }
+
         // Show success message
         toast.success('Logged out successfully')
 
         // Redirect to login page if not already there
         if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login'
+          window.location.replace('/login')
         }
       },
 

@@ -61,8 +61,8 @@ export const useServiceUserStore = create<ServiceUserState>()(
           const sessionExpiry = Date.now() + (8 * 60 * 60 * 1000)
           const lastActivity = Date.now()
 
-          // Store session key in localStorage for API interceptor
-          localStorage.setItem('service_session_key', session_key)
+          // Store session key in sessionStorage for API interceptor
+          sessionStorage.setItem('service_session_key', session_key)
           
           set({
             serviceUser: user,
@@ -106,8 +106,8 @@ export const useServiceUserStore = create<ServiceUserState>()(
           }
         }
 
-        // Clear session key from localStorage
-        localStorage.removeItem('service_session_key')
+        // Clear session key from sessionStorage
+        sessionStorage.removeItem('service_session_key')
         
         set({
           serviceUser: null,
@@ -120,6 +120,14 @@ export const useServiceUserStore = create<ServiceUserState>()(
 
         // Clear session monitoring
         get().stopSessionMonitoring()
+
+        // Clear browser history to prevent back button access
+        if (window.history.length > 1) {
+          window.history.replaceState(null, '', '/service-login')
+        }
+
+        // Redirect to service login
+        window.location.replace('/service-login')
       },
 
       refreshSession: async () => {
@@ -191,6 +199,13 @@ export const useServiceUserStore = create<ServiceUserState>()(
 
       checkSessionValidity: () => {
         const { sessionExpiry, isAuthenticated } = get()
+        
+        // Check if session key exists in sessionStorage
+        const sessionKey = sessionStorage.getItem('service_session_key')
+        if (!sessionKey) {
+          get().logout()
+          return false
+        }
         
         if (!isAuthenticated || !sessionExpiry) {
           return false

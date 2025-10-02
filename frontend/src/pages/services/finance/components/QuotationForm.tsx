@@ -152,7 +152,10 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
 
   // Load full customer details when editing
   const loadCustomerDetails = async (customerId: number) => {
-    if (!sessionKey || !customerId) return
+    if (!sessionKey || !customerId) {
+      console.error('Missing session key or customer ID for loading customer details')
+      return
+    }
 
     try {
       const response = await apiClient.getFinanceCustomer(customerId, { session_key: sessionKey })
@@ -161,33 +164,51 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       setCustomerSearch(fullCustomer.name)
     } catch (error) {
       console.error('Error loading customer details:', error)
+      toast.error('Failed to load customer details')
     }
   }
 
   const loadCustomers = async () => {
+    if (!sessionKey) {
+      console.error('No session key available for loading customers')
+      return
+    }
     try {
       const response = await apiClient.getFinanceCustomers({ session_key: sessionKey })
       setCustomers(response.data.results || [])
     } catch (error) {
       console.error('Error loading customers:', error)
+      toast.error('Failed to load customers')
     }
   }
 
   const loadProducts = async () => {
+    if (!sessionKey) {
+      console.error('No session key available for loading products')
+      return
+    }
     try {
       const response = await apiClient.getFinanceProducts({ session_key: sessionKey })
       setProducts(response.data.results || [])
     } catch (error) {
       console.error('Error loading products:', error)
+      toast.error('Failed to load products')
     }
   }
 
   const loadCompanyDetails = async () => {
+    if (!sessionKey) {
+      console.error('No session key available for loading company details')
+      return
+    }
     try {
-      const response = await apiClient.get('/api/auth/company-profile/', { session_key: sessionKey })
+      const response = await apiClient.get('/api/auth/company-profile/', { 
+        params: { session_key: sessionKey }
+      })
       setCompanyDetails(response.data)
     } catch (error) {
       console.error('Error loading company details:', error)
+      // Don't show error toast for company details as it's not critical
     }
   }
 
@@ -196,7 +217,12 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
     setCustomerSearch(customer.name)
     setShowCustomerDropdown(false)
 
-    if (!sessionKey) return
+    if (!sessionKey) {
+      console.error('No session key available for customer selection')
+      setSelectedCustomer(customer)
+      setFormData(prev => ({ ...prev, customer: customer.id, shipping_address: null }))
+      return
+    }
 
     try {
       const response = await apiClient.getFinanceCustomer(customer.id, { session_key: sessionKey })
@@ -209,6 +235,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       }))
     } catch (error) {
       console.error('Error fetching customer details:', error)
+      toast.error('Failed to load customer details, using basic info')
       setSelectedCustomer(customer)
       setFormData(prev => ({ ...prev, customer: customer.id, shipping_address: null }))
     }

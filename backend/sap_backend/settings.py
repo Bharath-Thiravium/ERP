@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     'ai_assistant',
     'configuration',
     'company_dashboard',
+    'crm',
 ]
 
 MIDDLEWARE = [

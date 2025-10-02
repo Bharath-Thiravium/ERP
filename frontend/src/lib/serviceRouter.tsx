@@ -27,6 +27,12 @@ const PurchaseOrders = React.lazy(() =>
   }))
 )
 
+const CRMRoutes = React.lazy(() => 
+  import('../pages/services/crm/index').then(module => ({
+    default: module.default
+  }))
+)
+
 export const ServiceRouter: React.FC = () => {
   return (
     <Routes>
@@ -64,6 +70,16 @@ export const ServiceRouter: React.FC = () => {
         element={
           <LazyDashboard title="Inventory Dashboard">
             <InventoryDashboard />
+          </LazyDashboard>
+        }
+      />
+
+      {/* CRM Service */}
+      <Route
+        path="/services/crm/*"
+        element={
+          <LazyDashboard title="CRM">
+            <CRMRoutes />
           </LazyDashboard>
         }
       />

@@ -31,7 +31,7 @@ import {
   Building,
   User
 } from 'lucide-react';
-import { useAuthStore } from '../../../../store/authStore';
+// import { useAuthStore } from '../../../../store/authStore';
 import { useThemeStore } from '../../../../store/themeStore';
 import api, { apiClient } from '../../../../lib/api';
 import { useServiceUserStore } from '../../../../store/serviceUserStore';
@@ -54,9 +54,9 @@ import toast from 'react-hot-toast';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { logout } = useAuthStore();
+  // const { logout } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
-  const { serviceUser, sessionKey } = useServiceUserStore();
+  const { serviceUser, sessionKey, logout: serviceUserLogout } = useServiceUserStore();
 
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -637,7 +637,7 @@ const Dashboard: React.FC = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={logout}
+              onClick={serviceUserLogout}
               className="h-8 w-8 p-0"
             >
               <LogOut className="h-4 w-4" />

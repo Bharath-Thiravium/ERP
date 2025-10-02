@@ -31,13 +31,14 @@ import {
   ShoppingCart,
   FileText
 } from 'lucide-react'
-import { useAuthStore } from '../../../../store/authStore'
+// import { useAuthStore } from '../../../../store/authStore'
 import { useThemeStore } from '../../../../store/themeStore'
 import api, { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
+import { useSessionValidation } from '../../../../hooks/useSessionValidation'
 import toast from 'react-hot-toast'
 import Customers from './Customers'
 import Products from './Products'
@@ -50,10 +51,12 @@ import CustomerLedger from '../components/CustomerLedger'
 
 const FinanceDashboard: React.FC = () => {
   const navigate = useNavigate()
-  const { logout } = useAuthStore()
+  // const { logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
-  const { serviceUser, sessionKey } = useServiceUserStore()
-
+  const { serviceUser, sessionKey, logout: serviceUserLogout } = useServiceUserStore()
+  
+  // Add session validation
+  useSessionValidation()
 
   const [activeTab, setActiveTab] = useState('overview')
   const [isLoading, setIsLoading] = useState(true)
@@ -237,6 +240,13 @@ const handlePOCreated = () => {
 
 
   useEffect(() => {
+    // Validate session on component mount
+    const sessionKey = sessionStorage.getItem('service_session_key')
+    if (!sessionKey) {
+      window.location.replace('/service-login')
+      return
+    }
+
     // Check if service user is authenticated and set company data
     const timer = setTimeout(() => {
       setIsLoading(false)
@@ -988,7 +998,7 @@ const handlePOCreated = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={logout}
+              onClick={serviceUserLogout}
               className="h-8 w-8 p-0"
             >
               <LogOut className="h-4 w-4" />

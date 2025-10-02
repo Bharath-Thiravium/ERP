@@ -44,6 +44,8 @@ import CompanyAnalytics from '../../components/company/CompanyAnalytics'
 import ActivityMonitor from '../../components/company/ActivityMonitor'
 import NotificationCenter from '../../components/company/NotificationCenter'
 import EmailSettings from '../../components/company/EmailSettings'
+import DomainSettings from '../../components/company/DomainSettings'
+import EmailInput from '../../components/company/EmailInput'
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -173,8 +175,8 @@ const CompanyDashboard: React.FC = () => {
       return
     }
 
-    // Navigate directly to service dashboard
-    navigate(`/service/${service.service_type.toLowerCase()}/dashboard`)
+    // Navigate to service login page with pre-selected service (replace history to prevent back button issues)
+    navigate(`/service-login?service=${service.service_type.toLowerCase()}`, { replace: true })
   }
 
   // Create service user mutation
@@ -751,28 +753,41 @@ Website: https://athenas.co.in
             )}
 
             {activeSettingsTab === 'general' && (
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Company Information</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Company Name
+                        </label>
+                        <p className="text-gray-900 dark:text-white">{user?.company_name}</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Email
+                        </label>
+                        <p className="text-gray-900 dark:text-white">{user?.email}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Company Information</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Company Name
-                      </label>
-                      <p className="text-gray-900 dark:text-white">{user?.company_name}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Email
-                      </label>
-                      <p className="text-gray-900 dark:text-white">{user?.email}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Domain Settings</CardTitle>
+                    <CardDescription>
+                      Set your company domain to automatically format service user emails
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <DomainSettings />
+                  </CardContent>
+                </Card>
+              </div>
             )}
 
             {activeSettingsTab === 'logo' && (
@@ -1164,16 +1179,11 @@ Website: https://athenas.co.in
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Email Address *
                 </label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    value={newUserForm.email}
-                    onChange={(e) => setNewUserForm(prev => ({ ...prev, email: e.target.value }))}
-                    className="w-full px-4 py-3 pl-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    placeholder="user@company.com"
-                  />
-                  <Bell className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
-                </div>
+                <EmailInput 
+                  value={newUserForm.email}
+                  username={newUserForm.username}
+                  onChange={(email) => setNewUserForm(prev => ({ ...prev, email }))}
+                />
               </div>
 
               {/* Full Name */}

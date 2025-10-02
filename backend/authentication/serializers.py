@@ -415,6 +415,23 @@ class CompanyServiceUserCreateSerializer(serializers.ModelSerializer):
         # Generate random password
         password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
 
+        # Format email with domain if domain is set
+        email = validated_data.get('email', '')
+        username = validated_data.get('username', '')
+        
+        if company.domain_name and username and not email:
+            # If no email provided but domain is set, create email from username
+            email = f"{username}@{company.domain_name}"
+            validated_data['email'] = email
+        elif company.domain_name and username and email and '@' not in email:
+            # If email doesn't contain @, treat it as username and append domain
+            email = f"{email}@{company.domain_name}"
+            validated_data['email'] = email
+        elif company.domain_name and username and not email.endswith(f"@{company.domain_name}"):
+            # If domain is set but email doesn't match domain, suggest the format
+            # For now, we'll allow it but could add validation here
+            pass
+
         # Create service user
         service_user = CompanyServiceUser.objects.create(
             company=company,

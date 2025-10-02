@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
+import { useServiceUserStore } from '../store/serviceUserStore'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 
 // Lazy load components
@@ -15,6 +16,7 @@ const FinanceDashboard = React.lazy(() => import('../pages/services/finance/page
 const PurchaseOrders = React.lazy(() => import('../pages/services/finance/pages/PurchaseOrders'))
 const HRDashboard = React.lazy(() => import('../pages/services/hr/pages/Dashboard'))
 const InventoryDashboard = React.lazy(() => import('../pages/services/inventory/pages/Dashboard'))
+const CRMRoutes = React.lazy(() => import('../pages/services/crm/index'))
 const WaitingApproval = React.lazy(() => import('../pages/company/WaitingApproval'))
 const NotFoundPage = React.lazy(() => import('../pages/NotFoundPage'))
 const EmployeeApp = React.lazy(() => import('../pages/EmployeeApp'))
@@ -28,6 +30,7 @@ interface ProtectedRouteProps {
   requireMasterAdmin?: boolean
   requireCompanyUser?: boolean
   requireApproved?: boolean
+  requireServiceUser?: boolean
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
@@ -35,9 +38,30 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requireMasterAdmin = false,
   requireCompanyUser = false,
   requireApproved = false,
+  requireServiceUser = false,
 }) => {
   const { isAuthenticated, user, firstLoginRequired, approvalPending } = useAuthStore()
+  const { isAuthenticated: isServiceUserAuthenticated, serviceUser } = useServiceUserStore()
 
+  // Enhanced authentication check with session validation
+  React.useEffect(() => {
+    if (requireServiceUser) {
+      const sessionKey = sessionStorage.getItem('service_session_key')
+      if (!sessionKey) {
+        window.location.replace('/service-login')
+      }
+    }
+  }, [requireServiceUser])
+
+  // For service user routes, check service user authentication
+  if (requireServiceUser) {
+    if (!isServiceUserAuthenticated || !serviceUser) {
+      return <Navigate to="/service-login" replace />
+    }
+    return <>{children}</>
+  }
+
+  // For regular routes, check main authentication
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />
   }
@@ -232,85 +256,92 @@ export const AppRouter: React.FC = () => {
 
 
 
-      {/* Service Dashboards */}
+      {/* Service Dashboards - Protected */}
       <Route
         path="/services/finance/dashboard"
         element={
-          <SuspenseWrapper>
-            <FinanceDashboard />
-          </SuspenseWrapper>
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <FinanceDashboard />
+            </SuspenseWrapper>
+          </ProtectedRoute>
         }
       />
 
       <Route
         path="/services/finance/purchase-orders"
         element={
-          <SuspenseWrapper>
-            <PurchaseOrders />
-          </SuspenseWrapper>
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <PurchaseOrders />
+            </SuspenseWrapper>
+          </ProtectedRoute>
         }
       />
-
-
 
       <Route
         path="/services/hr/dashboard"
         element={
-          <SuspenseWrapper>
-            <HRDashboard />
-          </SuspenseWrapper>
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <HRDashboard />
+            </SuspenseWrapper>
+          </ProtectedRoute>
         }
       />
 
       <Route
         path="/services/inventory/dashboard"
         element={
-          <SuspenseWrapper>
-            <InventoryDashboard />
-          </SuspenseWrapper>
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <InventoryDashboard />
+            </SuspenseWrapper>
+          </ProtectedRoute>
         }
       />
 
-      {/* Other Service Dashboards - Placeholder for now */}
+      {/* CRM Service Routes - Protected */}
       <Route
-        path="/services/crm/dashboard"
+        path="/services/crm/*"
         element={
-          <SuspenseWrapper>
-            <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-              <div className="text-center">
-                <h1 className="text-2xl font-bold text-green-600 mb-4">CRM Dashboard</h1>
-                <p className="text-gray-600">Customer Relations Dashboard coming soon!</p>
-              </div>
-            </div>
-          </SuspenseWrapper>
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <CRMRoutes />
+            </SuspenseWrapper>
+          </ProtectedRoute>
         }
       />
 
       <Route
         path="/services/procurement/dashboard"
         element={
-          <SuspenseWrapper>
-            <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-              <div className="text-center">
-                <h1 className="text-2xl font-bold text-orange-600 mb-4">Procurement Dashboard</h1>
-                <p className="text-gray-600">Procurement Dashboard coming soon!</p>
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+                <div className="text-center">
+                  <h1 className="text-2xl font-bold text-orange-600 mb-4">Procurement Dashboard</h1>
+                  <p className="text-gray-600">Procurement Dashboard coming soon!</p>
+                </div>
               </div>
-            </div>
-          </SuspenseWrapper>
+            </SuspenseWrapper>
+          </ProtectedRoute>
         }
       />
 
       <Route
         path="/services/analytics/dashboard"
         element={
-          <SuspenseWrapper>
-            <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-              <div className="text-center">
-                <h1 className="text-2xl font-bold text-indigo-600 mb-4">Analytics Dashboard</h1>
-                <p className="text-gray-600">Business Analytics Dashboard coming soon!</p>
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+                <div className="text-center">
+                  <h1 className="text-2xl font-bold text-indigo-600 mb-4">Analytics Dashboard</h1>
+                  <p className="text-gray-600">Business Analytics Dashboard coming soon!</p>
+                </div>
               </div>
-            </div>
-          </SuspenseWrapper>
+            </SuspenseWrapper>
+          </ProtectedRoute>
         }
       />
 

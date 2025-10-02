@@ -152,7 +152,7 @@ const ServiceUserLogin: React.FC = () => {
           navigate('/services/inventory/dashboard')
           break
         case 'crm':
-          navigate('/services/crm/dashboard')
+          navigate('/services/crm')
           break
         case 'procurement':
           navigate('/services/procurement/dashboard')
@@ -185,18 +185,20 @@ const ServiceUserLogin: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Back Button */}
-        <div className="mb-6">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate('/')}
-            className="flex items-center space-x-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Back to Main</span>
-          </Button>
-        </div>
+        {/* Back Button - only show if not coming from company services */}
+        {!preSelectedService && (
+          <div className="mb-6">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/')}
+              className="flex items-center space-x-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back to Main</span>
+            </Button>
+          </div>
+        )}
 
         {/* Main Card */}
         <Card className="shadow-2xl border-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">

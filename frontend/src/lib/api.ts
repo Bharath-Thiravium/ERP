@@ -40,14 +40,15 @@ api.interceptors.request.use(
                            config.url?.includes('/health/')
 
     if (!isLoginEndpoint) {
-      // Check if this is a service user endpoint (HR, Finance, Inventory)
+      // Check if this is a service user endpoint (HR, Finance, Inventory, CRM)
       const isServiceUserEndpoint = config.url?.includes('/api/hr/') ||
                                    config.url?.includes('/api/finance/') ||
-                                   config.url?.includes('/api/inventory/')
+                                   config.url?.includes('/api/inventory/') ||
+                                   config.url?.includes('/api/crm/')
       
       if (isServiceUserEndpoint) {
         // Use session key as query parameter for service user endpoints
-        const sessionKey = localStorage.getItem('service_session_key')
+        const sessionKey = sessionStorage.getItem('service_session_key')
         if (sessionKey) {
           config.params = config.params || {}
           config.params.session_key = sessionKey
@@ -84,13 +85,18 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
 
-      // Skip token refresh for service user endpoints (HR, Finance, Inventory)
+      // Skip token refresh for service user endpoints (HR, Finance, Inventory, CRM)
       const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
                                    originalRequest.url?.includes('/api/finance/') ||
-                                   originalRequest.url?.includes('/api/inventory/')
+                                   originalRequest.url?.includes('/api/inventory/') ||
+                                   originalRequest.url?.includes('/api/crm/')
       
       if (isServiceUserEndpoint) {
-        // For service user endpoints, don't try JWT refresh, just return the error
+        // For service user endpoints, clear session and redirect to login
+        sessionStorage.removeItem('service_session_key')
+        if (!window.location.pathname.includes('/service-login')) {
+          window.location.replace('/service-login')
+        }
         return Promise.reject(error)
       }
 
@@ -121,7 +127,8 @@ api.interceptors.response.use(
         // No refresh token, redirect to login (but not for service user endpoints)
         const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
                                      originalRequest.url?.includes('/api/finance/') ||
-                                     originalRequest.url?.includes('/api/inventory/')
+                                     originalRequest.url?.includes('/api/inventory/') ||
+                                     originalRequest.url?.includes('/api/crm/')
         
         if (!isServiceUserEndpoint) {
           clearTokens()
@@ -884,6 +891,179 @@ export const apiClient = {
 
   getEmailUsageStats: () =>
     api.get('/api/company-dashboard/email-settings/usage/'),
+
+  // CRM Service APIs
+  // Dashboard
+  getCRMDashboardStats: (params?: any) =>
+    api.get('/api/crm/dashboard/', { params }),
+
+  getCRMRecentActivities: (params?: any) =>
+    api.get('/api/crm/dashboard/recent_activities/', { params }),
+
+  getCRMSalesFunnel: (params?: any) =>
+    api.get('/api/crm/dashboard/sales_funnel/', { params }),
+
+  // Leads
+  getCRMLeads: (params?: any) =>
+    api.get('/api/crm/leads/', { params }),
+
+  createCRMLead: (data: any) =>
+    api.post('/api/crm/leads/', data),
+
+  getCRMLead: (id: number, params?: any) =>
+    api.get(`/api/crm/leads/${id}/`, { params }),
+
+  updateCRMLead: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/leads/${id}/`, updateData)
+  },
+
+  deleteCRMLead: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/leads/${data.id}/`, { params: data }),
+
+  convertCRMLeadToOpportunity: (data: { id: number; [key: string]: any }) =>
+    api.post(`/api/crm/leads/${data.id}/convert_to_opportunity/`, data),
+
+  // Contacts
+  getCRMContacts: (params?: any) =>
+    api.get('/api/crm/contacts/', { params }),
+
+  createCRMContact: (data: any) =>
+    api.post('/api/crm/contacts/', data),
+
+  getCRMContact: (id: number, params?: any) =>
+    api.get(`/api/crm/contacts/${id}/`, { params }),
+
+  updateCRMContact: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/contacts/${id}/`, updateData)
+  },
+
+  deleteCRMContact: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/contacts/${data.id}/`, { params: data }),
+
+  // Accounts
+  getCRMAccounts: (params?: any) =>
+    api.get('/api/crm/accounts/', { params }),
+
+  createCRMAccount: (data: any) =>
+    api.post('/api/crm/accounts/', data),
+
+  getCRMAccount: (id: number, params?: any) =>
+    api.get(`/api/crm/accounts/${id}/`, { params }),
+
+  updateCRMAccount: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/accounts/${id}/`, updateData)
+  },
+
+  deleteCRMAccount: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/accounts/${data.id}/`, { params: data }),
+
+  getCRMAccountOpportunities: (data: { account_id: number; [key: string]: any }) =>
+    api.get(`/api/crm/accounts/${data.account_id}/opportunities/`, { params: data }),
+
+  getCRMAccountActivities: (data: { account_id: number; [key: string]: any }) =>
+    api.get(`/api/crm/accounts/${data.account_id}/activities/`, { params: data }),
+
+  // Opportunities
+  getCRMOpportunities: (params?: any) =>
+    api.get('/api/crm/opportunities/', { params }),
+
+  createCRMOpportunity: (data: any) =>
+    api.post('/api/crm/opportunities/', data),
+
+  getCRMOpportunity: (id: number, params?: any) =>
+    api.get(`/api/crm/opportunities/${id}/`, { params }),
+
+  updateCRMOpportunity: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/opportunities/${id}/`, updateData)
+  },
+
+  deleteCRMOpportunity: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/opportunities/${data.id}/`, { params: data }),
+
+  updateCRMOpportunityStage: (data: { id: number; stage: string; [key: string]: any }) =>
+    api.post(`/api/crm/opportunities/${data.id}/update_stage/`, data),
+
+  getCRMOpportunityPipeline: (params?: any) =>
+    api.get('/api/crm/opportunities/pipeline/', { params }),
+
+  getCRMOpportunityForecast: (params?: any) =>
+    api.get('/api/crm/opportunities/forecast/', { params }),
+
+  // Activities
+  getCRMActivities: (params?: any) =>
+    api.get('/api/crm/activities/', { params }),
+
+  createCRMActivity: (data: any) =>
+    api.post('/api/crm/activities/', data),
+
+  getCRMActivity: (id: number, params?: any) =>
+    api.get(`/api/crm/activities/${id}/`, { params }),
+
+  updateCRMActivity: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/activities/${id}/`, updateData)
+  },
+
+  deleteCRMActivity: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/activities/${data.id}/`, { params: data }),
+
+  completeCRMActivity: (data: { id: number; outcome?: string; [key: string]: any }) =>
+    api.post(`/api/crm/activities/${data.id}/complete/`, data),
+
+  getCRMTodayActivities: (params?: any) =>
+    api.get('/api/crm/activities/today/', { params }),
+
+  getCRMOverdueActivities: (params?: any) =>
+    api.get('/api/crm/activities/overdue/', { params }),
+
+  // Campaigns
+  getCRMCampaigns: (params?: any) =>
+    api.get('/api/crm/campaigns/', { params }),
+
+  createCRMCampaign: (data: any) =>
+    api.post('/api/crm/campaigns/', data),
+
+  getCRMCampaign: (id: number, params?: any) =>
+    api.get(`/api/crm/campaigns/${id}/`, { params }),
+
+  updateCRMCampaign: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/campaigns/${id}/`, updateData)
+  },
+
+  deleteCRMCampaign: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/campaigns/${data.id}/`, { params: data }),
+
+  getCRMCampaignMembers: (data: { campaign_id: number; [key: string]: any }) =>
+    api.get(`/api/crm/campaigns/${data.campaign_id}/members/`, { params: data }),
+
+  addCRMCampaignMembers: (data: { campaign_id: number; [key: string]: any }) =>
+    api.post(`/api/crm/campaigns/${data.campaign_id}/add_members/`, data),
+
+  // Sales Targets
+  getCRMSalesTargets: (params?: any) =>
+    api.get('/api/crm/sales-targets/', { params }),
+
+  createCRMSalesTarget: (data: any) =>
+    api.post('/api/crm/sales-targets/', data),
+
+  getCRMSalesTarget: (id: number, params?: any) =>
+    api.get(`/api/crm/sales-targets/${id}/`, { params }),
+
+  updateCRMSalesTarget: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/sales-targets/${id}/`, updateData)
+  },
+
+  deleteCRMSalesTarget: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/sales-targets/${data.id}/`, { params: data }),
+
+  getCRMCurrentPerformance: (params?: any) =>
+    api.get('/api/crm/sales-targets/current_performance/', { params }),
 
   // Convenience methods for backward compatibility
   getEmployees: (params?: any) => apiClient.getHREmployees(params),

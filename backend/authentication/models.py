@@ -84,6 +84,9 @@ class Company(models.Model):
 
     # Company branding
     logo = models.ImageField(upload_to='company_logos/', blank=True, null=True)
+    
+    # Domain settings
+    domain_name = models.CharField(max_length=255, blank=True, help_text="Company domain (e.g., athenas.co.in)")
 
     class Meta:
         verbose_name_plural = "Companies"

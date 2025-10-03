@@ -7,6 +7,7 @@ import { AppRouter } from './lib/router'
 import { useAuthStore } from './store/authStore'
 import { useThemeStore } from './store/themeStore'
 import ErrorBoundary from './components/ui/ErrorBoundary'
+import AuthWrapper from './components/auth/AuthWrapper'
 
 import './index.css'
 
@@ -69,24 +70,26 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <Router>
-          <div className={`min-h-screen transition-colors duration-300 ${
-            theme === 'dark'
-              ? 'bg-gray-900 text-white'
-              : 'bg-gray-50 text-gray-900'
-          }`}>
-            <AppRouter />
-            <Toaster
-              position="top-right"
-              toastOptions={{
-                duration: 4000,
-                style: {
-                  background: theme === 'dark' ? '#374151' : '#ffffff',
-                  color: theme === 'dark' ? '#ffffff' : '#374151',
-                  border: theme === 'dark' ? '1px solid #4B5563' : '1px solid #E5E7EB',
-                },
-              }}
-            />
-          </div>
+          <AuthWrapper>
+            <div className={`min-h-screen transition-colors duration-300 ${
+              theme === 'dark'
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-50 text-gray-900'
+            }`}>
+              <AppRouter />
+              <Toaster
+                position="top-right"
+                toastOptions={{
+                  duration: 4000,
+                  style: {
+                    background: theme === 'dark' ? '#374151' : '#ffffff',
+                    color: theme === 'dark' ? '#ffffff' : '#374151',
+                    border: theme === 'dark' ? '1px solid #4B5563' : '1px solid #E5E7EB',
+                  },
+                }}
+              />
+            </div>
+          </AuthWrapper>
         </Router>
         <ReactQueryDevtools initialIsOpen={false} />
       </QueryClientProvider>

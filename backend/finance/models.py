@@ -1599,6 +1599,12 @@ class Invoice(models.Model):
         db_table = 'finance_invoices'
         ordering = ['-created_at']
         unique_together = ['company', 'invoice_number']
+        indexes = [
+            models.Index(fields=['invoice_number']),
+            models.Index(fields=['company', 'invoice_date']),
+            models.Index(fields=['customer', 'payment_status']),
+            models.Index(fields=['status', 'created_at']),
+        ]
 
     def __str__(self):
         return escape(f"{self.invoice_number} - {self.customer.name}")
@@ -1638,7 +1644,8 @@ class Invoice(models.Model):
                     self.invoice_number = f"INV-{timezone.now().year}-000001"
 
         # Calculate outstanding amount
-        self.outstanding_amount = self.total_amount - self.paid_amount
+        from decimal import Decimal
+        self.outstanding_amount = self.total_amount - Decimal(str(self.paid_amount))
 
         # Update payment status based on amounts
         if self.paid_amount == 0:

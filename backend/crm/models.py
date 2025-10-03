@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from authentication.models import Company, CompanyServiceUser
 from django.utils import timezone
 from decimal import Decimal
+import json
 
 
 class Lead(models.Model):
@@ -67,6 +68,12 @@ class Lead(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['lead_id']),
+            models.Index(fields=['email']),
+            models.Index(fields=['company', 'status']),
+            models.Index(fields=['assigned_to', 'priority']),
+        ]
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} - {self.company_name}"
@@ -401,3 +408,577 @@ class SalesTarget(models.Model):
         if self.target_amount > 0:
             return (self.achieved_amount / self.target_amount) * 100
         return 0
+
+
+# Customer Support System Models
+class TicketCategory(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='ticket_categories')
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    color = models.CharField(max_length=7, default='#3B82F6')  # Hex color
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name_plural = 'Ticket Categories'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class SLA(models.Model):
+    PRIORITY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('critical', 'Critical'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='slas')
+    name = models.CharField(max_length=100)
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES)
+    response_time_hours = models.IntegerField()  # Response time in hours
+    resolution_time_hours = models.IntegerField()  # Resolution time in hours
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'SLA'
+        verbose_name_plural = 'SLAs'
+        unique_together = ['company', 'priority']
+
+    def __str__(self):
+        return f"{self.name} - {self.get_priority_display()}"
+
+
+class Ticket(models.Model):
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('in_progress', 'In Progress'),
+        ('pending', 'Pending Customer'),
+        ('resolved', 'Resolved'),
+        ('closed', 'Closed'),
+    ]
+    
+    PRIORITY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('critical', 'Critical'),
+    ]
+    
+    SOURCE_CHOICES = [
+        ('email', 'Email'),
+        ('web', 'Web Form'),
+        ('phone', 'Phone'),
+        ('chat', 'Live Chat'),
+        ('social', 'Social Media'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='tickets')
+    ticket_id = models.CharField(max_length=50, unique=True)
+    
+    # Basic Information
+    subject = models.CharField(max_length=200)
+    description = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium')
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='web')
+    
+    # Relationships
+    category = models.ForeignKey(TicketCategory, on_delete=models.SET_NULL, null=True, blank=True)
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='tickets')
+    account = models.ForeignKey(Account, on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
+    assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_tickets')
+    
+    # SLA Tracking
+    sla = models.ForeignKey(SLA, on_delete=models.SET_NULL, null=True, blank=True)
+    response_due = models.DateTimeField(null=True, blank=True)
+    resolution_due = models.DateTimeField(null=True, blank=True)
+    first_response_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    
+    # Tracking
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_tickets')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Customer Satisfaction
+    satisfaction_rating = models.IntegerField(null=True, blank=True, choices=[(i, i) for i in range(1, 6)])
+    satisfaction_comment = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.ticket_id} - {self.subject}"
+
+    @property
+    def is_overdue(self):
+        if self.resolution_due and self.status not in ['resolved', 'closed']:
+            return timezone.now() > self.resolution_due
+        return False
+
+    @property
+    def response_overdue(self):
+        if self.response_due and not self.first_response_at:
+            return timezone.now() > self.response_due
+        return False
+
+
+class KnowledgeBase(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='knowledge_base')
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    category = models.ForeignKey(TicketCategory, on_delete=models.SET_NULL, null=True, blank=True)
+    tags = models.JSONField(default=list)
+    is_published = models.BooleanField(default=True)
+    view_count = models.IntegerField(default=0)
+    helpful_count = models.IntegerField(default=0)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_kb_articles')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.title
+
+
+# AI Lead Scoring Models
+class LeadScore(models.Model):
+    lead = models.OneToOneField(Lead, on_delete=models.CASCADE, related_name='score')
+    
+    # Score Components (0-100 each)
+    behavioral_score = models.IntegerField(default=0)  # Website visits, email opens, downloads
+    demographic_score = models.IntegerField(default=0)  # Company size, industry fit, role
+    engagement_score = models.IntegerField(default=0)  # Response time, meeting acceptance
+    predictive_score = models.IntegerField(default=0)  # ML-based conversion probability
+    
+    # Total Score (0-100)
+    total_score = models.IntegerField(default=0)
+    
+    # Score Grade
+    GRADE_CHOICES = [
+        ('cold', 'Cold (0-25)'),
+        ('warm', 'Warm (26-50)'),
+        ('hot', 'Hot (51-75)'),
+        ('very_hot', 'Very Hot (76-100)'),
+    ]
+    grade = models.CharField(max_length=20, choices=GRADE_CHOICES, default='cold')
+    
+    # Tracking
+    last_calculated = models.DateTimeField(auto_now=True)
+    calculation_count = models.IntegerField(default=0)
+    
+    # AI Insights
+    conversion_probability = models.FloatField(default=0.0)  # 0.0 to 1.0
+    recommended_actions = models.JSONField(default=list)
+    score_factors = models.JSONField(default=dict)  # Detailed breakdown
+
+    def __str__(self):
+        return f"{self.lead} - Score: {self.total_score}"
+
+    def calculate_total_score(self):
+        # Weighted calculation
+        weights = {
+            'behavioral': 0.3,
+            'demographic': 0.25,
+            'engagement': 0.25,
+            'predictive': 0.2
+        }
+        
+        total = (
+            self.behavioral_score * weights['behavioral'] +
+            self.demographic_score * weights['demographic'] +
+            self.engagement_score * weights['engagement'] +
+            self.predictive_score * weights['predictive']
+        )
+        
+        self.total_score = min(100, max(0, int(total)))
+        
+        # Update grade
+        if self.total_score <= 25:
+            self.grade = 'cold'
+        elif self.total_score <= 50:
+            self.grade = 'warm'
+        elif self.total_score <= 75:
+            self.grade = 'hot'
+        else:
+            self.grade = 'very_hot'
+        
+        self.calculation_count += 1
+        self.save()
+        return self.total_score
+
+
+class ScoringCriteria(models.Model):
+    CRITERIA_TYPE_CHOICES = [
+        ('behavioral', 'Behavioral'),
+        ('demographic', 'Demographic'),
+        ('engagement', 'Engagement'),
+        ('predictive', 'Predictive'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='scoring_criteria')
+    name = models.CharField(max_length=100)
+    criteria_type = models.CharField(max_length=20, choices=CRITERIA_TYPE_CHOICES)
+    weight = models.FloatField(default=1.0)  # Multiplier for this criteria
+    max_points = models.IntegerField(default=25)  # Maximum points for this criteria
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name_plural = 'Scoring Criteria'
+
+    def __str__(self):
+        return f"{self.name} ({self.get_criteria_type_display()})"
+
+
+# Phase 2: Advanced Sales Pipeline Management Models
+class PipelineStage(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='pipeline_stages')
+    name = models.CharField(max_length=100)
+    order = models.IntegerField()
+    probability = models.IntegerField(default=0)  # Default probability for this stage
+    is_active = models.BooleanField(default=True)
+    color = models.CharField(max_length=7, default='#3B82F6')  # Hex color
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order']
+        unique_together = ['company', 'order']
+
+    def __str__(self):
+        return f"{self.name} ({self.order})"
+
+
+class Deal(models.Model):
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('won', 'Won'),
+        ('lost', 'Lost'),
+        ('on_hold', 'On Hold'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='deals')
+    deal_id = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=200)
+    
+    # Relationships
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='deals')
+    contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='deals')
+    opportunity = models.OneToOneField(Opportunity, on_delete=models.CASCADE, null=True, blank=True, related_name='deal')
+    
+    # Pipeline
+    current_stage = models.ForeignKey(PipelineStage, on_delete=models.CASCADE, related_name='deals')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    
+    # Financial
+    value = models.DecimalField(max_digits=12, decimal_places=2)
+    probability = models.IntegerField(default=0)  # 0-100
+    expected_close_date = models.DateField()
+    actual_close_date = models.DateField(null=True, blank=True)
+    
+    # Assignment
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_deals')
+    
+    # Tracking
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_deals')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Additional
+    description = models.TextField(blank=True)
+    next_action = models.CharField(max_length=200, blank=True)
+    tags = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} - {self.account.name}"
+
+    @property
+    def weighted_value(self):
+        return self.value * (self.probability / 100)
+
+    @property
+    def days_in_stage(self):
+        # Get the latest stage history entry
+        latest_history = self.stage_history.filter(stage=self.current_stage).order_by('-changed_at').first()
+        if latest_history:
+            return (timezone.now().date() - latest_history.changed_at.date()).days
+        return 0
+
+
+class DealStageHistory(models.Model):
+    deal = models.ForeignKey(Deal, on_delete=models.CASCADE, related_name='stage_history')
+    stage = models.ForeignKey(PipelineStage, on_delete=models.CASCADE)
+    changed_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    changed_at = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True)
+    duration_days = models.IntegerField(null=True, blank=True)  # Days spent in previous stage
+
+    class Meta:
+        ordering = ['-changed_at']
+
+    def __str__(self):
+        return f"{self.deal.name} -> {self.stage.name}"
+
+
+class SalesQuota(models.Model):
+    PERIOD_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('yearly', 'Yearly'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='sales_quotas')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sales_quotas')
+    period = models.CharField(max_length=20, choices=PERIOD_CHOICES)
+    year = models.IntegerField()
+    month = models.IntegerField(null=True, blank=True)
+    quarter = models.IntegerField(null=True, blank=True)
+    
+    quota_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    achieved_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    deals_target = models.IntegerField(default=0)
+    deals_achieved = models.IntegerField(default=0)
+    
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_quotas')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['company', 'user', 'period', 'year', 'month', 'quarter']
+
+    def __str__(self):
+        return f"{self.user.get_full_name()} - {self.period} {self.year}"
+
+    @property
+    def achievement_percentage(self):
+        if self.quota_amount > 0:
+            return (self.achieved_amount / self.quota_amount) * 100
+        return 0
+
+
+# Phase 2: Customer Relationship Analytics Models
+class CustomerInteraction(models.Model):
+    INTERACTION_TYPE_CHOICES = [
+        ('email', 'Email'),
+        ('call', 'Phone Call'),
+        ('meeting', 'Meeting'),
+        ('demo', 'Product Demo'),
+        ('support', 'Support Request'),
+        ('purchase', 'Purchase'),
+        ('website_visit', 'Website Visit'),
+        ('social_media', 'Social Media'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='customer_interactions')
+    interaction_id = models.CharField(max_length=50, unique=True)
+    
+    # Relationships
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='interactions')
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='interactions')
+    deal = models.ForeignKey(Deal, on_delete=models.SET_NULL, null=True, blank=True, related_name='interactions')
+    
+    # Interaction Details
+    interaction_type = models.CharField(max_length=20, choices=INTERACTION_TYPE_CHOICES)
+    subject = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    outcome = models.TextField(blank=True)
+    
+    # Timing
+    interaction_date = models.DateTimeField()
+    duration_minutes = models.IntegerField(null=True, blank=True)
+    
+    # Tracking
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_interactions')
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Metadata
+    metadata = models.JSONField(default=dict)  # Store additional data like email opens, clicks, etc.
+
+    class Meta:
+        ordering = ['-interaction_date']
+
+    def __str__(self):
+        return f"{self.contact} - {self.get_interaction_type_display()}"
+
+
+class CustomerHealthScore(models.Model):
+    HEALTH_STATUS_CHOICES = [
+        ('excellent', 'Excellent (81-100)'),
+        ('good', 'Good (61-80)'),
+        ('average', 'Average (41-60)'),
+        ('poor', 'Poor (21-40)'),
+        ('critical', 'Critical (0-20)'),
+    ]
+
+    account = models.OneToOneField(Account, on_delete=models.CASCADE, related_name='health_score')
+    
+    # Score Components (0-100 each)
+    engagement_score = models.IntegerField(default=0)  # Interaction frequency and quality
+    satisfaction_score = models.IntegerField(default=0)  # Support tickets, feedback
+    usage_score = models.IntegerField(default=0)  # Product usage, feature adoption
+    financial_score = models.IntegerField(default=0)  # Payment history, contract value
+    
+    # Overall Score (0-100)
+    overall_score = models.IntegerField(default=0)
+    health_status = models.CharField(max_length=20, choices=HEALTH_STATUS_CHOICES, default='average')
+    
+    # Risk Indicators
+    churn_risk = models.FloatField(default=0.0)  # 0.0 to 1.0
+    upsell_opportunity = models.FloatField(default=0.0)  # 0.0 to 1.0
+    
+    # Tracking
+    last_calculated = models.DateTimeField(auto_now=True)
+    calculation_count = models.IntegerField(default=0)
+    
+    # Insights
+    risk_factors = models.JSONField(default=list)
+    recommendations = models.JSONField(default=list)
+
+    def __str__(self):
+        return f"{self.account.name} - Health: {self.overall_score}"
+
+    def calculate_overall_score(self):
+        # Weighted calculation
+        weights = {
+            'engagement': 0.3,
+            'satisfaction': 0.25,
+            'usage': 0.25,
+            'financial': 0.2
+        }
+        
+        total = (
+            self.engagement_score * weights['engagement'] +
+            self.satisfaction_score * weights['satisfaction'] +
+            self.usage_score * weights['usage'] +
+            self.financial_score * weights['financial']
+        )
+        
+        self.overall_score = min(100, max(0, int(total)))
+        
+        # Update health status
+        if self.overall_score >= 81:
+            self.health_status = 'excellent'
+        elif self.overall_score >= 61:
+            self.health_status = 'good'
+        elif self.overall_score >= 41:
+            self.health_status = 'average'
+        elif self.overall_score >= 21:
+            self.health_status = 'poor'
+        else:
+            self.health_status = 'critical'
+        
+        self.calculation_count += 1
+        self.save()
+        return self.overall_score
+
+
+class CustomerSegment(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='customer_segments')
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    
+    # Segmentation Criteria
+    criteria = models.JSONField(default=dict)  # Store segmentation rules
+    
+    # Segment Properties
+    color = models.CharField(max_length=7, default='#3B82F6')
+    is_active = models.BooleanField(default=True)
+    
+    # Tracking
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_segments')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def account_count(self):
+        return self.memberships.count()
+
+
+class CustomerSegmentMembership(models.Model):
+    segment = models.ForeignKey(CustomerSegment, on_delete=models.CASCADE, related_name='memberships')
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='segment_memberships')
+    added_at = models.DateTimeField(auto_now_add=True)
+    added_by = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ['segment', 'account']
+
+    def __str__(self):
+        return f"{self.account.name} in {self.segment.name}"
+
+
+class SalesAnalytics(models.Model):
+    METRIC_TYPE_CHOICES = [
+        ('conversion_rate', 'Conversion Rate'),
+        ('avg_deal_size', 'Average Deal Size'),
+        ('sales_cycle_length', 'Sales Cycle Length'),
+        ('win_rate', 'Win Rate'),
+        ('pipeline_velocity', 'Pipeline Velocity'),
+        ('customer_acquisition_cost', 'Customer Acquisition Cost'),
+        ('customer_lifetime_value', 'Customer Lifetime Value'),
+    ]
+    
+    PERIOD_CHOICES = [
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('yearly', 'Yearly'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='sales_analytics')
+    metric_type = models.CharField(max_length=30, choices=METRIC_TYPE_CHOICES)
+    period = models.CharField(max_length=20, choices=PERIOD_CHOICES)
+    
+    # Time Period
+    date = models.DateField()
+    year = models.IntegerField()
+    month = models.IntegerField(null=True, blank=True)
+    week = models.IntegerField(null=True, blank=True)
+    quarter = models.IntegerField(null=True, blank=True)
+    
+    # Metric Values
+    value = models.DecimalField(max_digits=15, decimal_places=4)
+    count = models.IntegerField(default=0)  # Supporting count data
+    
+    # Metadata
+    metadata = models.JSONField(default=dict)  # Additional metric details
+    
+    # Tracking
+    calculated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['company', 'metric_type', 'period', 'date']
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.get_metric_type_display()} - {self.date}"
+
+
+# Import Phase 3 models
+from .phase3_models import (
+    EmailTemplate, MarketingCampaign, EmailSend, AutomationWorkflow,
+    ReportTemplate, Dashboard, BusinessIntelligence
+)
+
+# Import Phase 4 models
+from .phase4_models import (
+    ThirdPartyIntegration, IntegrationLog, MobileDevice, MobileSync,
+    DataAuditLog, ComplianceRule, ComplianceViolation, DataRetentionPolicy,
+    SecurityAlert, APIUsageLog
+)

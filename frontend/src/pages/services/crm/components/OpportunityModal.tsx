@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Save, Target } from 'lucide-react'
+import { X } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
@@ -42,7 +42,7 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
   const probabilities = [10, 25, 50, 75, 90, 100]
 
   useEffect(() => {
-    if (isOpen && sessionKey) {
+    if (isOpen && sessionKey!) {
       fetchAccounts()
       fetchContacts()
     }
@@ -50,7 +50,7 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
 
   const fetchAccounts = async () => {
     try {
-      const response = await crmApi.getAccounts(sessionKey)
+      const response = await crmApi.getAccounts(sessionKey!)
       setAccounts(response.data.results || response.data)
     } catch (error) {
       console.error('Error fetching accounts:', error)
@@ -59,7 +59,7 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
 
   const fetchContacts = async () => {
     try {
-      const response = await crmApi.getContacts(sessionKey)
+      const response = await crmApi.getContacts(sessionKey!)
       setContacts(response.data.results || response.data)
     } catch (error) {
       console.error('Error fetching contacts:', error)
@@ -96,7 +96,7 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!sessionKey) return
+    if (!sessionKey!) return
 
     setLoading(true)
     try {
@@ -108,10 +108,10 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
       }
 
       if (opportunity) {
-        await crmApi.updateOpportunity(sessionKey, opportunity.id, payload)
+        await crmApi.updateOpportunity(sessionKey!, opportunity.id, payload)
         toast.success('Opportunity updated successfully!')
       } else {
-        await crmApi.createOpportunity(sessionKey, payload)
+        await crmApi.createOpportunity(sessionKey!, payload)
         toast.success('Opportunity created successfully!')
       }
       

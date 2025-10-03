@@ -139,7 +139,7 @@ class CompanyListCreateView(ListCreateAPIView):
     def get_queryset(self):
         # Only master admins can see all companies
         if hasattr(self.request.user, 'master_admin'):
-            return Company.objects.all()
+            return Company.objects.select_related('created_by', 'approved_by').prefetch_related('users', 'company_services__service')
         return Company.objects.none()
 
     def get_serializer_class(self):
@@ -612,7 +612,8 @@ class CompanyUserLoginView(APIView):
                     'company_name': company_user.company.name,
                     'company_logo': logo_url,
                     'is_company_user': True
-                }
+                },
+                'must_change_password': company_user.must_change_password
             }
 
             # Check if first login is required
@@ -1637,6 +1638,128 @@ class CompanyLogoUpdateView(APIView):
             import traceback
             traceback.print_exc()
             return Response({'error': f'Failed to update logo: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CompanyPasswordResetView(APIView):
+    """Reset company user password (Master Admin only)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, company_id):
+        # Only master admins can reset company passwords
+        if not hasattr(request.user, 'master_admin'):
+            return Response(
+                {'error': 'Only master admins can reset company passwords.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            company = Company.objects.get(id=company_id)
+            company_user = company.users.first()
+            
+            if not company_user:
+                return Response(
+                    {'error': 'No company user found for this company.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Generate new random password
+            new_password = self._generate_secure_password()
+            
+            # Update company user password
+            company_user.user.set_password(new_password)
+            company_user.user.save()
+            
+            # Set password change requirement
+            company_user.must_change_password = True
+            company_user.password_expires_at = timezone.now() + timezone.timedelta(days=90)
+            company_user.save()
+            
+            # Log security event
+            log_security_event(
+                request.user,
+                'PASSWORD_RESET',
+                request,
+                f'Reset password for company: {company.name}'
+            )
+            
+            # Save credentials to file
+            credentials_file = self._save_reset_credentials_file(company, company_user.user.email, new_password)
+            
+            return Response({
+                'message': 'Password reset successfully.',
+                'company': {
+                    'id': company.id,
+                    'name': company.name,
+                    'email': company.email
+                },
+                'credentials': {
+                    'username': company_user.user.email,
+                    'password': new_password
+                },
+                'credentials_file': credentials_file
+            })
+            
+        except Company.DoesNotExist:
+            return Response(
+                {'error': 'Company not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to reset password: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _generate_secure_password(self, length=12):
+        """Generate secure random password"""
+        import string
+        import secrets
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
+    
+    def _save_reset_credentials_file(self, company, username, password):
+        """Save reset credentials to file"""
+        from datetime import datetime
+        
+        # Get safe scripts directory
+        scripts_dir = get_safe_scripts_path()
+        
+        # Generate safe filename
+        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
+        filename = f'reset_credentials_{company_name_safe}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
+        
+        # Validate filename
+        filename = validate_filename(filename)
+        
+        # Use safe path joining
+        filepath = safe_join(scripts_dir, filename)
+        
+        # Create credentials file content
+        content = f"""RESET CREDENTIALS FOR {company.name.upper()}
+==================================================
+
+Company: {company.name}
+Reset Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Reset By: Master Admin
+
+LOGIN CREDENTIALS:
+--------------------
+Username/Email: {username}
+New Password: {password}
+
+IMPORTANT NOTES:
+- This is a temporary password
+- You MUST change this password after first login
+- Password expires in 90 days
+- Keep this file secure and delete after use
+
+Login URL: [Your Company Login URL]
+"""
+        
+        # Write to file securely
+        secure_file_write(filepath, content)
+        
+        return filename
 
 
 class GenerateAutoCodeView(APIView):

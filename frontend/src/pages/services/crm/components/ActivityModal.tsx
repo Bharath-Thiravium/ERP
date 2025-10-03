@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Save, Calendar } from 'lucide-react'
+import { X } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
@@ -17,8 +17,8 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
   const [loading, setLoading] = useState(false)
   const [leads, setLeads] = useState([])
   const [contacts, setContacts] = useState([])
-  const [accounts, setAccounts] = useState([])
-  const [opportunities, setOpportunities] = useState([])
+  const [, setAccounts] = useState([])
+  const [, setOpportunities] = useState([])
   const [formData, setFormData] = useState({
     subject: '',
     activity_type: 'call',
@@ -50,7 +50,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
   ]
 
   useEffect(() => {
-    if (isOpen && sessionKey) {
+    if (isOpen && sessionKey!) {
       fetchRelatedData()
     }
   }, [isOpen, sessionKey])
@@ -58,10 +58,10 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
   const fetchRelatedData = async () => {
     try {
       const [leadsRes, contactsRes, accountsRes, opportunitiesRes] = await Promise.all([
-        crmApi.getLeads(sessionKey),
-        crmApi.getContacts(sessionKey),
-        crmApi.getAccounts(sessionKey),
-        crmApi.getOpportunities(sessionKey)
+        crmApi.getLeads(sessionKey!),
+        crmApi.getContacts(sessionKey!),
+        crmApi.getAccounts(sessionKey!),
+        crmApi.getOpportunities(sessionKey!)
       ])
       
       setLeads(leadsRes.data.results || leadsRes.data)
@@ -106,7 +106,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!sessionKey) return
+    if (!sessionKey!) return
 
     setLoading(true)
     try {
@@ -120,10 +120,10 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
       }
 
       if (activity) {
-        await crmApi.updateActivity(sessionKey, activity.id, payload)
+        await crmApi.updateActivity(sessionKey!, activity.id, payload)
         toast.success('Activity updated successfully!')
       } else {
-        await crmApi.createActivity(sessionKey, payload)
+        await crmApi.createActivity(sessionKey!, payload)
         toast.success('Activity created successfully!')
       }
       

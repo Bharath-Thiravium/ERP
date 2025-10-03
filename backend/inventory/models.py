@@ -254,6 +254,12 @@ class Product(models.Model):
     class Meta:
         unique_together = ['company', 'product_code']
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['product_code']),
+            models.Index(fields=['sku']),
+            models.Index(fields=['company', 'category']),
+            models.Index(fields=['is_active', 'product_type']),
+        ]
 
     def __str__(self):
         return escape(f"{self.product_code} - {self.name}")

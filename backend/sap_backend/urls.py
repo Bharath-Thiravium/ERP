@@ -21,6 +21,7 @@ from django.conf.urls.static import static
 from django.http import JsonResponse
 from . import views
 from rest_framework_simplejwt.views import TokenRefreshView
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 from django.utils import timezone
 
@@ -32,6 +33,11 @@ urlpatterns = [
     
     # Admin
     path('admin/', admin.site.urls),
+    
+    # API Documentation
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
     
     # JWT Token endpoints
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

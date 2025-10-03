@@ -1,5 +1,10 @@
 from rest_framework import serializers
-from .models import Lead, Contact, Account, Opportunity, Activity, Campaign, CampaignMember, SalesTarget
+from .models import (
+    Lead, Contact, Account, Opportunity, Activity, Campaign, CampaignMember, SalesTarget,
+    Ticket, TicketCategory, SLA, KnowledgeBase, LeadScore, ScoringCriteria,
+    PipelineStage, Deal, DealStageHistory, SalesQuota,
+    CustomerInteraction, CustomerHealthScore, CustomerSegment, CustomerSegmentMembership, SalesAnalytics
+)
 from django.contrib.auth.models import User
 
 
@@ -147,6 +152,204 @@ class SalesTargetSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
+# Customer Support Serializers
+class TicketCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketCategory
+        fields = '__all__'
+        read_only_fields = ['created_at']
+
+    def create(self, validated_data):
+        company = validated_data['company']
+        return super().create(validated_data)
+
+
+class SLASerializer(serializers.ModelSerializer):
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+
+    class Meta:
+        model = SLA
+        fields = '__all__'
+        read_only_fields = ['created_at']
+
+
+class TicketSerializer(serializers.ModelSerializer):
+    contact_name = serializers.CharField(source='contact.__str__', read_only=True)
+    account_name = serializers.CharField(source='account.name', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    assigned_to_name = serializers.CharField(source='assigned_to.get_full_name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    source_display = serializers.CharField(source='get_source_display', read_only=True)
+    is_overdue = serializers.BooleanField(read_only=True)
+    response_overdue = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Ticket
+        fields = '__all__'
+        read_only_fields = ['ticket_id', 'created_by', 'created_at', 'updated_at', 'first_response_at', 'resolved_at']
+
+    def create(self, validated_data):
+        company = validated_data['company']
+        # Generate ticket ID
+        ticket_count = Ticket.objects.filter(company=company).count() + 1
+        validated_data['ticket_id'] = f"{company.company_prefix}TKT{ticket_count:04d}"
+        return super().create(validated_data)
+
+
+class KnowledgeBaseSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+
+    class Meta:
+        model = KnowledgeBase
+        fields = '__all__'
+        read_only_fields = ['created_by', 'created_at', 'updated_at', 'view_count', 'helpful_count']
+
+
+# AI Lead Scoring Serializers
+class LeadScoreSerializer(serializers.ModelSerializer):
+    lead_name = serializers.CharField(source='lead.__str__', read_only=True)
+    lead_company = serializers.CharField(source='lead.company_name', read_only=True)
+    lead_email = serializers.CharField(source='lead.email', read_only=True)
+    lead_status = serializers.CharField(source='lead.status', read_only=True)
+    grade_display = serializers.CharField(source='get_grade_display', read_only=True)
+
+    class Meta:
+        model = LeadScore
+        fields = '__all__'
+        read_only_fields = ['last_calculated', 'calculation_count']
+
+
+class ScoringCriteriaSerializer(serializers.ModelSerializer):
+    criteria_type_display = serializers.CharField(source='get_criteria_type_display', read_only=True)
+
+    class Meta:
+        model = ScoringCriteria
+        fields = '__all__'
+        read_only_fields = ['created_at']
+
+
+# Phase 2: Advanced Sales Pipeline Management Serializers
+class PipelineStageSerializer(serializers.ModelSerializer):
+    deals_count = serializers.IntegerField(source='deals.count', read_only=True)
+
+    class Meta:
+        model = PipelineStage
+        fields = '__all__'
+        read_only_fields = ['created_at']
+
+
+class DealSerializer(serializers.ModelSerializer):
+    account_name = serializers.CharField(source='account.name', read_only=True)
+    contact_name = serializers.CharField(source='contact.__str__', read_only=True)
+    current_stage_name = serializers.CharField(source='current_stage.name', read_only=True)
+    owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    weighted_value = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    days_in_stage = serializers.IntegerField(read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = Deal
+        fields = '__all__'
+        read_only_fields = ['deal_id', 'created_by', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        company = validated_data['company']
+        # Generate deal ID
+        deal_count = Deal.objects.filter(company=company).count() + 1
+        validated_data['deal_id'] = f"{company.company_prefix}DEAL{deal_count:04d}"
+        return super().create(validated_data)
+
+
+class DealStageHistorySerializer(serializers.ModelSerializer):
+    deal_name = serializers.CharField(source='deal.name', read_only=True)
+    stage_name = serializers.CharField(source='stage.name', read_only=True)
+    changed_by_name = serializers.CharField(source='changed_by.get_full_name', read_only=True)
+
+    class Meta:
+        model = DealStageHistory
+        fields = '__all__'
+        read_only_fields = ['changed_at']
+
+
+class SalesQuotaSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    achievement_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    period_display = serializers.CharField(source='get_period_display', read_only=True)
+
+    class Meta:
+        model = SalesQuota
+        fields = '__all__'
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+# Phase 2: Customer Relationship Analytics Serializers
+class CustomerInteractionSerializer(serializers.ModelSerializer):
+    contact_name = serializers.CharField(source='contact.__str__', read_only=True)
+    account_name = serializers.CharField(source='account.name', read_only=True)
+    deal_name = serializers.CharField(source='deal.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    interaction_type_display = serializers.CharField(source='get_interaction_type_display', read_only=True)
+
+    class Meta:
+        model = CustomerInteraction
+        fields = '__all__'
+        read_only_fields = ['interaction_id', 'created_by', 'created_at']
+
+    def create(self, validated_data):
+        company = validated_data['company']
+        # Generate interaction ID
+        interaction_count = CustomerInteraction.objects.filter(company=company).count() + 1
+        validated_data['interaction_id'] = f"{company.company_prefix}INT{interaction_count:04d}"
+        return super().create(validated_data)
+
+
+class CustomerHealthScoreSerializer(serializers.ModelSerializer):
+    account_name = serializers.CharField(source='account.name', read_only=True)
+    account_type = serializers.CharField(source='account.account_type', read_only=True)
+    health_status_display = serializers.CharField(source='get_health_status_display', read_only=True)
+
+    class Meta:
+        model = CustomerHealthScore
+        fields = '__all__'
+        read_only_fields = ['last_calculated', 'calculation_count']
+
+
+class CustomerSegmentSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    account_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = CustomerSegment
+        fields = '__all__'
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class CustomerSegmentMembershipSerializer(serializers.ModelSerializer):
+    segment_name = serializers.CharField(source='segment.name', read_only=True)
+    account_name = serializers.CharField(source='account.name', read_only=True)
+    added_by_name = serializers.CharField(source='added_by.get_full_name', read_only=True)
+
+    class Meta:
+        model = CustomerSegmentMembership
+        fields = '__all__'
+        read_only_fields = ['added_at']
+
+
+class SalesAnalyticsSerializer(serializers.ModelSerializer):
+    metric_type_display = serializers.CharField(source='get_metric_type_display', read_only=True)
+    period_display = serializers.CharField(source='get_period_display', read_only=True)
+
+    class Meta:
+        model = SalesAnalytics
+        fields = '__all__'
+        read_only_fields = ['calculated_at']
+
+
 # Dashboard Serializers
 class DashboardStatsSerializer(serializers.Serializer):
     total_leads = serializers.IntegerField()
@@ -168,3 +371,5 @@ class OpportunitiesByStageSerializer(serializers.Serializer):
     stage = serializers.CharField()
     count = serializers.IntegerField()
     total_value = serializers.DecimalField(max_digits=15, decimal_places=2)
+
+

@@ -32,6 +32,7 @@ import {
   Moon,
   Sun,
   AlertCircle,
+  Key,
 
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
@@ -45,6 +46,7 @@ import CompanyViewModal from '../../components/modals/CompanyViewModal'
 import CompanyEditModal from '../../components/modals/CompanyEditModal'
 import CompanyDeleteModal from '../../components/modals/CompanyDeleteModal'
 import CompanyApprovalModal from '../../components/modals/CompanyApprovalModal'
+import CompanyPasswordResetModal from '../../components/modals/CompanyPasswordResetModal'
 import NotificationPanel from '../../components/layout/NotificationPanel'
 import { AIChat } from '../../components/ai-assistant'
 import ServicesManagement from './ServicesManagement'
@@ -106,6 +108,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showApprovalModal, setShowApprovalModal] = useState(false)
+  const [showPasswordResetModal, setShowPasswordResetModal] = useState(false)
   const [selectedCompany, setSelectedCompany] = useState<any>(null)
 
   // Bulk actions
@@ -276,6 +279,11 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const handleDeleteCompany = (company: any) => {
     setSelectedCompany(company)
     setShowDeleteModal(true)
+  }
+
+  const handleResetPassword = (company: any) => {
+    setSelectedCompany(company)
+    setShowPasswordResetModal(true)
   }
 
   const handleSaveCompany = async (updatedCompany: any) => {
@@ -648,6 +656,12 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
                         <Edit className="h-4 w-4" />
                         Edit Company
                       </DropdownMenuItem>
+                      {company.approval_status === 'approved' && (
+                        <DropdownMenuItem onClick={() => handleResetPassword(company)}>
+                          <Key className="h-4 w-4" />
+                          Reset Password
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => handleDeleteCompany(company)}
@@ -723,7 +737,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const serviceData = serviceMetrics?.data || {}
 
   // WebSocket for real-time system monitoring
-  const { isConnected: systemWsConnected } = useWebSocket('/ws/system-monitor/', {
+  const { isConnected: systemWsConnected } = useWebSocket('system-monitor/', {
     onMessage: (data) => {
       if (data.type === 'system_update') {
         setRealTimeData(data.data)
@@ -1040,7 +1054,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const [realtimeAlerts, setRealtimeAlerts] = useState<any[]>([])
 
   // WebSocket for real-time alerts
-  const { isConnected: alertsWsConnected } = useWebSocket('/ws/alerts/', {
+  const { isConnected: alertsWsConnected } = useWebSocket('alerts/', {
     onMessage: (data) => {
       if (data.type === 'alert') {
         setRealtimeAlerts(prev => [data.message, ...prev.slice(0, 9)]) // Keep last 10 alerts
@@ -1567,6 +1581,18 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
         onApprove={handleApproveCompany}
         onReject={handleRejectCompany}
       />
+
+      {/* Password Reset Modal - Will be created next */}
+      {showPasswordResetModal && selectedCompany && (
+        <CompanyPasswordResetModal
+          isOpen={showPasswordResetModal}
+          onClose={() => {
+            setShowPasswordResetModal(false)
+            setSelectedCompany(null)
+          }}
+          company={selectedCompany}
+        />
+      )}
     </div>
   )
 }

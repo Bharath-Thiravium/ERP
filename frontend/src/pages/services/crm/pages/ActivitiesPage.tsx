@@ -27,11 +27,11 @@ export const ActivitiesPage: React.FC = () => {
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null)
 
   const fetchActivities = async () => {
-    if (!sessionKey) return
+    if (!sessionKey!) return
     
     try {
       setLoading(true)
-      const response = await crmApi.getActivities(sessionKey)
+      const response = await crmApi.getActivities(sessionKey!)
       setActivities(response.data.results || response.data)
     } catch (error) {
       console.error('Error fetching activities:', error)
@@ -86,7 +86,7 @@ export const ActivitiesPage: React.FC = () => {
     if (!sessionKey || !confirm('Are you sure you want to delete this activity?')) return
     
     try {
-      await crmApi.deleteActivity(sessionKey, id)
+      await crmApi.deleteActivity(sessionKey!, id)
       toast.success('Activity deleted successfully!')
       fetchActivities()
     } catch (error) {

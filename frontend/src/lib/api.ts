@@ -2,6 +2,24 @@ import axios, { AxiosResponse, AxiosError, AxiosInstance } from 'axios'
 import toast from 'react-hot-toast'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+
+// Helper function to get WebSocket URL
+export const getWebSocketUrl = (endpoint: string): string => {
+  // Handle both full URLs and relative paths
+  if (endpoint.startsWith('ws://') || endpoint.startsWith('wss://')) {
+    return endpoint
+  }
+  
+  // If endpoint already starts with /ws/, use it as is
+  if (endpoint.startsWith('/ws/')) {
+    return `${WS_BASE_URL}${endpoint}`
+  }
+  
+  // Otherwise, ensure endpoint starts with / and add /ws prefix
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+  return `${WS_BASE_URL}/ws${path}`
+}
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -305,6 +323,9 @@ export const apiClient = {
 
   resetCompanyServicePasswords: (companyId: number) =>
     api.post(`/api/auth/companies/${companyId}/service-credentials/`),
+
+  resetCompanyPassword: (companyId: number) =>
+    api.post(`/api/auth/companies/${companyId}/reset-password/`),
 
   // Company Operations
   submitDetailedInfo: (companyId: number, data: any) => {

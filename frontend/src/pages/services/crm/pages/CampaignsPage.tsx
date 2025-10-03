@@ -29,11 +29,11 @@ export const CampaignsPage: React.FC = () => {
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
 
   const fetchCampaigns = async () => {
-    if (!sessionKey) return
+    if (!sessionKey!) return
     
     try {
       setLoading(true)
-      const response = await crmApi.getCampaigns(sessionKey)
+      const response = await crmApi.getCampaigns(sessionKey!)
       setCampaigns(response.data.results || response.data)
     } catch (error) {
       console.error('Error fetching campaigns:', error)
@@ -76,7 +76,7 @@ export const CampaignsPage: React.FC = () => {
     if (!sessionKey || !confirm('Are you sure you want to delete this campaign?')) return
     
     try {
-      await crmApi.deleteCampaign(sessionKey, id)
+      await crmApi.deleteCampaign(sessionKey!, id)
       toast.success('Campaign deleted successfully!')
       fetchCampaigns()
     } catch (error) {

@@ -56,6 +56,7 @@ urlpatterns = [
     path('companies/<int:company_id>/detailed-info/', views.CompanyDetailedInfoView.as_view(), name='company_detailed_info'),
     path('companies/<int:company_id>/approve/', views.CompanyApprovalView.as_view(), name='company_approval'),
     path('companies/<int:company_id>/service-credentials/', views.CompanyServiceCredentialsView.as_view(), name='company_service_credentials'),
+    path('companies/<int:company_id>/reset-password/', views.CompanyPasswordResetView.as_view(), name='company_password_reset'),
 
     # Company Services
     path('company/services/', views.CompanyServicesView.as_view(), name='company_services'),

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Filter, Eye, Edit, Trash2, Phone, Mail, User, Building, Calendar, Target } from 'lucide-react'
+import { Plus, Search, Filter, Eye, Edit, Trash2, Phone, Mail, User, Building, Target } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -50,17 +50,15 @@ export const LeadsPage: React.FC = () => {
     { value: 'urgent', label: 'Urgent', color: 'bg-red-100 text-red-800' }
   ]
 
-  const sourceOptions = [
-    'website', 'referral', 'social_media', 'email_campaign', 'cold_call', 'trade_show', 'advertisement', 'other'
-  ]
+
 
   // Fetch leads
   const fetchLeads = async () => {
-    if (!sessionKey) return
+    if (!sessionKey!) return
     
     try {
       setLoading(true)
-      const response = await crmApi.getLeads(sessionKey)
+      const response = await crmApi.getLeads(sessionKey!)
       setLeads(response.data.results || response.data)
     } catch (error) {
       console.error('Error fetching leads:', error)
@@ -84,10 +82,10 @@ export const LeadsPage: React.FC = () => {
 
   // Convert lead to opportunity
   const convertToOpportunity = async (leadId: number) => {
-    if (!sessionKey) return
+    if (!sessionKey!) return
     
     try {
-      await crmApi.convertLeadToOpportunity(sessionKey, leadId)
+      await crmApi.convertLeadToOpportunity(sessionKey!, leadId)
       toast.success('Lead converted to opportunity successfully!')
       fetchLeads()
     } catch (error) {
@@ -98,12 +96,12 @@ export const LeadsPage: React.FC = () => {
 
   // Delete lead
   const deleteLead = async (leadId: number) => {
-    if (!sessionKey) return
+    if (!sessionKey!) return
     
     if (!confirm('Are you sure you want to delete this lead?')) return
     
     try {
-      await crmApi.deleteLead(sessionKey, leadId)
+      await crmApi.deleteLead(sessionKey!, leadId)
       toast.success('Lead deleted successfully!')
       fetchLeads()
     } catch (error) {

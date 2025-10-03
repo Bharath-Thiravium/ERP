@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, Save, User, Building, Mail, Phone } from 'lucide-react'
+import { X } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
@@ -69,15 +69,15 @@ export const ContactModal: React.FC<ContactModalProps> = ({ isOpen, onClose, onS
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!sessionKey) return
+    if (!sessionKey!) return
 
     setLoading(true)
     try {
       if (contact) {
-        await crmApi.updateContact(sessionKey, contact.id, formData)
+        await crmApi.updateContact(sessionKey!, contact.id, formData)
         toast.success('Contact updated successfully!')
       } else {
-        await crmApi.createContact(sessionKey, formData)
+        await crmApi.createContact(sessionKey!, formData)
         toast.success('Contact created successfully!')
       }
       

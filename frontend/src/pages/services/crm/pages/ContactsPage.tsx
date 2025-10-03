@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Filter, Edit, Trash2, Phone, Mail, User, Building } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Phone, Mail, User, Building } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -30,11 +30,11 @@ export const ContactsPage: React.FC = () => {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
   const fetchContacts = async () => {
-    if (!sessionKey) return
+    if (!sessionKey!) return
     
     try {
       setLoading(true)
-      const response = await crmApi.getContacts(sessionKey)
+      const response = await crmApi.getContacts(sessionKey!)
       setContacts(response.data.results || response.data)
     } catch (error) {
       console.error('Error fetching contacts:', error)
@@ -66,7 +66,7 @@ export const ContactsPage: React.FC = () => {
     if (!sessionKey || !confirm('Are you sure you want to delete this contact?')) return
     
     try {
-      await crmApi.deleteContact(sessionKey, id)
+      await crmApi.deleteContact(sessionKey!, id)
       toast.success('Contact deleted successfully!')
       fetchContacts()
     } catch (error) {

@@ -30,11 +30,11 @@ export const AccountsPage: React.FC = () => {
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
 
   const fetchAccounts = async () => {
-    if (!sessionKey) return
+    if (!sessionKey!) return
     
     try {
       setLoading(true)
-      const response = await crmApi.getAccounts(sessionKey)
+      const response = await crmApi.getAccounts(sessionKey!)
       setAccounts(response.data.results || response.data)
     } catch (error) {
       console.error('Error fetching accounts:', error)
@@ -76,7 +76,7 @@ export const AccountsPage: React.FC = () => {
     if (!sessionKey || !confirm('Are you sure you want to delete this account?')) return
     
     try {
-      await crmApi.deleteAccount(sessionKey, id)
+      await crmApi.deleteAccount(sessionKey!, id)
       toast.success('Account deleted successfully!')
       fetchAccounts()
     } catch (error) {

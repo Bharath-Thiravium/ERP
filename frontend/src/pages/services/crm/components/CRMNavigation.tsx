@@ -9,7 +9,7 @@ import {
   Calendar,
   Megaphone,
   TrendingUp,
-  Settings
+
 } from 'lucide-react';
 
 const navigationItems = [

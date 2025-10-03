@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, Save, Megaphone } from 'lucide-react'
+import { X } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
@@ -72,7 +72,7 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({ isOpen, onClose, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!sessionKey) return
+    if (!sessionKey!) return
 
     setLoading(true)
     try {
@@ -82,10 +82,10 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({ isOpen, onClose, o
       }
 
       if (campaign) {
-        await crmApi.updateCampaign(sessionKey, campaign.id, payload)
+        await crmApi.updateCampaign(sessionKey!, campaign.id, payload)
         toast.success('Campaign updated successfully!')
       } else {
-        await crmApi.createCampaign(sessionKey, payload)
+        await crmApi.createCampaign(sessionKey!, payload)
         toast.success('Campaign created successfully!')
       }
       

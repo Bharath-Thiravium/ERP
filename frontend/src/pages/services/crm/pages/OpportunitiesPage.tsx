@@ -29,11 +29,11 @@ export const OpportunitiesPage: React.FC = () => {
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null)
 
   const fetchOpportunities = async () => {
-    if (!sessionKey) return
+    if (!sessionKey!) return
     
     try {
       setLoading(true)
-      const response = await crmApi.getOpportunities(sessionKey)
+      const response = await crmApi.getOpportunities(sessionKey!)
       setOpportunities(response.data.results || response.data)
     } catch (error) {
       console.error('Error fetching opportunities:', error)
@@ -78,7 +78,7 @@ export const OpportunitiesPage: React.FC = () => {
     if (!sessionKey || !confirm('Are you sure you want to delete this opportunity?')) return
     
     try {
-      await crmApi.deleteOpportunity(sessionKey, id)
+      await crmApi.deleteOpportunity(sessionKey!, id)
       toast.success('Opportunity deleted successfully!')
       fetchOpportunities()
     } catch (error) {

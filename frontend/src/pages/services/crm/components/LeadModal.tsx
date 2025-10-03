@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, Save, User, Building, Mail, Phone, Calendar, DollarSign } from 'lucide-react'
+import { X, Save, User, Building, DollarSign } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
@@ -95,7 +95,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, onSuccess
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!sessionKey) return
+    if (!sessionKey!) return
 
     setLoading(true)
     try {
@@ -106,10 +106,10 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, onSuccess
       }
 
       if (lead) {
-        await crmApi.updateLead(sessionKey, lead.id, payload)
+        await crmApi.updateLead(sessionKey!, lead.id, payload)
         toast.success('Lead updated successfully!')
       } else {
-        await crmApi.createLead(sessionKey, payload)
+        await crmApi.createLead(sessionKey!, payload)
         toast.success('Lead created successfully!')
       }
       

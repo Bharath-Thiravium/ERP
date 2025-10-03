@@ -53,6 +53,9 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
 
+    # API Documentation
+    'drf_spectacular',
+
     # Local apps
     'authentication',
     'finance',
@@ -187,6 +190,8 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'EXCEPTION_HANDLER': 'sap_backend.exceptions.custom_exception_handler',
 }
 
 # JWT Configuration
@@ -258,6 +263,56 @@ EMAIL_TIMEOUT = 30
 # Email Encryption Key for Company Email Settings
 # In production, this should be stored securely (e.g., AWS Secrets Manager, environment variable)
 EMAIL_ENCRYPTION_KEY = config('EMAIL_ENCRYPTION_KEY', default=b'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=')
+
+# API Documentation Settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'SAP Backend API',
+    'DESCRIPTION': 'Enterprise SAP System with Finance, HR, Inventory & CRM Services',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+}
+
+# Logging Configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'ERROR',
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs' / 'error.log',
+            'formatter': 'verbose',
+        },
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console', 'file'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'sap_backend': {
+            'handlers': ['file', 'console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
+}
 
 # Configuration Settings
 BACKUP_DIR = config('BACKUP_DIR', default=BASE_DIR / 'backups')

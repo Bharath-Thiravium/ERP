@@ -177,6 +177,12 @@ class Employee(models.Model):
     class Meta:
         unique_together = ['company', 'employee_id']
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['employee_id']),
+            models.Index(fields=['email']),
+            models.Index(fields=['company', 'status']),
+            models.Index(fields=['department', 'designation']),
+        ]
 
     def __str__(self):
         from .security_fixes import sanitize_employee_name

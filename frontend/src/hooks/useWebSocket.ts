@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { getWebSocketUrl } from '../lib/api'
 
 interface UseWebSocketOptions {
   onMessage?: (data: any) => void
@@ -31,7 +32,8 @@ export const useWebSocket = (url: string, options: UseWebSocketOptions = {}) => 
     }
 
     try {
-      const wsUrl = url.startsWith('ws') ? url : `ws://localhost:8000${url}`
+      const wsUrl = getWebSocketUrl(url)
+      console.log('WebSocket URL construction:', { input: url, output: wsUrl })
       wsRef.current = new WebSocket(wsUrl)
 
       wsRef.current.onopen = () => {

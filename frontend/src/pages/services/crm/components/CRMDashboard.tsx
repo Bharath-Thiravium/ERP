@@ -10,12 +10,12 @@ export const CRMDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<any>(null)
   const [recentActivities, setRecentActivities] = useState<any[]>([])
-  const [salesFunnel, setSalesFunnel] = useState<any[]>([])
+  const [, setSalesFunnel] = useState<any[]>([])
   const [leadsByStatus, setLeadsByStatus] = useState<any[]>([])
   const [opportunitiesByStage, setOpportunitiesByStage] = useState<any[]>([])
 
   useEffect(() => {
-    if (sessionKey) {
+    if (sessionKey!) {
       fetchDashboardData()
     }
   }, [sessionKey])
@@ -24,9 +24,9 @@ export const CRMDashboard: React.FC = () => {
     try {
       setLoading(true)
       const [statsRes, activitiesRes, funnelRes] = await Promise.all([
-        crmApi.getDashboardStats(sessionKey),
-        crmApi.getRecentActivities(sessionKey),
-        crmApi.getSalesFunnel(sessionKey)
+        crmApi.getDashboardStats(sessionKey!),
+        crmApi.getRecentActivities(sessionKey!),
+        crmApi.getSalesFunnel(sessionKey!)
       ])
       
       setStats(statsRes.data)
@@ -35,8 +35,8 @@ export const CRMDashboard: React.FC = () => {
 
       // Fetch additional data
       try {
-        const leadsRes = await crmApi.getLeads(sessionKey)
-        const oppsRes = await crmApi.getOpportunities(sessionKey)
+        const leadsRes = await crmApi.getLeads(sessionKey!)
+        const oppsRes = await crmApi.getOpportunities(sessionKey!)
         
         // Process leads by status
         const leads = leadsRes.data.results || leadsRes.data

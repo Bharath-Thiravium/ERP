@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, Save, Building } from 'lucide-react'
+import { X } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
@@ -81,7 +81,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!sessionKey) {
+    if (!sessionKey!) {
       toast.error('Session expired. Please login again.')
       return
     }
@@ -90,16 +90,16 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
     try {
       const payload = {
         ...formData,
-        session_key: sessionKey, // Ensure session key is included
+        session_key: sessionKey!, // Ensure session key is included
         annual_revenue: formData.annual_revenue ? parseFloat(formData.annual_revenue) : null,
         employee_count: formData.employee_count ? parseInt(formData.employee_count) : null
       }
 
       if (account) {
-        await crmApi.updateAccount(sessionKey, account.id, payload)
+        await crmApi.updateAccount(sessionKey!, account.id, payload)
         toast.success('Account updated successfully!')
       } else {
-        await crmApi.createAccount(sessionKey, payload)
+        await crmApi.createAccount(sessionKey!, payload)
         toast.success('Account created successfully!')
       }
       

@@ -233,6 +233,7 @@ class CompanyUser(models.Model):
     # Password management
     password_expires_at = models.DateTimeField()
     must_change_password = models.BooleanField(default=True)
+    password_reset_by_admin = models.BooleanField(default=False)  # Flag for admin-initiated password reset
 
     def __str__(self):
         return escape(f"{self.user.email} - {self.company.name}")

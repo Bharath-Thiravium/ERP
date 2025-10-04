@@ -198,23 +198,39 @@ export const useServiceUserStore = create<ServiceUserState>()(
       },
 
       checkSessionValidity: () => {
-        const { sessionExpiry, isAuthenticated } = get()
+        const { sessionExpiry, isAuthenticated, sessionKey: storeSessionKey } = get()
         
         // Check if session key exists in sessionStorage
         const sessionKey = sessionStorage.getItem('service_session_key')
-        if (!sessionKey) {
+        
+        // If no session key in storage but we have one in store, restore it
+        if (!sessionKey && storeSessionKey) {
+          sessionStorage.setItem('service_session_key', storeSessionKey)
+          return true
+        }
+        
+        // Only logout if we have no session key anywhere AND we're authenticated
+        if (!sessionKey && !storeSessionKey && isAuthenticated) {
+          console.warn('No session key found, logging out')
           get().logout()
           return false
         }
         
-        if (!isAuthenticated || !sessionExpiry) {
+        // If not authenticated, don't validate
+        if (!isAuthenticated) {
           return false
+        }
+        
+        // If no expiry set, assume valid (for backward compatibility)
+        if (!sessionExpiry) {
+          return true
         }
 
         const now = Date.now()
         const isValid = now < sessionExpiry
 
         if (!isValid) {
+          console.warn('Session expired, logging out')
           get().logout()
           toast.error('Session expired. Please log in again.')
         }
@@ -224,8 +240,8 @@ export const useServiceUserStore = create<ServiceUserState>()(
 
       // Session monitoring methods (not persisted)
       startSessionMonitoring: () => {
-        // Disabled aggressive session monitoring that was causing auto-logouts
-        // Only check session validity on user activity, not on timer
+        // Completely disabled to prevent navigation issues
+        console.log('Session monitoring disabled to prevent navigation logout issues')
       },
 
       stopSessionMonitoring: () => {

@@ -14,6 +14,7 @@ interface AuthState {
   approvalPending: boolean
   approvalStatus: string | null
   mustChangePassword: boolean
+  forcePasswordReset: boolean
 
   // Actions
   login: (credentials: MasterAdminLoginRequest | CompanyUserLoginRequest, userType: 'master' | 'company') => Promise<boolean>
@@ -23,6 +24,7 @@ interface AuthState {
   setFirstLoginRequired: (required: boolean) => void
   setApprovalPending: (pending: boolean) => void
   setMustChangePassword: (required: boolean) => void
+  setForcePasswordReset: (required: boolean) => void
   updateUser: (user: Partial<User>) => void
 }
 
@@ -37,6 +39,7 @@ export const useAuthStore = create<AuthState>()(
       approvalPending: false,
       approvalStatus: null,
       mustChangePassword: false,
+      forcePasswordReset: false,
 
       login: async (credentials, userType) => {
         set({ isLoading: true, error: null })
@@ -59,6 +62,7 @@ export const useAuthStore = create<AuthState>()(
           sessionStorage.setItem('approvalPending', JSON.stringify(data.approval_pending || false))
           sessionStorage.setItem('approvalStatus', JSON.stringify(data.approval_status || null))
           sessionStorage.setItem('mustChangePassword', JSON.stringify(data.must_change_password || false))
+          sessionStorage.setItem('forcePasswordReset', JSON.stringify(data.force_password_reset || false))
 
           // Update state
           set({
@@ -69,6 +73,7 @@ export const useAuthStore = create<AuthState>()(
             approvalPending: data.approval_pending || false,
             approvalStatus: data.approval_status || null,
             mustChangePassword: data.must_change_password || false,
+            forcePasswordReset: data.force_password_reset || false,
           })
 
           // Show success message
@@ -106,6 +111,7 @@ export const useAuthStore = create<AuthState>()(
           approvalPending: false,
           approvalStatus: null,
           mustChangePassword: false,
+          forcePasswordReset: false,
         })
 
         // Clear browser history to prevent back button access
@@ -129,6 +135,7 @@ export const useAuthStore = create<AuthState>()(
         const approvalPendingStr = sessionStorage.getItem('approvalPending')
         const approvalStatusStr = sessionStorage.getItem('approvalStatus')
         const mustChangePasswordStr = sessionStorage.getItem('mustChangePassword')
+        const forcePasswordResetStr = sessionStorage.getItem('forcePasswordReset')
 
         if (token && userStr) {
           try {
@@ -137,6 +144,7 @@ export const useAuthStore = create<AuthState>()(
             const approvalPending = approvalPendingStr ? JSON.parse(approvalPendingStr) : false
             const approvalStatus = approvalStatusStr ? JSON.parse(approvalStatusStr) : null
             const mustChangePassword = mustChangePasswordStr ? JSON.parse(mustChangePasswordStr) : false
+            const forcePasswordReset = forcePasswordResetStr ? JSON.parse(forcePasswordResetStr) : false
 
             // Validate token with backend
             try {
@@ -153,6 +161,7 @@ export const useAuthStore = create<AuthState>()(
                 approvalPending,
                 approvalStatus,
                 mustChangePassword,
+                forcePasswordReset,
               })
             } catch (error: any) {
               // Token is invalid, clear everything
@@ -165,6 +174,7 @@ export const useAuthStore = create<AuthState>()(
                 approvalPending: false,
                 approvalStatus: null,
                 mustChangePassword: false,
+                forcePasswordReset: false,
               })
             }
           } catch (error) {
@@ -178,6 +188,7 @@ export const useAuthStore = create<AuthState>()(
               approvalPending: false,
               approvalStatus: null,
               mustChangePassword: false,
+              forcePasswordReset: false,
             })
           }
         } else {
@@ -189,6 +200,7 @@ export const useAuthStore = create<AuthState>()(
             approvalPending: false,
             approvalStatus: null,
             mustChangePassword: false,
+            forcePasswordReset: false,
           })
         }
       },
@@ -212,6 +224,11 @@ export const useAuthStore = create<AuthState>()(
         set({ mustChangePassword: required })
       },
 
+      setForcePasswordReset: (required: boolean) => {
+        sessionStorage.setItem('forcePasswordReset', JSON.stringify(required))
+        set({ forcePasswordReset: required })
+      },
+
       updateUser: (userData: Partial<User>) => {
         const currentUser = get().user
         if (currentUser) {
@@ -230,6 +247,7 @@ export const useAuthStore = create<AuthState>()(
         approvalPending: state.approvalPending,
         approvalStatus: state.approvalStatus,
         mustChangePassword: state.mustChangePassword,
+        forcePasswordReset: state.forcePasswordReset,
       }),
     }
   )

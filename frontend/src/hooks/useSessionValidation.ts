@@ -2,32 +2,35 @@ import { useEffect } from 'react'
 import { useServiceUserStore } from '../store/serviceUserStore'
 
 export const useSessionValidation = () => {
-  const { checkSessionValidity, isAuthenticated } = useServiceUserStore()
+  const { isAuthenticated, sessionKey } = useServiceUserStore()
 
   useEffect(() => {
     if (!isAuthenticated) return
 
-    const handleFocus = () => {
-      const sessionKey = sessionStorage.getItem('service_session_key')
-      if (!sessionKey) {
-        window.location.replace('/service-login')
-        return
-      }
-      checkSessionValidity()
-    }
-
+    // Minimal session validation - only restore session key if missing
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        handleFocus()
+        // Only restore session key, don't validate aggressively
+        setTimeout(() => {
+          const storageSessionKey = sessionStorage.getItem('service_session_key')
+          const storeSessionKey = useServiceUserStore.getState().sessionKey
+          
+          if (!storageSessionKey && storeSessionKey) {
+            sessionStorage.setItem('service_session_key', storeSessionKey)
+            console.log('🔧 Session key restored on visibility change')
+          }
+          // Removed aggressive session validation that was causing logouts
+        }, 2000) // Longer delay to prevent interference with navigation
       }
     }
 
-    window.addEventListener('focus', handleFocus)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
+    // Only add visibility listener - no focus listener to prevent navigation issues
+    if (sessionKey) {
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+    }
 
     return () => {
-      window.removeEventListener('focus', handleFocus)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [isAuthenticated, checkSessionValidity])
+  }, [isAuthenticated, sessionKey]) // Removed checkSessionValidity from dependencies
 }

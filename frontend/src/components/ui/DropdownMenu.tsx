@@ -51,28 +51,60 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
       }
     }
 
+    const handleScroll = () => {
+      setIsOpen(false)
+    }
+
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside)
       document.addEventListener('keydown', handleEscape)
+      document.addEventListener('scroll', handleScroll, true)
       
-      // Calculate position
+      // Calculate position with better viewport handling
       if (triggerRef.current) {
         const rect = triggerRef.current.getBoundingClientRect()
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop
-        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft
+        const menuWidth = 220
+        const menuHeight = 250
+        const viewportWidth = window.innerWidth
+        const viewportHeight = window.innerHeight
+        const scrollY = window.scrollY
+        const scrollX = window.scrollX
+        const padding = 16
         
-        setPosition({
-          top: rect.bottom + scrollTop + 4,
-          left: align === 'right' 
-            ? rect.right + scrollLeft - 200 // Assuming menu width of 200px
-            : rect.left + scrollLeft
-        })
+        // Default position below trigger
+        let top = rect.bottom + scrollY + 8
+        let left = align === 'right' 
+          ? rect.right + scrollX - menuWidth
+          : rect.left + scrollX
+        
+        // Adjust horizontal position if menu would go off-screen
+        if (left + menuWidth > viewportWidth + scrollX - padding) {
+          left = rect.right + scrollX - menuWidth
+        }
+        if (left < scrollX + padding) {
+          left = scrollX + padding
+        }
+        
+        // Adjust vertical position if menu would go off-screen
+        const spaceBelow = viewportHeight + scrollY - rect.bottom
+        const spaceAbove = rect.top + scrollY - scrollY
+        
+        if (spaceBelow < menuHeight + padding && spaceAbove > menuHeight + padding) {
+          // Show above if there's more space above
+          top = rect.top + scrollY - menuHeight - 8
+        } else if (spaceBelow < menuHeight + padding) {
+          // If not enough space above or below, position to fit in viewport
+          top = Math.max(scrollY + padding, viewportHeight + scrollY - menuHeight - padding)
+        }
+        
+        setPosition({ top, left })
       }
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('keydown', handleEscape)
+      document.removeEventListener('scroll', handleScroll, true)
     }
   }, [isOpen, align])
 
@@ -89,7 +121,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
         createPortal(
           <div
             ref={menuRef}
-            className={`fixed z-50 min-w-[200px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 ${className}`}
+            className={`fixed z-[999999] min-w-[220px] max-w-[280px] bg-white/95 dark:bg-gray-800/95 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl py-2 backdrop-blur-md ${className}`}
             style={{
               top: position.top,
               left: position.left,
@@ -113,10 +145,10 @@ export const DropdownMenuItem: React.FC<DropdownMenuItemProps> = ({
   disabled = false
 }) => {
   const context = useContext(DropdownContext)
-  const baseClasses = 'w-full px-4 py-2 text-left text-sm transition-colors duration-150 flex items-center gap-2'
+  const baseClasses = 'w-full px-4 py-3 text-left text-sm transition-all duration-200 flex items-center gap-3 font-medium'
   const variantClasses = {
-    default: 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700',
-    danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+    default: 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white',
+    danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-700 dark:hover:text-red-300'
   }
   const disabledClasses = 'opacity-50 cursor-not-allowed'
 
@@ -140,5 +172,5 @@ export const DropdownMenuItem: React.FC<DropdownMenuItemProps> = ({
 }
 
 export const DropdownMenuSeparator: React.FC = () => (
-  <div className="h-px bg-gray-200 dark:bg-gray-700 my-1" />
+  <div className="h-px bg-gray-200 dark:bg-gray-700 my-2 mx-2" />
 )

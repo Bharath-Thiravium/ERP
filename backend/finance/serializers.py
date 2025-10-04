@@ -61,6 +61,7 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
             'credit_limit', 'payment_terms', 'currency', 'project_area', 'notes', 'is_active',
             'shipping_addresses'
         ]
+        read_only_fields = ['customer_code']
     
     def validate_gstin(self, value):
         """Validate GSTIN format"""
@@ -93,18 +94,33 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
                 # This is just a warning, not an error
                 pass
         
-        # If shipping address is not same as billing, validate shipping fields
-        if not attrs.get('shipping_same_as_billing', True):
+        # Shipping address validation logic
+        shipping_same_as_billing = attrs.get('shipping_same_as_billing', True)
+        
+        # Only validate shipping fields if shipping address is explicitly different from billing
+        if shipping_same_as_billing is False:
+            # When checkbox is unchecked (False), shipping address fields are required
             required_shipping_fields = ['shipping_address_line1', 'shipping_city', 'shipping_state', 'shipping_pincode']
             for field in required_shipping_fields:
-                field_value = attrs.get(field, '').strip()
+                field_value = attrs.get(field, '')
+                if isinstance(field_value, str):
+                    field_value = field_value.strip()
                 if not field_value:
-                    raise serializers.ValidationError(f"{field.replace('_', ' ').title()} is required when shipping address is different from billing address")
+                    field_display = field.replace('shipping_', '').replace('_', ' ').title()
+                    raise serializers.ValidationError({field: f"{field_display} is required when shipping address is different from billing address"})
+        else:
+            # When checkbox is checked (True), clear shipping address fields to avoid confusion
+            shipping_fields = ['shipping_address_line1', 'shipping_address_line2', 'shipping_city', 'shipping_state', 'shipping_pincode', 'shipping_country']
+            for field in shipping_fields:
+                attrs[field] = ''
         
         return attrs
 
     def create(self, validated_data):
         shipping_addresses_data = validated_data.pop('shipping_addresses', [])
+        
+        # Ensure customer_code is not in validated_data (let model generate it)
+        validated_data.pop('customer_code', None)
         
         try:
             customer = Customer.objects.create(**validated_data)

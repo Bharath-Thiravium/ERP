@@ -17,6 +17,7 @@ export interface LoginResponse {
   approval_pending?: boolean
   approval_status?: string
   must_change_password?: boolean
+  force_password_reset?: boolean
 }
 
 export interface MasterAdminLoginRequest {

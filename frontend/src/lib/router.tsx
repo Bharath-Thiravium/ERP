@@ -48,6 +48,20 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     if (requireServiceUser) {
       const sessionKey = sessionStorage.getItem('service_session_key')
       if (!sessionKey) {
+        // Try to restore from store before redirecting
+        try {
+          const storeData = localStorage.getItem('service-user-storage')
+          if (storeData) {
+            const parsed = JSON.parse(storeData)
+            const storeSessionKey = parsed?.state?.sessionKey
+            if (storeSessionKey) {
+              sessionStorage.setItem('service_session_key', storeSessionKey)
+              return // Don't redirect if we restored the session
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to restore session in ProtectedRoute:', error)
+        }
         window.location.replace('/service-login')
       }
     }
@@ -56,6 +70,24 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // For service user routes, check service user authentication
   if (requireServiceUser) {
     if (!isServiceUserAuthenticated || !serviceUser) {
+      // Try to restore session before redirecting
+      const sessionKey = sessionStorage.getItem('service_session_key')
+      if (!sessionKey) {
+        try {
+          const storeData = localStorage.getItem('service-user-storage')
+          if (storeData) {
+            const parsed = JSON.parse(storeData)
+            const storeSessionKey = parsed?.state?.sessionKey
+            if (storeSessionKey && parsed?.state?.serviceUser) {
+              sessionStorage.setItem('service_session_key', storeSessionKey)
+              // Allow component to render while store rehydrates
+              return <>{children}</>
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to restore session in ProtectedRoute render:', error)
+        }
+      }
       return <Navigate to="/service-login" replace />
     }
     return <>{children}</>

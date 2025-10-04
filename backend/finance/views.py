@@ -5,9 +5,11 @@ from rest_framework.response import Response
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
+from rest_framework.exceptions import ValidationError
 from django.db.models import Q, Sum
-from django.db import models, transaction
+from django.db import models, transaction, IntegrityError
 from django.utils import timezone
+from django.conf import settings
 from datetime import timedelta
 import logging
 
@@ -157,18 +159,68 @@ class CustomerListCreateView(ListCreateAPIView):
                 response = super().create(request, *args, **kwargs)
                 logger.info(f"Customer creation successful for company: {session.service_user.company.name}")
                 return response
+            except ValidationError as e:
+                # Handle Django REST framework validation errors
+                logger.error(f"Customer validation failed for company {session.service_user.company.name}: {str(e)}")
+                return Response(
+                    e.detail if hasattr(e, 'detail') else {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except IntegrityError as e:
+                # Handle database integrity errors (unique constraints, etc.)
+                logger.error(f"Customer creation integrity error for company {session.service_user.company.name}: {str(e)}")
+                error_msg = str(e).lower()
+                if 'unique' in error_msg or 'duplicate' in error_msg:
+                    if 'customer_code' in error_msg:
+                        return Response(
+                            {'customer_code': ['Customer code already exists. Please try again.']},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    elif 'email' in error_msg:
+                        return Response(
+                            {'email': ['A customer with this email already exists.']},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    elif 'gstin' in error_msg:
+                        return Response(
+                            {'gstin': ['A customer with this GSTIN already exists.']},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    else:
+                        return Response(
+                            {'error': 'A customer with similar details already exists.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                else:
+                    return Response(
+                        {'error': 'Database error occurred. Please check your input and try again.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             except Exception as e:
                 logger.error(f"Customer creation failed for company {session.service_user.company.name}: {str(e)}")
                 logger.error(f"Request data: {request.data}")
                 
-                # Return generic error to prevent information disclosure
-                return Response(
-                    {
-                        'error': 'Customer creation failed',
-                        'message': 'Please check your input and try again'
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                # Check for specific common errors
+                error_msg = str(e).lower()
+                if 'required' in error_msg:
+                    return Response(
+                        {'error': 'Required fields are missing. Please fill all mandatory fields.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                elif 'invalid' in error_msg:
+                    return Response(
+                        {'error': 'Invalid data format. Please check your input values.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                else:
+                    return Response(
+                        {
+                            'error': 'Customer creation failed',
+                            'message': 'An unexpected error occurred. Please try again or contact support.',
+                            'details': str(e) if settings.DEBUG else None
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
         except ServiceUserSession.DoesNotExist:
             return Response(

@@ -26,13 +26,17 @@ interface PasswordChangeModalProps {
   onClose: () => void
   onSuccess: () => void
   isForced?: boolean
+  title?: string
+  message?: string
 }
 
 const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  isForced = false
+  isForced = false,
+  title,
+  message
 }) => {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -115,10 +119,10 @@ const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                  {isForced ? 'Password Change Required' : 'Change Password'}
+                  {title || (isForced ? 'Password Change Required' : 'Change Password')}
                 </h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {isForced ? 'You must change your password to continue' : 'Update your account password'}
+                  {message || (isForced ? 'You must change your password to continue' : 'Update your account password')}
                 </p>
               </div>
             </div>
@@ -143,7 +147,7 @@ const PasswordChangeModal: React.FC<PasswordChangeModalProps> = ({
                       Password Reset Required
                     </h3>
                     <p className="text-sm text-red-700 dark:text-red-400">
-                      Your password has been reset by an administrator. Please create a new secure password to continue using the system.
+                      {message || 'Your password has been reset by an administrator. Please create a new secure password to continue using the system.'}
                     </p>
                   </div>
                 </div>

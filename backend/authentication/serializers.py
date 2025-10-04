@@ -139,7 +139,9 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
             user=user,
             company=company,
             created_by=self.context['request'].user,
-            password_expires_at=timezone.now() + timedelta(days=90)
+            password_expires_at=timezone.now() + timedelta(days=90),
+            must_change_password=False,  # First time creation doesn't require forced password change
+            password_reset_by_admin=False
         )
 
         # Assign services to company (without credentials - company will create them)
@@ -258,6 +260,10 @@ class CompanyUserLoginSerializer(serializers.Serializer):
                             attrs['first_login_required'] = True
                         else:
                             attrs['approval_pending'] = True
+                    
+                    # Check if password was reset by admin (only for approved companies)
+                    elif company_user.password_reset_by_admin:
+                        attrs['force_password_reset'] = True
                     
                 except CompanyUser.DoesNotExist:
                     raise serializers.ValidationError('Invalid company user credentials.')

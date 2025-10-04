@@ -89,10 +89,17 @@ const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
 
   const createCompanyMutation = useMutation({
     mutationFn: (data: CreateCompanyFormData) => apiClient.createCompany(data),
-    onSuccess: () => {
-      toast.success('Company created successfully! Company user can now login and manage service credentials.')
+    onSuccess: (response) => {
+      const { company, user_credentials } = response.data
+      
+      // Download the actual credentials used by backend
+      if (user_credentials && company) {
+        downloadCredentials(company.name, user_credentials.email, user_credentials.password)
+      }
+      
+      toast.success('Company created successfully! Credentials downloaded.')
 
-      // Close modal immediately - no service credentials to show
+      // Close modal
       reset()
       setSelectedServices([])
       setPasswordGenerated(false)
@@ -147,7 +154,7 @@ IMPORTANT: Please keep these credentials secure and share them only with authori
   }
 
   const handleGeneratePassword = () => {
-    // Get current form values for download
+    // Get current form values
     const companyName = watch('name')
     const email = watch('user_email')
 
@@ -176,10 +183,7 @@ IMPORTANT: Please keep these credentials secure and share them only with authori
     setValue('user_password', password)
     setPasswordGenerated(true)
 
-    // Download credentials immediately
-    downloadCredentials(companyName, email, password)
-
-    toast.success('Password generated and credentials downloaded!')
+    toast.success('Password generated! Credentials will be downloaded after company creation.')
   }
 
   const calculateTotalPrice = () => {
@@ -661,7 +665,7 @@ IMPORTANT: Please keep these credentials secure and share them only with authori
                                 <div className="p-1 bg-white/20 rounded-lg">
                                   <Check className="h-4 w-4 animate-bounce" />
                                 </div>
-                                <span>Password Generated & Downloaded</span>
+                                <span>Password Generated</span>
                                 <div className="w-2 h-2 bg-white/60 rounded-full animate-pulse"></div>
                               </>
                             ) : (

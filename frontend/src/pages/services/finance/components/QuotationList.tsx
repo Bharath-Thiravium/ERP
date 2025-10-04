@@ -511,7 +511,28 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                           {quotation.status === 'sent' && (
                             <>
                               <button
-                                onClick={() => onCreatePO(quotation)}
+                                onClick={() => {
+                                  // Import and use session manager
+                                  import('../../../../utils/sessionManager').then(({ SessionManager }) => {
+                                    SessionManager.preserveSession()
+                                    onCreatePO(quotation)
+                                  }).catch(() => {
+                                    // Fallback if import fails
+                                    const sessionKey = sessionStorage.getItem('service_session_key')
+                                    if (!sessionKey) {
+                                      try {
+                                        const storeState = JSON.parse(localStorage.getItem('service-user-storage') || '{}')
+                                        const storeSessionKey = storeState?.state?.sessionKey
+                                        if (storeSessionKey) {
+                                          sessionStorage.setItem('service_session_key', storeSessionKey)
+                                        }
+                                      } catch (e) {
+                                        console.warn('Session restoration failed:', e)
+                                      }
+                                    }
+                                    onCreatePO(quotation)
+                                  })
+                                }}
                                 className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
                                 title="Create PO/WO"
                               >

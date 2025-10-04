@@ -165,7 +165,7 @@ class Customer(models.Model):
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='finance_customers')
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.CASCADE, related_name='created_customers', null=True, blank=True)
-    customer_code = models.CharField(max_length=20, unique=True, help_text="Auto-generated unique customer code")
+    customer_code = models.CharField(max_length=20, unique=True, blank=True, help_text="Auto-generated unique customer code")
 
     # Customer Type and Basic Details
     customer_type = models.CharField(max_length=20, choices=CUSTOMER_TYPE_CHOICES, default='business')
@@ -267,7 +267,74 @@ class Customer(models.Model):
         from .security_fixes import sanitize_customer_name
         return escape(f"{self.customer_code} - {sanitize_customer_name(self.name)}")
 
+    def clean(self):
+        """Validate model fields before saving"""
+        from django.core.exceptions import ValidationError
+        errors = {}
+        
+        # Validate required fields
+        if not self.name or not self.name.strip():
+            errors['name'] = 'Customer name is required.'
+        
+        # Validate email format if provided
+        if self.email:
+            from django.core.validators import validate_email
+            try:
+                validate_email(self.email)
+            except ValidationError:
+                errors['email'] = 'Please enter a valid email address.'
+        
+        # Validate GSTIN format if provided
+        if self.gstin:
+            import re
+            gstin_pattern = r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+            if not re.match(gstin_pattern, self.gstin):
+                errors['gstin'] = 'Please enter a valid GSTIN (15 characters).'
+        
+        # Validate PAN format if provided
+        if self.pan_number:
+            import re
+            pan_pattern = r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$'
+            if not re.match(pan_pattern, self.pan_number):
+                errors['pan_number'] = 'Please enter a valid PAN (10 characters).'
+        
+        # Validate Aadhar format if provided
+        if self.aadhar_number:
+            import re
+            aadhar_pattern = r'^[0-9]{12}$'
+            if not re.match(aadhar_pattern, self.aadhar_number):
+                errors['aadhar_number'] = 'Please enter a valid Aadhar number (12 digits).'
+        
+        # Validate IFSC format if provided
+        if self.bank_ifsc_code:
+            import re
+            ifsc_pattern = r'^[A-Z]{4}0[A-Z0-9]{6}$'
+            if not re.match(ifsc_pattern, self.bank_ifsc_code):
+                errors['bank_ifsc_code'] = 'Please enter a valid IFSC code.'
+        
+        # Validate credit limit
+        if self.credit_limit < 0:
+            errors['credit_limit'] = 'Credit limit cannot be negative.'
+        
+        # Validate shipping address logic
+        if not self.shipping_same_as_billing:
+            # If shipping is different from billing, validate required shipping fields
+            if not self.shipping_address_line1 or not self.shipping_address_line1.strip():
+                errors['shipping_address_line1'] = 'Shipping Address Line 1 is required when shipping address is different from billing address.'
+            if not self.shipping_city or not self.shipping_city.strip():
+                errors['shipping_city'] = 'Shipping City is required when shipping address is different from billing address.'
+            if not self.shipping_state or not self.shipping_state.strip():
+                errors['shipping_state'] = 'Shipping State is required when shipping address is different from billing address.'
+            if not self.shipping_pincode or not self.shipping_pincode.strip():
+                errors['shipping_pincode'] = 'Shipping PIN Code is required when shipping address is different from billing address.'
+        
+        if errors:
+            raise ValidationError(errors)
+    
     def save(self, *args, **kwargs):
+        # Run model validation
+        self.full_clean()
+        
         if not self.customer_code:
             try:
                 from authentication.utils import generate_auto_code

@@ -97,6 +97,14 @@ const FinanceDashboard: React.FC = () => {
 
   // Handle URL parameters and session storage for PO creation
   useEffect(() => {
+    // Ensure session key is maintained during navigation
+    const storeSessionKey = useServiceUserStore.getState().sessionKey
+    const storageSessionKey = sessionStorage.getItem('service_session_key')
+    
+    if (storeSessionKey && !storageSessionKey) {
+      sessionStorage.setItem('service_session_key', storeSessionKey)
+    }
+    
     const urlParams = new URLSearchParams(window.location.search)
     const tab = urlParams.get('tab')
     const action = urlParams.get('action')
@@ -108,10 +116,15 @@ const FinanceDashboard: React.FC = () => {
     if (action === 'create' && tab === 'purchase-orders') {
       const storedQuotation = sessionStorage.getItem('quotationForPO')
       if (storedQuotation) {
-        setQuotationForPO(JSON.parse(storedQuotation))
-        setPOAction('create')
-        // Clear the session storage
-        sessionStorage.removeItem('quotationForPO')
+        try {
+          setQuotationForPO(JSON.parse(storedQuotation))
+          setPOAction('create')
+          // Clear the session storage
+          sessionStorage.removeItem('quotationForPO')
+        } catch (error) {
+          console.error('Error parsing quotation data:', error)
+          sessionStorage.removeItem('quotationForPO')
+        }
       }
     }
 
@@ -123,6 +136,29 @@ const FinanceDashboard: React.FC = () => {
 
 // Handle PO creation from quotations
 const handleQuotationCreatePO = (quotation: any) => {
+  // Ensure session key is preserved during navigation
+  const currentSessionKey = useServiceUserStore.getState().sessionKey
+  const storageSessionKey = sessionStorage.getItem('service_session_key')
+  
+  // Ensure session key is in sessionStorage
+  if (currentSessionKey && !storageSessionKey) {
+    sessionStorage.setItem('service_session_key', currentSessionKey)
+  } else if (!currentSessionKey && !storageSessionKey) {
+    // Try to restore from localStorage
+    try {
+      const storeData = localStorage.getItem('service-user-storage')
+      if (storeData) {
+        const parsed = JSON.parse(storeData)
+        const storeSessionKey = parsed?.state?.sessionKey
+        if (storeSessionKey) {
+          sessionStorage.setItem('service_session_key', storeSessionKey)
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to restore session during PO creation:', error)
+    }
+  }
+  
   setQuotationForPO(quotation)
   setPOAction('create')
   setActiveTab('purchase-orders')

@@ -292,6 +292,35 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
         display_name: value
       }))
     }
+
+    // Handle shipping address checkbox logic
+    if (field === 'shipping_same_as_billing') {
+      if (value === true) {
+        // When checkbox is checked, clear shipping address fields
+        setFormData(prev => ({
+          ...prev,
+          shipping_same_as_billing: true,
+          shipping_address_line1: '',
+          shipping_address_line2: '',
+          shipping_city: '',
+          shipping_state: '',
+          shipping_pincode: '',
+          shipping_country: ''
+        }))
+      } else {
+        // When checkbox is unchecked, copy billing address to shipping
+        setFormData(prev => ({
+          ...prev,
+          shipping_same_as_billing: false,
+          shipping_address_line1: prev.billing_address_line1,
+          shipping_address_line2: prev.billing_address_line2,
+          shipping_city: prev.billing_city,
+          shipping_state: prev.billing_state,
+          shipping_pincode: prev.billing_pincode,
+          shipping_country: prev.billing_country
+        }))
+      }
+    }
   }
 
   // Shipping address functions
@@ -345,10 +374,24 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
     setLoading(true)
 
     try {
+      // Prepare clean payload
       const payload = {
         ...formData,
         shipping_addresses: shippingAddresses, // Include multiple shipping addresses
         session_key: sessionKey
+      }
+
+      // Remove customer_code from payload (let backend generate it)
+      delete (payload as any).customer_code
+
+      // If shipping is same as billing, ensure shipping fields are empty
+      if (payload.shipping_same_as_billing) {
+        payload.shipping_address_line1 = ''
+        payload.shipping_address_line2 = ''
+        payload.shipping_city = ''
+        payload.shipping_state = ''
+        payload.shipping_pincode = ''
+        payload.shipping_country = ''
       }
 
       if (customer?.id) {
@@ -369,15 +412,76 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
       // Handle validation errors from backend
       if (error.response?.data) {
         const backendErrors = error.response.data
-        if (typeof backendErrors === 'object') {
-          setErrors(backendErrors)
-          toast.error('Please fix the validation errors and try again.')
+        
+        // Handle field-specific validation errors
+        if (typeof backendErrors === 'object' && !backendErrors.error && !backendErrors.message) {
+          // Handle non_field_errors specially
+          if (backendErrors.non_field_errors) {
+            const nonFieldError = Array.isArray(backendErrors.non_field_errors) 
+              ? backendErrors.non_field_errors[0] 
+              : backendErrors.non_field_errors
+            toast.error(`Validation Error: ${nonFieldError}`)
+            
+            // If it's about shipping address, switch to address tab
+            if (nonFieldError.toLowerCase().includes('shipping')) {
+              setActiveTab('address')
+            }
+          }
+          
+          // Set field errors
+          const fieldErrors = { ...backendErrors }
+          delete fieldErrors.non_field_errors // Remove non_field_errors from field errors
+          setErrors(fieldErrors)
+          
+          // Show specific error messages for each field
+          const errorFields = Object.keys(fieldErrors)
+          if (errorFields.length > 0) {
+            const firstError = fieldErrors[errorFields[0]]
+            const errorMessage = Array.isArray(firstError) ? firstError[0] : firstError
+            toast.error(`Field Error: ${errorMessage}`)
+          }
+          
+          // Switch to the tab containing the first error
+          if (errorFields.some(field => ['name', 'display_name', 'email', 'phone', 'mobile', 'website', 'business_type', 'industry', 'customer_code'].includes(field))) {
+            setActiveTab('basic')
+          } else if (errorFields.some(field => field.includes('address') || field.includes('city') || field.includes('state') || field.includes('pincode'))) {
+            setActiveTab('address')
+          } else if (errorFields.some(field => ['gstin', 'pan_number', 'aadhar_number'].includes(field))) {
+            setActiveTab('tax')
+          } else if (errorFields.some(field => field.includes('bank'))) {
+            setActiveTab('banking')
+          } else {
+            setActiveTab('other')
+          }
         } else {
-          const message = backendErrors.message || 'Failed to save customer'
+          // Handle general error messages
+          const message = backendErrors.message || backendErrors.error || 'Failed to save customer'
           toast.error(message)
+          
+          // If there are details, log them for debugging
+          if (backendErrors.details) {
+            console.error('Error details:', backendErrors.details)
+            // Try to parse details if it's a string
+            if (typeof backendErrors.details === 'string') {
+              try {
+                const parsedDetails = JSON.parse(backendErrors.details.replace(/'/g, '"'))
+                setErrors(parsedDetails)
+                
+                // Show first error from details
+                const detailFields = Object.keys(parsedDetails)
+                if (detailFields.length > 0) {
+                  const firstDetailError = parsedDetails[detailFields[0]]
+                  const detailErrorMessage = Array.isArray(firstDetailError) ? firstDetailError[0] : firstDetailError
+                  toast.error(`Error: ${detailErrorMessage}`)
+                }
+              } catch (parseError) {
+                console.error('Could not parse error details:', parseError)
+              }
+            }
+          }
         }
       } else {
-        toast.error('Failed to save customer. Please try again.')
+        toast.error('Network error. Please check your connection and try again.')
       }
     } finally {
       setLoading(false)
@@ -467,10 +571,10 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                     activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
                       : hasErrors
-                      ? 'border-red-500 text-red-600 dark:text-red-400'
-                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                      ? 'border-red-500 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -482,7 +586,15 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
           </div>
 
           {/* Form Content */}
-          <div className="flex-1 overflow-y-auto p-6 min-h-0">
+          <div className="flex-1 overflow-y-auto p-6 min-h-0 relative">
+            {loading && (
+              <div className="absolute inset-0 bg-white/80 dark:bg-gray-800/80 flex items-center justify-center z-10">
+                <div className="flex items-center gap-3 bg-white dark:bg-gray-800 px-6 py-3 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                  <span className="text-gray-700 dark:text-gray-300">Saving customer...</span>
+                </div>
+              </div>
+            )}
             {/* Basic Info Tab */}
             {activeTab === 'basic' && (
               <div className="space-y-6">
@@ -585,14 +697,19 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                     <button
                       type="button"
                       onClick={addShippingAddress}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-1"
+                      disabled={formData.shipping_same_as_billing}
+                      className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 transition-colors ${
+                        formData.shipping_same_as_billing
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      }`}
                     >
                       <Plus className="w-4 h-4" />
                       Add Address
                     </button>
                   </div>
 
-                  <div className="flex items-center mb-4">
+                  <div className="flex items-center mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                     <input
                       type="checkbox"
                       id="shipping_same"
@@ -600,13 +717,18 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                       onChange={(e) => handleInputChange('shipping_same_as_billing', e.target.checked)}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
-                    <label htmlFor="shipping_same" className="ml-2 text-sm text-gray-700">
+                    <label htmlFor="shipping_same" className="ml-2 text-sm font-medium text-blue-800 dark:text-blue-200">
                       Use billing address as default shipping address
                     </label>
+                    {formData.shipping_same_as_billing && (
+                      <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-medium">
+                        ✓ Enabled
+                      </span>
+                    )}
                   </div>
 
                   {/* Multiple Shipping Addresses */}
-                  {shippingAddresses.length > 0 && (
+                  {shippingAddresses.length > 0 && !formData.shipping_same_as_billing && (
                     <div className="space-y-6">
                       {shippingAddresses.map((address, index) => (
                         <div key={address.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
@@ -717,6 +839,14 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                     </div>
                   )}
 
+                  {formData.shipping_same_as_billing && (
+                    <div className="text-center py-8 text-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <Building2 className="w-12 h-12 mx-auto mb-4 text-blue-400" />
+                      <p className="font-medium">Shipping addresses disabled</p>
+                      <p className="text-sm text-blue-500">Billing address will be used for shipping</p>
+                    </div>
+                  )}
+                  
                   {shippingAddresses.length === 0 && !formData.shipping_same_as_billing && (
                     <div className="text-center py-8 text-gray-500">
                       <Building2 className="w-12 h-12 mx-auto mb-4 text-gray-300" />

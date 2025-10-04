@@ -107,6 +107,13 @@ interface PurchaseOrderFormProps {
 const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, quotation, onClose, onSuccess }) => {
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
+  
+  // Debug session state
+  useEffect(() => {
+    console.log('🔍 PO Form - Session Key:', !!sessionKey)
+    console.log('🔍 PO Form - Storage Session Key:', !!sessionStorage.getItem('service_session_key'))
+    console.log('🔍 PO Form - Quotation:', !!quotation)
+  }, [sessionKey, quotation])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -138,7 +145,16 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
   })
 
   useEffect(() => {
-    if (sessionKey) {
+    // Ensure session key is available
+    const storeSessionKey = useServiceUserStore.getState().sessionKey
+    const storageSessionKey = sessionStorage.getItem('service_session_key')
+    
+    if (storeSessionKey && !storageSessionKey) {
+      sessionStorage.setItem('service_session_key', storeSessionKey)
+    }
+    
+    const currentSessionKey = sessionKey || storeSessionKey
+    if (currentSessionKey) {
       loadCustomers()
       loadProducts()
       loadCompanyDetails()
@@ -298,8 +314,14 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
   const loadCompanyDetails = async () => {
     try {
-      const response = await apiClient.get('/api/auth/company-profile/', { session_key: sessionKey })
-      setCompanyDetails(response.data)
+      const serviceUser = useServiceUserStore.getState().serviceUser
+      if (serviceUser?.company_id) {
+        const response = await apiClient.get(`/api/auth/service-user/company/${serviceUser.company_id}/`, {
+          headers: { 'Authorization': `Bearer ${sessionKey}` },
+          params: { session_key: sessionKey }
+        })
+        setCompanyDetails(response.data)
+      }
     } catch (error) {
       console.error('Error loading company details:', error)
     }

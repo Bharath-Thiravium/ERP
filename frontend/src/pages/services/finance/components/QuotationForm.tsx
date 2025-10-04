@@ -202,10 +202,14 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       return
     }
     try {
-      const response = await apiClient.get('/api/auth/company-profile/', { 
-        params: { session_key: sessionKey }
-      })
-      setCompanyDetails(response.data)
+      const serviceUser = useServiceUserStore.getState().serviceUser
+      if (serviceUser?.company_id) {
+        const response = await apiClient.get(`/api/auth/service-user/company/${serviceUser.company_id}/`, {
+          headers: { 'Authorization': `Bearer ${sessionKey}` },
+          params: { session_key: sessionKey }
+        })
+        setCompanyDetails(response.data)
+      }
     } catch (error) {
       console.error('Error loading company details:', error)
       // Don't show error toast for company details as it's not critical

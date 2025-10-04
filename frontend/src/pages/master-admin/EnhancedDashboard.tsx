@@ -475,7 +475,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
 
   // Companies Section
   const renderCompaniesSection = () => (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-visible">
       {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
@@ -541,7 +541,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
       )}
 
       {/* Companies List */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-visible mb-20">
         {companiesLoading ? (
           <div className="p-8 text-center">
             <LoadingSpinner />
@@ -569,21 +569,21 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
               </label>
             </div>
 
-            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            <div className="divide-y divide-gray-200 dark:divide-gray-700 pb-4 max-h-[70vh] overflow-y-auto">
               {filteredCompanies.map((company: any) => {
                 const isHighlighted = highlightCompanyId && company.id.toString() === highlightCompanyId
                 const isSelected = selectedCompanies.includes(company.id)
 
                 return (
-                <div key={company.id} id={`company-${company.id}`} className={`p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all duration-200 border-l-4 ${
+                <div key={company.id} id={`company-${company.id}`} className={`p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all duration-200 border-l-4 relative overflow-visible ${
                   isHighlighted
                     ? 'border-orange-500 bg-orange-50/50 dark:bg-orange-900/10 ring-2 ring-orange-200 dark:ring-orange-800'
                     : isSelected
                       ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/10'
                       : 'border-transparent hover:border-blue-500'
                 }`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4 flex-1">
+                <div className="flex items-center justify-between overflow-visible">
+                  <div className="flex items-center space-x-4 flex-1 min-w-0">
                     {/* Checkbox */}
                     <input
                       type="checkbox"
@@ -630,47 +630,54 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 relative flex-shrink-0 overflow-visible">
                     {company.approval_status === 'pending' && (
                       <Button
                         size="sm"
                         onClick={() => handleReviewCompany(company)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
                       >
                         <Eye className="h-4 w-4 mr-1" />
                         Review & Approve
                       </Button>
                     )}
-                    <DropdownMenu
-                      trigger={
-                        <Button size="sm" variant="ghost" className="hover:bg-gray-100 dark:hover:bg-gray-700">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      }
-                    >
-                      <DropdownMenuItem onClick={() => handleViewCompany(company)}>
-                        <Eye className="h-4 w-4" />
-                        View Details
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleEditCompany(company)}>
-                        <Edit className="h-4 w-4" />
-                        Edit Company
-                      </DropdownMenuItem>
-                      {company.approval_status === 'approved' && (
-                        <DropdownMenuItem onClick={() => handleResetPassword(company)}>
-                          <Key className="h-4 w-4" />
-                          Reset Password
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => handleDeleteCompany(company)}
-                        variant="danger"
+                    <div className="relative flex-shrink-0 overflow-visible">
+                      <DropdownMenu
+                        trigger={
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="hover:bg-gray-100 dark:hover:bg-gray-700 p-2 h-8 w-8 flex items-center justify-center"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        }
+                        align="right"
                       >
-                        <Trash2 className="h-4 w-4" />
-                        Delete Company
-                      </DropdownMenuItem>
-                    </DropdownMenu>
+                        <DropdownMenuItem onClick={() => handleViewCompany(company)}>
+                          <Eye className="h-4 w-4" />
+                          View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditCompany(company)}>
+                          <Edit className="h-4 w-4" />
+                          Edit Company
+                        </DropdownMenuItem>
+                        {company.approval_status === 'approved' && (
+                          <DropdownMenuItem onClick={() => handleResetPassword(company)}>
+                            <Key className="h-4 w-4" />
+                            Reset Password
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => handleDeleteCompany(company)}
+                          variant="danger"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete Company
+                        </DropdownMenuItem>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1477,9 +1484,9 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
         </aside>
 
         {/* Enhanced Main Content Area */}
-        <main className="flex-1 ml-72 pt-20 min-h-screen relative z-10 overflow-y-auto">
-          <div className="w-full max-w-none p-8">
-            <div className="space-y-8">
+        <main className="flex-1 ml-72 pt-20 min-h-screen relative z-10">
+          <div className="w-full max-w-none p-8 overflow-visible">
+            <div className="space-y-8 overflow-visible">
               {/* Enhanced Section Header */}
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
@@ -1512,7 +1519,9 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
               </div>
 
               {/* Dynamic Content Based on Active Section */}
-              {renderSectionContent()}
+              <div className="overflow-visible">
+                {renderSectionContent()}
+              </div>
             </div>
           </div>
         </main>

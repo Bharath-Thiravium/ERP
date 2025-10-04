@@ -66,7 +66,21 @@ api.interceptors.request.use(
       
       if (isServiceUserEndpoint) {
         // Use session key as query parameter for service user endpoints
-        const sessionKey = sessionStorage.getItem('service_session_key')
+        let sessionKey = sessionStorage.getItem('service_session_key')
+        
+        // Fallback to store if sessionStorage is empty
+        if (!sessionKey) {
+          try {
+            const storeState = JSON.parse(localStorage.getItem('service-user-storage') || '{}')
+            sessionKey = storeState?.state?.sessionKey
+            if (sessionKey) {
+              sessionStorage.setItem('service_session_key', sessionKey)
+            }
+          } catch (error) {
+            console.warn('Failed to restore session key from store:', error)
+          }
+        }
+        
         if (sessionKey) {
           config.params = config.params || {}
           config.params.session_key = sessionKey
@@ -110,10 +124,13 @@ api.interceptors.response.use(
                                    originalRequest.url?.includes('/api/crm/')
       
       if (isServiceUserEndpoint) {
-        // For service user endpoints, clear session and redirect to login
-        sessionStorage.removeItem('service_session_key')
-        if (!window.location.pathname.includes('/service-login')) {
-          window.location.replace('/service-login')
+        // For service user endpoints, only logout if it's a real authentication failure
+        const errorData = error.response?.data as { error?: string }
+        if (errorData?.error === 'Invalid session' || errorData?.error === 'Session key required') {
+          sessionStorage.removeItem('service_session_key')
+          if (!window.location.pathname.includes('/service-login')) {
+            window.location.replace('/service-login')
+          }
         }
         return Promise.reject(error)
       }

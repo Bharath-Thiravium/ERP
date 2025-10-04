@@ -183,7 +183,11 @@ class CompanyListCreateView(ListCreateAPIView):
             if hasattr(company, '_service_credentials') and company._service_credentials:
                 self._save_service_credentials_file(company, company._service_credentials)
 
-        # Prepare response with service credentials
+        # Get the company user for credentials
+        company_user = company.users.first()
+        user_email = company_user.user.email if company_user else None
+        
+        # Prepare response with company credentials
         response_data = {
             'message': 'Company created successfully.',
             'company': {
@@ -191,13 +195,12 @@ class CompanyListCreateView(ListCreateAPIView):
                 'name': company.name,
                 'email': company.email,
                 'approval_status': company.approval_status
+            },
+            'user_credentials': {
+                'email': user_email,
+                'password': serializer.validated_data.get('user_password')
             }
         }
-
-        # Include service credentials in response for master admin
-        if hasattr(company, '_service_credentials') and company._service_credentials:
-            response_data['service_credentials'] = company._service_credentials
-            response_data['credentials_file'] = f'service_credentials_{company.name.lower().replace(" ", "_")}.txt'
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -624,6 +627,9 @@ class CompanyUserLoginView(APIView):
                 response_data['approval_pending'] = True
                 response_data['approval_status'] = company_user.company.approval_status
                 print(f'🔍 DEBUG: Setting approval_pending=True for user {user.email}')
+            elif serializer.validated_data.get('force_password_reset'):
+                response_data['force_password_reset'] = True
+                print(f'🔍 DEBUG: Setting force_password_reset=True for user {user.email}')
             else:
                 print(f'🔍 DEBUG: No special flags set for user {user.email}')
                 print(f'🔍 DEBUG: Company status: {company_user.company.approval_status}')
@@ -676,10 +682,12 @@ class CompanyUserPasswordChangeView(APIView):
                 request.user.set_password(new_password)
                 request.user.save()
 
-                # Update company user password expiration
+                # Update company user password expiration and clear reset flags
                 company_user = request.user.company_user
                 company_user.password_changed_at = timezone.now()
                 company_user.password_expires_at = timezone.now() + timezone.timedelta(days=90)
+                company_user.must_change_password = False
+                company_user.password_reset_by_admin = False
                 company_user.save()
 
                 # Log password change
@@ -1669,8 +1677,9 @@ class CompanyPasswordResetView(APIView):
             company_user.user.set_password(new_password)
             company_user.user.save()
             
-            # Set password change requirement
+            # Set password change requirement for admin reset
             company_user.must_change_password = True
+            company_user.password_reset_by_admin = True
             company_user.password_expires_at = timezone.now() + timezone.timedelta(days=90)
             company_user.save()
             

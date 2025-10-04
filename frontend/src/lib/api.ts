@@ -395,21 +395,21 @@ export const apiClient = {
 
   // Notifications
   getNotifications: (params?: any) =>
-    api.get('/api/notifications/notifications/', { params }),
+    api.get('/api/notifications/', { params }),
 
   getNotification: (id: number) =>
-    api.get(`/api/notifications/notifications/${id}/`),
+    api.get(`/api/notifications/${id}/`),
 
   markNotificationsAsRead: (notificationIds: number[]) =>
-    api.post('/api/notifications/notifications/mark-read/', {
+    api.post('/api/notifications/mark-read/', {
       notification_ids: notificationIds,
     }),
 
   getNotificationStats: () =>
-    api.get('/api/notifications/notifications/stats/'),
+    api.get('/api/notifications/stats/'),
 
   createNotification: (data: any) =>
-    api.post('/api/notifications/notifications/', data),
+    api.post('/api/notifications/', data),
 
   // Health check
   healthCheck: () =>

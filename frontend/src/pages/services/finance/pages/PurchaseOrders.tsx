@@ -229,10 +229,13 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
     if (!sessionKey) return
 
     try {
-      // Load full PO details for invoice creation
+      // Load fresh PO details with updated balance tracking
       const response = await apiClient.getFinancePurchaseOrder(po.id, { session_key: sessionKey })
-
-      setSelectedPO(response.data)
+      
+      // Ensure balance tracking is up to date
+      const freshPOData = response.data
+      
+      setSelectedPO(freshPOData)
       setShowRaiseInvoice(true)
     } catch (error) {
       console.error('Error loading PO details:', error)
@@ -245,16 +248,36 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
     setSelectedPO(null)
   }
 
-  const handleCreateProforma = (data: any) => {
-    setInvoiceData(data)
-    setShowRaiseInvoice(false)
-    setShowProformaForm(true)
+  const handleCreateProforma = async (data: any) => {
+    if (!sessionKey || !selectedPO) return
+    
+    try {
+      // Fetch fresh PO data before opening proforma form
+      const response = await apiClient.getFinancePurchaseOrder(selectedPO.id, { session_key: sessionKey })
+      setSelectedPO(response.data)
+      setInvoiceData(data)
+      setShowRaiseInvoice(false)
+      setShowProformaForm(true)
+    } catch (error) {
+      console.error('Error refreshing PO data:', error)
+      toast.error('Failed to refresh purchase order data')
+    }
   }
 
-  const handleCreateTaxInvoice = (data: any) => {
-    setInvoiceData(data)
-    setShowRaiseInvoice(false)
-    setShowInvoiceForm(true)
+  const handleCreateTaxInvoice = async (data: any) => {
+    if (!sessionKey || !selectedPO) return
+    
+    try {
+      // Fetch fresh PO data before opening tax invoice form
+      const response = await apiClient.getFinancePurchaseOrder(selectedPO.id, { session_key: sessionKey })
+      setSelectedPO(response.data)
+      setInvoiceData(data)
+      setShowRaiseInvoice(false)
+      setShowInvoiceForm(true)
+    } catch (error) {
+      console.error('Error refreshing PO data:', error)
+      toast.error('Failed to refresh purchase order data')
+    }
   }
 
   const handleProformaFormClose = () => {

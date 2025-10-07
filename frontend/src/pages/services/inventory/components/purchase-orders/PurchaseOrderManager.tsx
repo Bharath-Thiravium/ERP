@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart,
@@ -44,6 +44,7 @@ const PurchaseOrderManager: React.FC = () => {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
@@ -56,9 +57,18 @@ const PurchaseOrderManager: React.FC = () => {
     items: [{ product: '', quantity: '', unit_cost: '' }]
   });
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   useEffect(() => {
     loadOrders();
-  }, [searchQuery, selectedStatus]);
+  }, [debouncedSearchQuery, selectedStatus]);
 
   const loadOrders = async () => {
     try {

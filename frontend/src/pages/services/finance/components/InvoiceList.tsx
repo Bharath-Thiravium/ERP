@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, FileText, Calendar, User, DollarSign, Eye, Edit, Trash2, Download, Mail } from 'lucide-react';
 
 import api from '../../../../lib/api';
@@ -39,6 +39,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -66,6 +67,15 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
     { value: 'overdue', label: 'Overdue' },
   ];
 
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   const fetchInvoices = async () => {
     if (!sessionKey) return;
 
@@ -76,7 +86,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
         page_size: '10',
       });
 
-      if (searchTerm) params.append('search', searchTerm);
+      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
       if (statusFilter) params.append('status', statusFilter);
       if (paymentStatusFilter) params.append('payment_status', paymentStatusFilter);
 
@@ -96,7 +106,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
 
   useEffect(() => {
     fetchInvoices();
-  }, [sessionKey, currentPage, searchTerm, statusFilter, paymentStatusFilter]);
+  }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter, paymentStatusFilter]);
 
   const handleUpdatePayment = (invoice: Invoice) => {
     setSelectedForPayment(invoice);
@@ -237,6 +247,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
           <button
             onClick={() => {
               setSearchTerm('');
+              setDebouncedSearchTerm('');
               setStatusFilter('');
               setPaymentStatusFilter('');
               setCurrentPage(1);

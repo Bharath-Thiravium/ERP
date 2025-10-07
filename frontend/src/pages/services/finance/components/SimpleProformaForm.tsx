@@ -67,6 +67,32 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
     setLoading(true)
 
     try {
+      // Validate that at least some items are selected
+      if (invoiceData.claim_type === 'percentage') {
+        const hasPercentages = Object.values(itemPercentages).some(p => p > 0)
+        if (!hasPercentages) {
+          toast.error('Please select at least one product with a percentage greater than 0')
+          setLoading(false)
+          return
+        }
+        
+        // Validate that percentages don't exceed available amount
+        const maxPercentage = Math.max(...Object.values(itemPercentages))
+        const availablePercentage = parseFloat(purchaseOrder.available_proforma_percentage || '100')
+        if (maxPercentage > availablePercentage) {
+          toast.error(`Maximum percentage (${maxPercentage.toFixed(1)}%) exceeds available proforma percentage (${availablePercentage.toFixed(1)}%)`)
+          setLoading(false)
+          return
+        }
+      } else if (invoiceData.claim_type === 'quantity') {
+        const hasQuantities = Object.values(selectedItems).some(q => q > 0)
+        if (!hasQuantities) {
+          toast.error('Please select at least one product with a quantity greater than 0')
+          setLoading(false)
+          return
+        }
+      }
+
       // Calculate proforma items based on selection
       const proformaItems: any[] = []
       
@@ -262,7 +288,12 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                           <p className="text-sm text-gray-500">
                             Available: {item.quantity} {item.unit} @ ₹{parseFloat(item.unit_price).toFixed(2)}
                             {invoiceData.claim_type === 'percentage' && (
-                              <span className="ml-2">Total: ₹{(parseFloat(item.unit_price) * item.quantity).toFixed(2)}</span>
+                              <>
+                                <span className="ml-2">Total: ₹{(parseFloat(item.unit_price) * item.quantity).toFixed(2)}</span>
+                                <span className="ml-2 text-blue-600 font-medium">
+                                  Available: {parseFloat(purchaseOrder.available_proforma_percentage || '100').toFixed(1)}%
+                                </span>
+                              </>
                             )}
                           </p>
                         </div>
@@ -286,11 +317,12 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                               <input
                                 type="number"
                                 min="0"
-                                max="100"
+                                max={parseFloat(purchaseOrder.available_proforma_percentage || '100')}
                                 step="0.01"
                                 value={itemPercentages[item.id] || 0}
                                 onChange={(e) => {
-                                  const value = Math.min(parseFloat(e.target.value) || 0, 100)
+                                  const maxAvailable = parseFloat(purchaseOrder.available_proforma_percentage || '100')
+                                  const value = Math.min(parseFloat(e.target.value) || 0, maxAvailable)
                                   setItemPercentages(prev => ({ ...prev, [item.id]: value }))
                                 }}
                                 className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
@@ -326,11 +358,11 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span>Proforma Available:</span>
-                  <span className="font-medium">₹{parseFloat(purchaseOrder.subtotal || '0').toLocaleString()}</span>
+                  <span className="font-medium">₹{parseFloat(purchaseOrder.remaining_proforma_balance || purchaseOrder.subtotal || '0').toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Invoice Available:</span>
-                  <span className="font-medium">₹{parseFloat(purchaseOrder.total_amount || '0').toLocaleString()}</span>
+                  <span className="font-medium">₹{parseFloat(purchaseOrder.remaining_invoice_balance || purchaseOrder.total_amount || '0').toLocaleString()}</span>
                 </div>
               </div>
               
@@ -339,12 +371,27 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                 <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
                   <div 
                     className="h-2 rounded-full transition-all duration-300 bg-blue-500"
-                    style={{ width: '10%' }}
+                    style={{ width: `${Math.max(0, Math.min(100, ((parseFloat(purchaseOrder.proforma_claimed_amount || '0') + parseFloat(purchaseOrder.invoice_claimed_amount || '0')) / parseFloat(purchaseOrder.total_amount || '1')) * 100))}%` }}
                   ></div>
                 </div>
               </div>
               
 
+            </div>
+
+            {/* Available Percentage Info */}
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800">
+              <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+                📊 Available for Proforma Invoice
+              </h3>
+              <div className="text-sm text-blue-800 dark:text-blue-200">
+                <p><strong>{parseFloat(purchaseOrder.available_proforma_percentage || '100').toFixed(1)}%</strong> of base amount is available for proforma claiming</p>
+                {parseFloat(purchaseOrder.available_proforma_percentage || '100') < 100 && (
+                  <p className="text-xs mt-1 text-blue-600 dark:text-blue-300">
+                    ⚠️ Reduced due to existing tax invoices
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Billing Calculation */}

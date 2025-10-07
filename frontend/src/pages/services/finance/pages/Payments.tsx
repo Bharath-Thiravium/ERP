@@ -205,11 +205,11 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
-            onClick={() => window.location.href = '/services/finance/payments/create'}
+            onClick={() => toast.success('Update payments via Invoice/Proforma Invoice lists → Update Payment button')}
             className="flex items-center justify-center p-4 bg-gradient-to-r from-athenas-blue to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl"
           >
             <CreditCard className="w-5 h-5 mr-2" />
-            Record New Payment
+            Update Payments
           </button>
           <button
             onClick={() => {
@@ -344,7 +344,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
       {/* Payment List */}
       <PaymentList
         key={refreshList}
-        onAddPayment={handleAddPayment}
+        onAddPayment={() => toast.success('Update payments via Invoice/Proforma Invoice lists → Update Payment button')}
         onEditPayment={handleEditPayment}
         sessionKey={sessionKey}
       />

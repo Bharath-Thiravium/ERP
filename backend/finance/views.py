@@ -1368,7 +1368,7 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
         return session_key
 
     def create(self, request, *args, **kwargs):
-        """Override create to handle session authentication"""
+        """Override create to handle session authentication and return updated PO balance"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -1392,9 +1392,19 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
                 created_by=service_user
             )
 
-            # Return detailed proforma invoice data
+            # Get updated PO balance data after proforma creation
+            updated_po_data = None
+            if proforma_invoice.purchase_order:
+                po_serializer = PurchaseOrderListSerializer(proforma_invoice.purchase_order)
+                updated_po_data = po_serializer.data
+
+            # Return detailed proforma invoice data with updated PO balance
             detail_serializer = ProformaInvoiceDetailSerializer(proforma_invoice)
-            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+            response_data = detail_serializer.data
+            if updated_po_data:
+                response_data['updated_purchase_order'] = updated_po_data
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:
             return Response(
@@ -1593,7 +1603,7 @@ class InvoiceListCreateView(ListCreateAPIView):
         return session_key
 
     def create(self, request, *args, **kwargs):
-        """Override create to handle session authentication"""
+        """Override create to handle session authentication and return updated PO balance"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -1617,9 +1627,19 @@ class InvoiceListCreateView(ListCreateAPIView):
                 created_by=service_user
             )
 
-            # Return detailed invoice data
+            # Get updated PO balance data after invoice creation
+            updated_po_data = None
+            if invoice.purchase_order:
+                po_serializer = PurchaseOrderListSerializer(invoice.purchase_order)
+                updated_po_data = po_serializer.data
+
+            # Return detailed invoice data with updated PO balance
             detail_serializer = InvoiceDetailSerializer(invoice)
-            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+            response_data = detail_serializer.data
+            if updated_po_data:
+                response_data['updated_purchase_order'] = updated_po_data
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:
             return Response(

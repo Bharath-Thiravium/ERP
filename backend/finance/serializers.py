@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.utils._os import safe_join
 from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
+from .indian_compliance import calculate_gst_for_invoice, calculate_tds_for_payment, get_indian_states
 
 
 class CustomerShippingAddressSerializer(serializers.ModelSerializer):
@@ -59,7 +60,9 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
             'business_type', 'industry', 'gstin', 'pan_number', 'aadhar_number',
             'bank_name', 'bank_account_number', 'bank_ifsc_code', 'bank_branch',
             'credit_limit', 'payment_terms', 'currency', 'project_area', 'notes', 'is_active',
-            'shipping_addresses'
+            'shipping_addresses',
+            # Indian Compliance Fields
+            'state_code', 'is_gst_registered', 'gst_registration_date'
         ]
         read_only_fields = ['customer_code']
     
@@ -164,7 +167,9 @@ class CustomerUpdateSerializer(serializers.ModelSerializer):
             'business_type', 'industry', 'gstin', 'pan_number', 'aadhar_number',
             'bank_name', 'bank_account_number', 'bank_ifsc_code', 'bank_branch',
             'credit_limit', 'payment_terms', 'currency', 'project_area', 'notes', 'is_active',
-            'shipping_addresses'
+            'shipping_addresses',
+            # Indian Compliance Fields
+            'state_code', 'is_gst_registered', 'gst_registration_date'
         ]
         read_only_fields = ['customer_code', 'company', 'created_by', 'created_at']
     
@@ -528,17 +533,34 @@ class QuotationCreateSerializer(serializers.ModelSerializer):
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
     """Serializer for PO items"""
+    claimed_percentage = serializers.SerializerMethodField()
 
     class Meta:
         model = PurchaseOrderItem
         fields = [
             'id', 'product', 'product_name', 'product_code', 'description', 'hsn_sac_code',
-            'quantity', 'unit', 'unit_price', 'line_total', 'gst_rate', 'line_number'
+            'quantity', 'unit', 'unit_price', 'line_total', 'gst_rate', 'line_number', 'claimed_percentage'
         ]
         read_only_fields = [
             'id', 'product_name', 'product_code', 'description', 'hsn_sac_code',
-            'line_total', 'gst_rate', 'unit'
+            'line_total', 'gst_rate', 'unit', 'claimed_percentage'
         ]
+    
+    def get_claimed_percentage(self, obj):
+        """Calculate claimed percentage for this item from TAX INVOICES ONLY"""
+        from decimal import Decimal
+        
+        total_claimed_percentage = Decimal('0')
+        
+        # ONLY count tax invoices - proforma invoices don't reduce item availability
+        for invoice in obj.purchase_order.invoices.all():
+            for inv_item in invoice.invoice_items.filter(product=obj.product):
+                # Calculate percentage of this item claimed in this tax invoice
+                if obj.line_total > 0:
+                    item_percentage = (inv_item.line_total / obj.line_total) * 100
+                    total_claimed_percentage += item_percentage
+        
+        return float(min(total_claimed_percentage, Decimal('100')))
 
 
 class PurchaseOrderListSerializer(serializers.ModelSerializer):
@@ -550,6 +572,8 @@ class PurchaseOrderListSerializer(serializers.ModelSerializer):
     quotation_number = serializers.CharField(source='quotation.quotation_number', read_only=True)
     item_count = serializers.SerializerMethodField()
     po_items = serializers.SerializerMethodField()
+    available_proforma_percentage = serializers.SerializerMethodField()
+    available_invoice_percentage = serializers.SerializerMethodField()
 
     class Meta:
         model = PurchaseOrder
@@ -559,6 +583,7 @@ class PurchaseOrderListSerializer(serializers.ModelSerializer):
             'subtotal', 'total_tax', 'total_amount', 'item_count', 'po_items',
             'proforma_claimed_amount', 'remaining_proforma_balance', 'proforma_status',
             'invoice_claimed_amount', 'remaining_invoice_balance', 'invoice_status',
+            'available_proforma_percentage', 'available_invoice_percentage',
             'created_at', 'created_by_name'
         ]
 
@@ -574,10 +599,34 @@ class PurchaseOrderListSerializer(serializers.ModelSerializer):
                 'quantity': float(item.quantity),
                 'unit': item.unit,
                 'unit_price': float(item.unit_price),
-                'line_total': float(item.line_total)
+                'line_total': float(item.line_total),
+                'claimed_percentage': self._get_item_claimed_percentage(item)
             }
             for item in items
         ]
+    
+    def _get_item_claimed_percentage(self, item):
+        """Helper method to calculate claimed percentage for an item from TAX INVOICES ONLY"""
+        from decimal import Decimal
+        
+        total_claimed_percentage = Decimal('0')
+        
+        # ONLY count tax invoices - proforma invoices don't reduce item availability
+        for invoice in item.purchase_order.invoices.all():
+            for inv_item in invoice.invoice_items.filter(product=item.product):
+                if item.line_total > 0:
+                    item_percentage = (inv_item.line_total / item.line_total) * 100
+                    total_claimed_percentage += item_percentage
+        
+        return float(min(total_claimed_percentage, Decimal('100')))
+
+    def get_available_proforma_percentage(self, obj):
+        """Get available percentage for proforma invoice creation"""
+        return float(obj.get_available_proforma_percentage())
+
+    def get_available_invoice_percentage(self, obj):
+        """Get available percentage for tax invoice creation"""
+        return float(obj.get_available_invoice_percentage())
 
 
 class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
@@ -852,23 +901,32 @@ class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
 
         # Auto-fix balance tracking if needed
         purchase_order.fix_balance_tracking()
+        
+        # Update balance tracking to get latest values
+        purchase_order.update_balance_tracking()
 
         # Validate claim against remaining balance
         claim_type = validated_data.get('claim_type', purchase_order.claim_type)
         claim_percentage = validated_data.get('claim_percentage', 0)
 
-        if claim_type == 'percentage' and claim_percentage > 0:
-            # Calculate claim amount
-            claim_amount = (purchase_order.subtotal * Decimal(str(claim_percentage))) / Decimal('100')
-
-            # Check if claim exceeds remaining balance (sophisticated logic)
-            if claim_amount > purchase_order.remaining_proforma_balance:
-                # Get sophisticated status for detailed error message
-                status = purchase_order.get_sophisticated_claiming_status()
+        if claim_type == 'percentage':
+            # For percentage-based claiming, validate against available percentage
+            available_percentage = purchase_order.get_available_proforma_percentage()
+            
+            # Check if any item percentage exceeds available percentage
+            item_percentages = validated_data.get('item_percentages', {})
+            if item_percentages:
+                max_item_percentage = max(item_percentages.values()) if item_percentages.values() else 0
+                if max_item_percentage > available_percentage:
+                    raise serializers.ValidationError({
+                        'item_percentages': f'Item percentage {max_item_percentage:.1f}% exceeds available proforma percentage {available_percentage:.1f}%. '
+                                          f'Tax invoices have reduced the available proforma base.'
+                    })
+            elif claim_percentage and claim_percentage > available_percentage:
+                # Legacy percentage validation
                 raise serializers.ValidationError({
-                    'claim_percentage': f'Claim amount ₹{claim_amount} exceeds available proforma balance ₹{purchase_order.remaining_proforma_balance}. '
-                                      f'Available: {status["available_proforma_percentage"]:.1f}% '
-                                      f'(Reduced due to {status["tax_invoice_claimed_percentage"]:.1f}% tax invoice claiming)'
+                    'claim_percentage': f'Claim percentage {claim_percentage:.1f}% exceeds available proforma percentage {available_percentage:.1f}%. '
+                                      f'Tax invoices have reduced the available proforma base.'
                 })
 
         # Set customer, company and GST information from purchase order
@@ -1163,26 +1221,68 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Claim type is required for invoice creation")
 
         # Validate percentage-based claiming for PO
-        if claim_type == 'percentage' and claim_percentage and claim_percentage > 0:
+        if claim_type == 'percentage':
             from decimal import Decimal
-
-            # Calculate claim amount
-            claim_amount = (purchase_order.total_amount * Decimal(str(claim_percentage))) / Decimal('100')
-
-            # Check if claim exceeds remaining balance
-            if claim_amount > purchase_order.remaining_invoice_balance:
-                status = purchase_order.get_sophisticated_claiming_status()
+            
+            # Get available percentage for tax invoices
+            available_percentage = purchase_order.get_available_invoice_percentage()
+            
+            # Check item percentages if provided
+            item_percentages = data.get('item_percentages', {})
+            if item_percentages:
+                max_item_percentage = max(item_percentages.values()) if item_percentages.values() else 0
+                if max_item_percentage > available_percentage:
+                    raise serializers.ValidationError({
+                        'item_percentages': f'Item percentage {max_item_percentage:.1f}% exceeds available tax invoice percentage {available_percentage:.1f}%.'
+                    })
+            elif claim_percentage and claim_percentage > available_percentage:
+                # Legacy percentage validation
                 raise serializers.ValidationError({
-                    'claim_percentage': f'Tax invoice claim amount ₹{claim_amount} exceeds available balance ₹{purchase_order.remaining_invoice_balance}. '
-                                      f'Available: {status["available_tax_invoice_percentage"]:.1f}%'
+                    'claim_percentage': f'Claim percentage {claim_percentage:.1f}% exceeds available tax invoice percentage {available_percentage:.1f}%.'
                 })
 
         return data
 
     def create(self, validated_data):
-        """Create invoice ONLY from Purchase Order"""
+        """Create invoice ONLY from Purchase Order with automatic GST calculation"""
         purchase_order = validated_data.get('purchase_order')
-        return self._create_from_purchase_order(validated_data, purchase_order)
+        invoice = self._create_from_purchase_order(validated_data, purchase_order)
+        
+        # Apply automatic GST calculation if customer has Indian compliance data
+        if invoice.customer.state_code and invoice.customer.is_gst_registered:
+            try:
+                # Get company state from purchase order or default
+                company_state = '27'  # Default to Maharashtra
+                if hasattr(purchase_order.company, 'state_code'):
+                    company_state = purchase_order.company.state_code
+                
+                # Prepare line items for GST calculation
+                line_items = []
+                for item in invoice.invoice_items.all():
+                    line_items.append({
+                        'product_name': item.product_name,
+                        'line_total': float(item.line_total),
+                        'gst_rate': float(item.gst_rate)
+                    })
+                
+                # Calculate GST
+                gst_result = calculate_gst_for_invoice(
+                    company_state_code=company_state,
+                    customer_gstin=invoice.customer_gstin,
+                    customer_state_code=invoice.customer.state_code,
+                    line_items=line_items
+                )
+                
+                # Update invoice with GST details
+                invoice.gst_transaction_id = f"GST-{invoice.invoice_number}-{invoice.invoice_date.strftime('%Y%m%d')}"
+                invoice.place_of_supply = gst_result['place_of_supply']
+                invoice.save(update_fields=['gst_transaction_id', 'place_of_supply'])
+                
+            except Exception as e:
+                # Log error but don't fail invoice creation
+                print(f"GST calculation failed for invoice {invoice.invoice_number}: {e}")
+        
+        return invoice
 
 
 
@@ -1206,6 +1306,9 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
 
         # Create the invoice
         invoice = Invoice.objects.create(**validated_data)
+        
+        # Update balance tracking to get latest values
+        purchase_order.update_balance_tracking()
         
         # Update PO claim type if this is the first invoice
         if not purchase_order.claim_type and claim_type:
@@ -1422,6 +1525,30 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # Set customer from invoice
         validated_data['customer'] = validated_data['invoice'].customer
+        
+        # Apply automatic TDS calculation if payment method requires it
+        payment_amount = validated_data.get('amount', 0)
+        if payment_amount > 0 and not validated_data.get('tds_amount'):
+            try:
+                # Default TDS section for payments (can be customized)
+                tds_section = validated_data.get('tds_section', '194A')
+                
+                # Calculate TDS
+                tds_result = calculate_tds_for_payment(
+                    payment_amount=float(payment_amount),
+                    tds_section=tds_section
+                )
+                
+                # Update payment with TDS details if applicable
+                if tds_result['is_above_threshold']:
+                    validated_data['tds_amount'] = tds_result['tds_amount']
+                    validated_data['tds_rate_applied'] = tds_result['tds_rate']
+                    validated_data['tds_section_code'] = tds_section
+                    validated_data['net_amount_received'] = tds_result['net_amount']
+                    
+            except Exception as e:
+                # Log error but don't fail payment creation
+                print(f"TDS calculation failed for payment: {e}")
 
         return super().create(validated_data)
 

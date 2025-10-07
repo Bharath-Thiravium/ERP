@@ -29,7 +29,8 @@ import {
   PlusCircle,
   User,
   ShoppingCart,
-  FileText
+  FileText,
+  Zap
 } from 'lucide-react'
 // import { useAuthStore } from '../../../../store/authStore'
 import { useThemeStore } from '../../../../store/themeStore'
@@ -48,6 +49,11 @@ import ProformaInvoices from './ProformaInvoices'
 import Invoices from './Invoices'
 import Payments from './Payments'
 import CustomerLedger from '../components/CustomerLedger'
+import ComplianceDashboard from './ComplianceDashboard'
+import DocumentsPage from './DocumentsPage'
+import { EInvoiceManager } from '../components/EInvoiceManager'
+import MultiCompanyManager from '../components/MultiCompanyManager'
+import Integration from './Integration'
 
 const FinanceDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -202,7 +208,7 @@ const handlePOCreated = () => {
     }
   }
 
-  // Simplified sidebar menu items - Overview, Customers, Products, Quotations, PO/WO, Proforma Invoices, Invoices, and Settings
+  // Simplified sidebar menu items - Overview, Customers, Products, Quotations, PO/WO, Proforma Invoices, Invoices, Compliance, and Settings
   const sidebarItems = [
     { id: 'overview', label: 'Overview', icon: BarChart3, active: true },
     { id: 'customers', label: 'Customers', icon: Users },
@@ -213,6 +219,11 @@ const handlePOCreated = () => {
     { id: 'invoices', label: 'Invoices', icon: FileText },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'customer-ledger', label: 'Customer Ledger', icon: User },
+    { id: 'compliance', label: 'Indian Compliance', icon: Shield },
+    { id: 'documents', label: 'Documents', icon: FileText },
+    { id: 'einvoice', label: 'E-Invoice', icon: Zap },
+    { id: 'multi-company', label: 'Multi-Company', icon: Building },
+    { id: 'integration', label: 'Integration', icon: Zap },
     { id: 'settings', label: 'Settings', icon: Settings }
   ]
 
@@ -343,7 +354,7 @@ const handlePOCreated = () => {
       }
 
       return {
-        id: item.id || index,
+        id: `${type}-${item.id || index}-${index}`,
         date: item.created_at ? new Date(item.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
         description: `${description} - ${item.customer_name || 'Customer'}`,
         amount,
@@ -953,6 +964,16 @@ const handlePOCreated = () => {
         return <Payments sessionKey={sessionKey || ''} />
       case 'customer-ledger':
         return <CustomerLedger sessionKey={sessionKey || ''} />
+      case 'compliance':
+        return <ComplianceDashboard sessionKey={sessionKey || ''} />
+      case 'documents':
+        return <DocumentsPage />
+      case 'einvoice':
+        return <EInvoiceManager />
+      case 'multi-company':
+        return <MultiCompanyManager />
+      case 'integration':
+        return <Integration />
       case 'settings':
         return renderSettings()
       default:

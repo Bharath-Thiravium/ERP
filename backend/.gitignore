@@ -42,3 +42,17 @@ backups/
 # Logs
 logs/
 *.log
+
+# Development files (keep run_dev.py in git)
+# run_dev.py - DON'T ignore this, needed for team development
+
+# Old requirements files (now unified)
+requirements_face.txt
+requirements_government_api.txt
+requirements_phase5.txt
+requirements_unified.txt
+
+# Process IDs
+*.pid
+uvicorn.pid
+gunicorn.pid

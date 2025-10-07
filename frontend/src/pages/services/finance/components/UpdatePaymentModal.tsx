@@ -70,8 +70,18 @@ const UpdatePaymentModal: React.FC<UpdatePaymentModalProps> = ({
     setLoading(true);
 
     try {
-      await api.post(`/api/finance/invoices/${invoice.id}/payments/`, {
-        ...formData,
+      // Use the correct payment creation endpoint
+      await api.post('/api/finance/payments/', {
+        proforma_invoice: invoice.id, // For proforma invoices
+        payment_date: formData.payment_date,
+        amount: parseFloat(formData.amount_received),
+        tds_amount: parseFloat(formData.tds_amount) || 0,
+        tds_percentage: parseFloat(formData.tds_percentage) || 0,
+        net_amount_received: parseFloat(formData.net_amount),
+        payment_method: formData.payment_method,
+        reference_number: formData.reference_number,
+        notes: formData.notes,
+        status: 'completed',
         session_key: sessionKey
       });
 

@@ -8,26 +8,32 @@ https://docs.djangoproject.com/en/5.2/howto/deployment/asgi/
 """
 
 import os
-from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
+import django
 from django.core.asgi import get_asgi_application
 
+# Set Django settings before importing channels
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'sap_backend.settings')
+django.setup()
 
-django_asgi_app = get_asgi_application()
+from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.auth import AuthMiddlewareStack
+from channels.security.websocket import AllowedHostsOriginValidator
 
-# Import WebSocket URL patterns
+# Import WebSocket URL patterns after Django setup
 from notifications.routing import websocket_urlpatterns as notifications_ws
 from analytics.routing import websocket_urlpatterns as analytics_ws
 
 # Combine all WebSocket URL patterns
 websocket_urlpatterns = notifications_ws + analytics_ws
 
+# ASGI application optimized for Uvicorn
 application = ProtocolTypeRouter({
-    "http": django_asgi_app,
-    "websocket": AuthMiddlewareStack(
-        URLRouter(
-            websocket_urlpatterns
+    "http": get_asgi_application(),
+    "websocket": AllowedHostsOriginValidator(
+        AuthMiddlewareStack(
+            URLRouter(
+                websocket_urlpatterns
+            )
         )
     ),
 })

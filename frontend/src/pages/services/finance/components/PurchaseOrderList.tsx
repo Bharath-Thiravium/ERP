@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '../../../../lib/api'
 
 import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, MapPin, Package, ShoppingCart, Receipt } from 'lucide-react'
@@ -44,14 +44,24 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [hoveredPO, setHoveredPO] = useState<number | null>(null)
 
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
   useEffect(() => {
     fetchPurchaseOrders(currentPage)
-  }, [currentPage, searchTerm, statusFilter])
+  }, [currentPage, debouncedSearchTerm, statusFilter])
 
   const fetchPurchaseOrders = async (page: number) => {
     if (!sessionKey) return
@@ -61,7 +71,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
       const params = new URLSearchParams({
         page: page.toString(),
         session_key: sessionKey,
-        ...(searchTerm && { search: searchTerm }),
+        ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
         ...(statusFilter && { status: statusFilter })
       })
 

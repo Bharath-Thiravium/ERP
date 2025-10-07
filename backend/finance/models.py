@@ -242,6 +242,21 @@ class Customer(models.Model):
         )]
     )
     bank_branch = models.CharField(max_length=100, blank=True)
+    account_holder_name = models.CharField(max_length=200, blank=True)
+    
+    # Bank Integration Fields
+    bank_verification_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('verified', 'Verified'),
+            ('failed', 'Failed')
+        ],
+        default='pending'
+    )
+    bank_verified_date = models.DateTimeField(null=True, blank=True)
+    statement_import_enabled = models.BooleanField(default=False)
+    last_statement_import = models.DateTimeField(null=True, blank=True)
 
     # Financial Information
     credit_limit = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
@@ -252,6 +267,11 @@ class Customer(models.Model):
     project_area = models.CharField(max_length=255, blank=True, help_text="Project area or address label for easy identification")
     notes = models.TextField(blank=True, help_text="Internal notes about the customer")
     is_active = models.BooleanField(default=True)
+    
+    # Indian Compliance Fields
+    state_code = models.CharField(max_length=2, blank=True, help_text="2-digit state code for GST")
+    is_gst_registered = models.BooleanField(default=False)
+    gst_registration_date = models.DateField(null=True, blank=True)
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1017,10 +1037,22 @@ class PurchaseOrder(models.Model):
         # Remaining proforma claimable: ₹600 - already claimed proforma subtotal
 
         reduced_proforma_base = self.subtotal - invoice_subtotal_total
-        self.remaining_proforma_balance = max(Decimal('0'), reduced_proforma_base - proforma_subtotal_total)
+        remaining_proforma = max(Decimal('0'), reduced_proforma_base - proforma_subtotal_total)
+        
+        # Handle rounding precision - if remaining is very small (< ₹5), consider it completed
+        if remaining_proforma < Decimal('5.00'):
+            self.remaining_proforma_balance = Decimal('0.00')
+        else:
+            self.remaining_proforma_balance = remaining_proforma
 
         # For tax invoice: remaining from total amount (with tax) minus what's already invoiced
-        self.remaining_invoice_balance = self.total_amount - invoice_total
+        remaining_balance = self.total_amount - invoice_total
+        
+        # Handle rounding precision - if remaining is very small (< ₹5), consider it completed
+        if remaining_balance < Decimal('5.00'):
+            self.remaining_invoice_balance = Decimal('0.00')
+        else:
+            self.remaining_invoice_balance = remaining_balance
 
         # Update status based on balances
         if proforma_subtotal_total == 0:
@@ -1169,6 +1201,26 @@ class PurchaseOrder(models.Model):
         if self.total_amount == 0:
             return 0
         return float((self.invoice_claimed_amount / self.total_amount) * 100)
+
+    def get_available_proforma_percentage(self):
+        """Get available percentage for proforma invoice creation based on remaining balance"""
+        from decimal import Decimal
+        
+        if self.subtotal <= 0:
+            return Decimal('0')
+        
+        # Calculate the percentage of remaining proforma balance
+        return (self.remaining_proforma_balance / self.subtotal) * Decimal('100')
+
+    def get_available_invoice_percentage(self):
+        """Get available percentage for tax invoice creation based on remaining balance"""
+        from decimal import Decimal
+        
+        if self.total_amount <= 0:
+            return Decimal('0')
+        
+        # Calculate the percentage of remaining invoice balance
+        return (self.remaining_invoice_balance / self.total_amount) * Decimal('100')
 
 
 class PurchaseOrderItem(models.Model):
@@ -1384,6 +1436,10 @@ class ProformaInvoice(models.Model):
         blank=True,
         help_text="Date of last payment received"
     )
+    
+    # Indian Compliance Fields
+    gst_transaction_id = models.CharField(max_length=50, blank=True, help_text="Unique GST transaction ID")
+    place_of_supply = models.CharField(max_length=2, blank=True, help_text="State code where supply is made")
 
     # Audit fields
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_proforma_invoices')
@@ -1657,6 +1713,13 @@ class Invoice(models.Model):
     notes = models.TextField(blank=True)
     terms_and_conditions = models.TextField(blank=True)
 
+    # Indian Compliance Fields
+    gst_transaction_id = models.CharField(max_length=50, blank=True, help_text="Unique GST transaction ID")
+    is_filed_in_gstr1 = models.BooleanField(default=False)
+    gstr1_filing_date = models.DateField(null=True, blank=True)
+    place_of_supply = models.CharField(max_length=2, blank=True, help_text="State code where supply is made")
+    reverse_charge_applicable = models.BooleanField(default=False)
+    
     # Audit fields
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_invoices')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1712,7 +1775,10 @@ class Invoice(models.Model):
 
         # Calculate outstanding amount
         from decimal import Decimal
-        self.outstanding_amount = self.total_amount - Decimal(str(self.paid_amount))
+        # Ensure both values are Decimal
+        total_amount = Decimal(str(self.total_amount)) if self.total_amount is not None else Decimal('0')
+        paid_amount = Decimal(str(self.paid_amount)) if self.paid_amount is not None else Decimal('0')
+        self.outstanding_amount = total_amount - paid_amount
 
         # Update payment status based on amounts
         if self.paid_amount == 0:
@@ -1780,7 +1846,9 @@ class Invoice(models.Model):
         self.sgst_amount = sgst_amount
         self.igst_amount = igst_amount
         self.total_amount = total_amount
-        self.outstanding_amount = total_amount - Decimal(str(self.paid_amount))
+        # Ensure proper Decimal conversion for outstanding amount
+        paid_amount = Decimal(str(self.paid_amount)) if self.paid_amount is not None else Decimal('0')
+        self.outstanding_amount = total_amount - paid_amount
 
         # Save without triggering calculate_totals again
         super().save(update_fields=[
@@ -1851,6 +1919,14 @@ class Payment(models.Model):
     tds_certificate_number = models.CharField(max_length=100, blank=True, help_text="TDS certificate number")
     tds_certificate_date = models.DateField(null=True, blank=True, help_text="TDS certificate date")
     is_tds_received = models.BooleanField(default=False, help_text="Whether TDS certificate/refund is received")
+    
+    # Additional Indian Compliance TDS Fields
+    tds_section_code = models.CharField(max_length=10, blank=True, help_text="TDS section code (194A, 194C, etc.)")
+    tds_rate_applied = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="TDS rate applied")
+    tds_certificate_issued = models.BooleanField(default=False)
+    form16a_number = models.CharField(max_length=50, blank=True, help_text="Form 16A certificate number")
+    tds_deposited_date = models.DateField(null=True, blank=True, help_text="Date when TDS was deposited")
+    tds_challan_number = models.CharField(max_length=50, blank=True, help_text="TDS challan number")
 
     # Payment Reference Information
     reference_number = models.CharField(max_length=100, blank=True, help_text="Bank reference, cheque number, etc.")
@@ -1908,18 +1984,25 @@ class Payment(models.Model):
                 else:
                     self.payment_number = f"PAY-{timezone.now().year}-000001"
 
-        # World-Class TDS Calculation
-        if self.tds_percentage > 0 and self.amount > 0:
-            self.tds_amount = (self.amount * self.tds_percentage) / 100
-            self.net_amount_received = self.amount - self.tds_amount
-        elif self.tds_amount > 0:
+        # World-Class TDS Calculation - Ensure all Decimal operations
+        from decimal import Decimal
+        
+        # Convert to Decimal for calculations
+        amount = Decimal(str(self.amount)) if self.amount is not None else Decimal('0')
+        tds_percentage = Decimal(str(self.tds_percentage)) if self.tds_percentage is not None else Decimal('0')
+        tds_amount = Decimal(str(self.tds_amount)) if self.tds_amount is not None else Decimal('0')
+        
+        if tds_percentage > 0 and amount > 0:
+            self.tds_amount = (amount * tds_percentage) / Decimal('100')
+            self.net_amount_received = amount - self.tds_amount
+        elif tds_amount > 0:
             # If TDS amount is provided directly, calculate net amount
-            self.net_amount_received = self.amount - self.tds_amount
-            if self.amount > 0:
-                self.tds_percentage = (self.tds_amount / self.amount) * 100
+            self.net_amount_received = amount - tds_amount
+            if amount > 0:
+                self.tds_percentage = (tds_amount / amount) * Decimal('100')
         else:
             # No TDS
-            self.net_amount_received = self.amount
+            self.net_amount_received = amount
 
         super().save(*args, **kwargs)
 
@@ -1928,6 +2011,8 @@ class Payment(models.Model):
 
     def update_invoice_payment_status(self):
         """World-Class Payment Status Update - Includes proforma advances + direct payments"""
+        from decimal import Decimal
+        
         if self.invoice:
             # Calculate direct payments for this invoice
             direct_payments = self.invoice.payments.filter(status='completed').aggregate(
@@ -1946,7 +2031,9 @@ class Payment(models.Model):
             total_paid = direct_payments + proforma_advances
 
             self.invoice.paid_amount = total_paid
-            self.invoice.outstanding_amount = self.invoice.total_amount - total_paid
+            # Ensure proper Decimal conversion
+            invoice_total = Decimal(str(self.invoice.total_amount)) if self.invoice.total_amount is not None else Decimal('0')
+            self.invoice.outstanding_amount = invoice_total - total_paid
 
             # Update payment status
             if self.invoice.outstanding_amount <= 0:
@@ -1966,7 +2053,9 @@ class Payment(models.Model):
             )['total'] or Decimal('0')
 
             self.proforma_invoice.paid_amount = total_payments
-            self.proforma_invoice.outstanding_amount = self.proforma_invoice.total_amount - total_payments
+            # Ensure proper Decimal conversion
+            proforma_total = Decimal(str(self.proforma_invoice.total_amount)) if self.proforma_invoice.total_amount is not None else Decimal('0')
+            self.proforma_invoice.outstanding_amount = proforma_total - total_payments
 
             # Update payment status
             if self.proforma_invoice.outstanding_amount <= 0:

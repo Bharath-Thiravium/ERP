@@ -36,12 +36,21 @@ interface Customer {
   bank_account_number: string
   bank_ifsc_code: string
   bank_branch: string
+  account_holder_name: string
+  bank_verification_status: string
+  bank_verified_date: string | null
+  statement_import_enabled: boolean
+  last_statement_import: string | null
   credit_limit: number
   payment_terms: string
   currency: string
   project_area: string
   notes: string
   is_active: boolean
+  // Indian Compliance Fields
+  state_code?: string
+  is_gst_registered?: boolean
+  gst_registration_date?: string
 }
 
 interface CustomerFormProps {
@@ -96,12 +105,21 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
     bank_account_number: '',
     bank_ifsc_code: '',
     bank_branch: '',
+    account_holder_name: '',
+    bank_verification_status: 'pending',
+    bank_verified_date: null,
+    statement_import_enabled: false,
+    last_statement_import: null,
     credit_limit: 0,
     payment_terms: '',
     currency: 'INR',
     project_area: '',
     notes: '',
-    is_active: true
+    is_active: true,
+    // Indian Compliance Fields
+    state_code: '',
+    is_gst_registered: false,
+    gst_registration_date: ''
   })
 
   useEffect(() => {
@@ -157,12 +175,21 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
         bank_account_number: customerData.bank_account_number || '',
         bank_ifsc_code: customerData.bank_ifsc_code || '',
         bank_branch: customerData.bank_branch || '',
+        account_holder_name: customerData.account_holder_name || '',
+        bank_verification_status: customerData.bank_verification_status || 'pending',
+        bank_verified_date: customerData.bank_verified_date || null,
+        statement_import_enabled: customerData.statement_import_enabled || false,
+        last_statement_import: customerData.last_statement_import || null,
         credit_limit: customerData.credit_limit || 0,
         payment_terms: customerData.payment_terms || '',
         currency: customerData.currency || 'INR',
         project_area: customerData.project_area || '',
         notes: customerData.notes || '',
-        is_active: customerData.is_active ?? true
+        is_active: customerData.is_active ?? true,
+        // Indian Compliance Fields
+        state_code: customerData.state_code || '',
+        is_gst_registered: customerData.is_gst_registered ?? false,
+        gst_registration_date: customerData.gst_registration_date || ''
       })
 
       // Load existing shipping addresses
@@ -862,6 +889,89 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
             {activeTab === 'tax' && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Indian Compliance Section */}
+                  <div className="md:col-span-2">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+                      <FileText className="w-5 h-5" />
+                      Indian Compliance
+                    </h3>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      State Code
+                    </label>
+                    <select
+                      value={formData.state_code || ''}
+                      onChange={(e) => handleInputChange('state_code', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Select State</option>
+                      <option value="01">01 - Jammu and Kashmir</option>
+                      <option value="02">02 - Himachal Pradesh</option>
+                      <option value="03">03 - Punjab</option>
+                      <option value="04">04 - Chandigarh</option>
+                      <option value="05">05 - Uttarakhand</option>
+                      <option value="06">06 - Haryana</option>
+                      <option value="07">07 - Delhi</option>
+                      <option value="08">08 - Rajasthan</option>
+                      <option value="09">09 - Uttar Pradesh</option>
+                      <option value="10">10 - Bihar</option>
+                      <option value="11">11 - Sikkim</option>
+                      <option value="12">12 - Arunachal Pradesh</option>
+                      <option value="13">13 - Nagaland</option>
+                      <option value="14">14 - Manipur</option>
+                      <option value="15">15 - Mizoram</option>
+                      <option value="16">16 - Tripura</option>
+                      <option value="17">17 - Meghalaya</option>
+                      <option value="18">18 - Assam</option>
+                      <option value="19">19 - West Bengal</option>
+                      <option value="20">20 - Jharkhand</option>
+                      <option value="21">21 - Odisha</option>
+                      <option value="22">22 - Chhattisgarh</option>
+                      <option value="23">23 - Madhya Pradesh</option>
+                      <option value="24">24 - Gujarat</option>
+                      <option value="25">25 - Daman and Diu</option>
+                      <option value="26">26 - Dadra and Nagar Haveli</option>
+                      <option value="27">27 - Maharashtra</option>
+                      <option value="28">28 - Andhra Pradesh</option>
+                      <option value="29">29 - Karnataka</option>
+                      <option value="30">30 - Goa</option>
+                      <option value="31">31 - Lakshadweep</option>
+                      <option value="32">32 - Kerala</option>
+                      <option value="33">33 - Tamil Nadu</option>
+                      <option value="34">34 - Puducherry</option>
+                      <option value="35">35 - Andaman and Nicobar Islands</option>
+                      <option value="36">36 - Telangana</option>
+                      <option value="37">37 - Andhra Pradesh (New)</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={formData.is_gst_registered || false}
+                        onChange={(e) => handleInputChange('is_gst_registered', e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="text-sm font-medium text-gray-700">GST Registered</span>
+                    </label>
+                    {formData.is_gst_registered && (
+                      <div className="mt-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          GST Registration Date
+                        </label>
+                        <input
+                          type="date"
+                          value={formData.gst_registration_date || ''}
+                          onChange={(e) => handleInputChange('gst_registration_date', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       GSTIN
@@ -869,7 +979,21 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                     <input
                       type="text"
                       value={formData.gstin}
-                      onChange={(e) => handleInputChange('gstin', e.target.value.toUpperCase())}
+                      onChange={(e) => {
+                        const value = e.target.value.toUpperCase()
+                        handleInputChange('gstin', value)
+                        // Auto-extract state code from GSTIN
+                        if (value.length >= 2) {
+                          const stateCode = value.substring(0, 2)
+                          if (!formData.state_code) {
+                            handleInputChange('state_code', stateCode)
+                          }
+                        }
+                        // Auto-set GST registered if GSTIN is provided
+                        if (value.length === 15 && !formData.is_gst_registered) {
+                          handleInputChange('is_gst_registered', true)
+                        }
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="15-digit GST number"
                       maxLength={15}
@@ -965,6 +1089,34 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                       onChange={(e) => handleInputChange('bank_branch', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Account Holder Name
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.account_holder_name}
+                      onChange={(e) => handleInputChange('account_holder_name', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Name as per bank records"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={formData.statement_import_enabled}
+                        onChange={(e) => handleInputChange('statement_import_enabled', e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Enable Bank Statement Import</span>
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Allow importing bank statements for payment reconciliation
+                    </p>
                   </div>
                 </div>
               </div>

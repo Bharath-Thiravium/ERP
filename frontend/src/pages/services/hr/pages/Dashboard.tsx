@@ -108,6 +108,10 @@ const HRDashboard: React.FC = () => {
     { id: 'payroll', label: 'Payroll', icon: FileText },
     { id: 'performance', label: 'Performance', icon: BarChart3 },
     { id: 'attendance', label: 'Attendance', icon: Clock },
+    { id: 'leave', label: 'Leave Management', icon: Calendar },
+    { id: 'compliance', label: 'Compliance', icon: Shield },
+    { id: 'statutory', label: 'Statutory', icon: FileText },
+    { id: 'government-portal', label: 'Government Portal', icon: Shield },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings }
   ]
@@ -563,6 +567,34 @@ const HRDashboard: React.FC = () => {
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
             <AttendancePage />
+          </React.Suspense>
+        )
+      case 'leave':
+        const LeaveManagementPage = React.lazy(() => import('./LeaveManagement'))
+        return (
+          <React.Suspense fallback={<LoadingSpinner size="lg" />}>
+            <LeaveManagementPage />
+          </React.Suspense>
+        )
+      case 'compliance':
+        const CompliancePage = React.lazy(() => import('./Compliance'))
+        return (
+          <React.Suspense fallback={<LoadingSpinner size="lg" />}>
+            <CompliancePage />
+          </React.Suspense>
+        )
+      case 'statutory':
+        const StatutoryPage = React.lazy(() => import('./Statutory'))
+        return (
+          <React.Suspense fallback={<LoadingSpinner size="lg" />}>
+            <StatutoryPage />
+          </React.Suspense>
+        )
+      case 'government-portal':
+        const GovernmentPortalPage = React.lazy(() => import('./GovernmentPortal'))
+        return (
+          <React.Suspense fallback={<LoadingSpinner size="lg" />}>
+            <GovernmentPortalPage />
           </React.Suspense>
         )
       case 'analytics':

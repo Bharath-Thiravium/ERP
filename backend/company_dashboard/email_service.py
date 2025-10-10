@@ -4,6 +4,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
+from email.header import Header
+from email.utils import formataddr
+from email.charset import Charset
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
@@ -11,6 +14,7 @@ from .models import CompanyEmailSettings
 import logging
 import requests
 from typing import Optional, Dict, Any
+from django.utils import timezone # Import timezone for test_email_configuration
 
 logger = logging.getLogger(__name__)
 
@@ -61,30 +65,28 @@ class CompanyEmailService:
         
         smtp_config = self.email_settings.get_smtp_config()
         
-        # Create message
         msg = MIMEMultipart('alternative')
-        msg['From'] = f"{self.email_settings.from_name} <{self.email_settings.from_email}>"
+        msg.set_charset('utf-8')
+        
+        # Use formataddr with proper UTF-8 encoding for the From header
+        msg['From'] = formataddr((self.email_settings.from_name, self.email_settings.from_email))
         msg['To'] = ', '.join(to_emails)
         msg['Subject'] = subject
-        
+
         if self.email_settings.reply_to_email:
             msg['Reply-To'] = self.email_settings.reply_to_email
         
-        # Add text content
         if text_content:
-            text_part = MIMEText(text_content, 'plain')
+            text_part = MIMEText(text_content, 'plain', 'utf-8') 
             msg.attach(text_part)
         
-        # Add HTML content
-        html_part = MIMEText(html_content, 'html')
+        html_part = MIMEText(html_content, 'html', 'utf-8') 
         msg.attach(html_part)
         
-        # Add attachments
         if attachments:
             for attachment in attachments:
                 self._add_attachment(msg, attachment)
         
-        # Send email
         try:
             if smtp_config['use_ssl']:
                 context = ssl.create_default_context()
@@ -96,7 +98,7 @@ class CompanyEmailService:
                     server.starttls(context=context)
             
             server.login(self.email_settings.smtp_username, self.email_settings.get_smtp_password())
-            server.sendmail(self.email_settings.from_email, to_emails, msg.as_string())
+            server.send_message(msg)
             server.quit()
             
             return True
@@ -211,9 +213,12 @@ class CompanyEmailService:
                 part.set_payload(attachment_file.read())
             
             encoders.encode_base64(part)
+            
+            # Encode attachment filename if it contains non-ASCII
+            filename_header = Header(attachment["name"], 'utf-8')
             part.add_header(
                 'Content-Disposition',
-                f'attachment; filename= {attachment["name"]}'
+                f'attachment; filename="{filename_header.encode()}"'
             )
             msg.attach(part)
         except Exception as e:
@@ -242,7 +247,7 @@ class CompanyEmailService:
         )
         
         # Update test status
-        from django.utils import timezone
+        # from django.utils import timezone # Already imported at the top
         self.email_settings.last_test_sent = timezone.now()
         self.email_settings.test_status = 'success' if success else 'failed'
         self.email_settings.save(update_fields=['last_test_sent', 'test_status'])

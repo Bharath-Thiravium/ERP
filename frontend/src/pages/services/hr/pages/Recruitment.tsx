@@ -8,6 +8,10 @@ import api from '../../../../lib/api'
 import toast from 'react-hot-toast'
 import JobPostingForm from '../components/recruitment/JobPostingForm'
 import JobDetailModal from '../components/recruitment/JobDetailModal'
+import ApplicationsList from '../components/recruitment/ApplicationsList'
+import CandidatePipeline from '../components/recruitment/CandidatePipeline'
+import RecruitmentAnalytics from '../components/recruitment/RecruitmentAnalytics'
+import InterviewsList from '../components/recruitment/InterviewsList'
 
 const Recruitment: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
@@ -241,6 +245,14 @@ const Recruitment: React.FC = () => {
               <span>Review Applications</span>
             </Button>
             <Button 
+              onClick={() => setActiveView('pipeline')}
+              variant="outline" 
+              className="h-20 flex-col space-y-2"
+            >
+              <Users className="h-6 w-6" />
+              <span>Candidate Pipeline</span>
+            </Button>
+            <Button 
               onClick={() => setShowJobForm(true)}
               variant="outline" 
               className="h-20 flex-col space-y-2"
@@ -249,6 +261,7 @@ const Recruitment: React.FC = () => {
               <span>Post New Job</span>
             </Button>
             <Button 
+              onClick={() => setActiveView('analytics')}
               variant="outline" 
               className="h-20 flex-col space-y-2"
             >
@@ -401,17 +414,52 @@ const Recruitment: React.FC = () => {
         >
           Applications
         </button>
+        <button
+          onClick={() => setActiveView('pipeline')}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeView === 'pipeline'
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          Pipeline
+        </button>
+        <button
+          onClick={() => setActiveView('interviews')}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeView === 'interviews'
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          Interviews
+        </button>
+        <button
+          onClick={() => setActiveView('analytics')}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeView === 'analytics'
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          Analytics
+        </button>
       </div>
 
       {/* Content */}
       {activeView === 'overview' && renderOverview()}
       {activeView === 'jobs' && renderJobPostings()}
       {activeView === 'applications' && (
-        <div className="text-center py-12">
-          <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Applications Management</h3>
-          <p className="text-gray-500 dark:text-gray-400">Coming soon...</p>
-        </div>
+        <ApplicationsList />
+      )}
+      {activeView === 'pipeline' && (
+        <CandidatePipeline />
+      )}
+      {activeView === 'interviews' && (
+        <InterviewsList />
+      )}
+      {activeView === 'analytics' && (
+        <RecruitmentAnalytics />
       )}
 
       {/* Job Posting Form Modal */}

@@ -77,6 +77,11 @@ export const useServiceUserStore = create<ServiceUserState>()(
           // Set up session monitoring (disabled for now)
           // get().startSessionMonitoring()
 
+          // Replace browser history to prevent back navigation to login
+          if (window.history.length > 1) {
+            window.history.replaceState(null, '', window.location.pathname)
+          }
+
           return true
         } catch (error: any) {
           const errorMessage = error.response?.data?.error ||

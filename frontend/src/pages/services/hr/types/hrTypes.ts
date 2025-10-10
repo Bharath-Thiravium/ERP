@@ -115,7 +115,7 @@ export interface JobPosting {
 export interface JobApplication {
   id: number;
   job_posting: number;
-  job_title?: string;
+  job_posting_title?: string;
   first_name: string;
   last_name: string;
   full_name: string;
@@ -126,7 +126,7 @@ export interface JobApplication {
   ai_score: number;
   skill_match_percentage: number;
   ai_screening_notes?: string;
-  status: 'submitted' | 'screening' | 'shortlisted' | 'interview_scheduled' | 'interviewed' | 'selected' | 'rejected' | 'withdrawn';
+  status: 'submitted' | 'screening' | 'shortlisted' | 'interview_scheduled' | 'interviewed' | 'offer_sent' | 'offer_accepted' | 'offer_rejected' | 'selected' | 'rejected' | 'withdrawn';
   interview_date?: string;
   interview_notes?: string;
   interviewer?: number;

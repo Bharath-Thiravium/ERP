@@ -240,14 +240,14 @@ export const apiClient = {
   },
 
   // Authentication
-  masterAdminLogin: (credentials: { email: string; password: string }) =>
+  masterAdminLogin: (credentials: { email: string; password: string; totp_code?: string; recovery_code?: string }) =>
     api.post('/api/auth/master-admin/login/', credentials),
 
   companyUserLogin: (credentials: { email: string; password: string }) =>
     api.post('/api/auth/company/login/', credentials),
 
-  changeCompanyUserPassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
-    api.post('/api/auth/company/change-password/', data),
+  changeCompanyUserPassword: (data: { current_password: string; new_password: string; confirm_password: string; force_logout_all?: boolean }) =>
+    api.post('/api/company-dashboard/security/password-change/', data),
 
   uploadCompanyLogo: (formData: FormData) =>
     api.post('/api/auth/company/update-logo/', formData),
@@ -525,6 +525,9 @@ export const apiClient = {
   sendProformaEmail: (id: number, data?: any) =>
     api.post(`/api/finance/proforma-invoices/${id}/send-email/`, data),
 
+  sendPurchaseOrderEmail: (id: number, data?: any) =>
+    api.post(`/api/finance/purchase-orders/${id}/send-email/`, data),
+
   // Tax Invoices
   getFinanceInvoices: (params?: any) =>
     api.get('/api/finance/invoices/', { params }),
@@ -576,6 +579,51 @@ export const apiClient = {
 
   getHRAttendanceSummary: (params?: any) =>
     api.get('/api/hr/dashboard/attendance_summary/', { params }),
+
+  // Phase 3: Compliance APIs
+  getComplianceDashboard: (params?: any) =>
+    api.get('/api/hr/compliance/dashboard/', { params }),
+
+  runComplianceChecks: (params?: any) =>
+    api.post('/api/hr/compliance/run_checks/', {}, { params }),
+
+  getComplianceScorecard: (params?: any) =>
+    api.get('/api/hr/compliance/scorecard/', { params }),
+
+
+
+  // Advanced Reports APIs
+  getStatutorySummaryReport: (params?: any) =>
+    api.get('/api/hr/advanced-reports/statutory_summary/', { params }),
+
+  getAuditTrailReport: (params?: any) =>
+    api.get('/api/hr/advanced-reports/audit_trail/', { params }),
+
+  getComplianceTrends: (params?: any) =>
+    api.get('/api/hr/advanced-reports/compliance_trends/', { params }),
+
+  // Automation APIs
+  triggerECRGeneration: (params?: any) =>
+    api.post('/api/hr/automation/trigger_ecr_generation/', {}, { params }),
+
+  triggerComplianceCheck: (params?: any) =>
+    api.post('/api/hr/automation/trigger_compliance_check/', {}, { params }),
+
+  getTaskStatus: (params?: any) =>
+    api.get('/api/hr/automation/task_status/', { params }),
+
+  getScheduledTasks: (params?: any) =>
+    api.get('/api/hr/automation/scheduled_tasks/', { params }),
+
+  // Integration APIs
+  getPortalStatus: (params?: any) =>
+    api.get('/api/hr/integration/portal_status/', { params }),
+
+  syncPortal: (data: any) =>
+    api.post('/api/hr/integration/sync_portal/', data),
+
+  getSubmissionHistory: (params?: any) =>
+    api.get('/api/hr/integration/submission_history/', { params }),
 
   // Departments
   getHRDepartments: (params?: any) =>
@@ -640,11 +688,7 @@ export const apiClient = {
   createHRLeaveApplication: (data: any) =>
     api.post('/api/hr/leave-applications/', data),
 
-  approveLeaveApplication: (id: number) =>
-    api.post(`/api/hr/leave-applications/${id}/approve/`),
 
-  rejectLeaveApplication: (id: number, data: any) =>
-    api.post(`/api/hr/leave-applications/${id}/reject/`, data),
 
   // Enhanced HR APIs
   // Live Attendance Dashboard
@@ -738,6 +782,76 @@ export const apiClient = {
   rejectOvertimeRequest: (id: number, data: any) =>
     api.post(`/api/hr/overtime-requests/${id}/reject/`, data),
 
+  // Leave Management APIs
+  getLeaveBalances: (params?: any) =>
+    api.get('/api/hr/leave-balances/', { params }),
+
+  getLeaveApplications: (params?: any) =>
+    api.get('/api/hr/leave-applications/', { params }),
+
+  createLeaveApplication: (data: any) =>
+    api.post('/api/hr/leave-applications/', data),
+
+  approveLeaveApplication: (id: number, data?: any) =>
+    api.post(`/api/hr/leave-applications/${id}/approve/`, data),
+
+  rejectLeaveApplication: (id: number, data: any) =>
+    api.post(`/api/hr/leave-applications/${id}/reject/`, data),
+
+  getHolidays: (params?: any) =>
+    api.get('/api/hr/holidays/', { params }),
+
+  createHoliday: (data: any) =>
+    api.post('/api/hr/holidays/', data),
+
+  // Banking APIs
+  verifyBankAccount: (data: any) =>
+    api.post('/api/hr/bank-verification/', data),
+
+  getSalaryPayments: (params?: any) =>
+    api.get('/api/hr/salary-payments/', { params }),
+
+  initiateSalaryPayment: (data: any) =>
+    api.post('/api/hr/salary-payments/', data),
+
+  // ESI Medical Benefits APIs
+  getESIMedicalClaims: (params?: any) =>
+    api.get('/api/hr/esi-medical-claims/', { params }),
+
+  createESIMedicalClaim: (data: any) =>
+    api.post('/api/hr/esi-medical-claims/', data),
+
+  approveESIMedicalClaim: (id: number, data?: any) =>
+    api.post(`/api/hr/esi-medical-claims/${id}/approve/`, data),
+
+  // Statutory Compliance APIs
+  getStatutoryDashboard: (params?: any) =>
+    api.get('/api/hr/statutory/dashboard/', { params }),
+
+  getStatutorySettings: (params?: any) =>
+    api.get('/api/hr/statutory-settings/', { params }),
+
+  updateStatutorySettings: (data: any) =>
+    api.post('/api/hr/statutory-settings/', data),
+
+  generatePFECR: (data: any) =>
+    api.post('/api/hr/statutory/pf-ecr/', data),
+
+  generateESIReturn: (data: any) =>
+    api.post('/api/hr/statutory/esi-return/', data),
+
+  validateCompliance: (data: any) =>
+    api.post('/api/hr/statutory/validate-compliance/', data),
+
+  getGovernmentReturns: (params?: any) =>
+    api.get('/api/hr/government-returns/', { params }),
+
+  getComplianceAlerts: (params?: any) =>
+    api.get('/api/hr/compliance-alerts/', { params }),
+
+  resolveComplianceAlert: (id: number, data?: any) =>
+    api.post(`/api/hr/compliance-alerts/${id}/resolve/`, data),
+
   // HR Analytics
   getAttendanceAnalytics: (params?: any) =>
     api.get('/api/hr/analytics/attendance_analytics/', { params }),
@@ -778,10 +892,7 @@ export const apiClient = {
   createLeaveType: (data: any) =>
     api.post('/api/hr/leave-types/', data),
 
-  // Leave Balances
-  getLeaveBalances: (params?: any) =>
-    api.get('/api/hr/leave-balances/', { params }),
-
+  // Leave Balance Management
   createLeaveBalance: (data: any) =>
     api.post('/api/hr/leave-balances/', data),
 
@@ -929,6 +1040,108 @@ export const apiClient = {
 
   getEmailUsageStats: () =>
     api.get('/api/company-dashboard/email-settings/usage/'),
+
+  // Company Security Settings
+  getCompanySecurityOverview: () =>
+    api.get('/api/company-dashboard/security/overview/'),
+
+  // Two-Factor Authentication
+  setupCompany2FA: () =>
+    api.get('/api/company-dashboard/security/2fa/'),
+
+  verifyCompany2FA: (data: { code: string; secret: string }) =>
+    api.post('/api/company-dashboard/security/2fa/', data),
+
+  disableCompany2FA: () =>
+    api.delete('/api/company-dashboard/security/2fa/'),
+
+  // Recovery Codes
+  getCompanyRecoveryCodes: () =>
+    api.get('/api/company-dashboard/security/recovery-codes/'),
+
+  generateCompanyRecoveryCodes: () =>
+    api.post('/api/company-dashboard/security/recovery-codes/'),
+
+  // API Keys
+  getCompanyApiKeys: () =>
+    api.get('/api/company-dashboard/security/api-keys/'),
+
+  createCompanyApiKey: (data: { name: string; permissions: string[]; expires_at?: string }) =>
+    api.post('/api/company-dashboard/security/api-keys/', data),
+
+  deleteCompanyApiKey: (keyId: number) =>
+    api.delete(`/api/company-dashboard/security/api-keys/${keyId}/`),
+
+  // IP Restrictions
+  getCompanyIpRestrictions: () =>
+    api.get('/api/company-dashboard/security/ip-restrictions/'),
+
+  addCompanyIpRestriction: (data: { ip_address: string; restriction_type: string; description: string }) =>
+    api.post('/api/company-dashboard/security/ip-restrictions/', data),
+
+  removeCompanyIpRestriction: (restrictionId: number) =>
+    api.delete(`/api/company-dashboard/security/ip-restrictions/${restrictionId}/`),
+
+  // Sessions
+  getCompanySessions: () =>
+    api.get('/api/company-dashboard/security/sessions/'),
+
+  terminateCompanySession: (sessionId: number) =>
+    api.delete(`/api/company-dashboard/security/sessions/${sessionId}/`),
+
+  terminateAllCompanySessions: () =>
+    api.delete('/api/company-dashboard/security/sessions/'),
+
+  // Security Logs
+  getCompanySecurityLogs: (params?: { action?: string; success?: boolean; search?: string }) =>
+    api.get('/api/company-dashboard/security/audit-logs/', { params }),
+
+  // Enhanced Password Change
+  changeCompanyUserPasswordSecure: (data: { current_password: string; new_password: string; confirm_password: string; force_logout_all?: boolean }) =>
+    api.post('/api/company-dashboard/security/password-change/', data),
+
+  // Advanced Security APIs (Phase 4)
+  getCaptcha: (companyId: number) =>
+    api.get('/api/company-dashboard/advanced-security/captcha/', { params: { company_id: companyId } }),
+
+  verifyCaptcha: (data: any) =>
+    api.post('/api/company-dashboard/advanced-security/captcha/', data),
+
+  getDeviceFingerprints: () =>
+    api.get('/api/company-dashboard/advanced-security/device-fingerprinting/'),
+
+  registerDeviceFingerprint: (data: any) =>
+    api.post('/api/company-dashboard/advanced-security/device-fingerprinting/', data),
+
+  getGeolocationRules: () =>
+    api.get('/api/company-dashboard/advanced-security/geolocation-rules/'),
+
+  createGeolocationRule: (data: any) =>
+    api.post('/api/company-dashboard/advanced-security/geolocation-rules/', data),
+
+  deleteGeolocationRule: (ruleId: number) =>
+    api.delete(`/api/company-dashboard/advanced-security/geolocation-rules/${ruleId}/`),
+
+  getThreatDetections: (params?: any) =>
+    api.get('/api/company-dashboard/advanced-security/threat-detection/', { params }),
+
+  createThreatDetection: (data: any) =>
+    api.post('/api/company-dashboard/advanced-security/threat-detection/', data),
+
+  getSecurityAlerts: (params?: any) =>
+    api.get('/api/company-dashboard/advanced-security/security-alerts/', { params }),
+
+  updateSecurityAlert: (alertId: number, data: any) =>
+    api.patch(`/api/company-dashboard/advanced-security/security-alerts/${alertId}/`, data),
+
+  getAdvancedSecuritySettings: () =>
+    api.get('/api/company-dashboard/advanced-security/advanced-settings/'),
+
+  updateAdvancedSecuritySettings: (data: any) =>
+    api.patch('/api/company-dashboard/advanced-security/advanced-settings/', data),
+
+  getAdvancedSecurityDashboard: () =>
+    api.get('/api/company-dashboard/advanced-security/advanced-dashboard/'),
 
   // CRM Service APIs
   // Dashboard
@@ -1102,6 +1315,62 @@ export const apiClient = {
 
   getCRMCurrentPerformance: (params?: any) =>
     api.get('/api/crm/sales-targets/current_performance/', { params }),
+
+  // Government Portal Integration (Phase 4)
+  submitToGovernmentPortal: (data: any) =>
+    api.post('/api/hr/government/submit/', data),
+
+  checkSubmissionStatus: (data: any) =>
+    api.post('/api/hr/government/check-status/', data),
+
+  generateChallan: (data: any) =>
+    api.post('/api/hr/government/generate-challan/', data),
+
+  getGovernmentSubmissionHistory: (params?: any) =>
+    api.get('/api/hr/government/submission-history/', { params }),
+
+  getGovernmentChallans: (params?: any) =>
+    api.get('/api/hr/government/challans/', { params }),
+
+  getPortalCredentials: (params?: any) =>
+    api.get('/api/hr/government/credentials/', { params }),
+
+  updatePortalCredentials: (data: any) =>
+    api.post('/api/hr/government/credentials/', data),
+
+  // Phase 3: Enhanced Security APIs
+  getSecuritySettings: () =>
+    api.get('/api/auth/master-admin/security-settings/'),
+
+  updateSecuritySettings: (data: any) =>
+    api.post('/api/auth/master-admin/security-settings/', data),
+
+  getIPRestrictions: () =>
+    api.get('/api/auth/master-admin/ip-restrictions/'),
+
+  addIPRestriction: (data: { ip_address: string; description: string }) =>
+    api.post('/api/auth/master-admin/ip-restrictions/', data),
+
+  removeIPRestriction: (id: number) =>
+    api.delete(`/api/auth/master-admin/ip-restrictions/${id}/`),
+
+  toggleIPRestriction: (id: number, data: { is_active: boolean }) =>
+    api.patch(`/api/auth/master-admin/ip-restrictions/${id}/`, data),
+
+  getDeviceFingerprints: () =>
+    api.get('/api/auth/master-admin/device-fingerprints/'),
+
+  removeDeviceFingerprint: (deviceId: string) =>
+    api.delete(`/api/auth/master-admin/device-fingerprints/${deviceId}/`),
+
+  toggleDeviceTrust: (deviceId: string, data: { is_trusted: boolean }) =>
+    api.patch(`/api/auth/master-admin/device-fingerprints/${deviceId}/`, data),
+
+  getLoginNotifications: () =>
+    api.get('/api/auth/master-admin/login-notifications/'),
+
+  testLoginNotification: () =>
+    api.post('/api/auth/master-admin/login-notifications/test/'),
 
   // Convenience methods for backward compatibility
   getEmployees: (params?: any) => apiClient.getHREmployees(params),

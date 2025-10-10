@@ -178,7 +178,7 @@ class PayrollViewSet(viewsets.ModelViewSet):
                     }
                 )
                 
-                # Calculate salary
+                # Calculate salary with enhanced statutory compliance
                 payslip.calculate_salary()
                 
                 total_gross += payslip.gross_salary

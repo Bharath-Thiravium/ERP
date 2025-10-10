@@ -1,299 +1,442 @@
 """
-Ultra Security Module for Master Admin Protection
-================================================
-Military-grade security implementations
+Ultra Security Manager Module
+=============================
+Military-grade security utilities for master admin operations
 """
 import hashlib
-import hmac
 import secrets
-import time
-import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.core.cache import cache
-from django.http import JsonResponse
 from django.utils import timezone
-from django.contrib.auth import get_user_model
-from .models import SecurityLog, MasterAdmin
+from django.conf import settings
 
-User = get_user_model()
+# Optional imports - gracefully handle if not installed
+try:
+    import pyotp
+    PYOTP_AVAILABLE = True
+except ImportError:
+    PYOTP_AVAILABLE = False
+    print("⚠️  Warning: pyotp not installed. 2FA features will be limited.")
+
 
 class UltraSecurityManager:
-    """Ultra security manager for master admin protection"""
-    
-    # Security constants
-    MAX_LOGIN_ATTEMPTS = 3
-    LOCKOUT_DURATION = 30  # minutes
-    RATE_LIMIT_WINDOW = 60  # seconds
-    MAX_REQUESTS_PER_WINDOW = 10
+    """Ultra-secure security management utilities"""
     
     @staticmethod
-    def generate_secure_token():
-        """Generate cryptographically secure token"""
-        return secrets.token_urlsafe(32)
-    
-    @staticmethod
-    def hash_with_salt(data, salt=None):
-        """Hash data with salt using SHA-256"""
-        if salt is None:
-            salt = secrets.token_bytes(32)
+    def check_rate_limit(ip_address, action, max_attempts=5, window=300):
+        """
+        Rate limiting with cache backend
         
-        combined = data.encode() + salt
-        hashed = hashlib.sha256(combined).hexdigest()
-        return hashed, salt.hex()
-    
-    @staticmethod
-    def verify_hash(data, hashed, salt_hex):
-        """Verify hashed data"""
-        salt = bytes.fromhex(salt_hex)
-        test_hash, _ = UltraSecurityManager.hash_with_salt(data, salt)
-        return hmac.compare_digest(test_hash, hashed)
-    
-    @staticmethod
-    def check_rate_limit(ip_address, endpoint):
-        """Check if IP is rate limited for specific endpoint"""
-        cache_key = f"rate_limit:{ip_address}:{endpoint}"
-        requests = cache.get(cache_key, [])
+        Args:
+            ip_address: Client IP address
+            action: Action being rate limited (e.g., 'login', 'password_change')
+            max_attempts: Maximum attempts allowed
+            window: Time window in seconds
+            
+        Returns:
+            bool: True if within rate limit, False if exceeded
+        """
+        key = f"rate_limit:{action}:{ip_address}"
         
-        # Clean old requests
-        current_time = time.time()
-        requests = [req_time for req_time in requests 
-                   if current_time - req_time < UltraSecurityManager.RATE_LIMIT_WINDOW]
-        
-        if len(requests) >= UltraSecurityManager.MAX_REQUESTS_PER_WINDOW:
-            return False
-        
-        # Add current request
-        requests.append(current_time)
-        cache.set(cache_key, requests, UltraSecurityManager.RATE_LIMIT_WINDOW)
-        return True
-    
-    @staticmethod
-    def log_security_event(user, event_type, ip_address, details="", user_agent=""):
-        """Log security events"""
-        SecurityLog.objects.create(
-            user=user,
-            event_type=event_type,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            details=details
-        )
-    
-    @staticmethod
-    def check_suspicious_activity(ip_address, user_agent):
-        """Check for suspicious activity patterns"""
-        suspicious_patterns = [
-            'bot', 'crawler', 'spider', 'scraper',
-            'hack', 'exploit', 'injection', 'script'
-        ]
-        
-        user_agent_lower = user_agent.lower()
-        return any(pattern in user_agent_lower for pattern in suspicious_patterns)
-    
-    @staticmethod
-    def validate_master_admin_access(user, ip_address, user_agent):
-        """Validate master admin access with multiple security checks"""
         try:
-            master_admin = MasterAdmin.objects.get(user=user)
-        except MasterAdmin.DoesNotExist:
-            return False, "Invalid master admin"
-        
-        # Check if account is locked
-        if master_admin.is_locked:
-            if master_admin.locked_until and timezone.now() < master_admin.locked_until:
-                return False, "Account is locked"
-            else:
-                # Unlock if lock period expired
-                master_admin.is_locked = False
-                master_admin.locked_until = None
-                master_admin.login_attempts = 0
-                master_admin.save()
-        
-        # Check password expiry
-        if master_admin.is_password_expired():
-            return False, "Password has expired"
-        
-        # Check for suspicious activity
-        if UltraSecurityManager.check_suspicious_activity(ip_address, user_agent):
-            UltraSecurityManager.log_security_event(
-                user, 'SUSPICIOUS_ACTIVITY', ip_address,
-                f"Suspicious user agent: {user_agent}", user_agent
-            )
-            return False, "Suspicious activity detected"
-        
-        return True, "Access granted"
+            attempts = cache.get(key, 0)
+            
+            if attempts >= max_attempts:
+                return False
+            
+            cache.set(key, attempts + 1, window)
+            return True
+        except Exception as e:
+            # If cache fails, allow the request but log the error
+            print(f"Rate limit check failed: {e}")
+            return True
     
     @staticmethod
-    def handle_failed_login(user, ip_address, user_agent):
-        """Handle failed login attempts with progressive lockout"""
+    def log_security_event(user, event_type, ip_address, details=""):
+        """
+        Log security events to database
+        
+        Args:
+            user: User object
+            event_type: Type of security event
+            ip_address: Client IP address
+            details: Additional details about the event
+        """
         try:
-            master_admin = MasterAdmin.objects.get(user=user)
-            master_admin.login_attempts += 1
-            
-            if master_admin.login_attempts >= UltraSecurityManager.MAX_LOGIN_ATTEMPTS:
-                master_admin.is_locked = True
-                master_admin.locked_until = timezone.now() + timedelta(
-                    minutes=UltraSecurityManager.LOCKOUT_DURATION
-                )
-                
-                UltraSecurityManager.log_security_event(
-                    user, 'ACCOUNT_LOCKED', ip_address,
-                    f"Account locked after {master_admin.login_attempts} failed attempts",
-                    user_agent
-                )
-            
-            master_admin.save()
-            
-            UltraSecurityManager.log_security_event(
-                user, 'LOGIN_FAILED', ip_address,
-                f"Failed login attempt {master_admin.login_attempts}",
-                user_agent
+            from .models import SecurityLog
+            SecurityLog.objects.create(
+                user=user,
+                event_type=event_type,
+                ip_address=ip_address,
+                details=details,
+                timestamp=timezone.now()
             )
-            
-        except MasterAdmin.DoesNotExist:
-            pass
+        except Exception as e:
+            print(f"Failed to log security event: {e}")
     
     @staticmethod
-    def handle_successful_login(user, ip_address, user_agent):
-        """Handle successful login"""
-        try:
-            master_admin = MasterAdmin.objects.get(user=user)
-            master_admin.login_attempts = 0
-            master_admin.is_locked = False
-            master_admin.locked_until = None
-            master_admin.last_login_ip = ip_address
-            master_admin.save()
-            
-            UltraSecurityManager.log_security_event(
-                user, 'LOGIN_SUCCESS', ip_address,
-                "Successful master admin login", user_agent
-            )
-            
-        except MasterAdmin.DoesNotExist:
-            pass
-
-
-class UltraSecurityMiddleware:
-    """Ultra security middleware for master admin protection"""
-    
-    def __init__(self, get_response):
-        self.get_response = get_response
-    
-    def __call__(self, request):
-        # Get client IP
-        ip_address = self.get_client_ip(request)
-        user_agent = request.META.get('HTTP_USER_AGENT', '')
+    def generate_secure_token(length=32):
+        """
+        Generate cryptographically secure random token
         
-        # Check for master admin endpoints
-        if '/master-admin/' in request.path:
-            # Rate limiting
-            if not UltraSecurityManager.check_rate_limit(ip_address, 'master_admin'):
-                return JsonResponse({
-                    'error': 'Rate limit exceeded',
-                    'message': 'Too many requests. Please try again later.'
-                }, status=429)
+        Args:
+            length: Length of token in bytes
             
-            # Check for suspicious activity
-            if UltraSecurityManager.check_suspicious_activity(ip_address, user_agent):
-                UltraSecurityManager.log_security_event(
-                    None, 'SUSPICIOUS_ACTIVITY', ip_address,
-                    f"Suspicious access attempt to {request.path}", user_agent
-                )
-                return JsonResponse({
-                    'error': 'Access denied',
-                    'message': 'Suspicious activity detected'
-                }, status=403)
-        
-        response = self.get_response(request)
-        return response
-    
-    def get_client_ip(self, request):
-        """Get real client IP address"""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip
-
-
-class SecureAPIKeyManager:
-    """Secure API key management for master admin"""
+        Returns:
+            str: Secure random token
+        """
+        return secrets.token_urlsafe(length)
     
     @staticmethod
-    def generate_api_key_pair():
-        """Generate API key pair (public/private)"""
-        public_key = secrets.token_urlsafe(32)
-        private_key = secrets.token_urlsafe(64)
+    def hash_sensitive_data(data):
+        """
+        Hash sensitive data using SHA-256
         
-        # Create signature
-        timestamp = str(int(time.time()))
-        message = f"{public_key}:{timestamp}"
-        signature = hmac.new(
-            private_key.encode(),
-            message.encode(),
-            hashlib.sha256
-        ).hexdigest()
-        
-        return {
-            'public_key': public_key,
-            'private_key': private_key,
-            'signature': signature,
-            'timestamp': timestamp
-        }
+        Args:
+            data: Data to hash
+            
+        Returns:
+            str: Hashed data
+        """
+        return hashlib.sha256(data.encode()).hexdigest()
     
     @staticmethod
-    def validate_api_key(public_key, signature, timestamp, private_key):
-        """Validate API key signature"""
-        # Check timestamp (prevent replay attacks)
-        current_time = int(time.time())
-        key_time = int(timestamp)
+    def validate_password_strength(password):
+        """
+        Validate password meets ultra-secure requirements
         
-        if current_time - key_time > 300:  # 5 minutes expiry
-            return False
+        Args:
+            password: Password to validate
+            
+        Returns:
+            tuple: (bool, list) - (is_valid, list_of_errors)
+        """
+        errors = []
         
-        # Verify signature
-        message = f"{public_key}:{timestamp}"
-        expected_signature = hmac.new(
-            private_key.encode(),
-            message.encode(),
-            hashlib.sha256
-        ).hexdigest()
+        if len(password) < 16:
+            errors.append("Password must be at least 16 characters")
         
-        return hmac.compare_digest(signature, expected_signature)
+        if not any(c.isupper() for c in password):
+            errors.append("Password must contain at least one uppercase letter")
+        
+        if not any(c.islower() for c in password):
+            errors.append("Password must contain at least one lowercase letter")
+        
+        if not any(c.isdigit() for c in password):
+            errors.append("Password must contain at least one number")
+        
+        if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password):
+            errors.append("Password must contain at least one special character")
+        
+        return (len(errors) == 0, errors)
+    
+    @staticmethod
+    def check_suspicious_activity(user, ip_address, user_agent):
+        """
+        Check for suspicious activity patterns
+        
+        Args:
+            user: User object
+            ip_address: Client IP address
+            user_agent: Client user agent
+            
+        Returns:
+            bool: True if suspicious, False otherwise
+        """
+        # Check for rapid login attempts from different IPs
+        key = f"login_ips:{user.id}"
+        recent_ips = cache.get(key, [])
+        
+        if len(recent_ips) > 3 and ip_address not in recent_ips:
+            # More than 3 different IPs in short time
+            return True
+        
+        recent_ips.append(ip_address)
+        cache.set(key, recent_ips[-5:], 3600)  # Keep last 5 IPs for 1 hour
+        
+        return False
 
 
 class TwoFactorAuthManager:
-    """Two-factor authentication manager"""
+    """Two-Factor Authentication management utilities"""
     
     @staticmethod
     def generate_2fa_secret():
-        """Generate 2FA secret key"""
-        import base64
-        return base64.b32encode(secrets.token_bytes(20)).decode()
+        """
+        Generate TOTP secret for 2FA
+        
+        Returns:
+            str: Base32 encoded secret
+        """
+        if PYOTP_AVAILABLE:
+            return pyotp.random_base32()
+        else:
+            # Fallback: generate base32 secret manually
+            import base64
+            return base64.b32encode(secrets.token_bytes(20)).decode()
+    
+    @staticmethod
+    def verify_totp_code(secret, code):
+        """
+        Verify TOTP code
+        
+        Args:
+            secret: TOTP secret
+            code: 6-digit code to verify
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        if not PYOTP_AVAILABLE:
+            print("⚠️  pyotp not installed. Cannot verify TOTP code.")
+            return False
+            
+        try:
+            totp = pyotp.TOTP(secret)
+            # Allow 1 time step before and after for clock skew
+            return totp.verify(code, valid_window=1)
+        except Exception as e:
+            print(f"TOTP verification failed: {e}")
+            return False
+    
+    @staticmethod
+    def get_provisioning_uri(email, secret, issuer_name='AthenaSAP'):
+        """
+        Get provisioning URI for QR code generation
+        
+        Args:
+            email: User email
+            secret: TOTP secret
+            issuer_name: Name of the issuer
+            
+        Returns:
+            str: Provisioning URI
+        """
+        if not PYOTP_AVAILABLE:
+            # Fallback: return manual URI format
+            return f"otpauth://totp/{issuer_name}:{email}?secret={secret}&issuer={issuer_name}"
+            
+        totp = pyotp.TOTP(secret)
+        return totp.provisioning_uri(
+            name=email,
+            issuer_name=issuer_name
+        )
     
     @staticmethod
     def generate_backup_codes(count=10):
-        """Generate backup codes for 2FA"""
+        """
+        Generate backup codes for 2FA recovery
+        
+        Args:
+            count: Number of backup codes to generate
+            
+        Returns:
+            list: List of backup codes
+        """
         codes = []
         for _ in range(count):
-            code = ''.join(secrets.choice('0123456789') for _ in range(8))
-            codes.append(f"{code[:4]}-{code[4:]}")
+            # Generate 8-character alphanumeric code
+            code = ''.join(secrets.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789') for _ in range(8))
+            # Format as XXXX-XXXX
+            formatted = f"{code[:4]}-{code[4:]}"
+            codes.append(formatted)
         return codes
     
     @staticmethod
-    def verify_totp_code(secret, code, window=1):
-        """Verify TOTP code with time window"""
-        try:
-            import pyotp
-            totp = pyotp.TOTP(secret)
+    def verify_backup_code(stored_codes, provided_code):
+        """
+        Verify and consume backup code
+        
+        Args:
+            stored_codes: List of stored backup codes
+            provided_code: Code provided by user
             
-            # Check current time and adjacent windows
-            current_time = int(time.time())
-            for i in range(-window, window + 1):
-                test_time = current_time + (i * 30)  # 30-second window
-                if totp.verify(code, test_time):
-                    return True
-            return False
+        Returns:
+            tuple: (bool, list) - (is_valid, updated_codes_list)
+        """
+        if provided_code in stored_codes:
+            # Remove used code
+            updated_codes = [code for code in stored_codes if code != provided_code]
+            return (True, updated_codes)
+        return (False, stored_codes)
+
+
+class SessionSecurityManager:
+    """Session security management utilities"""
+    
+    @staticmethod
+    def create_secure_session(user, ip_address, user_agent):
+        """
+        Create secure session with tracking
+        
+        Args:
+            user: User object
+            ip_address: Client IP address
+            user_agent: Client user agent
+            
+        Returns:
+            str: Session key
+        """
+        session_key = secrets.token_urlsafe(32)
+        
+        # Store session metadata in cache
+        session_data = {
+            'user_id': user.id,
+            'ip_address': ip_address,
+            'user_agent': user_agent,
+            'created_at': timezone.now().isoformat(),
+            'last_activity': timezone.now().isoformat()
+        }
+        
+        cache.set(f"session:{session_key}", session_data, 3600 * 24)  # 24 hours
+        
+        return session_key
+    
+    @staticmethod
+    def validate_session(session_key, ip_address, user_agent):
+        """
+        Validate session and check for hijacking
+        
+        Args:
+            session_key: Session key to validate
+            ip_address: Current client IP
+            user_agent: Current client user agent
+            
+        Returns:
+            tuple: (bool, dict) - (is_valid, session_data)
+        """
+        session_data = cache.get(f"session:{session_key}")
+        
+        if not session_data:
+            return (False, None)
+        
+        # Check for session hijacking indicators
+        if session_data['ip_address'] != ip_address:
+            # IP changed - potential hijacking
+            return (False, None)
+        
+        if session_data['user_agent'] != user_agent:
+            # User agent changed - potential hijacking
+            return (False, None)
+        
+        # Update last activity
+        session_data['last_activity'] = timezone.now().isoformat()
+        cache.set(f"session:{session_key}", session_data, 3600 * 24)
+        
+        return (True, session_data)
+    
+    @staticmethod
+    def invalidate_session(session_key):
+        """
+        Invalidate session
+        
+        Args:
+            session_key: Session key to invalidate
+        """
+        cache.delete(f"session:{session_key}")
+    
+    @staticmethod
+    def invalidate_all_user_sessions(user_id):
+        """
+        Invalidate all sessions for a user
+        
+        Args:
+            user_id: User ID
+        """
+        # This requires iterating through cache keys
+        # Implementation depends on cache backend
+        pass
+
+
+class EncryptionManager:
+    """Data encryption utilities"""
+    
+    @staticmethod
+    def encrypt_sensitive_data(data, key=None):
+        """
+        Encrypt sensitive data
+        
+        Args:
+            data: Data to encrypt
+            key: Encryption key (uses settings if not provided)
+            
+        Returns:
+            str: Encrypted data
+        """
+        try:
+            from cryptography.fernet import Fernet
+            
+            if key is None:
+                # Derive key from SECRET_KEY
+                key_material = settings.SECRET_KEY[:32].encode()
+                key = hashlib.sha256(key_material).digest()
+                key = base64.urlsafe_b64encode(key)
+            
+            f = Fernet(key)
+            encrypted = f.encrypt(data.encode())
+            return encrypted.decode()
         except ImportError:
-            # Fallback if pyotp is not installed
-            return False
+            print("⚠️  cryptography not installed. Encryption unavailable.")
+            return data
+    
+    @staticmethod
+    def decrypt_sensitive_data(encrypted_data, key=None):
+        """
+        Decrypt sensitive data
+        
+        Args:
+            encrypted_data: Encrypted data
+            key: Decryption key (uses settings if not provided)
+            
+        Returns:
+            str: Decrypted data
+        """
+        try:
+            from cryptography.fernet import Fernet
+            
+            if key is None:
+                # Derive key from SECRET_KEY
+                key_material = settings.SECRET_KEY[:32].encode()
+                key = hashlib.sha256(key_material).digest()
+                key = base64.urlsafe_b64encode(key)
+            
+            f = Fernet(key)
+            decrypted = f.decrypt(encrypted_data.encode())
+            return decrypted.decode()
+        except ImportError:
+            print("⚠️  cryptography not installed. Decryption unavailable.")
+            return encrypted_data
+
+
+# Utility functions
+import base64
+
+def get_client_ip(request):
+    """
+    Get client IP address from request
+    
+    Args:
+        request: Django request object
+        
+    Returns:
+        str: Client IP address
+    """
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0].strip()
+    else:
+        ip = request.META.get('REMOTE_ADDR', '127.0.0.1')
+    return ip
+
+
+def get_user_agent(request):
+    """
+    Get user agent from request
+    
+    Args:
+        request: Django request object
+        
+    Returns:
+        str: User agent string
+    """
+    return request.META.get('HTTP_USER_AGENT', '')

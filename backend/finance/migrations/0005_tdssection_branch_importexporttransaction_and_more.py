@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('authentication', '0004_companyuser_password_reset_by_admin'),
-        ('finance', '0004_add_document_management'),
+        ('finance', '0003_indian_compliance_fields'),
     ]
 
     operations = [

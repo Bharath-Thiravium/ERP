@@ -18,11 +18,76 @@ export interface LoginResponse {
   approval_status?: string
   must_change_password?: boolean
   force_password_reset?: boolean
+  requires_2fa?: boolean
+  user_id?: number
+  message?: string
+  // Phase 2: Security Features
+  account_locked?: boolean
+  remaining_attempts?: number
+  lockout_expires_at?: string
+  password_expires_in_days?: number
+  password_expires_at?: string
+  security_alerts?: SecurityAlert[]
+  trusted_device?: boolean
+  device_id?: string
+}
+
+export interface SecurityAlert {
+  id: number
+  type: 'suspicious_login' | 'new_device' | 'password_change' | 'failed_attempts'
+  message: string
+  timestamp: string
+  ip_address?: string
+  location?: string
+  device_info?: string
+}
+
+// Phase 3: Enhanced Security
+export interface IPRestriction {
+  id: number
+  ip_address: string
+  description: string
+  is_active: boolean
+  created_at: string
+  last_used?: string
+}
+
+export interface DeviceFingerprint {
+  id: string
+  device_name: string
+  browser: string
+  os: string
+  ip_address: string
+  location?: string
+  is_trusted: boolean
+  first_seen: string
+  last_seen: string
+}
+
+export interface LoginNotification {
+  id: number
+  email_sent: boolean
+  ip_address: string
+  location?: string
+  device_info: string
+  timestamp: string
+}
+
+export interface SecuritySettings {
+  ip_restrictions_enabled: boolean
+  allowed_ips: IPRestriction[]
+  device_fingerprinting_enabled: boolean
+  login_notifications_enabled: boolean
+  captcha_after_failed_attempts: number
+  max_failed_attempts: number
+  lockout_duration_minutes: number
 }
 
 export interface MasterAdminLoginRequest {
   email: string
   password: string
+  totp_code?: string
+  recovery_code?: string
 }
 
 export interface CompanyUserLoginRequest {

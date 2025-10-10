@@ -22,13 +22,20 @@ import {
   Zap,
   UserCheck,
   AlertCircle,
+  AlertTriangle,
   Info,
   X,
   Upload,
   Image,
   Camera,
   Download,
-  RefreshCw
+  RefreshCw,
+  Lock,
+  Smartphone,
+  Code,
+  Globe,
+  Monitor,
+  FileText
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
 import { useAuthStore } from '../../store/authStore'
@@ -46,6 +53,14 @@ import NotificationCenter from '../../components/company/NotificationCenter'
 import EmailSettings from '../../components/company/EmailSettings'
 import DomainSettings from '../../components/company/DomainSettings'
 import EmailInput from '../../components/company/EmailInput'
+import SecurityOverview from '../../components/company/security/SecurityOverview'
+import TwoFactorAuth from '../../components/company/security/TwoFactorAuth'
+import RecoveryCodes from '../../components/company/security/RecoveryCodes'
+import ApiKeysManagement from '../../components/company/security/ApiKeysManagement'
+import IpAccessControl from '../../components/company/security/IpAccessControl'
+import SessionManagement from '../../components/company/security/SessionManagement'
+import SecurityAuditLogs from '../../components/company/security/SecurityAuditLogs'
+import AdvancedSecurity from '../../components/company/security/AdvancedSecurity'
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -385,12 +400,26 @@ Website: https://athenas.co.in
 
   const settingsTabs = [
     { id: 'general', label: 'General', icon: Shield },
+    { id: 'security', label: 'Security', icon: Lock },
     { id: 'email', label: 'Email Settings', icon: Bell },
     { id: 'logo', label: 'Company Logo', icon: Image },
     { id: 'password', label: 'Password', icon: Key }
   ]
 
   const [activeSettingsTab, setActiveSettingsTab] = useState('general')
+  const [activeSecurityTab, setActiveSecurityTab] = useState('overview')
+
+  // Security sub-tabs
+  const securityTabs = [
+    { id: 'overview', label: 'Security Overview', icon: Shield },
+    { id: '2fa', label: 'Two-Factor Auth', icon: Smartphone },
+    { id: 'recovery', label: 'Recovery Codes', icon: Key },
+    { id: 'api-keys', label: 'API Keys', icon: Code },
+    { id: 'ip-access', label: 'IP Restrictions', icon: Globe },
+    { id: 'sessions', label: 'Active Sessions', icon: Monitor },
+    { id: 'audit', label: 'Security Logs', icon: FileText },
+    { id: 'advanced', label: 'Advanced Security', icon: AlertTriangle }
+  ]
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -907,126 +936,283 @@ Website: https://athenas.co.in
             )}
 
             {activeSettingsTab === 'password' && (
-              <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Key className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  <span>Change Password</span>
-                </CardTitle>
-                <CardDescription>
-                  Update your password to keep your account secure
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={async (e) => {
-                  e.preventDefault()
-                  // Handle password change
-                  if (passwordForm.new_password !== passwordForm.confirm_password) {
-                    toast.error('New passwords do not match')
-                    return
-                  }
-                  if (passwordForm.new_password.length < 8) {
-                    toast.error('Password must be at least 8 characters long')
-                    return
-                  }
-
-                  try {
-                    await apiClient.changeCompanyUserPassword(passwordForm)
-                    toast.success('Password changed successfully!')
-                    setPasswordForm({ current_password: '', new_password: '', confirm_password: '' })
-                  } catch (error: any) {
-                    const message = error.response?.data?.error || error.response?.data?.message || 'Failed to change password'
-                    toast.error(message)
-                  }
-                }} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Current Password */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Current Password
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showPasswords.current ? 'text' : 'password'}
-                          value={passwordForm.current_password}
-                          onChange={(e) => setPasswordForm(prev => ({ ...prev, current_password: e.target.value }))}
-                          className="w-full px-4 py-3 pl-10 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="Enter current password"
-                          required
-                        />
-                        <Key className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
-                        <button
-                          type="button"
-                          onClick={() => setShowPasswords(prev => ({ ...prev, current: !prev.current }))}
-                          className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
-                        >
-                          {showPasswords.current ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* New Password */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        New Password
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showPasswords.new ? 'text' : 'password'}
-                          value={passwordForm.new_password}
-                          onChange={(e) => setPasswordForm(prev => ({ ...prev, new_password: e.target.value }))}
-                          className="w-full px-4 py-3 pl-10 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="Enter new password"
-                          required
-                          minLength={8}
-                        />
-                        <Key className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
-                        <button
-                          type="button"
-                          onClick={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))}
-                          className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
-                        >
-                          {showPasswords.new ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Confirm Password */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Confirm Password
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showPasswords.confirm ? 'text' : 'password'}
-                          value={passwordForm.confirm_password}
-                          onChange={(e) => setPasswordForm(prev => ({ ...prev, confirm_password: e.target.value }))}
-                          className="w-full px-4 py-3 pl-10 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="Confirm new password"
-                          required
-                          minLength={8}
-                        />
-                        <Key className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
-                        <button
-                          type="button"
-                          onClick={() => setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))}
-                          className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
-                        >
-                          {showPasswords.confirm ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                        </button>
-                      </div>
+              <div className="space-y-6">
+                {/* Password Security Warning */}
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" />
+                    <div className="text-sm text-red-700 dark:text-red-300">
+                      <p className="font-medium mb-1">Enhanced Security Required</p>
+                      <p>Password changes require additional verification for company accounts. All active sessions will be terminated after password change.</p>
                     </div>
                   </div>
+                </div>
 
-                  <div className="flex justify-end">
-                    <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">
-                      <Key className="h-4 w-4 mr-2" />
-                      Change Password
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-              </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      <Key className="h-5 w-5 text-red-600 dark:text-red-400" />
+                      <span>Change Password</span>
+                    </CardTitle>
+                    <CardDescription>
+                      Update your password with enterprise-grade security requirements
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={async (e) => {
+                      e.preventDefault()
+                      // Enhanced password validation
+                      if (passwordForm.new_password !== passwordForm.confirm_password) {
+                        toast.error('New passwords do not match')
+                        return
+                      }
+                      if (passwordForm.new_password.length < 12) {
+                        toast.error('Password must be at least 12 characters long')
+                        return
+                      }
+                      // Check password complexity
+                      const hasUpper = /[A-Z]/.test(passwordForm.new_password)
+                      const hasLower = /[a-z]/.test(passwordForm.new_password)
+                      const hasNumber = /\d/.test(passwordForm.new_password)
+                      const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(passwordForm.new_password)
+                      
+                      if (!hasUpper || !hasLower || !hasNumber || !hasSpecial) {
+                        toast.error('Password must contain uppercase, lowercase, number, and special character')
+                        return
+                      }
+
+                      try {
+                        await apiClient.changeCompanyUserPassword({
+                          ...passwordForm,
+                          force_logout_all: true // Force logout from all devices
+                        })
+                        toast.success('Password changed successfully! You will be logged out from all devices.')
+                        setPasswordForm({ current_password: '', new_password: '', confirm_password: '' })
+                        // Auto logout after 3 seconds
+                        setTimeout(() => {
+                          logout()
+                        }, 3000)
+                      } catch (error: any) {
+                        const message = error.response?.data?.error || error.response?.data?.message || 'Failed to change password'
+                        toast.error(message)
+                      }
+                    }} className="space-y-6">
+                      {/* Password Requirements */}
+                      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                        <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">Password Requirements:</h4>
+                        <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                          <li>• Minimum 12 characters</li>
+                          <li>• At least one uppercase letter</li>
+                          <li>• At least one lowercase letter</li>
+                          <li>• At least one number</li>
+                          <li>• At least one special character</li>
+                          <li>• Cannot be same as previous 5 passwords</li>
+                        </ul>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Current Password */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Current Password *
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showPasswords.current ? 'text' : 'password'}
+                              value={passwordForm.current_password}
+                              onChange={(e) => setPasswordForm(prev => ({ ...prev, current_password: e.target.value }))}
+                              className="w-full px-4 py-3 pl-10 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                              placeholder="Enter current password"
+                              required
+                            />
+                            <Key className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                            <button
+                              type="button"
+                              onClick={() => setShowPasswords(prev => ({ ...prev, current: !prev.current }))}
+                              className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
+                            >
+                              {showPasswords.current ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* New Password */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            New Password *
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showPasswords.new ? 'text' : 'password'}
+                              value={passwordForm.new_password}
+                              onChange={(e) => setPasswordForm(prev => ({ ...prev, new_password: e.target.value }))}
+                              className="w-full px-4 py-3 pl-10 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                              placeholder="Enter new password"
+                              required
+                              minLength={12}
+                            />
+                            <Key className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                            <button
+                              type="button"
+                              onClick={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))}
+                              className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
+                            >
+                              {showPasswords.new ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            </button>
+                          </div>
+                          {/* Password Strength Indicator */}
+                          {passwordForm.new_password && (
+                            <div className="mt-2">
+                              <div className="flex items-center space-x-2 text-xs">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  passwordForm.new_password.length >= 12 ? 'bg-green-500' : 'bg-red-500'
+                                }`}></div>
+                                <span>Length (12+ chars)</span>
+                              </div>
+                              <div className="flex items-center space-x-2 text-xs">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  /[A-Z]/.test(passwordForm.new_password) && /[a-z]/.test(passwordForm.new_password) ? 'bg-green-500' : 'bg-red-500'
+                                }`}></div>
+                                <span>Upper & lowercase</span>
+                              </div>
+                              <div className="flex items-center space-x-2 text-xs">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  /\d/.test(passwordForm.new_password) && /[!@#$%^&*(),.?":{}|<>]/.test(passwordForm.new_password) ? 'bg-green-500' : 'bg-red-500'
+                                }`}></div>
+                                <span>Number & special char</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Confirm Password */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Confirm Password *
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showPasswords.confirm ? 'text' : 'password'}
+                              value={passwordForm.confirm_password}
+                              onChange={(e) => setPasswordForm(prev => ({ ...prev, confirm_password: e.target.value }))}
+                              className="w-full px-4 py-3 pl-10 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                              placeholder="Confirm new password"
+                              required
+                              minLength={12}
+                            />
+                            <Key className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                            <button
+                              type="button"
+                              onClick={() => setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))}
+                              className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
+                            >
+                              {showPasswords.confirm ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            </button>
+                          </div>
+                          {passwordForm.confirm_password && (
+                            <div className="mt-2 text-xs">
+                              {passwordForm.new_password === passwordForm.confirm_password ? (
+                                <div className="flex items-center space-x-2 text-green-600">
+                                  <CheckCircle className="h-3 w-3" />
+                                  <span>Passwords match</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center space-x-2 text-red-600">
+                                  <X className="h-3 w-3" />
+                                  <span>Passwords do not match</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Security Options */}
+                      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                        <div className="flex items-start space-x-3">
+                          <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                          <div className="text-sm text-yellow-700 dark:text-yellow-300">
+                            <p className="font-medium mb-1">Security Actions:</p>
+                            <ul className="space-y-1">
+                              <li>• All active sessions will be terminated</li>
+                              <li>• You will be logged out immediately</li>
+                              <li>• Email notification will be sent</li>
+                              <li>• Security log entry will be created</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button type="submit" className="bg-red-600 hover:bg-red-700 text-white">
+                          <Key className="h-4 w-4 mr-2" />
+                          Change Password & Logout All
+                        </Button>
+                      </div>
+                    </form>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {activeSettingsTab === 'security' && (
+              <div className="space-y-6">
+                {/* Security Sub-Navigation */}
+                <div className="border-b border-gray-200 dark:border-gray-700">
+                  <nav className="flex space-x-8">
+                    {securityTabs.map((tab) => {
+                      const Icon = tab.icon
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => setActiveSecurityTab(tab.id)}
+                          className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                            activeSecurityTab === tab.id
+                              ? 'border-red-500 text-red-600 dark:text-red-400'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          <span>{tab.label}</span>
+                        </button>
+                      )
+                    })}
+                  </nav>
+                </div>
+
+                {/* Security Content */}
+                {activeSecurityTab === 'overview' && (
+                  <SecurityOverview onNavigateToTab={setActiveSecurityTab} />
+                )}
+
+                {activeSecurityTab === '2fa' && (
+                  <TwoFactorAuth />
+                )}
+
+                {activeSecurityTab === 'recovery' && (
+                  <RecoveryCodes />
+                )}
+
+                {activeSecurityTab === 'api-keys' && (
+                  <ApiKeysManagement />
+                )}
+
+                {activeSecurityTab === 'ip-access' && (
+                  <IpAccessControl />
+                )}
+
+                {activeSecurityTab === 'sessions' && (
+                  <SessionManagement />
+                )}
+
+                {activeSecurityTab === 'audit' && (
+                  <SecurityAuditLogs />
+                )}
+
+                {activeSecurityTab === 'advanced' && (
+                  <AdvancedSecurity onNavigateToTab={setActiveSecurityTab} />
+                )}
+              </div>
             )}
 
             {activeSettingsTab === 'general' && (
@@ -1066,7 +1252,7 @@ Website: https://athenas.co.in
                   <Button
                     variant="outline"
                     className="h-20 flex-col space-y-2"
-                    disabled
+                    onClick={() => setActiveSettingsTab('security')}
                   >
                     <Shield className="h-6 w-6" />
                     <span>Security</span>

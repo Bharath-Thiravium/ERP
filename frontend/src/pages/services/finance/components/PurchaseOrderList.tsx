@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '../../../../lib/api'
 
-import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, MapPin, Package, ShoppingCart, Receipt } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, MapPin, Package, ShoppingCart, Receipt, Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface PurchaseOrder {
@@ -37,10 +37,11 @@ interface PurchaseOrderListProps {
   onView: (po: PurchaseOrder) => void
   onViewDetails: (po: PurchaseOrder) => void
   onRaiseInvoice: (po: PurchaseOrder) => void
+  onSendEmail: (po: PurchaseOrder) => void
   onDelete?: () => void
 }
 
-const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCreateNew, onEdit, onView, onViewDetails, onRaiseInvoice, onDelete }) => {
+const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCreateNew, onEdit, onView, onViewDetails, onRaiseInvoice, onSendEmail, onDelete }) => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -366,6 +367,13 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => onSendEmail(po)}
+                            className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300"
+                            title="Send Mail"
+                          >
+                            <Mail className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => onRaiseInvoice(po)}
                             className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"

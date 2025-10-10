@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from . import views, email_views
 
 urlpatterns = [
@@ -26,4 +26,10 @@ urlpatterns = [
     
     # Domain Settings
     path('domain/', views.company_domain_settings, name='company_domain_settings'),
+    
+    # Security Settings
+    path('security/', include('company_dashboard.security_urls')),
+    
+    # Advanced Security (Phase 4)
+    path('advanced-security/', include('company_dashboard.advanced_security_urls')),
 ]

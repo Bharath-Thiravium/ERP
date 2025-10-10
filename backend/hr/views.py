@@ -496,6 +496,72 @@ class DepartmentListCreateView(ListCreateAPIView):
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
+class DesignationListCreateView(ListCreateAPIView):
+    """List and create designations"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = DesignationSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Designation.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return Designation.objects.filter(company=session.service_user.company, is_active=True)
+        except ServiceUserSession.DoesNotExist:
+            return Designation.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(company=session.service_user.company)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class DesignationDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete designations"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = DesignationSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Designation.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return Designation.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return Designation.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
+        return session_key
+
+
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([permissions.AllowAny])
@@ -593,6 +659,48 @@ class PublicJobDetailView(RetrieveAPIView):
         )
 
 
+class JobApplicationDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete job applications"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = JobApplicationSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return JobApplication.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return JobApplication.objects.filter(job_posting__company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return JobApplication.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
+        return session_key
+
+    def update(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            return Response(serializer.data)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
 class PublicJobApplicationView(CreateAPIView):
     """Public job application submission"""
     authentication_classes = []
@@ -617,6 +725,19 @@ class PublicJobApplicationView(CreateAPIView):
         serializer.is_valid(raise_exception=True)
         
         application = serializer.save(job_posting=job_posting)
+        
+        # Calculate AI score for the application
+        try:
+            from .ai_scoring import calculate_ai_score
+            ai_score, skill_match, screening_notes = calculate_ai_score(application)
+            application.ai_score = ai_score
+            application.skill_match_percentage = skill_match
+            application.ai_screening_notes = screening_notes
+            application.status = 'screening'  # Update status to screening
+            application.save()
+        except Exception as e:
+            # If AI scoring fails, continue without it
+            pass
         
         return Response(
             {

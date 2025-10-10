@@ -9,7 +9,7 @@ interface SendEmailModalProps {
   onClose: () => void;
   invoiceId: number;
   invoiceNumber: string;
-  invoiceType: 'tax_invoice' | 'proforma_invoice' | 'quotation';
+  invoiceType: 'tax_invoice' | 'proforma_invoice' | 'quotation' | 'purchase_order';
   customerEmail?: string;
   onSuccess?: () => void;
 }
@@ -66,6 +66,8 @@ const SendEmailModal: React.FC<SendEmailModalProps> = ({
         response = await apiClient.sendProformaEmail(invoiceId, payload);
       } else if (invoiceType === 'quotation') {
         response = await apiClient.sendQuotationEmail(invoiceId, payload);
+      } else if (invoiceType === 'purchase_order') {
+        response = await apiClient.sendPurchaseOrderEmail(invoiceId, payload);
       }
 
       console.log('✅ Email API Response:', response?.data);
@@ -93,7 +95,7 @@ const SendEmailModal: React.FC<SendEmailModalProps> = ({
           <div className="flex items-center space-x-2">
             <Mail className="w-5 h-5 text-blue-500" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Send {invoiceType === 'tax_invoice' ? 'Invoice' : invoiceType === 'proforma_invoice' ? 'Proforma Invoice' : 'Quotation'}
+              Send {invoiceType === 'tax_invoice' ? 'Invoice' : invoiceType === 'proforma_invoice' ? 'Proforma Invoice' : invoiceType === 'quotation' ? 'Quotation' : 'Purchase Order'}
             </h2>
           </div>
           <button

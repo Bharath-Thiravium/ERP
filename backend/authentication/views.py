@@ -65,18 +65,20 @@ class MasterAdminLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        print(f"🔍 DEBUG: Login request received")
-        print(f"🔍 DEBUG: Request data: {request.data}")
-        print(f"🔍 DEBUG: Request headers: {dict(request.headers)}")
-
         serializer = MasterAdminLoginSerializer(data=request.data)
-        print(f"🔍 DEBUG: Serializer created with data: {request.data}")
 
         if serializer.is_valid():
-            print(f"🔍 DEBUG: Serializer is valid")
             user = serializer.validated_data['user']
+            
+            # Check if 2FA is required
+            if serializer.validated_data.get('requires_2fa'):
+                return Response({
+                    'requires_2fa': True,
+                    'message': '2FA code required',
+                    'user_id': user.id  # Temporary identifier for 2FA step
+                })
 
-            # Generate JWT tokens
+            # Generate JWT tokens (full login)
             refresh = RefreshToken.for_user(user)
             access_token = refresh.access_token
 
@@ -98,30 +100,47 @@ class MasterAdminLoginView(APIView):
                     'company_name': master_admin.company_name,
                     'is_master_admin': True
                 },
-                'first_login_required': False,  # Master admin doesn't need first login
-                'approval_pending': False,      # Master admin doesn't need approval
-                'approval_status': 'approved'   # Master admin is always approved
+                'first_login_required': False,
+                'approval_pending': False,
+                'approval_status': 'approved'
             })
 
-        # Log failed login attempt
+        # Log failed login attempt and return attempt info
         email = request.data.get('email')
         if email:
             try:
                 user = User.objects.get(email=email)
                 master_admin = user.master_admin
                 master_admin.login_attempts += 1
-                if master_admin.login_attempts >= 5:
+                
+                max_attempts = 5
+                remaining_attempts = max_attempts - master_admin.login_attempts
+                
+                if master_admin.login_attempts >= max_attempts:
                     master_admin.is_locked = True
                     master_admin.locked_until = timezone.now() + timezone.timedelta(minutes=30)
+                    
                 master_admin.save()
-
                 log_security_event(user, 'LOGIN_FAILED', request, 'Failed master admin login')
+                
+                # Return detailed error with attempt info
+                if master_admin.is_locked:
+                    return Response({
+                        'error': 'Account locked due to too many failed attempts. Try again in 30 minutes.',
+                        'locked': True,
+                        'locked_until': master_admin.locked_until.isoformat() if master_admin.locked_until else None
+                    }, status=status.HTTP_423_LOCKED)
+                else:
+                    return Response({
+                        'error': f'Login failed. {remaining_attempts} attempts remaining.',
+                        'attempts_remaining': remaining_attempts,
+                        'max_attempts': max_attempts
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                    
             except (User.DoesNotExist, MasterAdmin.DoesNotExist):
                 pass
 
-        print(f"🔍 DEBUG: Serializer validation failed")
-        print(f"🔍 DEBUG: Serializer errors: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'error': 'Login failed. Please try again.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class ServiceListView(ListAPIView):
@@ -638,85 +657,42 @@ class CompanyUserLoginView(APIView):
             print(f'🔍 DEBUG: Final response_data: {response_data}')
             return Response(response_data)
 
-        # Log failed login attempt
+        # Log failed login attempt and return attempt info
         email = request.data.get('email')
         if email:
             try:
                 user = User.objects.get(email=email)
                 company_user = user.company_user
                 company_user.login_attempts += 1
-                if company_user.login_attempts >= 5:
+                
+                max_attempts = 5
+                remaining_attempts = max_attempts - company_user.login_attempts
+                
+                if company_user.login_attempts >= max_attempts:
                     company_user.is_locked = True
                     company_user.locked_until = timezone.now() + timezone.timedelta(minutes=30)
+                    
                 company_user.save()
-
                 log_security_event(user, 'LOGIN_FAILED', request, 'Failed company user login')
+                
+                # Return detailed error with attempt info
+                if company_user.is_locked:
+                    return Response({
+                        'error': 'Account locked due to too many failed attempts. Try again in 30 minutes.',
+                        'locked': True,
+                        'locked_until': company_user.locked_until.isoformat() if company_user.locked_until else None
+                    }, status=status.HTTP_423_LOCKED)
+                else:
+                    return Response({
+                        'error': f'Login failed. {remaining_attempts} attempts remaining.',
+                        'attempts_remaining': remaining_attempts,
+                        'max_attempts': max_attempts
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                    
             except (User.DoesNotExist, CompanyUser.DoesNotExist):
                 pass
 
-        return Response(serializer.errors, status=status.HTTP_401_UNAUTHORIZED)
-
-
-class CompanyUserPasswordChangeView(APIView):
-    """Company user password change endpoint"""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        # Check if user is a company user
-        if not hasattr(request.user, 'company_user'):
-            return Response(
-                {'error': 'Only company users can change password.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        from .serializers import CompanyUserPasswordChangeSerializer
-
-        serializer = CompanyUserPasswordChangeSerializer(data=request.data)
-        if serializer.is_valid():
-            current_password = serializer.validated_data['current_password']
-            new_password = serializer.validated_data['new_password']
-
-            # Verify current password
-            if check_password(current_password, request.user.password):
-                # Update password
-                request.user.set_password(new_password)
-                request.user.save()
-
-                # Update company user password expiration and clear reset flags
-                company_user = request.user.company_user
-                company_user.password_changed_at = timezone.now()
-                company_user.password_expires_at = timezone.now() + timezone.timedelta(days=90)
-                company_user.must_change_password = False
-                company_user.password_reset_by_admin = False
-                company_user.save()
-
-                # Log password change
-                log_security_event(
-                    request.user,
-                    'PASSWORD_CHANGED',
-                    request,
-                    'Company user password changed successfully'
-                )
-
-                return Response({
-                    'message': 'Password changed successfully',
-                    'password_expires_at': company_user.password_expires_at
-                })
-            else:
-                # Log failed password change attempt
-                log_security_event(
-                    request.user,
-                    'PASSWORD_CHANGE_FAILED',
-                    request,
-                    'Invalid current password provided'
-                )
-
-                return Response(
-                    {'error': 'Current password is incorrect.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Login failed. Please try again.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class CompanyServicesView(ListAPIView):
@@ -1649,7 +1625,7 @@ class CompanyLogoUpdateView(APIView):
 
 
 class CompanyPasswordResetView(APIView):
-    """Reset company user password (Master Admin only)"""
+    """Reset company user password with enhanced security (Master Admin only)"""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, company_id):
@@ -1670,43 +1646,74 @@ class CompanyPasswordResetView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            # Generate new random password
-            new_password = self._generate_secure_password()
-            
-            # Update company user password
-            company_user.user.set_password(new_password)
-            company_user.user.save()
-            
-            # Set password change requirement for admin reset
-            company_user.must_change_password = True
-            company_user.password_reset_by_admin = True
-            company_user.password_expires_at = timezone.now() + timezone.timedelta(days=90)
-            company_user.save()
-            
-            # Log security event
-            log_security_event(
-                request.user,
-                'PASSWORD_RESET',
-                request,
-                f'Reset password for company: {company.name}'
-            )
-            
-            # Save credentials to file
-            credentials_file = self._save_reset_credentials_file(company, company_user.user.email, new_password)
-            
-            return Response({
-                'message': 'Password reset successfully.',
-                'company': {
-                    'id': company.id,
-                    'name': company.name,
-                    'email': company.email
-                },
-                'credentials': {
-                    'username': company_user.user.email,
-                    'password': new_password
-                },
-                'credentials_file': credentials_file
-            })
+            with transaction.atomic():
+                # Generate new random password
+                new_password = self._generate_secure_password()
+                
+                # Save current password to history before reset
+                from company_dashboard.security_models import CompanyPasswordHistory
+                CompanyPasswordHistory.objects.create(
+                    user=company_user,
+                    password_hash=company_user.user.password
+                )
+                
+                # Update company user password
+                company_user.user.set_password(new_password)
+                company_user.user.save()
+                
+                # Enhanced security settings for admin reset
+                company_user.must_change_password = True
+                company_user.password_reset_by_admin = True
+                company_user.password_changed_at = timezone.now()
+                company_user.password_expires_at = timezone.now() + timezone.timedelta(days=90)
+                company_user.save()
+                
+                # Terminate all active sessions for security
+                from company_dashboard.security_models import CompanyUserSession
+                CompanyUserSession.objects.filter(user=company_user).delete()
+                
+                # Enhanced security logging
+                from company_dashboard.security_models import CompanySecurityLog
+                CompanySecurityLog.objects.create(
+                    company=company,
+                    user_email=company_user.user.email,
+                    action='password_change',
+                    ip_address=request.META.get('REMOTE_ADDR', ''),
+                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    success=True,
+                    details=f'Password reset by master admin for company: {company.name}'
+                )
+                
+                # Legacy security log for compatibility
+                log_security_event(
+                    request.user,
+                    'PASSWORD_RESET',
+                    request,
+                    f'Reset password for company: {company.name}'
+                )
+                
+                # Save credentials to file
+                credentials_file = self._save_reset_credentials_file(company, company_user.user.email, new_password)
+                
+                return Response({
+                    'message': 'Password reset successfully with enhanced security.',
+                    'company': {
+                        'id': company.id,
+                        'name': company.name,
+                        'email': company.email
+                    },
+                    'credentials': {
+                        'username': company_user.user.email,
+                        'password': new_password
+                    },
+                    'credentials_file': credentials_file,
+                    'security_actions': [
+                        'Password saved to history',
+                        'All active sessions terminated',
+                        'Security audit log created',
+                        'Password change required on next login'
+                    ]
+                })
             
         except Company.DoesNotExist:
             return Response(

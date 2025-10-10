@@ -6,6 +6,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 
 // Lazy load components
 const LoginPage = React.lazy(() => import('../pages/auth/LoginPage'))
+const TwoFactorPage = React.lazy(() => import('../pages/auth/TwoFactorPage'))
 const ServiceUserLogin = React.lazy(() => import('../pages/auth/ServiceUserLogin'))
 const MasterAdminDashboard = React.lazy(() => import('../pages/master-admin/EnhancedDashboard'))
 const UltraSecureMasterAdminSettings = React.lazy(() => import('../pages/master-admin/UltraSecureSettings'))
@@ -129,7 +130,11 @@ interface PublicRouteProps {
 const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
   const { isAuthenticated, user, firstLoginRequired, approvalPending } = useAuthStore()
 
-  if (isAuthenticated && user) {
+  // Only redirect if user is authenticated and NOT on login or 2FA pages
+  if (isAuthenticated && user && 
+      !window.location.pathname.includes('/login') && 
+      !window.location.pathname.includes('/2fa')) {
+    
     // Redirect based on user type and status
     if (user.is_master_admin) {
       return <Navigate to="/master-admin" replace />
@@ -175,6 +180,15 @@ export const AppRouter: React.FC = () => {
               <LoginPage />
             </SuspenseWrapper>
           </PublicRoute>
+        }
+      />
+
+      <Route
+        path="/2fa"
+        element={
+          <SuspenseWrapper>
+            <TwoFactorPage />
+          </SuspenseWrapper>
         }
       />
 

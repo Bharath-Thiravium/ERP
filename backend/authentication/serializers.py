@@ -12,24 +12,24 @@ from .models import (
     MasterAdmin, Company, Service, CompanyService,
     CompanyUser, SecurityLog, CompanyServiceUser, ServiceUserSession
 )
+from .ultra_security import TwoFactorAuthManager
 
 
 class MasterAdminLoginSerializer(serializers.Serializer):
-    """Master Admin login serializer"""
+    """Master Admin login serializer with 2FA support"""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    totp_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    recovery_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
     
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
-
-        print(f"🔍 DEBUG: Serializer validate called with email: {email}")
-        print(f"🔍 DEBUG: Password provided: {'Yes' if password else 'No'}")
+        totp_code = attrs.get('totp_code', '')
+        recovery_code = attrs.get('recovery_code', '')
 
         if email and password:
-            print(f"🔍 DEBUG: Attempting authentication for: {email}")
             user = authenticate(username=email, password=password)
-            print(f"🔍 DEBUG: Authentication result: {user}")
 
             if user:
                 if not user.is_active:
@@ -42,13 +42,36 @@ class MasterAdminLoginSerializer(serializers.Serializer):
                         raise serializers.ValidationError('Account is locked.')
                     if master_admin.is_password_expired():
                         raise serializers.ValidationError('Password has expired.')
+                    
+                    # Check 2FA if enabled
+                    if master_admin.two_factor_enabled:
+                        if not totp_code and not recovery_code:
+                            # First step passed, need 2FA
+                            attrs['requires_2fa'] = True
+                            attrs['user'] = user
+                            return attrs
+                        
+                        # Validate 2FA code or recovery code
+                        if totp_code:
+                            from .ultra_security import TwoFactorAuthManager
+                            if not TwoFactorAuthManager.verify_totp_code(master_admin.two_factor_secret, totp_code):
+                                raise serializers.ValidationError('Invalid 2FA code.')
+                        elif recovery_code:
+                            # Validate recovery code
+                            recovery_codes = master_admin.get_recovery_codes()
+                            if recovery_code not in recovery_codes:
+                                raise serializers.ValidationError('Invalid recovery code.')
+                            # Mark recovery code as used (implement this in model)
+                            master_admin.use_recovery_code(recovery_code)
+                        else:
+                            raise serializers.ValidationError('2FA code or recovery code required.')
+                    
                 except MasterAdmin.DoesNotExist:
                     raise serializers.ValidationError('Invalid master admin credentials.')
                 
                 attrs['user'] = user
                 return attrs
             else:
-                print(f"🔍 DEBUG: Authentication failed for: {email}")
                 raise serializers.ValidationError('Invalid credentials.')
         else:
             raise serializers.ValidationError('Must include email and password.')

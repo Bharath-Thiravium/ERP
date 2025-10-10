@@ -1,0 +1,8 @@
+# Phase 4: Advanced Security Dependencies
+
+# HTTP requests for captcha verification and geolocation
+requests>=2.31.0
+
+# Additional security libraries (if needed)
+user-agents>=2.2.0  # For parsing user agents in device fingerprinting
+geoip2>=4.7.0       # For IP geolocation (optional, requires MaxMind database)

@@ -2,7 +2,7 @@
  * E-Invoice Management Component
  */
 import React, { useState, useEffect } from 'react'
-import { documentApi, EInvoiceResult } from '../../../../services/documentApi'
+// import { documentApi, EInvoiceResult } from '../../../../services/documentApi'
 import { financeApi } from '../../../../services/financeApi'
 import { DataTable } from '../../../../components/ui/DataTable'
 import { Button } from '../../../../components/ui/Button'
@@ -43,7 +43,7 @@ export const EInvoiceManager: React.FC<EInvoiceManagerProps> = ({ className = ''
   const [loading, setLoading] = useState(false)
   const [selectedInvoices, setSelectedInvoices] = useState<string[]>([])
   const [showQRModal, setShowQRModal] = useState(false)
-  const [selectedEInvoice, setSelectedEInvoice] = useState<EInvoiceResult | null>(null)
+  const [selectedEInvoice, setSelectedEInvoice] = useState<any | null>(null)
   const [bulkGenerating, setBulkGenerating] = useState(false)
 
   useEffect(() => {
@@ -65,19 +65,9 @@ export const EInvoiceManager: React.FC<EInvoiceManagerProps> = ({ className = ''
   const handleGenerateEInvoice = async (invoiceId: string) => {
     try {
       setLoading(true)
-      const result = await documentApi.generateEInvoice(invoiceId)
-      
-      // Update invoice in list
-      setInvoices(invoices.map(inv => 
-        inv.id === invoiceId 
-          ? { ...inv, einvoice_status: 'generated', einvoice_irn: result.irn }
-          : inv
-      ))
-      
-      // Show success message or QR code
-      setSelectedEInvoice(result)
-      setShowQRModal(true)
-      
+      // TODO: Implement E-Invoice generation API
+      console.log('Generate E-Invoice for:', invoiceId)
+      alert('E-Invoice generation will be implemented')
     } catch (error) {
       console.error('Failed to generate E-Invoice:', error)
     } finally {
@@ -88,12 +78,9 @@ export const EInvoiceManager: React.FC<EInvoiceManagerProps> = ({ className = ''
   const handleBulkGenerate = async () => {
     try {
       setBulkGenerating(true)
-      const result = await documentApi.bulkGenerateDocuments({
-        operation_type: 'generate_einvoices',
-        object_ids: selectedInvoices
-      })
-      
-      console.log('Bulk E-Invoice generation:', result)
+      // TODO: Implement bulk E-Invoice generation API
+      console.log('Bulk E-Invoice generation for:', selectedInvoices)
+      alert('Bulk E-Invoice generation will be implemented')
       setSelectedInvoices([])
       loadInvoices()
       

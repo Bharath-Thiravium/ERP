@@ -41,6 +41,7 @@ import { useThemeStore } from '../../store/themeStore'
 import { Button } from '../../components/ui/Button'
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner'
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../components/ui/DropdownMenu'
+import { getStatusColor, getSeverityStyle, getConnectionStatus, cardContainer } from '../../utils/styleUtils'
 import CreateCompanyModal from '../../components/forms/CreateCompanyModal'
 import CompanyViewModal from '../../components/modals/CompanyViewModal'
 import CompanyEditModal from '../../components/modals/CompanyEditModal'
@@ -160,15 +161,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
     unreadNotifications: notificationsData.length,
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'approved': return 'text-green-600 bg-green-100 dark:bg-green-900/20'
-      case 'pending': return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/20'
-      case 'rejected': return 'text-red-600 bg-red-100 dark:bg-red-900/20'
-      case 'suspended': return 'text-gray-600 bg-gray-100 dark:bg-gray-900/20'
-      default: return 'text-gray-600 bg-gray-100 dark:bg-gray-900/20'
-    }
-  }
+
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -220,16 +213,12 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
 
   const handleReviewCompany = async (company: any) => {
     try {
-      // Fetch complete company details for approval
-      console.log('🔍 DEBUG: Fetching complete company details for approval, ID:', company.id)
       const response = await apiClient.getCompany(company.id)
       const completeCompany = response.data
-      console.log('🔍 DEBUG: Complete company data for approval:', completeCompany)
       
       setSelectedCompany(completeCompany)
       setShowApprovalModal(true)
     } catch (error) {
-      console.error('❌ Error fetching company details for approval:', error)
       // Fallback to original company data
       setSelectedCompany(company)
       setShowApprovalModal(true)
@@ -239,16 +228,12 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   // Modal handlers
   const handleViewCompany = async (company: any) => {
     try {
-      // Fetch complete company details for viewing
-      console.log('🔍 DEBUG: Fetching complete company details for view, ID:', company.id)
       const response = await apiClient.getCompany(company.id)
       const completeCompany = response.data
-      console.log('🔍 DEBUG: Complete company data for view:', completeCompany)
       
       setSelectedCompany(completeCompany)
       setShowViewModal(true)
     } catch (error) {
-      console.error('❌ Error fetching company details for view:', error)
       // Fallback to original company data
       setSelectedCompany(company)
       setShowViewModal(true)
@@ -257,18 +242,14 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
 
   const handleEditCompany = async (company: any) => {
     try {
-      // Fetch fresh company data with services
-      console.log('🔍 DEBUG: Fetching company details for ID:', company.id)
       const response = await apiClient.getCompany(company.id)
       const companyWithServices = response.data
-      console.log('🔍 DEBUG: Company with services:', companyWithServices)
       
       setSelectedCompany(companyWithServices)
       setShowEditModal(true)
       // Close any open dropdowns
       document.body.click()
     } catch (error) {
-      console.error('❌ Error fetching company details:', error)
       // Fallback to original company data
       setSelectedCompany(company)
       setShowEditModal(true)
@@ -288,13 +269,12 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
 
   const handleSaveCompany = async (updatedCompany: any) => {
     try {
-      console.log('🔍 DEBUG: Updating company with data:', updatedCompany)
       await apiClient.updateCompany(selectedCompany.id, updatedCompany)
-      console.log('✅ Successfully updated company')
+      console.log('Successfully updated company')
       toast.success('Company updated successfully!')
       refetchCompanies()
     } catch (error: any) {
-      console.error('❌ Error updating company:', error)
+      console.error('Error updating company:', error)
       const message = error.response?.data?.error || 'Failed to update company'
       toast.error(message)
       throw error
@@ -345,7 +325,6 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const handleBulkReject = async () => {
     try {
       // await Promise.all(selectedCompanies.map(id => apiClient.rejectCompany(id)))
-      console.log('Bulk rejecting companies:', selectedCompanies)
       setSelectedCompanies([])
       refetchCompanies()
     } catch (error) {
@@ -541,7 +520,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
       )}
 
       {/* Companies List */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-visible mb-20">
+      <div className={`${cardContainer} overflow-visible mb-20`}>
         {companiesLoading ? (
           <div className="p-8 text-center">
             <LoadingSpinner />
@@ -838,7 +817,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
           </div>
 
           {/* Service Health Status */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className={`${cardContainer} p-6`}>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Service Health Status</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {currentSystemData.services?.map((service: any, index: number) => (
@@ -968,7 +947,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
 
           {/* Per-Company Breakdown */}
           {serviceData.companies && serviceData.companies.length > 0 && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+            <div className={cardContainer}>
               <div className="p-6 border-b border-gray-200 dark:border-gray-700">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Company-wise Service Metrics</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Detailed breakdown for each company</p>
@@ -1069,7 +1048,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
       }
     },
     onOpen: () => {
-      console.log('Alerts WebSocket connected')
+      // WebSocket connected
     }
   })
 
@@ -1151,7 +1130,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
       </div>
       
       {/* Recent Alerts */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+      <div className={cardContainer}>
         <div className="p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Alerts</h3>
@@ -1171,15 +1150,10 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
             <div className="space-y-4">
               {allAlerts.slice(0, 10).map((alert: any, index: number) => {
                 const isRealtime = index < realtimeAlerts.length
-                const severityColors = {
-                  critical: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400',
-                  warning: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-600 dark:text-yellow-400',
-                  info: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400'
-                }
                 
                 return (
                   <div key={alert.id || index} className={`flex items-center space-x-4 p-4 rounded-lg border ${
-                    severityColors[alert.severity as keyof typeof severityColors] || severityColors.info
+                    getSeverityStyle(alert.severity)
                   } ${isRealtime ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}`}>
                     <div className="flex-shrink-0">
                       {alert.severity === 'critical' && <AlertCircle className="h-5 w-5" />}

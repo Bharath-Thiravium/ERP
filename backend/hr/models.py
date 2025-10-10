@@ -284,6 +284,9 @@ class JobApplication(models.Model):
         ('shortlisted', 'Shortlisted'),
         ('interview_scheduled', 'Interview Scheduled'),
         ('interviewed', 'Interviewed'),
+        ('offer_sent', 'Offer Sent'),
+        ('offer_accepted', 'Offer Accepted'),
+        ('offer_rejected', 'Offer Rejected'),
         ('selected', 'Selected'),
         ('rejected', 'Rejected'),
         ('withdrawn', 'Withdrawn')
@@ -292,7 +295,7 @@ class JobApplication(models.Model):
     # Interview Details
     interview_date = models.DateTimeField(null=True, blank=True)
     interview_notes = models.TextField(blank=True)
-    interviewer = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name='conducted_interviews')
+    interviewer = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name='application_interviews')
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -714,68 +717,27 @@ class Payslip(models.Model):
         return escape(f"{self.emp_name} - {self.payroll_cycle.name}")
     
     def calculate_salary(self):
-        """AI-powered salary calculation"""
-        settings = self.employee.company.payroll_settings
-        
-        # Calculate attendance ratio
-        attendance_ratio = Decimal(self.present_days) / Decimal(self.working_days) if self.working_days > 0 else Decimal('1')
-        
-        # Basic salary calculation
-        self.basic_salary = self.employee.base_salary * attendance_ratio
-        
-        # HRA calculation (50% of basic for metro cities)
-        self.hra = self.basic_salary * Decimal('0.50')
-        
-        # Other allowances
-        self.conveyance_allowance = Decimal('1600')  # Standard conveyance
-        self.medical_allowance = Decimal('1250')  # Standard medical
-        self.special_allowance = self.basic_salary * Decimal('0.20')
-        
-        # Overtime calculation
-        if self.overtime_hours > 0:
-            hourly_rate = self.basic_salary / (Decimal(self.working_days) * Decimal('8'))
-            self.overtime_amount = hourly_rate * self.overtime_hours * settings.overtime_rate_multiplier
-        
-        # Gross salary
-        self.gross_salary = (
-            self.basic_salary + self.hra + self.conveyance_allowance + 
-            self.medical_allowance + self.special_allowance + 
-            self.overtime_amount + self.bonus + self.incentive + self.other_earnings
-        )
-        
-        # PF calculation
-        if settings.pf_enabled and self.basic_salary <= settings.pf_ceiling:
-            self.pf_employee = self.basic_salary * (settings.pf_employee_rate / 100)
-            self.pf_employer = self.basic_salary * (settings.pf_employer_rate / 100)
-        
-        # ESI calculation
-        if settings.esi_enabled and self.gross_salary <= settings.esi_ceiling:
-            self.esi_employee = self.gross_salary * (settings.esi_employee_rate / 100)
-            self.esi_employer = self.gross_salary * (settings.esi_employer_rate / 100)
-        
-        # Professional Tax (state-wise)
-        if settings.pt_enabled:
-            self.professional_tax = self.calculate_professional_tax()
-        
-        # TDS calculation (simplified)
-        if settings.tds_enabled:
-            annual_salary = self.gross_salary * Decimal('12')
-            if annual_salary > Decimal('250000'):  # Tax exemption limit
-                self.tds = Decimal(str(self.calculate_tds(annual_salary))) / Decimal('12')
-        
-        # Total deductions
-        self.total_deductions = (
-            self.pf_employee + self.esi_employee + self.professional_tax + 
-            self.tds + self.loan_deduction + self.advance_deduction + self.other_deductions
-        )
-        
-        # Net salary
-        self.net_salary = self.gross_salary - self.total_deductions
-        
-        # CTC calculation
-        self.ctc = self.gross_salary + self.pf_employer + self.esi_employer
-        
-        self.save()
+        """Enhanced statutory compliant salary calculation"""
+        # Use enhanced statutory calculation
+        from .statutory_calculations import calculate_enhanced_payslip
+        return calculate_enhanced_payslip(self)
+    
+    def validate_payment_date(self):
+        """Validate payment date as per Payment of Wages Act"""
+        from django.core.exceptions import ValidationError
+        if self.payroll_cycle.pay_date.day > 10:
+            raise ValidationError("Salary must be paid by 10th of month as per Payment of Wages Act")
+    
+    def validate_deductions(self):
+        """Validate deductions do not exceed 50% as per Payment of Wages Act"""
+        from django.core.exceptions import ValidationError
+        if self.total_deductions > (self.gross_salary * Decimal('0.5')):
+            raise ValidationError("Total deductions cannot exceed 50% of gross wages as per Payment of Wages Act")
+    
+    def save(self, *args, **kwargs):
+        self.validate_payment_date()
+        self.validate_deductions()
+        super().save(*args, **kwargs)
     
     def calculate_professional_tax(self):
         """Calculate state-wise professional tax"""
@@ -819,3 +781,30 @@ class PayrollReport(models.Model):
     
     def __str__(self):
         return escape(f"{self.get_report_type_display()} - {self.payroll_cycle.name}")
+
+
+# Import statutory compliance models
+from .statutory_models import (
+    StatutorySettings,
+    EmployeeStatutoryDetails,
+    GovernmentReturn,
+    ComplianceAlert,
+    PayslipStatutoryDetails,
+    MinimumWageRate,
+    LaborLawCompliance
+)
+
+# Import leave management models
+from .leave_models import LeaveType, LeaveBalance, LeaveApplication, Holiday
+
+# Import banking models
+from .banking_models import BankVerification, SalaryPayment, DigitalSignature, SignedDocument
+
+# Import ESI medical models
+from .esi_medical_models import ESIMedicalBenefit
+
+# Import interview models
+from .interview_models import Interview, InterviewFeedback, InterviewScheduleTemplate
+
+# Import offer models
+from .offer_models import JobOffer, OfferTemplate

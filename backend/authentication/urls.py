@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from . import views
 from . import master_admin_settings
 from . import services_management
+from . import enhanced_security_views
 
 # Create router for ViewSets
 router = DefaultRouter()
@@ -23,10 +24,18 @@ urlpatterns = [
     path('master-admin/settings/two-factor/', master_admin_settings.MasterAdminTwoFactorView.as_view(), name='master_admin_two_factor'),
     path('master-admin/settings/security-log/', master_admin_settings.MasterAdminSecurityLogView.as_view(), name='master_admin_security_log'),
     path('master-admin/settings/security-status/', master_admin_settings.MasterAdminSecurityStatusView.as_view(), name='master_admin_security_status'),
+    
+    # Phase 3: Enhanced Security
+    path('master-admin/security-settings/', enhanced_security_views.security_settings_view, name='enhanced_security_settings'),
+    path('master-admin/ip-restrictions/', enhanced_security_views.ip_restrictions_view, name='ip_restrictions'),
+    path('master-admin/ip-restrictions/<int:pk>/', enhanced_security_views.ip_restriction_detail_view, name='ip_restriction_detail'),
+    path('master-admin/device-fingerprints/', enhanced_security_views.device_fingerprints_view, name='device_fingerprints'),
+    path('master-admin/device-fingerprints/<uuid:device_id>/', enhanced_security_views.device_fingerprint_detail_view, name='device_fingerprint_detail'),
+    path('master-admin/login-notifications/', enhanced_security_views.login_notifications_view, name='login_notifications'),
+    path('master-admin/login-notifications/test/', enhanced_security_views.test_login_notification_view, name='test_login_notification'),
 
     # Company User endpoints
     path('company/login/', views.CompanyUserLoginView.as_view(), name='company_user_login'),
-    path('company/change-password/', views.CompanyUserPasswordChangeView.as_view(), name='company_user_password_change'),
     path('company/update-logo/', views.CompanyLogoUpdateView.as_view(), name='company_logo_update'),
 
     # Service User endpoints

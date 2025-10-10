@@ -5,6 +5,7 @@ import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import InvoiceView from './InvoiceView';
 import UpdatePaymentModal from './UpdatePaymentModal';
+import SendEmailModal from './SendEmailModal';
 
 interface Invoice {
   id: number;
@@ -48,6 +49,8 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedForPayment, setSelectedForPayment] = useState<Invoice | null>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [selectedForEmail, setSelectedForEmail] = useState<Invoice | null>(null);
 
   const statusOptions = [
     { value: '', label: 'All Statuses' },
@@ -154,16 +157,9 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
     }
   };
 
-  const handleSendEmail = async (id: number, invoiceNumber: string) => {
-    try {
-      await api.post(`/api/finance/invoices/${id}/send-email/`, {}, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
-      });
-      toast.success(`Invoice ${invoiceNumber} sent via email successfully!`);
-    } catch (error: any) {
-      console.error('Error sending email:', error);
-      toast.error('Failed to send email');
-    }
+  const handleSendEmail = (invoice: Invoice) => {
+    setSelectedForEmail(invoice);
+    setShowEmailModal(true);
   };
 
   const getStatusBadge = (status: string) => {
@@ -381,7 +377,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleSendEmail(invoice.id, invoice.invoice_number)}
+                          onClick={() => handleSendEmail(invoice)}
                           className="text-blue-600 hover:text-blue-800 transition-colors"
                           title="Send Email"
                         >
@@ -441,6 +437,21 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
             fetchInvoices();
           }}
           sessionKey={sessionKey}
+        />
+      )}
+
+      {/* Send Email Modal */}
+      {showEmailModal && selectedForEmail && (
+        <SendEmailModal
+          isOpen={showEmailModal}
+          onClose={() => {
+            setShowEmailModal(false);
+            setSelectedForEmail(null);
+          }}
+          invoiceId={selectedForEmail.id}
+          invoiceNumber={selectedForEmail.invoice_number}
+          invoiceType="tax_invoice"
+          customerEmail=""
         />
       )}
 

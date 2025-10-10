@@ -7,6 +7,7 @@ import PODetailsModal from '../components/SophisticatedPOModal'
 import RaiseInvoiceModal from '../components/RaiseInvoiceModal'
 import SimpleProformaForm from '../components/SimpleProformaForm'
 import SimpleTaxInvoiceForm from '../components/SimpleTaxInvoiceForm'
+import SendEmailModal from '../components/SendEmailModal'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
@@ -119,6 +120,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
   const [showRaiseInvoice, setShowRaiseInvoice] = useState(false)
   const [showProformaForm, setShowProformaForm] = useState(false)
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
+  const [showEmailModal, setShowEmailModal] = useState(false)
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [selectedPOId, setSelectedPOId] = useState<number | null>(null)
   const [refreshList, setRefreshList] = useState(0)
@@ -301,6 +303,23 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
     // Success toast is already shown by individual forms
   }
 
+  const handleSendEmail = (po: any) => {
+    setSelectedPO(po)
+    setShowEmailModal(true)
+  }
+
+  const handleEmailModalClose = () => {
+    setShowEmailModal(false)
+    setSelectedPO(null)
+  }
+
+  const handleEmailSuccess = () => {
+    setShowEmailModal(false)
+    setSelectedPO(null)
+    // Refresh list to update any status changes
+    setRefreshList(prev => prev + 1)
+  }
+
   const handlePODeleted = () => {
     // Refresh the PO list
     setRefreshList(prev => prev + 1)
@@ -335,6 +354,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
         onView={handleViewPO}
         onViewDetails={handleViewDetails}
         onRaiseInvoice={handleRaiseInvoice}
+        onSendEmail={handleSendEmail}
         onDelete={handlePODeleted}
       />
 
@@ -392,6 +412,19 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
           invoiceData={invoiceData}
           onClose={handleInvoiceFormClose}
           onSuccess={handleInvoiceSuccess}
+        />
+      )}
+
+      {/* Send Email Modal */}
+      {showEmailModal && selectedPO && (
+        <SendEmailModal
+          isOpen={showEmailModal}
+          onClose={handleEmailModalClose}
+          invoiceId={selectedPO.id}
+          invoiceNumber={selectedPO.internal_po_number}
+          invoiceType="purchase_order"
+          customerEmail={selectedPO.customer_details?.email || ''}
+          onSuccess={handleEmailSuccess}
         />
       )}
     </div>

@@ -5,10 +5,10 @@ from . import payment_views
 from . import indian_compliance_views
 from . import government_api_views
 from . import analytics_views
-from . import document_views
-from . import document_api_views
-from . import multicompany_views
+
 from . import integration_views
+
+
 
 # Create router for ViewSets
 router = DefaultRouter()
@@ -75,6 +75,7 @@ urlpatterns = [
     path('quotations/<int:quotation_id>/send-email/', views.send_quotation_email_view, name='send_quotation_email'),
     path('invoices/<int:invoice_id>/send-email/', views.send_invoice_email_view, name='send_invoice_email'),
     path('proforma-invoices/<int:proforma_id>/send-email/', views.send_proforma_email_view, name='send_proforma_email'),
+    path('purchase-orders/<int:purchase_order_id>/send-email/', views.send_purchase_order_email_view, name='send_purchase_order_email'),
     
     # Indian Compliance endpoints
     path('gst/calculate/', indian_compliance_views.GSTCalculatorView.as_view(), name='gst_calculate'),
@@ -111,33 +112,12 @@ urlpatterns = [
     path('export/tds-csv/', analytics_views.export_tds_csv, name='export_tds_csv'),
     path('bulk/tds-certificates/', analytics_views.bulk_generate_tds_certificates, name='bulk_generate_tds_certificates'),
     
-    # Document Management & E-Invoice endpoints
-    path('documents/generate/', document_views.generate_document, name='generate_document'),
-    path('documents/einvoice/generate/', document_views.generate_einvoice, name='generate_einvoice'),
-    path('documents/list/', document_views.list_documents, name='list_documents'),
-    path('documents/bulk-generate/', document_views.bulk_generate_documents, name='bulk_generate_documents'),
-    path('documents/<uuid:document_id>/download/', document_views.download_document, name='download_document'),
+
     
-    # Real Document API endpoints
-    path('documents/', document_api_views.list_real_documents, name='list_real_documents'),
-    path('documents/sources/', document_api_views.list_source_documents, name='list_source_documents'),
-    path('documents/generate-real/', document_api_views.generate_real_document, name='generate_real_document'),
-    path('documents/<str:document_id>/download/', document_api_views.download_real_document, name='download_real_document'),
-    path('documents/templates/', document_api_views.list_templates, name='list_document_templates'),
-    path('documents/templates/create/', document_api_views.create_template, name='create_template'),
-    path('documents/create-test-data/', document_api_views.create_test_data, name='create_test_data'),
-    
-    # Multi-Company & Advanced Features endpoints (Phase 6)
-    path('multi-company/branches/', multicompany_views.BranchListCreateView.as_view(), name='multicompany_branch_list_create'),
-    path('multi-company/branches/<int:pk>/', multicompany_views.BranchDetailView.as_view(), name='multicompany_branch_detail'),
-    path('multi-company/tds-sections/', multicompany_views.TDSSectionListView.as_view(), name='multicompany_tds_section_list'),
-    path('multi-company/reverse-charge/', multicompany_views.ReverseChargeTransactionListCreateView.as_view(), name='multicompany_reverse_charge_list_create'),
-    path('multi-company/import-export/', multicompany_views.ImportExportTransactionListCreateView.as_view(), name='multicompany_import_export_list_create'),
-    path('multi-company/tds-deductees/', multicompany_views.AdvancedTDSDeducteeListCreateView.as_view(), name='multicompany_tds_deductee_list_create'),
-    path('multi-company/dashboard/', multicompany_views.multi_company_dashboard, name='multicompany_dashboard'),
-    path('multi-company/calculate-reverse-charge/', multicompany_views.calculate_reverse_charge_gst, name='multicompany_calculate_reverse_charge'),
-    path('multi-company/calculate-tds/', multicompany_views.calculate_tds_amount, name='multicompany_calculate_tds'),
+
     
     # Integration & Automation endpoints (Phase 7)
     path('integration/', include('finance.integration_urls')),
+    
+
 ]

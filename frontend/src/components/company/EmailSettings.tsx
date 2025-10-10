@@ -118,17 +118,24 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
   }
 
   const handleTest = async () => {
+    // Save settings first if they haven't been saved
+    if (!formData.is_active) {
+      toast.error('Please save your settings first before testing')
+      return
+    }
+    
     setIsTesting(true)
     try {
       const response = await apiClient.testCompanyEmailConfiguration()
       if (response.data.success) {
         toast.success('Test email sent successfully!')
       } else {
-        toast.error(response.data.error || 'Test email failed')
+        toast.error(response.data.error || response.data.message || 'Test email failed')
       }
       loadUsage()
     } catch (error: any) {
-      const message = error.response?.data?.error || 'Failed to send test email'
+      console.error('Test email error:', error)
+      const message = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to send test email'
       toast.error(message)
     } finally {
       setIsTesting(false)
@@ -173,11 +180,11 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
               </div>
               <div className="text-center">
                 <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                  usage.is_active && usage.is_verified
+                  formData.is_active
                     ? 'bg-green-100 text-green-800'
                     : 'bg-red-100 text-red-800'
                 }`}>
-                  {usage.is_active && usage.is_verified ? 'Active' : 'Inactive'}
+                  {formData.is_active ? 'Active' : 'Inactive'}
                 </div>
                 <p className="text-sm text-gray-600 mt-1">Status</p>
               </div>
@@ -256,37 +263,39 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
             </select>
           </div>
 
-          {/* Provider Instructions */}
-          {selectedProvider && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start space-x-2">
-                <Info className="h-5 w-5 text-blue-600 mt-0.5" />
-                <div>
-                  <h4 className="font-medium text-blue-900">Setup Instructions for {selectedProvider.name}</h4>
-                  <ul className="mt-2 text-sm text-blue-800 space-y-1">
-                    {selectedProvider.instructions?.map((instruction: string, index: number) => (
-                      <li key={index}>• {instruction}</li>
-                    ))}
-                  </ul>
-                  {selectedProvider.help_url && (
-                    <a
-                      href={selectedProvider.help_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center mt-2 text-sm text-blue-600 hover:text-blue-800"
-                    >
-                      View detailed setup guide →
-                    </a>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Active Status Toggle */}
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              id="is_active"
+              checked={formData.is_active}
+              onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+              Enable email sending
+            </label>
+          </div>
 
-          {/* SMTP Settings */}
-          {!isApiProvider && (
+          {/* Daily Limit */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Daily Email Limit
+            </label>
+            <input
+              type="number"
+              value={formData.daily_limit}
+              onChange={(e) => setFormData({ ...formData, daily_limit: parseInt(e.target.value) || 500 })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              min="1"
+              max="10000"
+            />
+          </div>
+
+          {/* Provider Configuration */}
+          {!isApiProvider ? (
             <div className="space-y-4">
-              <h4 className="font-medium text-gray-900">SMTP Configuration</h4>
+              <h4 className="text-lg font-medium text-gray-900">SMTP Configuration</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -308,79 +317,76 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                   <input
                     type="number"
                     value={formData.smtp_port}
-                    onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) || 587 })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     placeholder="587"
                     required
                   />
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Username *
-                  </label>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Username/Email *
+                </label>
+                <input
+                  type="text"
+                  value={formData.smtp_username}
+                  onChange={(e) => setFormData({ ...formData, smtp_username: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="your-email@gmail.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Password/App Password *
+                </label>
+                <div className="relative">
                   <input
-                    type="text"
-                    value={formData.smtp_username}
-                    onChange={(e) => setFormData({ ...formData, smtp_username: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="your-email@gmail.com"
+                    type={showPasswords ? 'text' : 'password'}
+                    value={formData.smtp_password}
+                    onChange={(e) => setFormData({ ...formData, smtp_password: e.target.value })}
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Your app password"
                     required
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Password *
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPasswords ? 'text' : 'password'}
-                      value={formData.smtp_password}
-                      onChange={(e) => setFormData({ ...formData, smtp_password: e.target.value })}
-                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      placeholder="App Password"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPasswords(!showPasswords)}
-                      className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPasswords ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswords(!showPasswords)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  >
+                    {showPasswords ? (
+                      <EyeOff className="h-4 w-4 text-gray-400" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-gray-400" />
+                    )}
+                  </button>
                 </div>
               </div>
-
               <div className="flex space-x-4">
                 <label className="flex items-center">
                   <input
                     type="checkbox"
                     checked={formData.use_tls}
                     onChange={(e) => setFormData({ ...formData, use_tls: e.target.checked })}
-                    className="mr-2"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
-                  Use TLS
+                  <span className="ml-2 text-sm text-gray-700">Use TLS</span>
                 </label>
                 <label className="flex items-center">
                   <input
                     type="checkbox"
                     checked={formData.use_ssl}
                     onChange={(e) => setFormData({ ...formData, use_ssl: e.target.checked })}
-                    className="mr-2"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
-                  Use SSL
+                  <span className="ml-2 text-sm text-gray-700">Use SSL</span>
                 </label>
               </div>
             </div>
-          )}
-
-          {/* API Settings */}
-          {isApiProvider && (
+          ) : (
             <div className="space-y-4">
-              <h4 className="font-medium text-gray-900">API Configuration</h4>
+              <h4 className="text-lg font-medium text-gray-900">API Configuration</h4>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   API Key *
@@ -391,103 +397,111 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                     value={formData.api_key}
                     onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
                     className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter API Key"
+                    placeholder="Your API key"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPasswords(!showPasswords)}
-                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
                   >
-                    {showPasswords ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showPasswords ? (
+                      <EyeOff className="h-4 w-4 text-gray-400" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-gray-400" />
+                    )}
                   </button>
                 </div>
               </div>
-
-              {formData.email_provider === 'ses' && (
+              {selectedProvider?.requires_secret && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Secret Access Key *
+                    API Secret *
                   </label>
-                  <input
-                    type="password"
-                    value={formData.api_secret}
-                    onChange={(e) => setFormData({ ...formData, api_secret: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter Secret Access Key"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPasswords ? 'text' : 'password'}
+                      value={formData.api_secret}
+                      onChange={(e) => setFormData({ ...formData, api_secret: e.target.value })}
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Your API secret"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswords(!showPasswords)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    >
+                      {showPasswords ? (
+                        <EyeOff className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-gray-400" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* Settings */}
-          <div className="space-y-4">
-            <h4 className="font-medium text-gray-900">Settings</h4>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Daily Email Limit
-              </label>
-              <input
-                type="number"
-                value={formData.daily_limit}
-                onChange={(e) => setFormData({ ...formData, daily_limit: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                min="1"
-                max="10000"
-              />
-            </div>
-
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={formData.is_active}
-                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                className="mr-2"
-              />
-              Enable email sending for this company
-            </label>
-          </div>
-
-          {/* Actions */}
-          <div className="flex space-x-3 pt-4 border-t">
+          {/* Action Buttons */}
+          <div className="flex space-x-4 pt-4">
             <Button
               onClick={handleSave}
               disabled={isSaving}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="flex items-center space-x-2"
             >
               {isSaving ? (
-                <>
-                  <LoadingSpinner size="sm" />
-                  Saving...
-                </>
+                <LoadingSpinner size="sm" />
               ) : (
-                <>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Save Settings
-                </>
+                <CheckCircle className="h-4 w-4" />
               )}
+              <span>{isSaving ? 'Saving...' : 'Save Settings'}</span>
             </Button>
-
+            
             <Button
-              onClick={handleTest}
-              disabled={isTesting || !formData.is_active}
               variant="outline"
+              onClick={handleTest}
+              disabled={isTesting || !formData.from_email || !formData.from_name || (!formData.smtp_password && !isApiProvider) || (!formData.api_key && isApiProvider)}
+              className="flex items-center space-x-2"
             >
               {isTesting ? (
-                <>
-                  <LoadingSpinner size="sm" />
-                  Testing...
-                </>
+                <LoadingSpinner size="sm" />
               ) : (
-                <>
-                  <TestTube className="h-4 w-4 mr-2" />
-                  Send Test Email
-                </>
+                <TestTube className="h-4 w-4" />
               )}
+              <span>{isTesting ? 'Testing...' : 'Send Test Email'}</span>
             </Button>
           </div>
+
+          {/* Help Text */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start space-x-2">
+              <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+              <div className="text-sm text-blue-800">
+                <p className="font-medium mb-1">Configuration Tips:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>For Gmail, use an App Password instead of your regular password</li>
+                  <li>Make sure to enable "Less secure app access" or use OAuth2 for production</li>
+                  <li>Save and enable email sending before testing</li>
+                  <li>Monitor your daily usage to avoid hitting limits</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          
+          {/* Test Requirements */}
+          {!formData.is_active && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="flex items-start space-x-2">
+                <Info className="h-5 w-5 text-yellow-600 mt-0.5" />
+                <div className="text-sm text-yellow-800">
+                  <p className="font-medium mb-1">Test Email Requirements:</p>
+                  <p>Please save your settings and enable email sending before testing the configuration.</p>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

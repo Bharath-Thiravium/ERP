@@ -9,12 +9,17 @@ import {
   AlertTriangle, CheckCircle2, Activity, Clock, Fingerprint,
   Smartphone, QrCode, ArrowLeft,
   Zap, TrendingUp, Globe, 
-  User, Mail, Calendar
+  User, Mail, Calendar, Monitor, Settings
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../../lib/api'
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner'
 import athenasLogo from '../../assets/logo.jpeg'
+import { QRCodeSVG } from 'qrcode.react'
+import IPRestrictionManager from '../../components/security/IPRestrictionManager'
+import DeviceFingerprintManager from '../../components/security/DeviceFingerprintManager'
+import LoginNotificationSettings from '../../components/security/LoginNotificationSettings'
+import CaptchaSettings from '../../components/security/CaptchaSettings'
 
 // Ultra-secure password validation
 const ultraSecurePasswordSchema = z.object({
@@ -60,6 +65,16 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
   const [generatedApiKey, setGeneratedApiKey] = useState<string | null>(null)
   const [generatedRecoveryCodes, setGeneratedRecoveryCodes] = useState<string[] | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null)
+  
+  // Phase 3: Enhanced Security State
+  const [securitySettings, setSecuritySettings] = useState({
+    ip_restrictions_enabled: false,
+    device_fingerprinting_enabled: false,
+    login_notifications_enabled: false,
+    captcha_after_failed_attempts: 3,
+    max_failed_attempts: 5,
+    lockout_duration_minutes: 15
+  })
 
   // Fetch ultra-secure settings
   const { data: settings, isLoading } = useQuery({
@@ -94,6 +109,32 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
     queryFn: () => apiClient.getMasterAdminProfile(),
     enabled: true,
     staleTime: 0,
+  })
+
+  // Phase 3: Enhanced Security Queries
+  const { data: enhancedSecuritySettings } = useQuery({
+    queryKey: ['enhanced-security-settings'],
+    queryFn: () => apiClient.getSecuritySettings(),
+    onSuccess: (data) => {
+      if (data?.data) {
+        setSecuritySettings(data.data)
+      }
+    }
+  })
+
+  const { data: ipRestrictions } = useQuery({
+    queryKey: ['ip-restrictions'],
+    queryFn: () => apiClient.getIPRestrictions()
+  })
+
+  const { data: deviceFingerprints } = useQuery({
+    queryKey: ['device-fingerprints'],
+    queryFn: () => apiClient.getDeviceFingerprints()
+  })
+
+  const { data: loginNotifications } = useQuery({
+    queryKey: ['login-notifications'],
+    queryFn: () => apiClient.getLoginNotifications()
   })
 
   // Forms
@@ -176,6 +217,74 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to toggle 2FA')
     },
+  })
+
+  // Phase 3: Enhanced Security Mutations
+  const updateSecuritySettingsMutation = useMutation({
+    mutationFn: (data: any) => apiClient.updateSecuritySettings(data),
+    onSuccess: () => {
+      toast.success('Security settings updated!')
+      queryClient.invalidateQueries({ queryKey: ['enhanced-security-settings'] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update settings')
+    }
+  })
+
+  const addIPRestrictionMutation = useMutation({
+    mutationFn: (data: { ip_address: string; description: string }) => 
+      apiClient.addIPRestriction(data),
+    onSuccess: () => {
+      toast.success('IP address added successfully!')
+      queryClient.invalidateQueries({ queryKey: ['ip-restrictions'] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to add IP address')
+    }
+  })
+
+  const removeIPRestrictionMutation = useMutation({
+    mutationFn: (id: number) => apiClient.removeIPRestriction(id),
+    onSuccess: () => {
+      toast.success('IP address removed successfully!')
+      queryClient.invalidateQueries({ queryKey: ['ip-restrictions'] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to remove IP address')
+    }
+  })
+
+  const toggleIPRestrictionMutation = useMutation({
+    mutationFn: ({ id, is_active }: { id: number; is_active: boolean }) => 
+      apiClient.toggleIPRestriction(id, { is_active }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ip-restrictions'] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update IP restriction')
+    }
+  })
+
+  const removeDeviceMutation = useMutation({
+    mutationFn: (deviceId: string) => apiClient.removeDeviceFingerprint(deviceId),
+    onSuccess: () => {
+      toast.success('Device removed successfully!')
+      queryClient.invalidateQueries({ queryKey: ['device-fingerprints'] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to remove device')
+    }
+  })
+
+  const toggleDeviceTrustMutation = useMutation({
+    mutationFn: ({ deviceId, is_trusted }: { deviceId: string; is_trusted: boolean }) => 
+      apiClient.toggleDeviceTrust(deviceId, { is_trusted }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['device-fingerprints'] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update device trust')
+    }
   })
 
   const copyToClipboard = (text: string, label: string) => {
@@ -833,8 +942,19 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
               </div>
               <div className="text-center mb-4">
                 <div className="inline-block p-4 bg-white rounded-xl border border-purple-200">
-                  <QrCode className="h-32 w-32 text-gray-400" />
-                  <p className="text-xs text-gray-500 mt-2">QR Code would appear here</p>
+                  {qrCodeUrl ? (
+                    <QRCodeSVG 
+                      value={qrCodeUrl}
+                      size={256}
+                      level="H"
+                      includeMargin={true}
+                    />
+                  ) : (
+                    <>
+                      <QrCode className="h-32 w-32 text-gray-400" />
+                      <p className="text-xs text-gray-500 mt-2">QR Code will appear after enabling 2FA</p>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="text-sm text-purple-700 dark:text-purple-300 space-y-2">
@@ -909,6 +1029,77 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
           </form>
         </div>
       </div>
+    </div>
+  )
+
+  // Enhanced Security Tab (Phase 3)
+  const renderEnhancedSecurityTab = () => (
+    <div className="space-y-8">
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-cyan-500/20 to-blue-600/20 rounded-2xl border border-cyan-500/30 mb-4">
+          <Settings className="h-6 w-6 text-cyan-500" />
+          <span className="text-gray-900 dark:text-white font-bold text-lg">Phase 3: Enhanced Security</span>
+        </div>
+        <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+          Advanced security features including IP restrictions, device fingerprinting, login notifications, and captcha protection.
+        </p>
+      </div>
+
+      <IPRestrictionManager
+        restrictions={ipRestrictions?.data || []}
+        isEnabled={securitySettings.ip_restrictions_enabled}
+        onToggleEnabled={(enabled) => {
+          setSecuritySettings(prev => ({ ...prev, ip_restrictions_enabled: enabled }))
+          updateSecuritySettingsMutation.mutate({ ip_restrictions_enabled: enabled })
+        }}
+        onAddIP={async (data) => {
+          await addIPRestrictionMutation.mutateAsync(data)
+        }}
+        onRemoveIP={async (id) => {
+          await removeIPRestrictionMutation.mutateAsync(id)
+        }}
+        onToggleIP={async (id, active) => {
+          await toggleIPRestrictionMutation.mutateAsync({ id, is_active: active })
+        }}
+        isLoading={updateSecuritySettingsMutation.isPending || addIPRestrictionMutation.isPending}
+      />
+
+      <DeviceFingerprintManager
+        devices={deviceFingerprints?.data || []}
+        isEnabled={securitySettings.device_fingerprinting_enabled}
+        onToggleEnabled={(enabled) => {
+          setSecuritySettings(prev => ({ ...prev, device_fingerprinting_enabled: enabled }))
+          updateSecuritySettingsMutation.mutate({ device_fingerprinting_enabled: enabled })
+        }}
+        onRemoveDevice={async (deviceId) => {
+          await removeDeviceMutation.mutateAsync(deviceId)
+        }}
+        onToggleTrust={async (deviceId, trusted) => {
+          await toggleDeviceTrustMutation.mutateAsync({ deviceId, is_trusted: trusted })
+        }}
+        isLoading={updateSecuritySettingsMutation.isPending || removeDeviceMutation.isPending}
+      />
+
+      <LoginNotificationSettings
+        isEnabled={securitySettings.login_notifications_enabled}
+        onToggleEnabled={(enabled) => {
+          setSecuritySettings(prev => ({ ...prev, login_notifications_enabled: enabled }))
+          updateSecuritySettingsMutation.mutate({ login_notifications_enabled: enabled })
+        }}
+        recentNotifications={loginNotifications?.data || []}
+        isLoading={updateSecuritySettingsMutation.isPending}
+      />
+
+      <CaptchaSettings
+        captchaAfterFailedAttempts={securitySettings.captcha_after_failed_attempts}
+        maxFailedAttempts={securitySettings.max_failed_attempts}
+        lockoutDurationMinutes={securitySettings.lockout_duration_minutes}
+        onUpdateSettings={async (settings) => {
+          setSecuritySettings(prev => ({ ...prev, ...settings }))
+          await updateSecuritySettingsMutation.mutateAsync(settings)
+        }}
+        isLoading={updateSecuritySettingsMutation.isPending}
+      />
     </div>
   )
 
@@ -1089,6 +1280,7 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
                   { id: 'api-key', label: 'API Key Management', icon: Key, color: 'from-green-500 to-teal-600' },
                   { id: 'recovery', label: 'Recovery Codes', icon: RefreshCw, color: 'from-orange-500 to-yellow-600' },
                   { id: '2fa', label: 'Two-Factor Auth', icon: Fingerprint, color: 'from-purple-500 to-indigo-600' },
+                  { id: 'enhanced', label: 'Enhanced Security', icon: Settings, color: 'from-cyan-500 to-blue-600' },
                   { id: 'activity', label: 'Security Log', icon: Activity, color: 'from-gray-500 to-slate-600' }
                 ].map((tab) => {
                   const Icon = tab.icon
@@ -1119,6 +1311,7 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
             {activeTab === 'api-key' && renderApiKeyTab()}
             {activeTab === 'recovery' && renderRecoveryTab()}
             {activeTab === '2fa' && renderTwoFactorTab()}
+            {activeTab === 'enhanced' && renderEnhancedSecurityTab()}
             {activeTab === 'activity' && renderSecurityLogTab()}
           </div>
         </div>

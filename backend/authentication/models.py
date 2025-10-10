@@ -31,6 +31,16 @@ class MasterAdmin(models.Model):
 
     def get_recovery_codes(self):
         return json.loads(self.recovery_codes) if self.recovery_codes else []
+    
+    def use_recovery_code(self, code):
+        """Mark a recovery code as used"""
+        codes = self.get_recovery_codes()
+        if code in codes:
+            codes.remove(code)
+            self.recovery_codes = json.dumps(codes)
+            self.save()
+            return True
+        return False
 
 
 class Company(models.Model):
@@ -232,6 +242,7 @@ class CompanyUser(models.Model):
 
     # Password management
     password_expires_at = models.DateTimeField()
+    password_changed_at = models.DateTimeField(null=True, blank=True)
     must_change_password = models.BooleanField(default=True)
     password_reset_by_admin = models.BooleanField(default=False)  # Flag for admin-initiated password reset
 

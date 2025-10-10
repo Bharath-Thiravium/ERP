@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { X, Briefcase, DollarSign, Users, FileText } from 'lucide-react'
+import { X, Briefcase, DollarSign, Users, FileText, Plus } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { JobPosting } from '../../types/hrTypes'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
 import toast from 'react-hot-toast'
+import DepartmentDesignationManager from '../employees/DepartmentDesignationManager'
 
 interface JobPostingFormProps {
   isOpen: boolean
@@ -18,6 +19,7 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
   const [loading, setLoading] = useState(false)
   const [departments, setDepartments] = useState<any[]>([])
   const [designations, setDesignations] = useState<any[]>([])
+  const [showDeptManager, setShowDeptManager] = useState(false)
   
   const [formData, setFormData] = useState({
     title: '',
@@ -59,22 +61,35 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
     }
   }, [isOpen, sessionKey])
 
+  useEffect(() => {
+    if (formData.department) {
+      fetchDesignations(formData.department)
+    } else {
+      setDesignations([])
+    }
+  }, [formData.department])
+
   const fetchDepartments = async () => {
     try {
-      const [deptResponse, desigResponse] = await Promise.all([
-        api.get('/api/hr/api/departments/', {
-          headers: { Authorization: `Bearer ${sessionKey}` },
-          params: { session_key: sessionKey }
-        }),
-        api.get('/api/hr/api/designations/', {
-          headers: { Authorization: `Bearer ${sessionKey}` },
-          params: { session_key: sessionKey }
-        })
-      ])
+      const deptResponse = await api.get('/api/hr/dropdown/departments/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
       setDepartments(deptResponse.data.results || deptResponse.data || [])
-      setDesignations(desigResponse.data.results || desigResponse.data || [])
     } catch (error) {
-      console.error('Error fetching departments/designations:', error)
+      console.error('Error fetching departments:', error)
+    }
+  }
+
+  const fetchDesignations = async (departmentId: string) => {
+    try {
+      const response = await api.get('/api/hr/dropdown/designations/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { department_id: departmentId, session_key: sessionKey }
+      })
+      setDesignations(response.data || [])
+    } catch (error) {
+      console.error('Error fetching designations:', error)
     }
   }
 
@@ -191,10 +206,22 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
           <div className="space-y-6">
             {/* Basic Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center space-x-2">
-                <FileText className="h-5 w-5 text-blue-500" />
-                <span>Basic Information</span>
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center space-x-2">
+                  <FileText className="h-5 w-5 text-blue-500" />
+                  <span>Basic Information</span>
+                </h3>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowDeptManager(true)}
+                  className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                >
+                  <Users className="h-4 w-4 mr-1" />
+                  Manage Dept/Desig
+                </Button>
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -217,7 +244,7 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
                   </label>
                   <select
                     value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, department: e.target.value, designation: '' })}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     required
                   >
@@ -238,6 +265,7 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
                     value={formData.designation}
                     onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    disabled={!formData.department}
                     required
                   >
                     <option value="">Select Designation</option>
@@ -415,6 +443,13 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
             </Button>
           </div>
         </form>
+
+        {/* Department/Designation Manager */}
+        <DepartmentDesignationManager
+          isOpen={showDeptManager}
+          onClose={() => setShowDeptManager(false)}
+          onUpdate={fetchDepartments}
+        />
       </div>
     </div>
   )

@@ -17,7 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 from authentication.models import ServiceUserSession, CompanyServiceUser
 from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
-from .email_utils import send_invoice_email, send_proforma_email, send_quotation_email
+from .email_utils import send_invoice_email, send_proforma_email, send_quotation_email, send_purchase_order_email
 from .serializers import (
     CustomerListSerializer, CustomerDetailSerializer,
     CustomerCreateSerializer, CustomerUpdateSerializer,
@@ -2937,5 +2937,45 @@ def send_proforma_email_view(request, proforma_id):
         return Response({'error': 'Invalid session'}, status=401)
     except ProformaInvoice.DoesNotExist:
         return Response({'error': 'Proforma invoice not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
+def send_purchase_order_email_view(request, purchase_order_id):
+    """Send purchase order via email"""
+    session_key = request.data.get('session_key') or request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    recipient_email = request.data.get('email')
+    if not recipient_email:
+        return Response({'error': 'Recipient email required'}, status=400)
+
+    message = request.data.get('message', '')
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+
+        # Get purchase order
+        purchase_order = PurchaseOrder.objects.select_related('customer', 'company').prefetch_related('po_items').get(
+            id=purchase_order_id,
+            company=service_user.company
+        )
+
+        # Send email
+        success, result_message = send_purchase_order_email(purchase_order, recipient_email, message)
+        
+        if success:
+            return Response({'message': result_message})
+        else:
+            return Response({'error': result_message}, status=500)
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except PurchaseOrder.DoesNotExist:
+        return Response({'error': 'Purchase order not found'}, status=404)
     except Exception as e:
         return Response({'error': str(e)}, status=500)

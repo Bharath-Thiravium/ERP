@@ -390,8 +390,8 @@ const LoginPage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Trusted Device Option - only for master admin with 2FA */}
-                    {userType === 'master' && (
+                    {/* Trusted Device Option - for both master admin and company users */}
+                    {(userType === 'master' || userType === 'company') && (
                       <TrustedDeviceOption
                         isTrustedDevice={rememberDevice}
                         onToggleTrustedDevice={setRememberDevice}

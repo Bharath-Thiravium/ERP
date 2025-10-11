@@ -255,13 +255,17 @@ class CompanyDetailedInfoSerializer(serializers.ModelSerializer):
 
 
 class CompanyUserLoginSerializer(serializers.Serializer):
-    """Company user login serializer"""
+    """Company user login serializer with 2FA support"""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    totp_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    recovery_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
     
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
+        totp_code = attrs.get('totp_code', '')
+        recovery_code = attrs.get('recovery_code', '')
         
         if email and password:
             user = authenticate(username=email, password=password)
@@ -276,6 +280,47 @@ class CompanyUserLoginSerializer(serializers.Serializer):
                         raise serializers.ValidationError('Account is locked.')
                     if company_user.is_password_expired():
                         raise serializers.ValidationError('Password has expired.')
+                    
+                    # Check 2FA if enabled
+                    from company_dashboard.security_models import CompanySecuritySettings
+                    try:
+                        security_settings = CompanySecuritySettings.objects.get(company=company_user.company)
+                        if security_settings.two_factor_enabled:
+                            if not totp_code and not recovery_code:
+                                # First step passed, need 2FA
+                                attrs['requires_2fa'] = True
+                                attrs['user'] = user
+                                return attrs
+                            
+                            # Validate 2FA code or recovery code
+                            if totp_code:
+                                import pyotp
+                                totp = pyotp.TOTP(security_settings.two_factor_secret)
+                                if not totp.verify(totp_code):
+                                    raise serializers.ValidationError('Invalid 2FA code.')
+                            elif recovery_code:
+                                from company_dashboard.security_models import CompanyRecoveryCode
+                                recovery_codes = CompanyRecoveryCode.objects.filter(
+                                    company=company_user.company,
+                                    is_used=False
+                                )
+                                valid_code = None
+                                for rc in recovery_codes:
+                                    if rc.check_code(recovery_code):
+                                        valid_code = rc
+                                        break
+                                
+                                if not valid_code:
+                                    raise serializers.ValidationError('Invalid recovery code.')
+                                
+                                # Mark recovery code as used
+                                valid_code.is_used = True
+                                valid_code.used_at = timezone.now()
+                                valid_code.save()
+                            else:
+                                raise serializers.ValidationError('2FA code or recovery code required.')
+                    except CompanySecuritySettings.DoesNotExist:
+                        pass  # No 2FA settings, continue with normal login
                     
                     # Check if company is approved
                     if company_user.company.approval_status != 'approved':

@@ -604,6 +604,15 @@ class CompanyUserLoginView(APIView):
         serializer = CompanyUserLoginSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
+            
+            # Check if 2FA is required
+            if serializer.validated_data.get('requires_2fa'):
+                return Response({
+                    'requires_2fa': True,
+                    'message': '2FA code required',
+                    'user_id': user.id
+                })
+            
             company_user = user.company_user
 
             # Generate JWT tokens

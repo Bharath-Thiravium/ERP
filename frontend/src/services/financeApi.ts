@@ -25,5 +25,10 @@ export const financeApi = {
   getProducts: async (): Promise<Product[]> => {
     const response = await api.get('/finance/products/');
     return response.data;
+  },
+
+  getInvoices: async (params?: any) => {
+    const response = await api.get('/api/finance/invoices/', { params });
+    return response.data;
   }
 };

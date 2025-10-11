@@ -7,9 +7,9 @@ import { Badge } from '../../../../components/ui/Badge';
 import { Modal } from '../../../../components/ui/Modal';
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner';
 import { 
-  Plus, Settings, Play, TestTube, Eye, Edit, Trash2, 
+  Plus, TestTube, Eye, Edit, Trash2, 
   CheckCircle, XCircle, Clock, AlertCircle, Database,
-  RefreshCw, Activity, BarChart3
+  RefreshCw, Activity
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -105,7 +105,7 @@ const ERPConnectorsTab: React.FC = () => {
     
     try {
       const credentials = formData.password ? { password: formData.password } : {};
-      const payload = {
+      const payload: any = {
         ...formData,
         credentials
       };
@@ -127,7 +127,7 @@ const ERPConnectorsTab: React.FC = () => {
     
     try {
       const credentials = formData.password ? { password: formData.password } : {};
-      const payload = {
+      const payload: any = {
         ...formData,
         credentials
       };
@@ -176,7 +176,7 @@ const ERPConnectorsTab: React.FC = () => {
     if (!sessionKey) return;
     
     try {
-      const response = await apiClient.post(`/api/finance/integration/erp-connectors/${connector.id}/sync/`, {
+      await apiClient.post(`/api/finance/integration/erp-connectors/${connector.id}/sync/`, {
         sync_type: syncType
       });
       toast.success('Data synchronization completed successfully');

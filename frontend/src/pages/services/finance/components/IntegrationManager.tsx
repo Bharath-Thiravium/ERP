@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { integrationApi, BankAccount, PaymentGateway, EmailAutomation, MobileAppConfig } from '../../../../services/integrationApi';
+import { integrationApi, EmailAutomation, MobileAppConfig } from '../../../../services/integrationApi';
 import { DataTable } from '../../../../components/ui/DataTable';
 import { Button } from '../../../../components/ui/Button';
-import { Modal } from '../../../../components/ui/Modal';
-import { Input } from '../../../../components/ui/Input';
-import { Select } from '../../../../components/ui/Select';
+
+
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../components/ui/Tabs';
 import { Card } from '../../../../components/ui/Card';
 import { Badge } from '../../../../components/ui/Badge';
@@ -14,44 +14,8 @@ import ERPConnectorsTab from './ERPConnectorsTab';
 import PaymentGatewayTab from './PaymentGatewayTab';
 
 const IntegrationManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-
-
-
-  // Payment Gateway State
-  const [paymentGateways, setPaymentGateways] = useState<PaymentGateway[]>([]);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({
-    gateway_type: 'razorpay',
-    gateway_name: '',
-    merchant_id: '',
-    webhook_url: '',
-    auto_gst_payment: false,
-    auto_tds_payment: false,
-    payment_threshold: 0,
-    is_active: true
-  });
-
-  // Email Automation State
   const [emailAutomations, setEmailAutomations] = useState<EmailAutomation[]>([]);
-  const [showEmailModal, setShowEmailModal] = useState(false);
-  const [emailForm, setEmailForm] = useState({
-    email_type: 'gst_filing',
-    title: '',
-    recipient_emails: [] as string[],
-    include_company_admin: true,
-    include_finance_users: true,
-    frequency: 'weekly',
-    send_days_before: 3,
-    send_time: '09:00:00',
-    subject_template: '',
-    body_template: '',
-    is_active: true
-  });
-
-  // Mobile App State
   const [mobileConfig, setMobileConfig] = useState<MobileAppConfig | null>(null);
 
   useEffect(() => {
@@ -59,37 +23,16 @@ const IntegrationManager: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'payment') {
-      loadPaymentGateways();
-    } else if (activeTab === 'email') {
-      loadEmailAutomations();
-    } else if (activeTab === 'mobile') {
-      loadMobileConfig();
-    }
-  }, [activeTab]);
+    loadEmailAutomations();
+    loadMobileConfig();
+  }, []);
 
   const loadDashboardData = async () => {
     try {
-      setLoading(true);
       const data = await integrationApi.getIntegrationDashboard();
       setDashboardData(data);
     } catch (error) {
       console.error('Error loading dashboard:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-
-
-
-  const loadPaymentGateways = async () => {
-    try {
-      const response = await integrationApi.getPaymentGateways();
-      setPaymentGateways(response.results);
-    } catch (error) {
-      console.error('Error loading payment gateways:', error);
     }
   };
 
@@ -119,37 +62,7 @@ const IntegrationManager: React.FC = () => {
 
 
 
-  const paymentColumns = [
-    { key: 'gateway_name', header: 'Gateway Name' },
-    { key: 'gateway_type', header: 'Type' },
-    { 
-      key: 'is_verified', 
-      header: 'Verified',
-      render: (value: boolean) => (
-        <Badge variant={value ? 'success' : 'warning'}>
-          {value ? 'Verified' : 'Pending'}
-        </Badge>
-      )
-    },
-    { 
-      key: 'auto_gst_payment', 
-      header: 'Auto GST',
-      render: (value: boolean) => (
-        <Badge variant={value ? 'success' : 'default'}>
-          {value ? 'Enabled' : 'Disabled'}
-        </Badge>
-      )
-    },
-    { 
-      key: 'auto_tds_payment', 
-      header: 'Auto TDS',
-      render: (value: boolean) => (
-        <Badge variant={value ? 'success' : 'default'}>
-          {value ? 'Enabled' : 'Disabled'}
-        </Badge>
-      )
-    }
-  ];
+
 
   const emailColumns = [
     { key: 'title', header: 'Title' },
@@ -247,7 +160,7 @@ const IntegrationManager: React.FC = () => {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-xl font-semibold">Email Automation</h3>
-              <Button onClick={() => setShowEmailModal(true)}>
+              <Button>
                 Add Email Automation
               </Button>
             </div>

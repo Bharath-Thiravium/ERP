@@ -85,10 +85,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
     }
   }, [sessionKey, searchParams]);
 
-  const handleAddPayment = () => {
-    setSelectedPayment(null);
-    setShowForm(true);
-  };
+
 
   const handleEditPayment = (payment: any) => {
     setSelectedPayment(payment);

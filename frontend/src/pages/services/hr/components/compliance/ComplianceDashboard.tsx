@@ -3,12 +3,12 @@ import { Card, Row, Col, Progress, Alert, Button, Table, Tag, Statistic } from '
 import { 
   CheckCircleOutlined, 
   ExclamationCircleOutlined, 
-  ClockCircleOutlined,
+
   TrophyOutlined,
   FileTextOutlined,
   SyncOutlined
 } from '@ant-design/icons';
-import { Line, Doughnut } from 'react-chartjs-2';
+import { Doughnut } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -337,9 +337,9 @@ const ComplianceDashboard: React.FC = () => {
       {/* Pending Returns */}
       <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 shadow-xl overflow-hidden">
         <Card title="Pending Government Returns" className="border-0 bg-transparent">
-          {dashboardData?.pending_returns?.length > 0 ? (
+          {dashboardData?.pending_returns && dashboardData.pending_returns.length > 0 ? (
             <div>
-              {dashboardData.pending_returns.map((returnItem, index) => (
+              {dashboardData?.pending_returns?.map((returnItem, index) => (
                 <Alert
                   key={index}
                   message={`${returnItem.type} - Due: ${returnItem.due_date}`}

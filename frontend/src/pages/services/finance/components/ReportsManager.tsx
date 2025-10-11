@@ -1,23 +1,23 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { Button } from '../../../../components/ui/Button'
 import { 
   FileText, 
   Download, 
-  Calendar, 
+ 
   Filter,
   Eye,
-  CheckCircle,
-  Clock,
+
+
   AlertTriangle
 } from 'lucide-react'
-import { analyticsApiService, type GSTR1Report, type QuarterlyTDSReport, type TDSCertificate } from '../../../../services/analyticsApi'
+import { analyticsApiService, type GSTR1Report, type QuarterlyTDSReport } from '../../../../services/analyticsApi'
 
 interface ReportsManagerProps {
   sessionKey: string
 }
 
-export const ReportsManager: React.FC<ReportsManagerProps> = ({ sessionKey }) => {
+export const ReportsManager: React.FC<ReportsManagerProps> = () => {
   const [activeReport, setActiveReport] = useState<'gstr1' | 'gstr3b' | 'tds' | 'certificates'>('gstr1')
 
   const handleTabChange = (tabId: 'gstr1' | 'gstr3b' | 'tds' | 'certificates') => {

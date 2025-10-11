@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
-import { FileText, Send, CheckCircle, X, DollarSign, Calendar, User } from 'lucide-react'
+import React, { useState } from 'react'
+import { FileText, X } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
+
 import { JobApplication } from '../../types/hrTypes'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
@@ -48,16 +48,12 @@ const OfferManagement: React.FC<OfferManagementProps> = ({
         terms_conditions: offerData.terms_conditions,
         notes: offerData.notes,
         session_key: sessionKey
-      }, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
       })
 
       // Update application status
       await api.patch(`/api/hr/job-applications/${application.id}/`, {
         status: 'offer_sent',
         session_key: sessionKey
-      }, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
       })
 
       toast.success('Offer sent successfully')

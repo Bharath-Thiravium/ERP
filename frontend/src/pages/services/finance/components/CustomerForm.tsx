@@ -230,7 +230,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
   }
 
   const validatePhone = (phone: string) => {
-    const phoneRegex = /^[+]?[\d\s\-()]{10,15}$/
+    const phoneRegex = /^[0-9]{10}$/
     return phoneRegex.test(phone)
   }
 
@@ -254,42 +254,86 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
     return ifscRegex.test(ifsc)
   }
 
+  const validatePincode = (pincode: string) => {
+    const pincodeRegex = /^[0-9]{6}$/
+    return pincodeRegex.test(pincode)
+  }
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
 
-    // Basic validations
+    // Basic Info - Required fields
     if (!formData.name.trim()) {
       newErrors.name = 'Customer name is required'
     }
-
-    if (formData.email && !validateEmail(formData.email)) {
+    if (!formData.display_name.trim()) {
+      newErrors.display_name = 'Display name is required'
+    }
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required'
+    } else if (!validateEmail(formData.email)) {
       newErrors.email = 'Please enter a valid email address'
     }
-
-    if (formData.phone && !validatePhone(formData.phone)) {
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required'
+    } else if (!validatePhone(formData.phone)) {
       newErrors.phone = 'Please enter a valid phone number'
     }
 
-    if (formData.mobile && !validatePhone(formData.mobile)) {
-      newErrors.mobile = 'Please enter a valid mobile number'
+    // Address - Required fields
+    if (!formData.billing_address_line1.trim()) {
+      newErrors.billing_address_line1 = 'Billing address is required'
+    }
+    if (!formData.billing_city.trim()) {
+      newErrors.billing_city = 'Billing city is required'
+    }
+    if (!formData.billing_state.trim()) {
+      newErrors.billing_state = 'Billing state is required'
+    }
+    if (!formData.billing_pincode.trim()) {
+      newErrors.billing_pincode = 'Billing PIN code is required'
+    } else if (!validatePincode(formData.billing_pincode)) {
+      newErrors.billing_pincode = 'PIN code must be exactly 6 digits'
     }
 
-    if (formData.gstin && !validateGSTIN(formData.gstin)) {
+    // Tax & Legal - Required fields
+    if (!formData.gstin.trim()) {
+      newErrors.gstin = 'GSTIN is required'
+    } else if (!validateGSTIN(formData.gstin)) {
       newErrors.gstin = 'Please enter a valid GSTIN (15 characters)'
     }
-
-    if (formData.pan_number && !validatePAN(formData.pan_number)) {
+    if (!formData.pan_number.trim()) {
+      newErrors.pan_number = 'PAN number is required'
+    } else if (!validatePAN(formData.pan_number)) {
       newErrors.pan_number = 'Please enter a valid PAN (10 characters)'
     }
 
+    // Banking - Required fields
+    if (!formData.bank_name.trim()) {
+      newErrors.bank_name = 'Bank name is required'
+    }
+    if (!formData.bank_account_number.trim()) {
+      newErrors.bank_account_number = 'Bank account number is required'
+    }
+    if (!formData.bank_ifsc_code.trim()) {
+      newErrors.bank_ifsc_code = 'IFSC code is required'
+    } else if (!validateIFSC(formData.bank_ifsc_code)) {
+      newErrors.bank_ifsc_code = 'Please enter a valid IFSC code'
+    }
+    if (!formData.account_holder_name.trim()) {
+      newErrors.account_holder_name = 'Account holder name is required'
+    }
+
+    // Optional validations
+    if (formData.mobile && !validatePhone(formData.mobile)) {
+      newErrors.mobile = 'Please enter a valid mobile number'
+    }
     if (formData.aadhar_number && !validateAadhar(formData.aadhar_number)) {
       newErrors.aadhar_number = 'Please enter a valid Aadhar number (12 digits)'
     }
-
-    if (formData.bank_ifsc_code && !validateIFSC(formData.bank_ifsc_code)) {
-      newErrors.bank_ifsc_code = 'Please enter a valid IFSC code'
+    if (formData.shipping_pincode && !validatePincode(formData.shipping_pincode)) {
+      newErrors.shipping_pincode = 'PIN code must be exactly 6 digits'
     }
-
     if (formData.credit_limit < 0) {
       newErrors.credit_limit = 'Credit limit cannot be negative'
     }
@@ -649,9 +693,9 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   </div>
 
                   {renderInput('name', 'Customer Name', 'text', 'Enter customer name', true)}
-                  {renderInput('display_name', 'Display Name', 'text', 'Name to show on invoices')}
-                  {renderInput('email', 'Email', 'email', 'customer@example.com', false, undefined, <Mail className="w-4 h-4" />)}
-                  {renderInput('phone', 'Phone', 'tel', '+91 98765 43210', false, undefined, <Phone className="w-4 h-4" />)}
+                  {renderInput('display_name', 'Display Name', 'text', 'Name to show on invoices', true)}
+                  {renderInput('email', 'Email', 'email', 'customer@example.com', true, undefined, <Mail className="w-4 h-4" />)}
+                  {renderInput('phone', 'Phone', 'tel', '+91 98765 43210', true, undefined, <Phone className="w-4 h-4" />)}
                   {renderInput('mobile', 'Mobile', 'tel', '+91 98765 43210', false, undefined, <Phone className="w-4 h-4" />)}
                   {renderInput('website', 'Website', 'url', 'https://example.com', false, undefined, <Globe className="w-4 h-4" />)}
 
@@ -702,14 +746,34 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md:col-span-2">
-                      {renderInput('billing_address_line1', 'Address Line 1', 'text', 'Street address, building name')}
+                      {renderInput('billing_address_line1', 'Address Line 1', 'text', 'Street address, building name', true)}
                     </div>
                     <div className="md:col-span-2">
                       {renderInput('billing_address_line2', 'Address Line 2', 'text', 'Apartment, suite, floor (optional)')}
                     </div>
-                    {renderInput('billing_city', 'City', 'text', 'City name')}
-                    {renderInput('billing_state', 'State', 'text', 'State/Province')}
-                    {renderInput('billing_pincode', 'PIN Code', 'text', '123456', false, 10)}
+                    {renderInput('billing_city', 'City', 'text', 'City name', true)}
+                    {renderInput('billing_state', 'State', 'text', 'State/Province', true)}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        PIN Code <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.billing_pincode}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 6)
+                          handleInputChange('billing_pincode', value)
+                        }}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 ${
+                          errors.billing_pincode ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                        }`}
+                        placeholder="123456"
+                        maxLength={6}
+                      />
+                      {errors.billing_pincode && (
+                        <p className="text-red-500 text-sm mt-1">{errors.billing_pincode}</p>
+                      )}
+                    </div>
                     {renderInput('billing_country', 'Country', 'text', 'India')}
                   </div>
                 </div>
@@ -843,9 +907,13 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                               <input
                                 type="text"
                                 value={address.pincode}
-                                onChange={(e) => updateShippingAddress(address.id, 'pincode', e.target.value)}
+                                onChange={(e) => {
+                                  const value = e.target.value.replace(/\D/g, '').slice(0, 6)
+                                  updateShippingAddress(address.id, 'pincode', value)
+                                }}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                maxLength={10}
+                                placeholder="123456"
+                                maxLength={6}
                               />
                             </div>
 
@@ -974,7 +1042,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      GSTIN
+                      GSTIN <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -994,25 +1062,35 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                           handleInputChange('is_gst_registered', true)
                         }
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        errors.gstin ? 'border-red-500' : 'border-gray-300'
+                      }`}
                       placeholder="15-digit GST number"
                       maxLength={15}
                     />
+                    {errors.gstin && (
+                      <p className="text-red-500 text-sm mt-1">{errors.gstin}</p>
+                    )}
                     <p className="text-xs text-gray-500 mt-1">Format: 22AAAAA0000A1Z5</p>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      PAN Number
+                      PAN Number <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.pan_number}
                       onChange={(e) => handleInputChange('pan_number', e.target.value.toUpperCase())}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        errors.pan_number ? 'border-red-500' : 'border-gray-300'
+                      }`}
                       placeholder="10-character PAN"
                       maxLength={10}
                     />
+                    {errors.pan_number && (
+                      <p className="text-red-500 text-sm mt-1">{errors.pan_number}</p>
+                    )}
                     <p className="text-xs text-gray-500 mt-1">Format: ABCDE1234F</p>
                   </div>
 
@@ -1042,41 +1120,56 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Bank Name
+                      Bank Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.bank_name}
                       onChange={(e) => handleInputChange('bank_name', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        errors.bank_name ? 'border-red-500' : 'border-gray-300'
+                      }`}
                       placeholder="e.g., State Bank of India"
                     />
+                    {errors.bank_name && (
+                      <p className="text-red-500 text-sm mt-1">{errors.bank_name}</p>
+                    )}
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Account Number
+                      Account Number <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.bank_account_number}
                       onChange={(e) => handleInputChange('bank_account_number', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        errors.bank_account_number ? 'border-red-500' : 'border-gray-300'
+                      }`}
                     />
+                    {errors.bank_account_number && (
+                      <p className="text-red-500 text-sm mt-1">{errors.bank_account_number}</p>
+                    )}
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      IFSC Code
+                      IFSC Code <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.bank_ifsc_code}
                       onChange={(e) => handleInputChange('bank_ifsc_code', e.target.value.toUpperCase())}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        errors.bank_ifsc_code ? 'border-red-500' : 'border-gray-300'
+                      }`}
                       placeholder="e.g., SBIN0001234"
                       maxLength={11}
                     />
+                    {errors.bank_ifsc_code && (
+                      <p className="text-red-500 text-sm mt-1">{errors.bank_ifsc_code}</p>
+                    )}
                   </div>
 
                   <div>
@@ -1093,15 +1186,20 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Account Holder Name
+                      Account Holder Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.account_holder_name}
                       onChange={(e) => handleInputChange('account_holder_name', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        errors.account_holder_name ? 'border-red-500' : 'border-gray-300'
+                      }`}
                       placeholder="Name as per bank records"
                     />
+                    {errors.account_holder_name && (
+                      <p className="text-red-500 text-sm mt-1">{errors.account_holder_name}</p>
+                    )}
                   </div>
 
                   <div>

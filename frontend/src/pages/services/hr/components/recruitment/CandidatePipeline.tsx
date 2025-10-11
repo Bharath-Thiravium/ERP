@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Users, Clock, CheckCircle, X, Eye, Calendar } from 'lucide-react'
+import { Users, Clock, CheckCircle, X, Calendar } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { JobApplication } from '../../types/hrTypes'
@@ -41,8 +41,6 @@ const CandidatePipeline: React.FC = () => {
       await api.patch(`/api/hr/job-applications/${applicationId}/`, {
         status: newStatus,
         session_key: sessionKey
-      }, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
       })
       
       toast.success(`Application ${newStatus} successfully`)

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Alert, Button, Table, Tag, Space } from 'antd';
+import { Card, Row, Col, Statistic, Alert, Tag, Space } from 'antd';
 import { 
   CheckCircleOutlined, 
   ExclamationCircleOutlined, 
   FileTextOutlined,
   CalendarOutlined,
-  DollarOutlined
+
 } from '@ant-design/icons';
 import { apiClient } from '../../../../../lib/api';
 
@@ -78,25 +78,7 @@ const StatutoryDashboard: React.FC = () => {
     }
   };
 
-  const getReturnTypeDisplay = (returnType: string) => {
-    const types: Record<string, string> = {
-      'pf_ecr': 'PF ECR',
-      'esi_return': 'ESI Return',
-      'pt_return': 'Professional Tax',
-      'tds_24q': 'TDS 24Q'
-    };
-    return types[returnType] || returnType;
-  };
 
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      'critical': 'red',
-      'high': 'orange',
-      'medium': 'blue',
-      'low': 'green'
-    };
-    return colors[priority] || 'default';
-  };
 
   if (loading) {
     return <div>Loading...</div>;

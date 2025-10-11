@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Briefcase, DollarSign, Users, FileText, Plus } from 'lucide-react'
+import { X, Briefcase, DollarSign, Users, FileText } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { JobPosting } from '../../types/hrTypes'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -132,14 +132,10 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
       }
 
       if (job) {
-        await api.put(`/api/hr/job-postings/${job.id}/`, payload, {
-          headers: { Authorization: `Bearer ${sessionKey}` }
-        })
+        await api.put(`/api/hr/job-postings/${job.id}/`, payload)
         toast.success('Job posting updated successfully')
       } else {
-        await api.post('/api/hr/job-postings/', payload, {
-          headers: { Authorization: `Bearer ${sessionKey}` }
-        })
+        await api.post('/api/hr/job-postings/', payload)
         toast.success('Job posting created successfully')
       }
       

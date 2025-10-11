@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { Button } from '../../../../components/ui/Button'
-import { CheckCircle, XCircle, Shield, FileText, Users } from 'lucide-react'
+import { CheckCircle, Shield, FileText, Users } from 'lucide-react'
 import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
@@ -49,7 +49,7 @@ export const SimpleGovernmentIntegration: React.FC = () => {
     
     setLoading(true)
     try {
-      const response = await apiClient.post('/api/finance/gov-api/validate-gstin/', {
+      await apiClient.post('/api/finance/gov-api/validate-gstin/', {
         gstin: gstinInput
       })
       setValidationResult('GSTIN validation successful')
@@ -70,7 +70,7 @@ export const SimpleGovernmentIntegration: React.FC = () => {
     
     setLoading(true)
     try {
-      const response = await apiClient.post('/api/finance/gov-api/validate-pan/', {
+      await apiClient.post('/api/finance/gov-api/validate-pan/', {
         pan: panInput
       })
       setValidationResult('PAN validation successful')
@@ -94,7 +94,7 @@ export const SimpleGovernmentIntegration: React.FC = () => {
     
     setLoading(true)
     try {
-      const response = await apiClient.post('/api/finance/gov-api/file-gstr1/', {
+      await apiClient.post('/api/finance/gov-api/file-gstr1/', {
         gstin: gstinInput,
         return_period: returnPeriod
       })
@@ -118,7 +118,7 @@ export const SimpleGovernmentIntegration: React.FC = () => {
     
     setLoading(true)
     try {
-      const response = await apiClient.post('/api/finance/gov-api/file-tds-return/', {
+      await apiClient.post('/api/finance/gov-api/file-tds-return/', {
         quarter,
         financial_year: financialYear,
         pan: panInput

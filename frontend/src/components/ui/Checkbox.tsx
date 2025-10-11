@@ -1,19 +1,37 @@
 import React from 'react';
 
 interface CheckboxProps {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
+  onCheckedChange?: (checked: boolean) => void;
   label?: string;
   className?: string;
+  disabled?: boolean;
+  id?: string;
 }
 
-export const Checkbox: React.FC<CheckboxProps> = ({ checked, onChange, label, className = '' }) => {
+export const Checkbox: React.FC<CheckboxProps> = ({ 
+  checked = false, 
+  onChange, 
+  onCheckedChange, 
+  label, 
+  className = '', 
+  disabled = false,
+  id 
+}) => {
+  const handleChange = (newChecked: boolean) => {
+    onChange?.(newChecked);
+    onCheckedChange?.(newChecked);
+  };
+
   return (
     <label className={`flex items-center ${className}`}>
       <input
         type="checkbox"
+        id={id}
         checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
+        onChange={(e) => handleChange(e.target.checked)}
+        disabled={disabled}
         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
       />
       {label && <span className="ml-2 text-sm text-gray-900">{label}</span>}

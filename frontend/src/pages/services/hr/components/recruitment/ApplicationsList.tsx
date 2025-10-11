@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { FileText, Eye, Download, CheckCircle, X, Clock, User, Mail, Phone, Calendar, Video } from 'lucide-react'
+import { FileText, Eye, Download, CheckCircle, X, User, Mail, Phone, Calendar, Video } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
+import { Card, CardContent } from '../../../../../components/ui/Card'
 import { JobApplication } from '../../types/hrTypes'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
@@ -21,7 +21,7 @@ const ApplicationsList: React.FC = () => {
   const [showOfferModal, setShowOfferModal] = useState(false)
   const [selectedApplicationIds, setSelectedApplicationIds] = useState<number[]>([])
   const [jobPostings, setJobPostings] = useState<any[]>([])
-  const [filters, setFilters] = useState<any>({})
+
 
   const fetchApplications = async () => {
     if (!sessionKey) return
@@ -79,8 +79,6 @@ const ApplicationsList: React.FC = () => {
       await api.patch(`/api/hr/job-applications/${applicationId}/`, {
         status: newStatus,
         session_key: sessionKey
-      }, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
       })
       
       toast.success(`Application ${newStatus} successfully`)
@@ -130,7 +128,7 @@ const ApplicationsList: React.FC = () => {
 
       {/* Advanced Filters */}
       <AdvancedFilters 
-        onFiltersChange={setFilters}
+        onFiltersChange={() => {}}
         jobPostings={jobPostings}
       />
 

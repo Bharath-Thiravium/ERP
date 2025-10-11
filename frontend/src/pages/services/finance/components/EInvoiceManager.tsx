@@ -43,7 +43,7 @@ export const EInvoiceManager: React.FC<EInvoiceManagerProps> = ({ className = ''
   const [loading, setLoading] = useState(false)
   const [selectedInvoices, setSelectedInvoices] = useState<string[]>([])
   const [showQRModal, setShowQRModal] = useState(false)
-  const [selectedEInvoice, setSelectedEInvoice] = useState<any | null>(null)
+  const [selectedEInvoice] = useState<any | null>(null)
   const [bulkGenerating, setBulkGenerating] = useState(false)
 
   useEffect(() => {
@@ -101,8 +101,8 @@ export const EInvoiceManager: React.FC<EInvoiceManagerProps> = ({ className = ''
     }
   }
 
-  const canGenerateEInvoice = (invoice: Invoice) => {
-    return invoice.customer.gstin && !invoice.einvoice_irn && invoice.total_amount >= 50000
+  const canGenerateEInvoice = (invoice: Invoice): boolean => {
+    return !!(invoice.customer.gstin && !invoice.einvoice_irn && invoice.total_amount >= 50000)
   }
 
   const columns = [

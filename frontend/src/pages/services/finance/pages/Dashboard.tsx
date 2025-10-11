@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
-
-
-
+  PlusCircle,
   CreditCard,
   BarChart3,
   Building,
@@ -17,16 +15,11 @@ import {
   Sun,
   Moon,
   Shield,
-  Search,
-  Filter,
-  Calendar,
   RefreshCw,
   MoreVertical,
   ExternalLink,
   ChevronRight,
   Banknote,
-
-  PlusCircle,
   User,
   ShoppingCart,
   FileText,
@@ -359,9 +352,48 @@ const handlePOCreated = () => {
         description: `${description} - ${item.customer_name || 'Customer'}`,
         amount,
         type,
-        status: item.status || 'draft'
+        status: item.status || 'draft',
+        originalItem: item
       }
     })
+  }
+
+  // Handle transaction actions
+  const handleRefreshTransactions = () => {
+    fetchFinancialData()
+    toast.success('Transactions refreshed')
+  }
+
+  const handleNewTransaction = () => {
+    setActiveTab('quotations')
+  }
+
+  const handleViewTransaction = (transaction: any) => {
+    const { type } = transaction
+    if (type === 'quotation') {
+      setActiveTab('quotations')
+    } else if (type === 'purchase_order') {
+      setActiveTab('purchase-orders')
+    } else if (type === 'proforma_invoice') {
+      setActiveTab('proforma-invoices')
+    }
+  }
+
+  const handleEditTransaction = (transaction: any) => {
+    handleViewTransaction(transaction)
+  }
+
+  const handleDeleteTransaction = () => {
+    toast.error('Delete functionality not implemented')
+  }
+
+  // Handle chart actions
+  const handleRevenueAnalyticsMenu = () => {
+    toast('Revenue analytics options not implemented')
+  }
+
+  const handlePaymentStatusExport = () => {
+    toast('Payment status export not implemented')
   }
 
 
@@ -483,7 +515,7 @@ const handlePOCreated = () => {
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Revenue Analytics</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">Quotations vs Purchase Orders vs Invoices</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleRevenueAnalyticsMenu}>
               <MoreVertical className="h-4 w-4" />
             </Button>
           </div>
@@ -543,7 +575,7 @@ const handlePOCreated = () => {
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Payment Status</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">Outstanding vs Paid amounts</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handlePaymentStatusExport}>
               <ExternalLink className="h-4 w-4" />
             </Button>
           </div>
@@ -692,11 +724,11 @@ const handlePOCreated = () => {
             <p className="text-sm text-gray-500 dark:text-gray-400">Latest financial activities</p>
           </div>
           <div className="flex space-x-2">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleRefreshTransactions}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
-            <Button size="sm" className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
+            <Button size="sm" onClick={handleNewTransaction} className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
               <PlusCircle className="h-4 w-4 mr-2" />
               New Transaction
             </Button>
@@ -746,13 +778,13 @@ const handlePOCreated = () => {
                   ₹{transaction.amount.toLocaleString()}
                 </p>
                 <div className="flex items-center space-x-2 mt-1">
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleViewTransaction(transaction)}>
                     <Eye className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleEditTransaction(transaction)}>
                     <Edit className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500 hover:text-red-700">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500 hover:text-red-700" onClick={() => handleDeleteTransaction()}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -1085,22 +1117,6 @@ const handlePOCreated = () => {
               </div>
 
               <div className="flex items-center space-x-3">
-                <Button variant="outline" size="sm">
-                  <Search className="h-4 w-4 mr-2" />
-                  Search
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Filter
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Period
-                </Button>
-                <Button size="sm" className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
-                  <PlusCircle className="h-4 w-4 mr-2" />
-                  Add Transaction
-                </Button>
                 <Button
                   variant="ghost"
                   size="sm"

@@ -432,7 +432,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
             id: selectedForPayment.id,
             invoice_number: selectedForPayment.proforma_number,
             total_amount: selectedForPayment.total_amount?.toString() || '0',
-            outstanding_amount: (parseFloat(selectedForPayment.total_amount?.toString() || '0') - parseFloat(selectedForPayment.paid_amount?.toString() || '0')).toString()
+            outstanding_amount: selectedForPayment.total_amount?.toString() || '0'
           }}
           onClose={() => {
             setShowPaymentModal(false)

@@ -211,11 +211,11 @@ export const apiClient = {
     return api.get(url, config)
   },
   
-  post: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> => {
+  post: <T = any>(url: string, data?: any, config?: any): Promise<AxiosResponse<T>> => {
     if (!validateUrl(url)) {
       throw new Error('Invalid URL: SSRF protection')
     }
-    return api.post(url, data)
+    return api.post(url, data, config)
   },
   
   put: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> => {
@@ -232,11 +232,11 @@ export const apiClient = {
     return api.patch(url, data)
   },
   
-  delete: <T = any>(url: string): Promise<AxiosResponse<T>> => {
+  delete: <T = any>(url: string, config?: any): Promise<AxiosResponse<T>> => {
     if (!validateUrl(url)) {
       throw new Error('Invalid URL: SSRF protection')
     }
-    return api.delete(url)
+    return api.delete(url, config)
   },
 
   // Authentication
@@ -287,7 +287,7 @@ export const apiClient = {
   getMasterAdminTwoFactor: () =>
     api.get('/api/auth/master-admin/settings/two-factor/'),
 
-  toggleMasterAdminTwoFactor: (data: { action: 'enable' | 'disable'; current_password: string; totp_code?: string }) =>
+  toggleMasterAdminTwoFactor: (data: { action: 'enable' | 'disable' | 'reset'; current_password: string; totp_code?: string }) =>
     api.post('/api/auth/master-admin/settings/two-factor/', data),
 
   getMasterAdminSecurityLog: (params?: { days?: number }) =>
@@ -1107,7 +1107,7 @@ export const apiClient = {
   verifyCaptcha: (data: any) =>
     api.post('/api/company-dashboard/advanced-security/captcha/', data),
 
-  getDeviceFingerprints: () =>
+  getCompanyDeviceFingerprints: () =>
     api.get('/api/company-dashboard/advanced-security/device-fingerprinting/'),
 
   registerDeviceFingerprint: (data: any) =>
@@ -1382,6 +1382,7 @@ export const apiClient = {
 }
 
 // Export token management functions and API_BASE_URL
+// Export token management functions and API_BASE_URL
 export { getToken, getRefreshToken, setTokens, clearTokens, API_BASE_URL }
 
-export default api
+export default apiClient

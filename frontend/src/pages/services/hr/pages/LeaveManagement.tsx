@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Calendar, Plus, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { Calendar, Plus, Clock } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { apiClient } from '../../../../lib/api'
@@ -10,7 +10,7 @@ const LeaveManagement: React.FC = () => {
   const [leaveBalances, setLeaveBalances] = useState<any[]>([])
   const [leaveApplications, setLeaveApplications] = useState<any[]>([])
   const [holidays, setHolidays] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
+  const [, setLoading] = useState(false)
 
   useEffect(() => {
     loadData()

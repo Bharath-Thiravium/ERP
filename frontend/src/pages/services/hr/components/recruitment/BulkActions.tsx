@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { CheckSquare, X, Mail, Download, Filter } from 'lucide-react'
+import { CheckSquare, X, Download } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { JobApplication } from '../../types/hrTypes'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -31,8 +31,6 @@ const BulkActions: React.FC<BulkActionsProps> = ({
         api.patch(`/api/hr/job-applications/${id}/`, {
           status: newStatus,
           session_key: sessionKey
-        }, {
-          headers: { Authorization: `Bearer ${sessionKey}` }
         })
       )
 

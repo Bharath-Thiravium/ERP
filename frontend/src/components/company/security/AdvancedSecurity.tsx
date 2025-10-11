@@ -1,34 +1,32 @@
-import React, { useState, useEffect } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import React, { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { 
   Shield, AlertTriangle, Globe, Smartphone, Activity, 
-  Settings, TrendingUp, Users, MapPin, Clock, 
-  CheckCircle, XCircle, Eye, EyeOff, Trash2,
-  Plus, Filter, Search, Download, RefreshCw
+  Settings, 
+  CheckCircle, XCircle,
+  Plus, RefreshCw
 } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/Card'
+import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card'
 import { Button } from '../../ui/Button'
 import { apiClient } from '../../../lib/api'
-import toast from 'react-hot-toast'
 
 interface AdvancedSecurityProps {
   onNavigateToTab?: (tab: string) => void
 }
 
-const AdvancedSecurity: React.FC<AdvancedSecurityProps> = ({ onNavigateToTab }) => {
+const AdvancedSecurity: React.FC<AdvancedSecurityProps> = () => {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [filterSeverity, setFilterSeverity] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
   const queryClient = useQueryClient()
 
   // Fetch advanced security dashboard data
-  const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
+  const { data: dashboardData } = useQuery({
     queryKey: ['advanced-security-dashboard'],
     queryFn: () => apiClient.get('/api/company-dashboard/advanced-security/advanced-dashboard/'),
   })
 
   // Fetch threat detections
-  const { data: threatsData, isLoading: threatsLoading } = useQuery({
+  const { data: threatsData } = useQuery({
     queryKey: ['threat-detections', filterSeverity],
     queryFn: () => apiClient.get('/api/company-dashboard/advanced-security/threat-detection/', {
       params: { severity: filterSeverity }
@@ -36,25 +34,25 @@ const AdvancedSecurity: React.FC<AdvancedSecurityProps> = ({ onNavigateToTab }) 
   })
 
   // Fetch security alerts
-  const { data: alertsData, isLoading: alertsLoading } = useQuery({
+  const { data: alertsData } = useQuery({
     queryKey: ['security-alerts'],
     queryFn: () => apiClient.get('/api/company-dashboard/advanced-security/security-alerts/'),
   })
 
   // Fetch device fingerprints
-  const { data: devicesData, isLoading: devicesLoading } = useQuery({
+  const { data: devicesData } = useQuery({
     queryKey: ['device-fingerprints'],
     queryFn: () => apiClient.get('/api/company-dashboard/advanced-security/device-fingerprinting/'),
   })
 
   // Fetch geolocation rules
-  const { data: geoRulesData, isLoading: geoRulesLoading } = useQuery({
+  const { data: geoRulesData } = useQuery({
     queryKey: ['geolocation-rules'],
     queryFn: () => apiClient.get('/api/company-dashboard/advanced-security/geolocation-rules/'),
   })
 
   // Fetch advanced settings
-  const { data: settingsData, isLoading: settingsLoading } = useQuery({
+  const { data: settingsData } = useQuery({
     queryKey: ['advanced-settings'],
     queryFn: () => apiClient.get('/api/company-dashboard/advanced-security/advanced-settings/'),
   })

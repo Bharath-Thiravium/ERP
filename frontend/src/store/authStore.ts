@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { apiClient, setTokens, clearTokens } from '../lib/api'
 import tokenManager from '../lib/tokenManager'
-import { User, LoginResponse, MasterAdminLoginRequest, CompanyUserLoginRequest, SecurityAlert } from '../types'
+import { User,  MasterAdminLoginRequest, CompanyUserLoginRequest, SecurityAlert } from '../types'
 import toast from 'react-hot-toast'
 
 interface AuthState {
@@ -60,7 +60,7 @@ export const useAuthStore = create<AuthState>()(
       trustedDevice: false,
       deviceId: null,
 
-      login: async (credentials, userType, rememberDevice = false) => {
+      login: async (credentials, userType) => {
         set({ isLoading: true, error: null })
 
         try {

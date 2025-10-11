@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { CheckCircle, AlertTriangle, Clock, TrendingUp, Calculator, FileText, Users, Shield } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
-import { Button } from '../../../../components/ui/Button'
+
 
 interface Phase2SummaryProps {
   sessionKey: string

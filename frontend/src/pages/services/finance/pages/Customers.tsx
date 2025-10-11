@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
-
+import { apiClient } from '../../../../lib/api'
+import { useServiceUserStore } from '../../../../store/serviceUserStore'
+import toast from 'react-hot-toast'
 import CustomerList from '../components/CustomerList'
 import CustomerForm from '../components/CustomerForm'
 import CustomerDetail from '../components/CustomerDetail'
@@ -80,8 +82,26 @@ const Customers: React.FC = () => {
     setShowForm(true)
   }
 
-  const handleDetailDelete = () => {
-    setRefreshList(prev => prev + 1)
+  const handleDetailDelete = async (customerId: number) => {
+    try {
+      const sessionKey = useServiceUserStore.getState().sessionKey
+      
+      if (!sessionKey) {
+        toast.error('Session expired. Please login again.')
+        return
+      }
+
+      await apiClient.deleteFinanceCustomer(customerId, { session_key: sessionKey })
+      
+      toast.success('Customer deleted successfully!')
+      
+      setRefreshList(prev => prev + 1)
+      setShowDetail(false)
+      setSelectedCustomerId(null)
+    } catch (error: any) {
+      console.error('Error deleting customer:', error)
+      toast.error('Failed to delete customer. Please try again.')
+    }
   }
 
   return (

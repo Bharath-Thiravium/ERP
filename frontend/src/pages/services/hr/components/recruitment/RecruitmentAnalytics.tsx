@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { BarChart3, TrendingUp, Clock, Users, Target, DollarSign } from 'lucide-react'
+import { BarChart3, TrendingUp, Clock, Users, Target } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
@@ -189,7 +189,7 @@ const RecruitmentAnalytics: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {analytics.topPerformingJobs.map((job: any, index) => (
+            {analytics.topPerformingJobs.map((job: any) => (
               <div key={job.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div className="flex-1">
                   <h4 className="font-medium text-gray-900 dark:text-white">{job.title}</h4>

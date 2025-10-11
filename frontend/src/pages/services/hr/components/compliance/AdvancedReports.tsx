@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Button, DatePicker, Select, Table, Tag, Progress, Statistic } from 'antd';
+import { Card, Row, Col, Button, DatePicker, Select, Statistic } from 'antd';
 import { 
   DownloadOutlined, 
   FileTextOutlined, 
@@ -198,7 +198,7 @@ const AdvancedReports: React.FC = () => {
               <label>Date Range for Audit Reports:</label>
               <RangePicker 
                 value={dateRange}
-                onChange={setDateRange}
+                onChange={(dates) => setDateRange(dates as [any, any] | null)}
                 style={{ width: '100%', marginTop: '8px' }}
               />
             </div>

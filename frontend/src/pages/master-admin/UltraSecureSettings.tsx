@@ -9,7 +9,7 @@ import {
   AlertTriangle, CheckCircle2, Activity, Clock, Fingerprint,
   Smartphone, QrCode, ArrowLeft,
   Zap, TrendingUp, Globe, 
-  User, Mail, Calendar, Monitor, Settings
+  User, Mail, Calendar, Settings
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../../lib/api'
@@ -82,6 +82,19 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
     queryFn: () => apiClient.getMasterAdminUltraSettings(),
   })
 
+  // Fetch 2FA status separately to handle pending setup
+  const { data: twoFactorStatus, refetch: refetchTwoFactor } = useQuery({
+    queryKey: ['master-admin-two-factor'],
+    queryFn: () => apiClient.getMasterAdminTwoFactor(),
+  })
+
+  // Set QR code URL from 2FA status if pending setup
+  React.useEffect(() => {
+    if (twoFactorStatus?.data?.pending_setup && twoFactorStatus?.data?.qr_code_url) {
+      setQrCodeUrl(twoFactorStatus.data.qr_code_url)
+    }
+  }, [twoFactorStatus])
+
   // Debug logging
   React.useEffect(() => {
     if (settings?.data) {
@@ -114,13 +127,15 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
   // Phase 3: Enhanced Security Queries
   const { data: enhancedSecuritySettings } = useQuery({
     queryKey: ['enhanced-security-settings'],
-    queryFn: () => apiClient.getSecuritySettings(),
-    onSuccess: (data) => {
-      if (data?.data) {
-        setSecuritySettings(data.data)
-      }
-    }
+    queryFn: () => apiClient.getSecuritySettings()
   })
+
+  // Update security settings when data is fetched
+  React.useEffect(() => {
+    if (enhancedSecuritySettings?.data) {
+      setSecuritySettings(enhancedSecuritySettings.data)
+    }
+  }, [enhancedSecuritySettings])
 
   const { data: ipRestrictions } = useQuery({
     queryKey: ['ip-restrictions'],
@@ -199,20 +214,30 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
   })
 
   const toggleTwoFactorMutation = useMutation({
-    mutationFn: (data: TwoFactorFormData & { action: 'enable' | 'disable' }) => 
+    mutationFn: (data: TwoFactorFormData & { action: 'enable' | 'disable' | 'reset' }) => 
       apiClient.toggleMasterAdminTwoFactor(data),
     onSuccess: (response, variables) => {
       if (variables.action === 'enable') {
-        setQrCodeUrl(response.data.qr_code_url)
-        toast.success('🔐 Two-factor authentication enabled!')
-      } else {
+        if (response.data.pending_verification) {
+          setQrCodeUrl(response.data.qr_code_url)
+          toast.success('📱 Scan QR code with your authenticator app')
+        } else if (response.data.two_factor_enabled) {
+          toast.success('🔐 Two-factor authentication enabled!')
+          setQrCodeUrl(null)
+          twoFactorForm.reset()
+        }
+      } else if (variables.action === 'disable') {
         toast.success('2FA disabled')
+        setQrCodeUrl(null)
+      } else if (variables.action === 'reset') {
+        toast.success('2FA setup reset')
         setQrCodeUrl(null)
       }
       // Force refresh all related queries
       queryClient.invalidateQueries({ queryKey: ['master-admin-ultra-settings'] })
+      queryClient.invalidateQueries({ queryKey: ['master-admin-two-factor'] })
       queryClient.invalidateQueries({ queryKey: ['master-admin-security-status'] })
-      queryClient.refetchQueries({ queryKey: ['master-admin-ultra-settings'] })
+      refetchTwoFactor()
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to toggle 2FA')
@@ -933,28 +958,34 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
             </div>
           </div>
 
-          {/* QR Code Display */}
-          {qrCodeUrl && (
+          {/* QR Code Display - Show if pending setup or QR code exists */}
+          {(qrCodeUrl || (twoFactorStatus?.data?.pending_setup && twoFactorStatus?.data?.qr_code_url)) && (
             <div className="mb-8 p-6 bg-purple-50/80 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-2xl">
-              <div className="flex items-center gap-3 mb-4">
-                <QrCode className="h-6 w-6 text-purple-500" />
-                <h4 className="text-lg font-bold text-purple-700 dark:text-purple-300">Setup Authenticator App</h4>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <QrCode className="h-6 w-6 text-purple-500" />
+                  <h4 className="text-lg font-bold text-purple-700 dark:text-purple-300">Setup Authenticator App</h4>
+                </div>
+                <button
+                  onClick={() => {
+                    toggleTwoFactorMutation.mutate({ 
+                      current_password: '', 
+                      action: 'reset' 
+                    })
+                  }}
+                  className="px-3 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+                >
+                  Reset Setup
+                </button>
               </div>
               <div className="text-center mb-4">
                 <div className="inline-block p-4 bg-white rounded-xl border border-purple-200">
-                  {qrCodeUrl ? (
-                    <QRCodeSVG 
-                      value={qrCodeUrl}
-                      size={256}
-                      level="H"
-                      includeMargin={true}
-                    />
-                  ) : (
-                    <>
-                      <QrCode className="h-32 w-32 text-gray-400" />
-                      <p className="text-xs text-gray-500 mt-2">QR Code will appear after enabling 2FA</p>
-                    </>
-                  )}
+                  <QRCodeSVG 
+                    value={qrCodeUrl || twoFactorStatus?.data?.qr_code_url || ''}
+                    size={256}
+                    level="H"
+                    includeMargin={true}
+                  />
                 </div>
               </div>
               <div className="text-sm text-purple-700 dark:text-purple-300 space-y-2">
@@ -962,7 +993,7 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
                 <ol className="list-decimal list-inside space-y-1 text-xs">
                   <li>Install Google Authenticator or similar TOTP app</li>
                   <li>Scan the QR code above with your app</li>
-                  <li>Enter the 6-digit code from your app to verify</li>
+                  <li>Enter the 6-digit code from your app below to verify</li>
                   <li>Save your recovery codes in a secure location</li>
                 </ol>
               </div>
@@ -989,10 +1020,14 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
               )}
             </div>
 
-            {(settings?.data?.security_features?.two_factor_authentication === true) && (
+            {/* Show TOTP code field for verification during setup or for disabling */}
+            {((settings?.data?.security_features?.two_factor_authentication === true) || 
+              (twoFactorStatus?.data?.pending_setup)) && (
               <div>
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">
-                  2FA Code (Required to Disable)
+                  {(settings?.data?.security_features?.two_factor_authentication === true) 
+                    ? '2FA Code (Required to Disable)' 
+                    : 'Verification Code (Complete Setup)'}
                 </label>
                 <input
                   type="text"
@@ -1010,18 +1045,28 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
               className={`w-full px-8 py-4 font-bold rounded-2xl shadow-xl transition-all duration-300 hover:-translate-y-1 disabled:hover:translate-y-0 flex items-center justify-center gap-3 ${
                 (settings?.data?.security_features?.two_factor_authentication === true)
                   ? 'bg-gradient-to-r from-red-600 via-pink-600 to-rose-600 hover:from-red-700 hover:via-pink-700 hover:to-rose-700 disabled:from-gray-400 disabled:to-gray-500 text-white shadow-red-500/30 hover:shadow-2xl hover:shadow-red-500/50'
+                  : twoFactorStatus?.data?.pending_setup
+                  ? 'bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 hover:from-green-700 hover:via-emerald-700 hover:to-teal-700 disabled:from-gray-400 disabled:to-gray-500 text-white shadow-green-500/30 hover:shadow-2xl hover:shadow-green-500/50'
                   : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:via-indigo-700 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 text-white shadow-purple-500/30 hover:shadow-2xl hover:shadow-purple-500/50'
               }`}
             >
               {toggleTwoFactorMutation.isPending ? (
                 <>
                   <RefreshCw className="h-5 w-5 animate-spin" />
-                  {(settings?.data?.security_features?.two_factor_authentication === true) ? 'Disabling 2FA...' : 'Enabling 2FA...'}
+                  {(settings?.data?.security_features?.two_factor_authentication === true) 
+                    ? 'Disabling 2FA...' 
+                    : twoFactorStatus?.data?.pending_setup 
+                    ? 'Verifying Setup...' 
+                    : 'Starting Setup...'}
                 </>
               ) : (
                 <>
                   <Fingerprint className="h-5 w-5" />
-                  {(settings?.data?.security_features?.two_factor_authentication === true) ? 'Disable Two-Factor Auth' : 'Enable Two-Factor Auth'}
+                  {(settings?.data?.security_features?.two_factor_authentication === true) 
+                    ? 'Disable Two-Factor Auth' 
+                    : twoFactorStatus?.data?.pending_setup 
+                    ? 'Complete 2FA Setup' 
+                    : 'Enable Two-Factor Auth'}
                   <Shield className="h-4 w-4" />
                 </>
               )}

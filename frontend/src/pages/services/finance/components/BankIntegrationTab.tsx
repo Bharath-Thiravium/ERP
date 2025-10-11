@@ -77,7 +77,7 @@ const BankIntegrationTab: React.FC = () => {
     if (!sessionKey) return;
     
     try {
-      const response = await apiClient.post('/api/finance/integration/verify-bank/', {
+      await apiClient.post('/api/finance/integration/verify-bank/', {
         customer_id: customer.id
       });
       

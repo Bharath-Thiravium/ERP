@@ -331,3 +331,5 @@ CELERY_TIMEZONE = 'Asia/Kolkata'
 CELERY_ENABLE_UTC = True
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_RESULT_BACKEND_DB_URL = DATABASES['default']
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_RESULT_BACKEND_DB_URL = DATABASES['default']

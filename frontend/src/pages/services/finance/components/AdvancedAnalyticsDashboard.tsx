@@ -10,7 +10,7 @@ import {
   CheckCircle,
   BarChart3,
   PieChart,
-  Calendar,
+
   Users,
   DollarSign,
   Receipt
@@ -21,7 +21,7 @@ interface AdvancedAnalyticsDashboardProps {
   sessionKey: string
 }
 
-export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({ sessionKey }) => {
+export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = () => {
   const [analyticsData, setAnalyticsData] = useState<TaxAnalyticsSummary | null>(null)
   const [alerts, setAlerts] = useState<ComplianceAlert[]>([])
   const [loading, setLoading] = useState(false)

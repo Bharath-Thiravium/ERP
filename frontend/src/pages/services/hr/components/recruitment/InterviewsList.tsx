@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Calendar, Clock, User, Video, MapPin, Phone, CheckCircle, X } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
+import { Card, CardContent } from '../../../../../components/ui/Card'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
 import toast from 'react-hot-toast'
@@ -40,8 +40,6 @@ const InterviewsList: React.FC = () => {
       await api.patch(`/api/hr/interviews/${interviewId}/`, {
         status: 'completed',
         session_key: sessionKey
-      }, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
       })
       
       toast.success('Interview marked as completed')
@@ -59,8 +57,6 @@ const InterviewsList: React.FC = () => {
       await api.patch(`/api/hr/interviews/${interviewId}/`, {
         recommendation: result,
         session_key: sessionKey
-      }, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
       })
       
       // Update application status
@@ -69,8 +65,6 @@ const InterviewsList: React.FC = () => {
         await api.patch(`/api/hr/job-applications/${interview.application_id}/`, {
           status: result,
           session_key: sessionKey
-        }, {
-          headers: { Authorization: `Bearer ${sessionKey}` }
         })
       }
       

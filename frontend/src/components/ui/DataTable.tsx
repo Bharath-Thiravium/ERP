@@ -1,36 +1,110 @@
-import React from 'react';
+import React from 'react'
 
 interface Column {
-  key: string;
-  header: string;
-  render?: (value: any, row: any) => React.ReactNode;
+  key: string
+  header: string
+  render?: (item: any) => React.ReactNode
 }
 
 interface DataTableProps {
-  data: any[];
-  columns: Column[];
-  onRowClick?: (row: any) => void;
+  data: any[]
+  columns: Column[]
+  emptyMessage?: string
+  selectable?: boolean
+  selectedRows?: string[]
+  onSelectionChange?: (selected: string[]) => void
+  rowSelectable?: (item: any) => boolean
+  loading?: boolean
 }
 
-export const DataTable: React.FC<DataTableProps> = ({ data, columns, onRowClick }) => {
+export const DataTable: React.FC<DataTableProps> = ({
+  data,
+  columns,
+  emptyMessage = 'No data available',
+  selectable = false,
+  selectedRows = [],
+  onSelectionChange,
+  rowSelectable,
+  loading = false
+}) => {
+  const handleSelectAll = (checked: boolean) => {
+    if (!onSelectionChange) return
+    
+    if (checked) {
+      const selectableIds = data
+        .filter(item => !rowSelectable || rowSelectable(item))
+        .map(item => item.id)
+      onSelectionChange(selectableIds)
+    } else {
+      onSelectionChange([])
+    }
+  }
+
+  const handleSelectRow = (id: string, checked: boolean) => {
+    if (!onSelectionChange) return
+    
+    if (checked) {
+      onSelectionChange([...selectedRows, id])
+    } else {
+      onSelectionChange(selectedRows.filter(rowId => rowId !== id))
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="text-center py-8 text-gray-500">
+        Loading...
+      </div>
+    )
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="text-center py-8 text-gray-500">
+        {emptyMessage}
+      </div>
+    )
+  }
+
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full bg-white border border-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="border-b border-gray-200">
+            {selectable && (
+              <th className="text-left p-3">
+                <input
+                  type="checkbox"
+                  checked={selectedRows.length === data.filter(item => !rowSelectable || rowSelectable(item)).length}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                  className="rounded"
+                />
+              </th>
+            )}
             {columns.map((column) => (
-              <th key={column.key} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th key={column.key} className="text-left p-3 font-semibold text-gray-900">
                 {column.header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {data.map((row, index) => (
-            <tr key={index} onClick={() => onRowClick?.(row)} className={onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''}>
+        <tbody>
+          {data.map((item, index) => (
+            <tr key={item.id || index} className="border-b border-gray-100 hover:bg-gray-50">
+              {selectable && (
+                <td className="p-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedRows.includes(item.id)}
+                    onChange={(e) => handleSelectRow(item.id, e.target.checked)}
+                    disabled={rowSelectable && !rowSelectable(item)}
+                    className="rounded"
+                  />
+                </td>
+              )}
               {columns.map((column) => (
-                <td key={column.key} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {column.render ? column.render(row[column.key], row) : row[column.key]}
+                <td key={column.key} className="p-3">
+                  {column.render ? column.render(item) : item[column.key]}
                 </td>
               ))}
             </tr>
@@ -38,5 +112,5 @@ export const DataTable: React.FC<DataTableProps> = ({ data, columns, onRowClick 
         </tbody>
       </table>
     </div>
-  );
-};
+  )
+}

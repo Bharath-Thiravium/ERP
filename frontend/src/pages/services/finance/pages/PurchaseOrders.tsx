@@ -139,10 +139,10 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
   }, [initialAction, quotationForPO])
 
   const handleAddPO = () => {
-    setSelectedPO(null)
-    setQuotationData(null)
-    setIsEditing(false)
-    setShowForm(true)
+    toast('Please create Purchase Orders from the Quotations list after sending quotations to customers. Go to Quotations → Send Mail → Create PO.', {
+      duration: 5000,
+      icon: '💡',
+    })
   }
 
   const handleEditPO = async (po: any) => {

@@ -32,7 +32,7 @@ interface StatutorySettingsData {
 
 const StatutorySettings: React.FC = () => {
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
+
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -41,7 +41,7 @@ const StatutorySettings: React.FC = () => {
 
   const fetchSettings = async () => {
     try {
-      setLoading(true);
+
       const response = await api.get('/api/hr/statutory-settings/');
       if (response.data.results && response.data.results.length > 0) {
         form.setFieldsValue(response.data.results[0]);
@@ -49,7 +49,7 @@ const StatutorySettings: React.FC = () => {
     } catch (error) {
       console.error('Error fetching statutory settings:', error);
     } finally {
-      setLoading(false);
+
     }
   };
 

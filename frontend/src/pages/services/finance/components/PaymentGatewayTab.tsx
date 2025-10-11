@@ -7,9 +7,9 @@ import { Badge } from '../../../../components/ui/Badge';
 import { Modal } from '../../../../components/ui/Modal';
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner';
 import { 
-  Plus, Settings, TestTube, Eye, Edit, Trash2, 
-  CheckCircle, XCircle, Clock, AlertCircle, CreditCard,
-  DollarSign, TrendingUp, Activity, Link, Zap
+  Plus, TestTube, Edit, Trash2, 
+  CheckCircle, Clock, AlertCircle, CreditCard,
+  DollarSign, TrendingUp, Link, Zap
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -163,9 +163,7 @@ const PaymentGatewayTab: React.FC = () => {
     if (!sessionKey || !confirm('Are you sure you want to delete this payment gateway?')) return;
     
     try {
-      await apiClient.delete(`/api/finance/integration/payment-gateways/${gateway.id}/`, {
-        params: { session_key: sessionKey }
-      });
+      await apiClient.delete(`/api/finance/integration/payment-gateways/${gateway.id}/?session_key=${sessionKey}`);
       toast.success('Payment gateway deleted successfully');
       loadGateways();
       loadDashboard();

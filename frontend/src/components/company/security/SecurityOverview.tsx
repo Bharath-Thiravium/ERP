@@ -1,5 +1,5 @@
 import React from 'react'
-import { Shield, Smartphone, Key, Code, Globe, Monitor, AlertCircle, CheckCircle } from 'lucide-react'
+import { Shield, Smartphone, Key, Code, Globe, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card'
 import { Button } from '../../ui/Button'
 

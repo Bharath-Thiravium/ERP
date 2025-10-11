@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { Button } from '../../../../../components/ui/Button'
 import { Badge } from '../../../../../components/ui/Badge'
@@ -176,6 +176,8 @@ export default function GovernmentPortalIntegration() {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Government Portal Integration</h2>
         <Modal
+          isOpen={false}
+          onClose={() => {}}
           trigger={
             <Button variant="outline">
               <Settings className="w-4 h-4 mr-2" />

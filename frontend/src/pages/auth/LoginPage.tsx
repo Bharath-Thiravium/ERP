@@ -36,15 +36,14 @@ const LoginPage: React.FC = () => {
     lockoutExpiresAt,
     passwordExpiresInDays,
     passwordExpiresAt,
-    securityAlerts,
-    trustedDevice 
+    securityAlerts
   } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
 
   const {
     register,
     handleSubmit,
-    formState: { errors, isValid },
+    formState: { errors },
     reset,
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -301,13 +300,13 @@ const LoginPage: React.FC = () => {
                 {(hasFailedAttempt || accountLocked) && (
                   <AccountLockoutWarning 
                     isLocked={accountLocked}
-                    remainingAttempts={remainingAttempts}
-                    lockoutExpiresAt={lockoutExpiresAt}
+                    remainingAttempts={remainingAttempts || undefined}
+                    lockoutExpiresAt={lockoutExpiresAt || undefined}
                   />
                 )}
                 <PasswordExpiryWarning 
-                  expiresInDays={passwordExpiresInDays}
-                  expiresAt={passwordExpiresAt}
+                  expiresInDays={passwordExpiresInDays || undefined}
+                  expiresAt={passwordExpiresAt || undefined}
                 />
 
                 {/* Error Message */}

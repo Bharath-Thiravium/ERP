@@ -330,7 +330,7 @@ class MasterAdminTwoFactorView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        """Get 2FA status"""
+        """Get 2FA status and setup info"""
         if not hasattr(request.user, 'master_admin'):
             return Response(
                 {'error': 'Only master admins can access 2FA settings.'},
@@ -338,12 +338,31 @@ class MasterAdminTwoFactorView(APIView):
             )
 
         master_admin = request.user.master_admin
-        return Response({
+        
+        # Check if there's a pending 2FA setup (secret exists but not verified)
+        pending_setup = bool(master_admin.two_factor_secret and not master_admin.two_factor_enabled)
+        
+        response_data = {
             'two_factor_enabled': master_admin.two_factor_enabled,
             'setup_required': not master_admin.two_factor_enabled,
             'backup_codes_available': len(master_admin.get_recovery_codes()),
-            'security_note': '2FA is mandatory for ultra-secure master admin access.'
-        })
+            'security_note': '2FA is mandatory for ultra-secure master admin access.',
+            'pending_setup': pending_setup
+        }
+        
+        # If there's a pending setup, include QR code info
+        if pending_setup:
+            response_data.update({
+                'secret': master_admin.two_factor_secret,
+                'qr_code_url': f'otpauth://totp/{request.user.email}?secret={master_admin.two_factor_secret}&issuer=SAP-System',
+                'setup_instructions': [
+                    'Scan the QR code with your authenticator app',
+                    'Or manually enter the secret key',
+                    'Then verify setup with a test code below'
+                ]
+            })
+        
+        return Response(response_data)
 
     def post(self, request):
         """Enable/disable 2FA"""
@@ -377,31 +396,60 @@ class MasterAdminTwoFactorView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Generate 2FA secret
-            secret = TwoFactorAuthManager.generate_2fa_secret()
+            # Check if we're starting setup or verifying
+            totp_code = request.data.get('totp_code')
             
-            with transaction.atomic():
-                master_admin.two_factor_secret = secret
-                master_admin.two_factor_enabled = True
-                master_admin.save()
+            if not totp_code:
+                # Starting 2FA setup - generate secret but don't enable yet
+                if not master_admin.two_factor_secret:
+                    secret = TwoFactorAuthManager.generate_2fa_secret()
+                    master_admin.two_factor_secret = secret
+                    master_admin.save()
+                else:
+                    secret = master_admin.two_factor_secret
 
-                UltraSecurityManager.log_security_event(
-                    request.user, 'TWO_FACTOR_ENABLED',
-                    get_client_ip(request),
-                    '2FA enabled for master admin'
-                )
+                return Response({
+                    'message': '2FA setup initiated. Please scan QR code and verify.',
+                    'secret': secret,
+                    'qr_code_url': f'otpauth://totp/{request.user.email}?secret={secret}&issuer=SAP-System',
+                    'pending_verification': True,
+                    'instructions': [
+                        'Scan the QR code with your authenticator app',
+                        'Or manually enter the secret key',
+                        'Then submit this form again with a verification code'
+                    ]
+                })
+            else:
+                # Verifying 2FA setup
+                if not master_admin.two_factor_secret:
+                    return Response(
+                        {'error': 'No 2FA setup in progress. Please start setup first.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Verify the TOTP code
+                if not TwoFactorAuthManager.verify_totp_code(master_admin.two_factor_secret, totp_code):
+                    return Response(
+                        {'error': 'Invalid verification code. Please try again.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Enable 2FA after successful verification
+                with transaction.atomic():
+                    master_admin.two_factor_enabled = True
+                    master_admin.save()
 
-            return Response({
-                'message': '2FA enabled successfully.',
-                'secret': secret,
-                'qr_code_url': f'otpauth://totp/{request.user.email}?secret={secret}&issuer=SAP-System',
-                'instructions': [
-                    'Scan the QR code with your authenticator app',
-                    'Or manually enter the secret key',
-                    'Verify setup with a test code',
-                    'Save your recovery codes securely'
-                ]
-            })
+                    UltraSecurityManager.log_security_event(
+                        request.user, 'TWO_FACTOR_ENABLED',
+                        get_client_ip(request),
+                        '2FA enabled and verified for master admin'
+                    )
+
+                return Response({
+                    'message': '2FA enabled successfully!',
+                    'two_factor_enabled': True,
+                    'security_note': 'Your account is now protected with two-factor authentication.'
+                })
 
         elif action == 'disable':
             if not master_admin.two_factor_enabled:
@@ -439,9 +487,27 @@ class MasterAdminTwoFactorView(APIView):
                 'message': '2FA disabled successfully.',
                 'warning': 'Your account security has been reduced. Consider re-enabling 2FA.'
             })
+        
+        elif action == 'reset':
+            # Reset 2FA setup (clear secret but keep disabled)
+            with transaction.atomic():
+                master_admin.two_factor_enabled = False
+                master_admin.two_factor_secret = ''
+                master_admin.save()
+
+                UltraSecurityManager.log_security_event(
+                    request.user, 'TWO_FACTOR_RESET',
+                    get_client_ip(request),
+                    '2FA setup reset for master admin'
+                )
+
+            return Response({
+                'message': '2FA setup reset successfully.',
+                'note': 'You can now start fresh 2FA setup.'
+            })
 
         return Response(
-            {'error': 'Invalid action. Use "enable" or "disable".'},
+            {'error': 'Invalid action. Use "enable", "disable", or "reset".'},
             status=status.HTTP_400_BAD_REQUEST
         )
 

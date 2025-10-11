@@ -23,9 +23,7 @@ const createCompanySchema = z.object({
     .email('Please enter a valid email address')
     .max(255, 'Email must be less than 255 characters'),
   phone: z.string()
-    .min(10, 'Phone number must be at least 10 digits')
-    .max(20, 'Phone number must be less than 20 characters')
-    .regex(/^[\+]?[0-9\s\-\(\)]+$/, 'Please enter a valid phone number'),
+    .regex(/^[0-9]{10}$/, 'Phone number must be exactly 10 digits'),
   address: z.string()
     .min(5, 'Address must be at least 5 characters')
     .max(500, 'Address must be less than 500 characters'),

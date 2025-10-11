@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Calendar, Clock, User, Video, MapPin, X, Check } from 'lucide-react'
+import { Calendar, X } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { JobApplication } from '../../types/hrTypes'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -96,8 +96,6 @@ const InterviewScheduler: React.FC<InterviewSchedulerProps> = ({
         meeting_link: formData.meeting_link,
         notes: formData.notes,
         session_key: sessionKey
-      }, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
       })
 
       // Update application status
@@ -108,8 +106,6 @@ const InterviewScheduler: React.FC<InterviewSchedulerProps> = ({
         interview_date: `${formData.interview_date}T${formData.interview_time}`,
         interviewer: interviewerForApp,
         session_key: sessionKey
-      }, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
       })
 
       toast.success('Interview scheduled successfully')

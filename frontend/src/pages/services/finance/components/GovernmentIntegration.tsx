@@ -34,7 +34,7 @@ export const GovernmentIntegration: React.FC = () => {
     setLoading(true)
     try {
       const result = await governmentApiService.validateGSTIN(gstinInput)
-      setValidationResults(prev => ({ ...prev, gstin: result }))
+      setValidationResults((prev: any) => ({ ...prev, gstin: result }))
     } catch (error) {
       console.error('GSTIN validation failed:', error)
     } finally {
@@ -48,7 +48,7 @@ export const GovernmentIntegration: React.FC = () => {
     setLoading(true)
     try {
       const result = await governmentApiService.validatePAN(panInput)
-      setValidationResults(prev => ({ ...prev, pan: result }))
+      setValidationResults((prev: any) => ({ ...prev, pan: result }))
     } catch (error) {
       console.error('PAN validation failed:', error)
     } finally {
@@ -61,7 +61,7 @@ export const GovernmentIntegration: React.FC = () => {
     try {
       const currentMonth = new Date().toISOString().slice(0, 7)
       const result = await governmentApiService.fileGSTR1(gstinInput, currentMonth)
-      setFilingResults(prev => ({ ...prev, gstr1: result }))
+      setFilingResults((prev: any) => ({ ...prev, gstr1: result }))
     } catch (error) {
       console.error('GSTR-1 filing failed:', error)
     } finally {
@@ -75,7 +75,7 @@ export const GovernmentIntegration: React.FC = () => {
       const currentQuarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}`
       const financialYear = `${new Date().getFullYear()}-${(new Date().getFullYear() + 1).toString().slice(-2)}`
       const result = await governmentApiService.fileTDSReturn(currentQuarter, financialYear)
-      setFilingResults(prev => ({ ...prev, tds: result }))
+      setFilingResults((prev: any) => ({ ...prev, tds: result }))
     } catch (error) {
       console.error('TDS filing failed:', error)
     } finally {

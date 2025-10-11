@@ -35,7 +35,7 @@ const detailedInfoSchema = z.object({
   contact_person_name: z.string().min(2, 'Contact person name is required'),
   contact_person_title: z.string().min(2, 'Contact person title is required'),
   contact_person_email: z.string().email('Please enter a valid email'),
-  contact_person_phone: z.string().min(10, 'Please enter a valid phone number'),
+  contact_person_phone: z.string().regex(/^[0-9]{10}$/, 'Phone number must be exactly 10 digits'),
   description: z.string().min(10, 'Company description is required (minimum 10 characters)'),
   special_requirements: z.string().optional(),
 })

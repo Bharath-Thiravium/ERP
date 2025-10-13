@@ -126,6 +126,11 @@ class CompanyThreatDetection(models.Model):
     user_agent = models.TextField(blank=True)
     device_id = models.CharField(max_length=64, blank=True)
     
+    # AI Enhancement
+    confidence_score = models.FloatField(default=0.0)  # 0.0 to 1.0
+    ml_model_version = models.CharField(max_length=20, default='v1.0')
+    behavioral_score = models.FloatField(default=0.0)
+    
     # Response
     is_resolved = models.BooleanField(default=False)
     auto_blocked = models.BooleanField(default=False)

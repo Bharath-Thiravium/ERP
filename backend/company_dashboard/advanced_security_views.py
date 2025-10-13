@@ -15,6 +15,7 @@ from .advanced_security_models import (
     CompanyCaptchaSettings, CompanyDeviceFingerprint, CompanyGeolocationRule,
     CompanyThreatDetection, CompanySecurityAlert, CompanyAdvancedSettings
 )
+from .email_alert_service import CompanyEmailAlertService
 from .advanced_security_serializers import (
     CompanyCaptchaSettingsSerializer, SimpleCaptchaSerializer, CaptchaVerificationSerializer,
     CompanyDeviceFingerprintSerializer, DeviceFingerprintCreateSerializer,
@@ -350,7 +351,7 @@ class ThreatDetectionView(APIView):
                 threat.save()
                 
                 # Create alert
-                CompanySecurityAlert.objects.create(
+                alert = CompanySecurityAlert.objects.create(
                     company=threat.company,
                     alert_type='account_lockout',
                     title='Account Automatically Locked',
@@ -359,6 +360,21 @@ class ThreatDetectionView(APIView):
                     severity='critical',
                     metadata={'threat_id': threat.id}
                 )
+                
+                # Send email alert
+                try:
+                    from .email_alert_service import CompanyEmailAlertService
+                    email_service = CompanyEmailAlertService(threat.company)
+                    if email_service.can_send_emails():
+                        email_service.send_security_alert(
+                            alert_type='account_lockout',
+                            title='Account Automatically Locked',
+                            message=f'Your account has been temporarily locked due to critical threat detection. It will be unlocked automatically in {advanced_settings.auto_lockout_duration_minutes} minutes.',
+                            user_email=threat.user_email,
+                            severity='critical'
+                        )
+                except Exception as e:
+                    print(f"Failed to send lockout alert: {e}")
                 
             except CompanyUser.DoesNotExist:
                 pass
@@ -419,7 +435,18 @@ class AdvancedSecuritySettingsView(APIView):
         """Get advanced security settings"""
         company_user = request.user.company_user
         settings, created = CompanyAdvancedSettings.objects.get_or_create(
-            company=company_user.company
+            company=company_user.company,
+            defaults={
+                'enable_threat_detection': True,
+                'enable_device_fingerprinting': True,
+                'enable_geolocation_security': False,
+                'email_alerts': True,
+                'auto_block_threats': False,
+                'brute_force_threshold': 5,
+                'auto_lockout_duration_minutes': 30,
+                'velocity_threshold': 10,
+                'auto_trust_devices': False
+            }
         )
         serializer = CompanyAdvancedSettingsSerializer(settings)
         return Response(serializer.data)
@@ -433,8 +460,24 @@ class AdvancedSecuritySettingsView(APIView):
         
         serializer = CompanyAdvancedSettingsSerializer(settings, data=request.data, partial=True)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
+            updated_settings = serializer.save()
+            
+            # Log settings change
+            from .security_models import CompanySecurityLog
+            CompanySecurityLog.objects.create(
+                company=company_user.company,
+                user_email=company_user.user.email,
+                action='settings_updated',
+                success=True,
+                details=f'Advanced security settings updated: {list(request.data.keys())}',
+                ip_address=request.META.get('REMOTE_ADDR', ''),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')
+            )
+            
+            return Response({
+                'message': 'Settings updated successfully',
+                'data': CompanyAdvancedSettingsSerializer(updated_settings).data
+            })
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

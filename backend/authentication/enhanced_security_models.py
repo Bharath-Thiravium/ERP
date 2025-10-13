@@ -61,6 +61,7 @@ class SecuritySettings(models.Model):
     ip_restrictions_enabled = models.BooleanField(default=False)
     device_fingerprinting_enabled = models.BooleanField(default=True)
     login_notifications_enabled = models.BooleanField(default=True)
+    notification_email = models.EmailField(blank=True, null=True, help_text="Email to receive login notifications")
     captcha_after_failed_attempts = models.IntegerField(default=3)
     max_failed_attempts = models.IntegerField(default=5)
     lockout_duration_minutes = models.IntegerField(default=15)

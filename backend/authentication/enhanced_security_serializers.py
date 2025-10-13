@@ -24,6 +24,6 @@ class SecuritySettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = SecuritySettings
         fields = ['ip_restrictions_enabled', 'device_fingerprinting_enabled', 
-                 'login_notifications_enabled', 'captcha_after_failed_attempts',
+                 'login_notifications_enabled', 'notification_email', 'captcha_after_failed_attempts',
                  'max_failed_attempts', 'lockout_duration_minutes', 'updated_at']
         read_only_fields = ['updated_at']

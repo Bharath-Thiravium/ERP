@@ -1,8 +1,11 @@
 from django.urls import path
 from .security_views import (
     SecurityOverviewView, TwoFactorSetupView, RecoveryCodesView,
-    ApiKeysView, IpRestrictionsView, SessionsView, SecurityLogsView,
+    ApiKeysView, SessionsView, SecurityLogsView,
     PasswordChangeView
+)
+from .ip_restriction_views import (
+    CompanyIpRestrictionView, CompanyIpRestrictionDetailView, CompanyIpRestrictionToggleView
 )
 from . import two_factor_views
 
@@ -25,12 +28,14 @@ urlpatterns = [
     path('api-keys/<int:key_id>/', ApiKeysView.as_view(), name='api-key-delete'),
     
     # IP Restrictions
-    path('ip-restrictions/', IpRestrictionsView.as_view(), name='ip-restrictions'),
-    path('ip-restrictions/<int:restriction_id>/', IpRestrictionsView.as_view(), name='ip-restriction-delete'),
+    path('ip-restrictions/', CompanyIpRestrictionView.as_view(), name='ip-restrictions'),
+    path('ip-restrictions/<int:restriction_id>/', CompanyIpRestrictionDetailView.as_view(), name='ip-restriction-delete'),
+    path('ip-restrictions/toggle/', CompanyIpRestrictionToggleView.as_view(), name='ip-restrictions-toggle'),
     
     # Sessions
     path('sessions/', SessionsView.as_view(), name='sessions'),
     path('sessions/<int:session_id>/', SessionsView.as_view(), name='session-terminate'),
+    path('sessions/terminate-all/', SessionsView.as_view(), name='sessions-terminate-all'),
     
     # Security Logs
     path('audit-logs/', SecurityLogsView.as_view(), name='security-logs'),

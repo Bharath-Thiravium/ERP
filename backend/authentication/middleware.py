@@ -26,17 +26,17 @@ class RateLimitMiddleware(MiddlewareMixin):
         
         elif request.path.startswith('/api/auth/master-admin/settings/'):
             # Higher limit for settings pages (polling + multiple calls)
-            if not UltraSecurityManager.check_rate_limit(ip_address, 'settings', 100, 300):
+            if not UltraSecurityManager.check_rate_limit(ip_address, 'settings', 500, 300):
                 return JsonResponse({'error': 'Too many settings requests.'}, status=429)
         
         elif request.path.startswith('/api/auth/'):
             # Moderate for other auth endpoints
-            if not UltraSecurityManager.check_rate_limit(ip_address, 'auth', 30, 300):
+            if not UltraSecurityManager.check_rate_limit(ip_address, 'auth', 200, 300):
                 return JsonResponse({'error': 'Too many authentication requests.'}, status=429)
         
         elif request.path.startswith('/api/'):
             # General API limit
-            if not UltraSecurityManager.check_rate_limit(ip_address, 'api', 150, 300):
+            if not UltraSecurityManager.check_rate_limit(ip_address, 'api', 300, 300):
                 return JsonResponse({'error': 'Rate limit exceeded.'}, status=429)
         
         return None

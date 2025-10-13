@@ -12,6 +12,8 @@ from .models import (
     MasterAdmin, Company, Service, CompanyService,
     CompanyUser, SecurityLog, CompanyServiceUser, ServiceUserSession
 )
+from .enhanced_security_models import IPRestriction, DeviceFingerprint, LoginNotification, SecuritySettings
+from .email_settings_models import MasterAdminEmailSettings
 from .ultra_security import TwoFactorAuthManager
 
 
@@ -599,3 +601,49 @@ class ServiceUserPasswordChangeSerializer(serializers.Serializer):
             raise serializers.ValidationError('Current password is incorrect.')
 
         return value
+
+
+class MasterAdminEmailSettingsSerializer(serializers.ModelSerializer):
+    """Master Admin Email Settings serializer"""
+    
+    class Meta:
+        model = MasterAdminEmailSettings
+        fields = ['provider', 'smtp_host', 'smtp_port', 'use_tls', 'use_ssl',
+                 'email_address', 'email_password', 'from_name', 'is_active',
+                 'emails_sent_today', 'total_emails_sent', 'last_email_sent']
+        extra_kwargs = {
+            'emails_sent_today': {'read_only': True},
+            'total_emails_sent': {'read_only': True},
+            'last_email_sent': {'read_only': True},
+        }
+    
+    def validate_email_address(self, value):
+        """Validate email address format"""
+        if not value or '@' not in value:
+            raise serializers.ValidationError('Please enter a valid email address')
+        
+        # Additional security validation
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+        try:
+            validate_email(value)
+        except ValidationError:
+            raise serializers.ValidationError('Invalid email format')
+        
+        return value
+    
+    def validate(self, attrs):
+        """Validate provider-specific settings"""
+        provider = attrs.get('provider')
+        
+        if provider == 'custom':
+            if not attrs.get('smtp_host'):
+                raise serializers.ValidationError({
+                    'smtp_host': 'SMTP host is required for custom provider'
+                })
+            if not attrs.get('smtp_port'):
+                raise serializers.ValidationError({
+                    'smtp_port': 'SMTP port is required for custom provider'
+                })
+        
+        return attrs

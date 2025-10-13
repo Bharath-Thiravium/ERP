@@ -31,7 +31,8 @@ class SecurityOverviewView(APIView):
 
     def get(self, request):
         user = request.user
-        company = user.company
+        company_user = user.company_user
+        company = company_user.company
         
         # Get or create security settings
         security_settings, _ = CompanySecuritySettings.objects.get_or_create(
@@ -57,7 +58,7 @@ class SecurityOverviewView(APIView):
         
         # Get metrics
         active_sessions = CompanyUserSession.objects.filter(
-            user=user,
+            user=company_user,
             expires_at__gt=timezone.now()
         ).count()
         
@@ -68,7 +69,6 @@ class SecurityOverviewView(APIView):
         ).count()
         
         # Password expiry
-        company_user = user.company_user
         password_age = (timezone.now() - company_user.password_changed_at).days if company_user.password_changed_at else 0
         days_until_expiry = max(0, security_settings.password_expiry_days - password_age)
         
@@ -121,7 +121,7 @@ class TwoFactorSetupView(APIView):
             if totp.verify(code):
                 # Save secret and enable 2FA
                 security_settings, _ = CompanySecuritySettings.objects.get_or_create(
-                    company=request.user.company
+                    company=request.user.company_user.company
                 )
                 security_settings.two_factor_secret = secret
                 security_settings.two_factor_enabled = True
@@ -129,7 +129,7 @@ class TwoFactorSetupView(APIView):
                 
                 # Log security event
                 CompanySecurityLog.objects.create(
-                    company=request.user.company,
+                    company=request.user.company_user.company,
                     user_email=request.user.email,
                     action='2fa_enable',
                     ip_address=request.META.get('REMOTE_ADDR', ''),
@@ -149,7 +149,7 @@ class TwoFactorSetupView(APIView):
     def delete(self, request):
         """Disable 2FA"""
         security_settings = CompanySecuritySettings.objects.filter(
-            company=request.user.company
+            company=request.user.company_user.company
         ).first()
         
         if security_settings and security_settings.two_factor_enabled:
@@ -159,7 +159,7 @@ class TwoFactorSetupView(APIView):
             
             # Log security event
             CompanySecurityLog.objects.create(
-                company=request.user.company,
+                company=request.user.company_user.company,
                 user_email=request.user.email,
                 action='2fa_disable',
                 ip_address=request.META.get('REMOTE_ADDR', ''),
@@ -181,7 +181,7 @@ class RecoveryCodesView(APIView):
     def get(self, request):
         """Get recovery codes status"""
         codes = CompanyRecoveryCode.objects.filter(
-            company=request.user.company,
+            company=request.user.company_user.company,
             is_used=False
         )
         return Response({
@@ -191,7 +191,7 @@ class RecoveryCodesView(APIView):
 
     def post(self, request):
         """Generate new recovery codes"""
-        company = request.user.company
+        company = request.user.company_user.company
         
         with transaction.atomic():
             # Delete existing codes
@@ -225,7 +225,7 @@ class ApiKeysView(APIView):
     def get(self, request):
         """List API keys"""
         api_keys = CompanyApiKey.objects.filter(
-            company=request.user.company,
+            company=request.user.company_user.company,
             is_active=True
         )
         serializer = CompanyApiKeySerializer(api_keys, many=True)
@@ -235,13 +235,13 @@ class ApiKeysView(APIView):
         """Create new API key"""
         serializer = CompanyApiKeyCreateSerializer(data=request.data)
         if serializer.is_valid():
-            api_key = serializer.save(company=request.user.company)
+            api_key = serializer.save(company=request.user.company_user.company)
             key = api_key.generate_key()
             api_key.save()
             
             # Log security event
             CompanySecurityLog.objects.create(
-                company=request.user.company,
+                company=request.user.company_user.company,
                 user_email=request.user.email,
                 action='api_key_create',
                 ip_address=request.META.get('REMOTE_ADDR', ''),
@@ -261,14 +261,14 @@ class ApiKeysView(APIView):
         try:
             api_key = CompanyApiKey.objects.get(
                 id=key_id,
-                company=request.user.company
+                company=request.user.company_user.company
             )
             api_key.is_active = False
             api_key.save()
             
             # Log security event
             CompanySecurityLog.objects.create(
-                company=request.user.company,
+                company=request.user.company_user.company,
                 user_email=request.user.email,
                 action='api_key_delete',
                 ip_address=request.META.get('REMOTE_ADDR', ''),
@@ -290,7 +290,7 @@ class IpRestrictionsView(APIView):
     def get(self, request):
         """List IP restrictions"""
         restrictions = CompanyIpRestriction.objects.filter(
-            company=request.user.company,
+            company=request.user.company_user.company,
             is_active=True
         )
         serializer = CompanyIpRestrictionSerializer(restrictions, many=True)
@@ -300,11 +300,11 @@ class IpRestrictionsView(APIView):
         """Add IP restriction"""
         serializer = CompanyIpRestrictionSerializer(data=request.data)
         if serializer.is_valid():
-            restriction = serializer.save(company=request.user.company)
+            restriction = serializer.save(company=request.user.company_user.company)
             
             # Log security event
             CompanySecurityLog.objects.create(
-                company=request.user.company,
+                company=request.user.company_user.company,
                 user_email=request.user.email,
                 action='ip_restriction_add',
                 ip_address=request.META.get('REMOTE_ADDR', ''),
@@ -322,14 +322,14 @@ class IpRestrictionsView(APIView):
         try:
             restriction = CompanyIpRestriction.objects.get(
                 id=restriction_id,
-                company=request.user.company
+                company=request.user.company_user.company
             )
             restriction.is_active = False
             restriction.save()
             
             # Log security event
             CompanySecurityLog.objects.create(
-                company=request.user.company,
+                company=request.user.company_user.company,
                 user_email=request.user.email,
                 action='ip_restriction_remove',
                 ip_address=request.META.get('REMOTE_ADDR', ''),
@@ -387,25 +387,29 @@ class SessionsView(APIView):
                     {'error': 'Session not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-        else:
-            # Terminate all other sessions
-            current_session_key = request.session.session_key
-            terminated_count = CompanyUserSession.objects.filter(
-                user=company_user
-            ).exclude(session_key=current_session_key).delete()[0]
-            
-            # Log security event
-            CompanySecurityLog.objects.create(
-                company=company_user.company,
-                user_email=request.user.email,
-                action='session_terminate_all',
-                ip_address=request.META.get('REMOTE_ADDR', ''),
-                user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                success=True,
-                details=f'Terminated {terminated_count} sessions'
-            )
-            
-            return Response({'message': f'Terminated {terminated_count} sessions'})
+
+    
+    def post(self, request):
+        """Terminate all other sessions"""
+        company_user = request.user.company_user
+        current_session_key = request.session.session_key
+        
+        terminated_count = CompanyUserSession.objects.filter(
+            user=company_user
+        ).exclude(session_key=current_session_key).delete()[0]
+        
+        # Log security event
+        CompanySecurityLog.objects.create(
+            company=company_user.company,
+            user_email=request.user.email,
+            action='session_terminate_all',
+            ip_address=request.META.get('REMOTE_ADDR', ''),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            success=True,
+            details=f'Terminated {terminated_count} sessions'
+        )
+        
+        return Response({'message': f'Terminated {terminated_count} sessions'})
 
 class SecurityLogsView(APIView):
     permission_classes = [IsCompanyUser]
@@ -413,7 +417,7 @@ class SecurityLogsView(APIView):
     def get(self, request):
         """Get security audit logs"""
         logs = CompanySecurityLog.objects.filter(
-            company=request.user.company
+            company=request.user.company_user.company
         )
         
         # Filter by action type

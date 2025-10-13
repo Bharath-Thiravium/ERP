@@ -69,6 +69,24 @@ class MasterAdminLoginView(APIView):
 
         if serializer.is_valid():
             user = serializer.validated_data['user']
+            master_admin = user.master_admin
+            
+            # Security check: Account lockout
+            if master_admin.is_locked and master_admin.locked_until and master_admin.locked_until > timezone.now():
+                return Response({
+                    'error': 'Account is temporarily locked due to security reasons',
+                    'locked_until': master_admin.locked_until.isoformat()
+                }, status=status.HTTP_423_LOCKED)
+            
+            # Check IP restrictions FIRST
+            from .ip_restriction_utils import is_ip_allowed, get_ip_restriction_error_message
+            if not is_ip_allowed(master_admin, request):
+                # Log blocked IP attempt
+                log_security_event(user, 'LOGIN_FAILED', request, 'IP address not authorized')
+                return Response(
+                    get_ip_restriction_error_message(master_admin, request),
+                    status=status.HTTP_403_FORBIDDEN
+                )
             
             # Check if 2FA is required
             if serializer.validated_data.get('requires_2fa'):
@@ -83,13 +101,30 @@ class MasterAdminLoginView(APIView):
             access_token = refresh.access_token
 
             # Update master admin login info
-            master_admin = user.master_admin
             master_admin.last_login_ip = get_client_ip(request)
             master_admin.login_attempts = 0
             master_admin.save()
 
+            # Create/update device fingerprint
+            from .device_fingerprint_utils import create_or_update_device_fingerprint
+            device = create_or_update_device_fingerprint(master_admin, request)
+            
+            # Send login notification email
+            from .login_notification_service import send_login_notification
+            try:
+                notification_sent = send_login_notification(master_admin, request)
+                if notification_sent:
+                    print(f'✅ Login notification sent successfully to {master_admin.user.email}')
+                else:
+                    print(f'❌ Failed to send login notification to {master_admin.user.email}')
+            except Exception as e:
+                print(f'❌ Login notification error: {str(e)}')
+                # Don't fail login if notification fails
+                pass
+            
             # Log successful login
-            log_security_event(user, 'LOGIN_SUCCESS', request, 'Master admin login')
+            device_info = f" (Device: {device.device_name})" if device else ""
+            log_security_event(user, 'LOGIN_SUCCESS', request, f'Master admin login{device_info}')
 
             return Response({
                 'access': str(access_token),
@@ -604,6 +639,17 @@ class CompanyUserLoginView(APIView):
         serializer = CompanyUserLoginSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
+            company_user = user.company_user
+            
+            # Check IP restrictions FIRST
+            from company_dashboard.ip_restriction_views import is_ip_allowed
+            if not is_ip_allowed(company_user.company, get_client_ip(request)):
+                # Log blocked IP attempt
+                log_security_event(user, 'LOGIN_FAILED', request, 'IP address not authorized')
+                return Response({
+                    'error': 'Access denied from this IP address. Please contact your administrator.',
+                    'ip_blocked': True
+                }, status=status.HTTP_403_FORBIDDEN)
             
             # Check if 2FA is required
             if serializer.validated_data.get('requires_2fa'):
@@ -625,6 +671,132 @@ class CompanyUserLoginView(APIView):
             company_user.login_attempts = 0
             company_user.save()
 
+            # Create session for Active Sessions tracking
+            from company_dashboard.security_models import CompanyUserSession
+            from user_agents import parse
+            import secrets
+            import string
+            
+            # Generate session key
+            session_key = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(40))
+            
+            # Parse user agent
+            user_agent_string = request.META.get('HTTP_USER_AGENT', '')
+            user_agent = parse(user_agent_string)
+            
+            # Create session
+            CompanyUserSession.objects.create(
+                user=company_user,
+                session_key=session_key,
+                device_type='mobile' if user_agent.is_mobile else 'desktop',
+                browser=f"{user_agent.browser.family} {user_agent.browser.version_string}",
+                os=f"{user_agent.os.family} {user_agent.os.version_string}",
+                ip_address=get_client_ip(request),
+                user_agent=user_agent_string,
+                is_current=True,
+                expires_at=timezone.now() + timezone.timedelta(hours=24)
+            )
+            
+            # Send login email alert if enabled
+            try:
+                from company_dashboard.email_alert_service import CompanyEmailAlertService
+                email_service = CompanyEmailAlertService(company_user.company)
+                
+                if email_service.can_send_emails():
+                    device_info = f"{user_agent.browser.family} on {user_agent.os.family}"
+                    location_info = f"{get_client_ip(request)}"
+                    email_service.send_login_alert(
+                        user_email=user.email,
+                        ip_address=get_client_ip(request),
+                        location=location_info,
+                        device_info=device_info,
+                        admin_email=email_service.email_settings.smtp_username
+                    )
+            except Exception as e:
+                print(f"Failed to send login alert: {e}")
+                # Don't fail login if notification fails
+                pass
+            
+            # Device Fingerprinting - Register/Update Device
+            try:
+                from company_dashboard.device_management_views import DeviceManagementView
+                device_view = DeviceManagementView()
+                
+                # Create fingerprint data from request
+                fingerprint_data = {
+                    'userAgent': user_agent_string,
+                    'screen': request.META.get('HTTP_SCREEN_RESOLUTION', ''),
+                    'timezone': request.META.get('HTTP_TIMEZONE', ''),
+                    'language': request.META.get('HTTP_ACCEPT_LANGUAGE', '').split(',')[0] if request.META.get('HTTP_ACCEPT_LANGUAGE') else '',
+                    'platform': user_agent.os.family if user_agent else ''
+                }
+                
+                # Register device
+                device_view._register_device_fingerprint(company_user, fingerprint_data, get_client_ip(request))
+                print(f'📱 Device fingerprint registered for {user.email}')
+            except Exception as e:
+                print(f'📱 Device fingerprinting error: {str(e)}')
+
+            # Create/update device fingerprint if user has master admin access
+            if hasattr(user, 'master_admin'):
+                from .device_fingerprint_utils import create_or_update_device_fingerprint
+                device = create_or_update_device_fingerprint(user.master_admin, request)
+            
+            # Geolocation Security Check
+            from company_dashboard.geolocation_views import check_geolocation_access
+            try:
+                geo_result = check_geolocation_access(
+                    company_user.company,
+                    get_client_ip(request),
+                    user.email
+                )
+                
+                if not geo_result['allowed']:
+                    return Response({
+                        'error': f'Access denied from {geo_result["location_info"]["country"]}. Contact administrator.',
+                        'location_blocked': True,
+                        'location': geo_result['location_info']
+                    }, status=status.HTTP_403_FORBIDDEN)
+                
+                if geo_result['requires_2fa']:
+                    # Force 2FA for this location
+                    return Response({
+                        'requires_2fa': True,
+                        'message': f'2FA required for login from {geo_result["location_info"]["country"]}',
+                        'user_id': user.id,
+                        'geolocation_2fa': True
+                    })
+                    
+            except Exception as e:
+                print(f'🌍 GEOLOCATION ERROR: {str(e)}')
+            
+            # AI-Enhanced Threat Detection
+            from company_dashboard.threat_detection_engine import threat_monitor
+            from company_dashboard.security_models import CompanySecurityLog
+            try:
+                threats = threat_monitor.monitor_login_attempt(
+                    company_user.company,
+                    user.email,
+                    get_client_ip(request),
+                    request.META.get('HTTP_USER_AGENT', ''),
+                    success=True
+                )
+                if threats:
+                    print(f'🔍 THREAT DETECTION: {len(threats)} threats detected for {user.email}')
+                
+                # Log successful login to Company Security Log
+                CompanySecurityLog.objects.create(
+                    company=company_user.company,
+                    user_email=user.email,
+                    action='login',
+                    ip_address=get_client_ip(request),
+                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    success=True,
+                    details='Successful company user login'
+                )
+            except Exception as e:
+                print(f'🔍 THREAT DETECTION ERROR: {str(e)}')
+            
             # Log successful login
             log_security_event(user, 'LOGIN_SUCCESS', request, 'Company user login')
 
@@ -671,7 +843,10 @@ class CompanyUserLoginView(APIView):
         if email:
             try:
                 user = User.objects.get(email=email)
-                company_user = user.company_user
+                if hasattr(user, 'company_user'):
+                    company_user = user.company_user
+                else:
+                    return Response({'error': 'Login failed. Please try again.'}, status=status.HTTP_401_UNAUTHORIZED)
                 company_user.login_attempts += 1
                 
                 max_attempts = 5
@@ -682,6 +857,51 @@ class CompanyUserLoginView(APIView):
                     company_user.locked_until = timezone.now() + timezone.timedelta(minutes=30)
                     
                 company_user.save()
+                # AI-Enhanced Threat Detection for failed login
+                from company_dashboard.threat_detection_engine import threat_monitor
+                from company_dashboard.security_models import CompanySecurityLog
+                try:
+                    threats = threat_monitor.monitor_login_attempt(
+                        company_user.company,
+                        user.email,
+                        get_client_ip(request),
+                        request.META.get('HTTP_USER_AGENT', ''),
+                        success=False
+                    )
+                    if threats:
+                        print(f'🔍 THREAT DETECTION: {len(threats)} threats detected for failed login {user.email}')
+                    
+                    # Log failed login to Company Security Log
+                    CompanySecurityLog.objects.create(
+                        company=company_user.company,
+                        user_email=user.email,
+                        action='failed_login',
+                        ip_address=get_client_ip(request),
+                        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                        success=False,
+                        details=f'Failed login attempt - {remaining_attempts} attempts remaining'
+                    )
+                except Exception as e:
+                    print(f'🔍 THREAT DETECTION ERROR: {str(e)}')
+                
+                # Device Fingerprinting for failed attempts
+                try:
+                    from company_dashboard.device_management_views import DeviceManagementView
+                    device_view = DeviceManagementView()
+                    
+                    user_agent_string = request.META.get('HTTP_USER_AGENT', '')
+                    fingerprint_data = {
+                        'userAgent': user_agent_string,
+                        'screen': '',
+                        'timezone': '',
+                        'language': request.META.get('HTTP_ACCEPT_LANGUAGE', '').split(',')[0] if request.META.get('HTTP_ACCEPT_LANGUAGE') else '',
+                        'platform': ''
+                    }
+                    
+                    device_view._register_device_fingerprint(company_user, fingerprint_data, get_client_ip(request), failed_attempt=True)
+                except Exception as e:
+                    print(f'📱 Device fingerprinting error (failed login): {str(e)}')
+                
                 log_security_event(user, 'LOGIN_FAILED', request, 'Failed company user login')
                 
                 # Return detailed error with attempt info

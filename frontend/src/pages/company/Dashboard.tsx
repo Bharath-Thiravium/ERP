@@ -1186,7 +1186,7 @@ Website: https://athenas.co.in
                 )}
 
                 {activeSecurityTab === '2fa' && (
-                  <TwoFactorAuth />
+                  <TwoFactorAuth onNavigateToTab={setActiveSecurityTab} />
                 )}
 
                 {activeSecurityTab === 'recovery' && (

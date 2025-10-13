@@ -9,7 +9,7 @@ import {
   AlertTriangle, CheckCircle2, Activity, Clock, Fingerprint,
   Smartphone, QrCode, ArrowLeft,
   Zap, TrendingUp, Globe, 
-  User, Mail, Calendar, Settings
+  User, Mail, Calendar, Settings, Save
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '../../lib/api'
@@ -60,11 +60,22 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
   const [showPasswords, setShowPasswords] = useState({
     current: false,
     new: false,
-    confirm: false
+    confirm: false,
+    email: false
   })
   const [generatedApiKey, setGeneratedApiKey] = useState<string | null>(null)
   const [generatedRecoveryCodes, setGeneratedRecoveryCodes] = useState<string[] | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null)
+  
+  // Email Settings State
+  const [emailSettings, setEmailSettings] = useState({
+    provider: 'gmail',
+    email_address: '',
+    email_password: '',
+    from_name: 'SAP System Security',
+    is_active: false
+  })
+  const [testEmail, setTestEmail] = useState('')
   
   // Phase 3: Enhanced Security State
   const [securitySettings, setSecuritySettings] = useState({
@@ -151,6 +162,31 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
     queryKey: ['login-notifications'],
     queryFn: () => apiClient.getLoginNotifications()
   })
+
+  // Email Settings Queries
+  const { data: masterAdminEmailSettings } = useQuery({
+    queryKey: ['master-admin-email-settings'],
+    queryFn: () => apiClient.getMasterAdminEmailSettings()
+  })
+
+  // Removed unused emailProviders query
+
+  const { data: emailUsage } = useQuery({
+    queryKey: ['email-usage'],
+    queryFn: () => apiClient.getMasterAdminEmailUsage()
+  })
+
+  // Update email settings when data is fetched (like Company Dashboard)
+  React.useEffect(() => {
+    console.log('🔍 Email settings data:', masterAdminEmailSettings)
+    if (masterAdminEmailSettings?.data) {
+      // Merge with existing settings like Company Dashboard does
+      setEmailSettings(prevSettings => ({
+        ...prevSettings,
+        ...masterAdminEmailSettings.data
+      }))
+    }
+  }, [masterAdminEmailSettings])
 
   // Forms
   const passwordForm = useForm<UltraSecurePasswordFormData>({
@@ -309,6 +345,40 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to update device trust')
+    }
+  })
+
+  // Email Settings Mutations
+  const updateEmailSettingsMutation = useMutation({
+    mutationFn: (data: any) => apiClient.updateMasterAdminEmailSettings(data),
+    onSuccess: (response) => {
+      toast.success('Email settings saved successfully!')
+      console.log('🎉 Save response:', response)
+      
+      // Update local state with saved data (like Company Dashboard)
+      if (response?.data) {
+        setEmailSettings(prevSettings => ({
+          ...prevSettings,
+          ...response.data
+        }))
+      }
+      
+      // Refresh usage stats
+      queryClient.invalidateQueries({ queryKey: ['email-usage'] })
+    },
+    onError: (error: any) => {
+      console.error('❌ Save error:', error)
+      toast.error(error.response?.data?.error || 'Failed to save email settings')
+    }
+  })
+
+  const testEmailMutation = useMutation({
+    mutationFn: (data: { test_email?: string }) => apiClient.testMasterAdminEmail(data),
+    onSuccess: () => {
+      toast.success('Test email sent successfully!')
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to send test email')
     }
   })
 
@@ -1148,6 +1218,210 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
     </div>
   )
 
+  // Email Settings Tab
+  const renderEmailSettingsTab = () => (
+    <div className="max-w-4xl mx-auto space-y-8">
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-pink-500/20 to-rose-600/20 rounded-2xl border border-pink-500/30 mb-4">
+          <Mail className="h-6 w-6 text-pink-500" />
+          <span className="text-gray-900 dark:text-white font-bold text-lg">Master Admin Email Settings</span>
+        </div>
+        <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+          Configure email settings for sending login notifications and security alerts.
+        </p>
+      </div>
+
+      {/* Email Configuration */}
+      <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-2xl rounded-3xl border border-gray-200/50 dark:border-gray-700/50 shadow-2xl shadow-gray-900/10 overflow-hidden">
+        <div className="p-8">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="p-4 bg-gradient-to-br from-pink-500 to-rose-600 rounded-2xl shadow-lg">
+              <Settings className="h-8 w-8 text-white" />
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Email Configuration</h3>
+              <p className="text-gray-600 dark:text-gray-400">Configure SMTP settings for sending emails</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Provider Selection */}
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">
+                  Email Provider
+                </label>
+                <select
+                  value={emailSettings.provider}
+                  onChange={(e) => setEmailSettings(prev => ({ ...prev, provider: e.target.value }))}
+                  className="w-full px-4 py-3 bg-gray-50/80 dark:bg-gray-700/50 border border-gray-200/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500/30 focus:border-pink-500 transition-all duration-300"
+                >
+                  <option value="gmail">Gmail</option>
+                  <option value="outlook">Outlook/Hotmail</option>
+                  <option value="yahoo">Yahoo Mail</option>
+                  <option value="hostinger">Hostinger</option>
+                  <option value="godaddy">GoDaddy</option>
+                  <option value="custom">Custom SMTP</option>
+                </select>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                  💡 {emailSettings.provider === 'gmail' ? 'Use your Gmail address and App Password (not regular password)' :
+                      emailSettings.provider === 'outlook' ? 'Use your Outlook/Hotmail address and password' :
+                      emailSettings.provider === 'yahoo' ? 'Use your Yahoo address and App Password' :
+                      emailSettings.provider === 'hostinger' ? 'Use your Hostinger email address and password' :
+                      emailSettings.provider === 'godaddy' ? 'Use your GoDaddy email address and password' :
+                      'Enter your custom SMTP server details'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={emailSettings.email_address}
+                  onChange={(e) => setEmailSettings(prev => ({ ...prev, email_address: e.target.value }))}
+                  className="w-full px-4 py-3 bg-gray-50/80 dark:bg-gray-700/50 border border-gray-200/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500/30 focus:border-pink-500 transition-all duration-300"
+                  placeholder="your-email@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">
+                  Email Password / App Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPasswords.email ? 'text' : 'password'}
+                    value={emailSettings.email_password || ''}
+                    onChange={(e) => setEmailSettings(prev => ({ ...prev, email_password: e.target.value }))}
+                    className="w-full px-4 py-3 bg-gray-50/80 dark:bg-gray-700/50 border border-gray-200/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500/30 focus:border-pink-500 transition-all duration-300 pr-12"
+                    placeholder="Enter password or app password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswords(prev => ({ ...prev, email: !prev.email }))}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600"
+                  >
+                    {showPasswords.email ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">
+                  From Name
+                </label>
+                <input
+                  type="text"
+                  value={emailSettings.from_name}
+                  onChange={(e) => setEmailSettings(prev => ({ ...prev, from_name: e.target.value }))}
+                  className="w-full px-4 py-3 bg-gray-50/80 dark:bg-gray-700/50 border border-gray-200/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500/30 focus:border-pink-500 transition-all duration-300"
+                  placeholder="SAP System Security"
+                />
+              </div>
+            </div>
+
+            {/* Status and Actions */}
+            <div className="space-y-6">
+              <div className="p-6 bg-gray-50/80 dark:bg-gray-700/50 rounded-2xl border border-gray-200/50 dark:border-gray-600/50">
+                <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Current Status</h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Configuration Status</span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      emailSettings.is_active 
+                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                        : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                    }`}>
+                      {emailSettings.is_active ? '✅ Active' : '❌ Inactive'}
+                    </span>
+                  </div>
+                  {emailUsage?.data && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Emails Today</span>
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {emailUsage.data.emails_sent_today}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Total Emails</span>
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {emailUsage.data.total_emails_sent}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Test Email */}
+              <div className="p-6 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-2xl">
+                <h4 className="text-lg font-bold text-blue-700 dark:text-blue-300 mb-4">Test Email</h4>
+                <div className="space-y-3">
+                  <input
+                    type="email"
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-300"
+                    placeholder="test@example.com (optional)"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!testEmailMutation.isPending) {
+                        testEmailMutation.mutate({ test_email: testEmail || undefined })
+                      }
+                    }}
+                    disabled={testEmailMutation.isPending || !emailSettings.is_active}
+                    className="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Mail className="h-4 w-4" />
+                    {testEmailMutation.isPending ? 'Sending...' : 'Send Test Email'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-4 mt-8 pt-6 border-t border-gray-200/50 dark:border-gray-600/50">
+            <button
+              onClick={() => {
+                const updatedSettings = {
+                  ...emailSettings,
+                  is_active: true
+                }
+                setEmailSettings(updatedSettings)
+                updateEmailSettingsMutation.mutate(updatedSettings)
+              }}
+              disabled={updateEmailSettingsMutation.isPending || !emailSettings.email_address || !emailSettings.email_password}
+              className="flex-1 px-6 py-3 bg-gradient-to-r from-pink-600 via-rose-600 to-red-600 hover:from-pink-700 hover:via-rose-700 hover:to-red-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold rounded-xl shadow-xl shadow-pink-500/30 hover:shadow-2xl hover:shadow-pink-500/50 transition-all duration-300 hover:-translate-y-1 disabled:hover:translate-y-0 flex items-center justify-center gap-3"
+            >
+              <Save className="h-5 w-5" />
+              {updateEmailSettingsMutation.isPending ? 'Saving...' : 'Save & Activate'}
+            </button>
+            
+            <button
+              onClick={() => {
+                const updatedSettings = {
+                  ...emailSettings,
+                  is_active: false
+                }
+                setEmailSettings(updatedSettings)
+                updateEmailSettingsMutation.mutate(updatedSettings)
+              }}
+              disabled={updateEmailSettingsMutation.isPending}
+              className="px-6 py-3 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 text-white font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-2"
+            >
+              Deactivate
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   // Security Log Tab
   const renderSecurityLogTab = () => (
     <div className="max-w-4xl mx-auto">
@@ -1326,6 +1600,7 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
                   { id: 'recovery', label: 'Recovery Codes', icon: RefreshCw, color: 'from-orange-500 to-yellow-600' },
                   { id: '2fa', label: 'Two-Factor Auth', icon: Fingerprint, color: 'from-purple-500 to-indigo-600' },
                   { id: 'enhanced', label: 'Enhanced Security', icon: Settings, color: 'from-cyan-500 to-blue-600' },
+                  { id: 'email', label: 'Email Settings', icon: Mail, color: 'from-pink-500 to-rose-600' },
                   { id: 'activity', label: 'Security Log', icon: Activity, color: 'from-gray-500 to-slate-600' }
                 ].map((tab) => {
                   const Icon = tab.icon
@@ -1333,6 +1608,7 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
                   return (
                     <button
                       key={tab.id}
+                      data-tab={tab.id}
                       onClick={() => setActiveTab(tab.id)}
                       className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${
                         isActive
@@ -1357,6 +1633,7 @@ const UltraSecureMasterAdminSettings: React.FC = () => {
             {activeTab === 'recovery' && renderRecoveryTab()}
             {activeTab === '2fa' && renderTwoFactorTab()}
             {activeTab === 'enhanced' && renderEnhancedSecurityTab()}
+            {activeTab === 'email' && renderEmailSettingsTab()}
             {activeTab === 'activity' && renderSecurityLogTab()}
           </div>
         </div>

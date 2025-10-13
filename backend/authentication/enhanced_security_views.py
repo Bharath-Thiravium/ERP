@@ -119,17 +119,62 @@ def test_login_notification_view(request):
     """Test login notification system"""
     master_admin = request.user.master_admin
     
-    # Create test notification
-    notification = LoginNotification.objects.create(
+    # Send actual test email
+    from .login_notification_service import send_login_notification
+    email_sent = send_login_notification(master_admin, request)
+    
+    return Response({
+        'message': 'Test notification sent successfully' if email_sent else 'Failed to send test notification',
+        'email_sent': email_sent,
+        'notification_email': master_admin.user.email
+    })
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated, IsMasterAdmin])
+def notification_email_view(request):
+    """Get or update notification email settings"""
+    master_admin = request.user.master_admin
+    
+    # Get or create security settings
+    settings, created = SecuritySettings.objects.get_or_create(
         master_admin=master_admin,
-        email_sent=True,
-        ip_address=request.META.get('REMOTE_ADDR', '127.0.0.1'),
-        location='Test Location',
-        device_info='Test Device - Browser Test'
+        defaults={'login_notifications_enabled': True}
     )
     
-    serializer = LoginNotificationSerializer(notification)
-    return Response({
-        'message': 'Test notification created successfully',
-        'notification': serializer.data
-    })
+    if request.method == 'GET':
+        return Response({
+            'notification_email': settings.notification_email or '',
+            'login_notifications_enabled': settings.login_notifications_enabled,
+            'account_email': master_admin.user.email,
+            'message': 'Set custom email for login notifications'
+        })
+    
+    elif request.method == 'POST':
+        notification_email = request.data.get('notification_email', '').strip()
+        
+        if notification_email:
+            # Validate email format
+            from django.core.validators import validate_email
+            from django.core.exceptions import ValidationError
+            try:
+                validate_email(notification_email)
+                settings.notification_email = notification_email
+                settings.save()
+                
+                return Response({
+                    'message': 'Notification email updated successfully',
+                    'notification_email': notification_email
+                })
+            except ValidationError:
+                return Response({
+                    'error': 'Invalid email format'
+                }, status=400)
+        else:
+            # Clear notification email (use account email)
+            settings.notification_email = None
+            settings.save()
+            
+            return Response({
+                'message': 'Notification email cleared. Will use account email.',
+                'notification_email': ''
+            })

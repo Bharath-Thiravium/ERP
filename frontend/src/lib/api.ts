@@ -1372,6 +1372,28 @@ export const apiClient = {
   testLoginNotification: () =>
     api.post('/api/auth/master-admin/login-notifications/test/'),
 
+  getNotificationEmail: () =>
+    api.get('/api/auth/master-admin/notification-email/'),
+
+  setNotificationEmail: (data: { notification_email: string }) =>
+    api.post('/api/auth/master-admin/notification-email/', data),
+
+  // Master Admin Email Settings
+  getMasterAdminEmailSettings: () =>
+    api.get('/api/auth/master-admin/email-settings/'),
+
+  updateMasterAdminEmailSettings: (data: any) =>
+    api.post('/api/auth/master-admin/email-settings/', data),
+
+  testMasterAdminEmail: (data?: { test_email?: string }) =>
+    api.post('/api/auth/master-admin/email-settings/test/', data || {}),
+
+  getMasterAdminEmailProviders: () =>
+    api.get('/api/auth/master-admin/email-settings/providers/'),
+
+  getMasterAdminEmailUsage: () =>
+    api.get('/api/auth/master-admin/email-settings/usage/'),
+
   // Convenience methods for backward compatibility
   getEmployees: (params?: any) => apiClient.getHREmployees(params),
   createEmployee: (data: any) => apiClient.createHREmployee(data),

@@ -4,6 +4,12 @@ from . import views
 from . import master_admin_settings
 from . import services_management
 from . import enhanced_security_views
+from .email_settings_views import (
+    master_admin_email_settings_view,
+    test_master_admin_email_view,
+    email_provider_templates_view,
+    email_usage_stats_view
+)
 
 # Create router for ViewSets
 router = DefaultRouter()
@@ -33,6 +39,13 @@ urlpatterns = [
     path('master-admin/device-fingerprints/<uuid:device_id>/', enhanced_security_views.device_fingerprint_detail_view, name='device_fingerprint_detail'),
     path('master-admin/login-notifications/', enhanced_security_views.login_notifications_view, name='login_notifications'),
     path('master-admin/login-notifications/test/', enhanced_security_views.test_login_notification_view, name='test_login_notification'),
+    path('master-admin/notification-email/', enhanced_security_views.notification_email_view, name='notification_email'),
+    
+    # Master Admin Email Settings
+    path('master-admin/email-settings/', master_admin_email_settings_view, name='master_admin_email_settings'),
+    path('master-admin/email-settings/test/', test_master_admin_email_view, name='test_master_admin_email'),
+    path('master-admin/email-settings/providers/', email_provider_templates_view, name='email_provider_templates'),
+    path('master-admin/email-settings/usage/', email_usage_stats_view, name='email_usage_stats'),
 
     # Company User endpoints
     path('company/login/', views.CompanyUserLoginView.as_view(), name='company_user_login'),

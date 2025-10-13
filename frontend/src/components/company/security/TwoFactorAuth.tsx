@@ -5,7 +5,11 @@ import { Button } from '../../ui/Button'
 import { apiClient } from '../../../lib/api'
 import toast from 'react-hot-toast'
 
-const TwoFactorAuth: React.FC = () => {
+interface TwoFactorAuthProps {
+  onNavigateToTab?: (tabId: string) => void
+}
+
+const TwoFactorAuth: React.FC<TwoFactorAuthProps> = ({ onNavigateToTab }) => {
   const [step, setStep] = useState<'setup' | 'verify' | 'enabled'>('setup')
   const [verificationCode, setVerificationCode] = useState('')
   const [qrCodeUrl, setQrCodeUrl] = useState('')
@@ -111,12 +115,33 @@ const TwoFactorAuth: React.FC = () => {
               <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                 <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">Backup Codes</h4>
                 <p className="text-sm text-blue-700 dark:text-blue-300 mb-3">Generate backup codes for emergency access</p>
-                <Button size="sm" variant="outline">Generate Codes</Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => onNavigateToTab?.('recovery')}
+                >
+                  Generate Codes
+                </Button>
               </div>
               <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
                 <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">Trusted Devices</h4>
                 <p className="text-sm text-purple-700 dark:text-purple-300 mb-3">Manage devices that skip 2FA</p>
-                <Button size="sm" variant="outline">Manage Devices</Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => {
+                    onNavigateToTab?.('advanced')
+                    // Set advanced security to devices tab
+                    setTimeout(() => {
+                      const advancedSecurityElement = document.querySelector('[data-tab="devices"]')
+                      if (advancedSecurityElement) {
+                        (advancedSecurityElement as HTMLElement).click()
+                      }
+                    }, 100)
+                  }}
+                >
+                  Manage Devices
+                </Button>
               </div>
             </div>
 

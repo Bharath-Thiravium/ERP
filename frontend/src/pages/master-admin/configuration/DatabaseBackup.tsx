@@ -673,14 +673,44 @@ const CreateBackupModal: React.FC<{
     description: '',
     backup_level: 'system',
     backup_type: 'full',
-    service_type: 'all',
+    service_type: '',
     company_id: '',
     selected_tables: [] as string[],
     compression: 'gzip'
   })
 
+  // Reset dependent fields when backup level changes
+  const handleBackupLevelChange = (level: string) => {
+    setFormData({
+      ...formData,
+      backup_level: level,
+      company_id: level === 'system' ? '' : formData.company_id,
+      service_type: level === 'service' ? '' : level === 'system' ? 'all' : formData.service_type,
+      selected_tables: level === 'table' ? [] : formData.selected_tables
+    })
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Validation for service backup
+    if (formData.backup_level === 'service') {
+      if (!formData.company_id) {
+        alert('Please select a company for service backup')
+        return
+      }
+      if (!formData.service_type) {
+        alert('Please select a service for service backup')
+        return
+      }
+    }
+    
+    // Validation for table backup
+    if (formData.backup_level === 'table' && formData.selected_tables.length === 0) {
+      alert('Please select at least one table for table backup')
+      return
+    }
+    
     onSubmit(formData)
   }
 
@@ -714,14 +744,20 @@ const CreateBackupModal: React.FC<{
             </label>
             <select
               value={formData.backup_level}
-              onChange={(e) => setFormData({ ...formData, backup_level: e.target.value })}
+              onChange={(e) => handleBackupLevelChange(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
-              <option value="system">Complete System</option>
-              <option value="company">Company Data</option>
-              <option value="service">Service Data</option>
-              <option value="table">Specific Tables</option>
+              <option value="system">Complete System (All Data)</option>
+              <option value="company">Company Data (Single Company)</option>
+              <option value="service">Service Data (Company + Service)</option>
+              <option value="table">Specific Tables (Custom Selection)</option>
             </select>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {formData.backup_level === 'system' && 'Backup entire database including all companies and services'}
+              {formData.backup_level === 'company' && 'Backup all data for a specific company across all services'}
+              {formData.backup_level === 'service' && 'Backup specific service data for a selected company'}
+              {formData.backup_level === 'table' && 'Backup selected tables with optional company filtering'}
+            </p>
           </div>
 
           {formData.backup_level === 'company' && (
@@ -746,58 +782,102 @@ const CreateBackupModal: React.FC<{
           )}
 
           {formData.backup_level === 'service' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Select Service
-              </label>
-              <select
-                value={formData.service_type}
-                onChange={(e) => setFormData({ ...formData, service_type: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value="finance">Finance Service</option>
-                <option value="hr">HR Service</option>
-                <option value="inventory">Inventory Service</option>
-              </select>
-            </div>
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Select Company *
+                </label>
+                <select
+                  value={formData.company_id}
+                  onChange={(e) => setFormData({ ...formData, company_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  required
+                >
+                  <option value="">Select a company</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Select Service *
+                </label>
+                <select
+                  value={formData.service_type}
+                  onChange={(e) => setFormData({ ...formData, service_type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  required
+                >
+                  <option value="">Select a service</option>
+                  <option value="finance">Finance Service</option>
+                  <option value="hr">HR Service</option>
+                  <option value="inventory">Inventory Service</option>
+                </select>
+              </div>
+            </>
           )}
 
           {formData.backup_level === 'table' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Select Tables
-              </label>
-              <div className="max-h-40 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-lg p-2">
-                {Object.entries(tables).map(([service, serviceTables]: [string, any]) => (
-                  <div key={service} className="mb-2">
-                    <h4 className="font-medium text-gray-900 dark:text-white capitalize">{service}</h4>
-                    {serviceTables.map((table: string) => (
-                      <label key={table} className="flex items-center space-x-2 ml-4">
-                        <input
-                          type="checkbox"
-                          checked={formData.selected_tables.includes(table)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setFormData({
-                                ...formData,
-                                selected_tables: [...formData.selected_tables, table]
-                              })
-                            } else {
-                              setFormData({
-                                ...formData,
-                                selected_tables: formData.selected_tables.filter(t => t !== table)
-                              })
-                            }
-                          }}
-                          className="rounded"
-                        />
-                        <span className="text-sm text-gray-600 dark:text-gray-400">{table}</span>
-                      </label>
-                    ))}
-                  </div>
-                ))}
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Select Company (Optional)
+                </label>
+                <select
+                  value={formData.company_id}
+                  onChange={(e) => setFormData({ ...formData, company_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="">All companies (system-wide)</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name} (company-specific data)
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Select a company to backup only that company's data from selected tables
+                </p>
               </div>
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Select Tables *
+                </label>
+                <div className="max-h-40 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-lg p-2">
+                  {Object.entries(tables).map(([service, serviceTables]: [string, any]) => (
+                    <div key={service} className="mb-2">
+                      <h4 className="font-medium text-gray-900 dark:text-white capitalize">{service}</h4>
+                      {serviceTables.map((table: string) => (
+                        <label key={table} className="flex items-center space-x-2 ml-4">
+                          <input
+                            type="checkbox"
+                            checked={formData.selected_tables.includes(table)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFormData({
+                                  ...formData,
+                                  selected_tables: [...formData.selected_tables, table]
+                                })
+                              } else {
+                                setFormData({
+                                  ...formData,
+                                  selected_tables: formData.selected_tables.filter(t => t !== table)
+                                })
+                              }
+                            }}
+                            className="rounded"
+                          />
+                          <span className="text-sm text-gray-600 dark:text-gray-400">{table}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
 
           <div>

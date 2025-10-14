@@ -182,20 +182,30 @@ class DatabaseBackupViewSet(viewsets.ModelViewSet):
         """Create service-specific backup"""
         try:
             service_type = request.data.get('service_type')
-            if service_type not in ['finance', 'hr', 'inventory']:
+            if not service_type or service_type not in ['finance', 'hr', 'inventory']:
                 return Response(
-                    {'error': 'Invalid service type'},
+                    {'error': 'Valid service type is required (finance, hr, or inventory)'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
             company_id = request.data.get('company_id')
-            company = None
-            if company_id:
-                company = Company.objects.get(id=company_id)
+            if not company_id:
+                return Response(
+                    {'error': 'Company ID is required for service backup'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                company = Company.objects.get(id=company_id, approval_status='approved')
+            except Company.DoesNotExist:
+                return Response(
+                    {'error': 'Company not found or not approved'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
             
             backup_data = {
-                'name': request.data.get('name', f"service_{service_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"),
-                'description': request.data.get('description', f'Backup for {service_type} service'),
+                'name': request.data.get('name', f"service_{service_type}_{company.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"),
+                'description': request.data.get('description', f'Backup for {service_type} service of {company.name}'),
                 'backup_level': 'service',
                 'backup_type': request.data.get('backup_type', 'full'),
                 'service_type': service_type,
@@ -216,7 +226,9 @@ class DatabaseBackupViewSet(viewsets.ModelViewSet):
                     'name': backup.name,
                     'status': backup.status,
                     'backup_level': backup.backup_level,
-                    'service_type': service_type
+                    'service_type': service_type,
+                    'company': company.name,
+                    'company_id': company.id
                 }, status=status.HTTP_201_CREATED)
             else:
                 return Response(

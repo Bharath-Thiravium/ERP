@@ -37,10 +37,51 @@ class LoginNotificationService:
     def get_notification_email(master_admin):
         """Get email address for notifications"""
         try:
-            settings = SecuritySettings.objects.get(master_admin=master_admin)
-            # Use custom notification email if set, otherwise use account email
-            return settings.notification_email or master_admin.user.email
-        except SecuritySettings.DoesNotExist:
+            # Use get_or_create to ensure SecuritySettings exists
+            settings, created = SecuritySettings.objects.get_or_create(
+                master_admin=master_admin,
+                defaults={'login_notifications_enabled': True}
+            )
+            
+            if created:
+                print(f'🆕 Created new SecuritySettings for {master_admin.user.email}')
+            else:
+                print(f'🔍 SecuritySettings found for {master_admin.user.email}')
+            
+            print(f'📧 notification_email from SecuritySettings: {settings.notification_email}')
+            print(f'👤 account_email: {master_admin.user.email}')
+            
+            # Priority order for notification email:
+            # 1. Custom notification_email from SecuritySettings
+            # 2. Email address from MasterAdminEmailSettings (if configured)
+            # 3. Account email as fallback
+            
+            notification_email = None
+            
+            # First check SecuritySettings notification_email
+            if settings.notification_email:
+                notification_email = settings.notification_email
+                print(f'✅ Using notification_email from SecuritySettings: {notification_email}')
+            else:
+                # Check if email settings are configured and use that email
+                try:
+                    from .email_settings_models import MasterAdminEmailSettings
+                    email_settings = MasterAdminEmailSettings.objects.get(
+                        master_admin=master_admin,
+                        is_active=True
+                    )
+                    notification_email = email_settings.email_address
+                    print(f'✅ Using email from EmailSettings: {notification_email}')
+                except MasterAdminEmailSettings.DoesNotExist:
+                    # Fallback to account email
+                    notification_email = master_admin.user.email
+                    print(f'⚠️ No email settings found, using account email: {notification_email}')
+            
+            print(f'🎯 Final notification email: {notification_email}')
+            return notification_email
+            
+        except Exception as e:
+            print(f'❌ Error getting notification email for {master_admin.user.email}: {str(e)}')
             return master_admin.user.email
     
     @staticmethod
@@ -115,6 +156,7 @@ class LoginNotificationService:
         """Send login notification email"""
         try:
             to_email = LoginNotificationService.get_notification_email(master_admin)
+            print(f'🎯 Target email determined: {to_email}')
             
             # Check if Master Admin email settings are configured
             from .email_settings_models import MasterAdminEmailSettings
@@ -124,6 +166,7 @@ class LoginNotificationService:
                     is_active=True
                 )
                 print(f'✅ Found active email settings for {master_admin.user.email}')
+                print(f'📧 Email settings from_address: {email_settings.email_address}')
             except MasterAdminEmailSettings.DoesNotExist:
                 print(f'❌ No active email settings found for {master_admin.user.email}')
                 return False

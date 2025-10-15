@@ -31,9 +31,9 @@ interface ProformaInvoice {
 }
 
 interface PaymentFormData {
-  invoice_type: 'tax_invoice' | 'proforma_invoice' | '';
-  invoice: string | number;
-  proforma_invoice: string | number;
+  invoice_type?: 'tax_invoice' | 'proforma_invoice' | '';
+  invoice?: string | number;
+  proforma_invoice?: string | number;
   payment_date: string;
   amount: string;
   payment_method: string;
@@ -307,15 +307,15 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, ses
     }
 
     setLoading(true);
+    // Clean form data - only send the relevant invoice field
+    const cleanFormData: any = { ...formData };
+    
     try {
       const url = payment?.id 
         ? `/api/finance/payments/${payment.id}/`
         : '/api/finance/payments/';
       
       const method = payment?.id ? 'put' : 'post';
-      
-      // Clean form data - only send the relevant invoice field
-      const cleanFormData = { ...formData };
       
       // Remove invoice_type field as it's not needed by backend
       delete cleanFormData.invoice_type;

@@ -247,7 +247,7 @@ Created: ${currentDate}
                         LOGIN DETAILS
 ═══════════════════════════════════════════════════════════════
 
-Username: ${credentials.username}
+Unique Service ID: ${credentials.unique_service_id}
 Password: ${credentials.password}
 
 ═══════════════════════════════════════════════════════════════
@@ -256,7 +256,7 @@ Password: ${credentials.password}
 
 1. Keep these credentials secure and confidential
 2. Share only with authorized personnel
-3. Change password after first login if required
+3. Use the Unique Service ID for login (not username)
 4. Password expires in 90 days from creation
 5. Contact your company administrator for any issues
 

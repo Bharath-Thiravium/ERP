@@ -1364,6 +1364,10 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
             if status_filter:
                 queryset = queryset.filter(status=status_filter)
 
+            payment_status_filter = self.request.query_params.get('payment_status', '')
+            if payment_status_filter:
+                queryset = queryset.filter(payment_status=payment_status_filter)
+
             customer_id = self.request.query_params.get('customer', '')
             if customer_id:
                 queryset = queryset.filter(customer_id=customer_id)

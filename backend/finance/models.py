@@ -2057,10 +2057,10 @@ class Payment(models.Model):
             proforma_total = Decimal(str(self.proforma_invoice.total_amount)) if self.proforma_invoice.total_amount is not None else Decimal('0')
             self.proforma_invoice.outstanding_amount = proforma_total - total_payments
 
-            # Update payment status
-            if self.proforma_invoice.outstanding_amount <= 0:
+            # Update payment status - Fixed logic for proforma invoices
+            if abs(self.proforma_invoice.outstanding_amount) <= Decimal('0.01'):  # Allow for small rounding differences
                 self.proforma_invoice.payment_status = 'paid'
-            elif self.proforma_invoice.outstanding_amount < self.proforma_invoice.total_amount:
+            elif total_payments > Decimal('0'):
                 self.proforma_invoice.payment_status = 'partially_paid'
             else:
                 self.proforma_invoice.payment_status = 'unpaid'

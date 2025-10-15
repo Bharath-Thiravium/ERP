@@ -833,7 +833,7 @@ class ProformaInvoiceListSerializer(serializers.ModelSerializer):
         model = ProformaInvoice
         fields = [
             'id', 'proforma_number', 'proforma_date', 'due_date', 'customer_name', 'customer_code',
-            'customer_project_area', 'po_number', 'status', 'gst_type',
+            'customer_project_area', 'po_number', 'status', 'payment_status', 'paid_amount', 'outstanding_amount', 'gst_type',
             'subtotal', 'total_tax', 'total_amount', 'item_count', 'proforma_items',
             'created_at', 'created_by_name'
         ]
@@ -1528,26 +1528,11 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
         if hasattr(data, '_mutable'):
             data._mutable = True
         
-        # Check if invoice ID is valid
-        invoice_valid = False
-        if data.get('invoice'):
-            try:
-                Invoice.objects.get(id=data.get('invoice'))
-                invoice_valid = True
-            except (Invoice.DoesNotExist, ValueError, TypeError):
-                data.pop('invoice', None)
-        
-        # Check if proforma_invoice ID is valid
-        proforma_valid = False
-        if data.get('proforma_invoice'):
-            try:
-                ProformaInvoice.objects.get(id=data.get('proforma_invoice'))
-                proforma_valid = True
-            except (ProformaInvoice.DoesNotExist, ValueError, TypeError):
-                data.pop('proforma_invoice', None)
-        
-        # If both are valid, prioritize invoice
-        if invoice_valid and proforma_valid:
+        # Clean up empty or invalid invoice fields
+        if 'invoice' in data and (not data['invoice'] or data['invoice'] == '' or data['invoice'] == 'null'):
+            data.pop('invoice', None)
+            
+        if 'proforma_invoice' in data and (not data['proforma_invoice'] or data['proforma_invoice'] == '' or data['proforma_invoice'] == 'null'):
             data.pop('proforma_invoice', None)
         
         return super().to_internal_value(data)
@@ -1555,30 +1540,44 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         """Cross-field validation"""
         invoice = attrs.get('invoice')
+        proforma_invoice = attrs.get('proforma_invoice')
         amount = attrs.get('amount')
 
+        # Debug logging
+        print(f"Payment validation - invoice: {invoice}, proforma_invoice: {proforma_invoice}")
+
+        # Ensure payment is linked to either invoice or proforma invoice
+        if not invoice and not proforma_invoice:
+            raise serializers.ValidationError(
+                "Payment must be linked to either an Invoice or Proforma Invoice in your workflow"
+            )
+
+        # Check if both are provided (not allowed)
+        if invoice and proforma_invoice:
+            raise serializers.ValidationError(
+                "Payment cannot be linked to both Invoice and Proforma Invoice"
+            )
+
+        # Validate payment amount against outstanding amount
         if invoice and amount:
-            # Check if payment amount doesn't exceed outstanding amount
             if amount > invoice.outstanding_amount:
                 raise serializers.ValidationError(
                     f"Payment amount (₹{amount}) cannot exceed outstanding amount (₹{invoice.outstanding_amount})"
+                )
+        elif proforma_invoice and amount:
+            if amount > proforma_invoice.outstanding_amount:
+                raise serializers.ValidationError(
+                    f"Payment amount (₹{amount}) cannot exceed outstanding amount (₹{proforma_invoice.outstanding_amount})"
                 )
 
         return attrs
 
     def create(self, validated_data):
-        # Set customer from invoice or proforma invoice (mandatory in your workflow)
-        if 'invoice' in validated_data and validated_data['invoice']:
+        # Set customer from invoice or proforma invoice (validation ensures one exists)
+        if validated_data.get('invoice'):
             validated_data['customer'] = validated_data['invoice'].customer
-        elif 'proforma_invoice' in validated_data and validated_data['proforma_invoice']:
+        elif validated_data.get('proforma_invoice'):
             validated_data['customer'] = validated_data['proforma_invoice'].customer
-        else:
-            # In your workflow, payments are ALWAYS linked to invoices
-            # If neither invoice nor proforma_invoice is provided, this is an error
-            from rest_framework import serializers
-            raise serializers.ValidationError(
-                "Payment must be linked to either an Invoice or Proforma Invoice in your workflow"
-            )
         
         # Apply automatic TDS calculation if payment method requires it
         payment_amount = validated_data.get('amount', 0)

@@ -34,6 +34,9 @@ interface ProformaInvoice {
   customer_project_area: string
   po_number: string
   status: string
+  payment_status: string
+  paid_amount: string | number
+  outstanding_amount: string | number
   gst_type: string
   subtotal: string | number
   total_tax: string | number
@@ -66,31 +69,28 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
 
   const statusOptions = [
     { value: '', label: 'All Status' },
-    { value: 'draft', label: 'Draft' },
-    { value: 'sent', label: 'Sent to Customer' },
-    { value: 'approved', label: 'Approved by Customer' },
-    { value: 'converted', label: 'Converted to Invoice' },
-    { value: 'cancelled', label: 'Cancelled' }
+    { value: 'unpaid', label: 'Unpaid' },
+    { value: 'partially_paid', label: 'Partially Paid' },
+    { value: 'paid', label: 'Paid' },
+    { value: 'overdue', label: 'Overdue' }
   ]
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'draft': return <Clock className="w-4 h-4 text-gray-500" />
-      case 'sent': return <FileText className="w-4 h-4 text-blue-500" />
-      case 'approved': return <CheckCircle className="w-4 h-4 text-green-500" />
-      case 'converted': return <CheckCircle className="w-4 h-4 text-purple-500" />
-      case 'cancelled': return <XCircle className="w-4 h-4 text-red-500" />
+  const getPaymentStatusIcon = (paymentStatus: string) => {
+    switch (paymentStatus) {
+      case 'unpaid': return <XCircle className="w-4 h-4 text-red-500" />
+      case 'partially_paid': return <Clock className="w-4 h-4 text-yellow-500" />
+      case 'paid': return <CheckCircle className="w-4 h-4 text-green-500" />
+      case 'overdue': return <XCircle className="w-4 h-4 text-red-600" />
       default: return <Clock className="w-4 h-4 text-gray-500" />
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'draft': return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-      case 'sent': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
-      case 'approved': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
-      case 'converted': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
-      case 'cancelled': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+  const getPaymentStatusColor = (paymentStatus: string) => {
+    switch (paymentStatus) {
+      case 'unpaid': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+      case 'partially_paid': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'
+      case 'paid': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+      case 'overdue': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
     }
   }
@@ -103,7 +103,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
         session_key: sessionKey
       })
 
-      if (statusFilter) params.append('status', statusFilter)
+      if (statusFilter) params.append('payment_status', statusFilter)
 
       console.log('Fetching proforma invoices with params:', params.toString()) // Debug log
       const response = await apiClient.getFinanceProformaInvoices(Object.fromEntries(new URLSearchParams(params)))
@@ -276,7 +276,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                     Amount
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Status
+                    Payment Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Date
@@ -322,11 +322,14 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                       <div className="text-sm font-medium text-gray-900 dark:text-white">
                         ₹{parseFloat(proforma.total_amount?.toString() || '0').toFixed(2)}
                       </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        Paid: ₹{parseFloat(proforma.paid_amount?.toString() || '0').toFixed(2)}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(proforma.status)}`}>
-                        {getStatusIcon(proforma.status)}
-                        <span className="ml-1 capitalize">{proforma.status.replace('_', ' ')}</span>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPaymentStatusColor(proforma.payment_status || 'unpaid')}`}>
+                        {getPaymentStatusIcon(proforma.payment_status || 'unpaid')}
+                        <span className="ml-1 capitalize">{(proforma.payment_status || 'unpaid').replace('_', ' ')}</span>
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
@@ -432,7 +435,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
             id: selectedForPayment.id,
             invoice_number: selectedForPayment.proforma_number,
             total_amount: selectedForPayment.total_amount?.toString() || '0',
-            outstanding_amount: selectedForPayment.total_amount?.toString() || '0'
+            outstanding_amount: selectedForPayment.outstanding_amount?.toString() || selectedForPayment.total_amount?.toString() || '0'
           }}
           onClose={() => {
             setShowPaymentModal(false)
@@ -444,6 +447,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
             fetchProformaInvoices()
           }}
           sessionKey={sessionKey}
+          invoiceType="proforma_invoice"
         />
       )}
 

@@ -265,6 +265,7 @@ class CompanyServiceUser(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='service_users')
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='service_users')
     username = models.CharField(max_length=150)
+    unique_service_id = models.CharField(max_length=200, unique=True, help_text="Unique ID format: COMPANY_username_001")
     email = models.EmailField()
     full_name = models.CharField(max_length=255)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='user')
@@ -293,6 +294,30 @@ class CompanyServiceUser(models.Model):
 
     def is_password_expired(self):
         return timezone.now() > self.password_expires_at
+    
+    @classmethod
+    def generate_unique_service_id(cls, company_prefix, username):
+        """Generate unique service ID with format: COMPANY_username_001"""
+        base_id = f"{company_prefix}_{username}"
+        existing_count = cls.objects.filter(
+            unique_service_id__startswith=base_id
+        ).count()
+        return f"{base_id}_{str(existing_count + 1).zfill(3)}"
+    
+    def save(self, *args, **kwargs):
+        # Auto-generate unique_service_id if not provided
+        if not self.unique_service_id:
+            self.unique_service_id = self.generate_unique_service_id(
+                self.company.company_prefix, 
+                self.username
+            )
+        
+        # Set default password expiration if not provided
+        if not self.password_expires_at:
+            from datetime import timedelta
+            self.password_expires_at = timezone.now() + timedelta(days=90)
+        
+        super().save(*args, **kwargs)
 
 
 class ServiceUserSession(models.Model):

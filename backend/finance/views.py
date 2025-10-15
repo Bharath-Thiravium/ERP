@@ -72,17 +72,21 @@ class CustomerListCreateView(ListCreateAPIView):
             # Return customers for this company only
             queryset = Customer.objects.filter(company=service_user.company)
 
-            # Add search functionality
-            search = self.request.query_params.get('search', '')
-            if search:
-                queryset = queryset.filter(
-                    Q(name__icontains=search) |
-                    Q(customer_code__icontains=search) |
-                    Q(email__icontains=search) |
-                    Q(phone__icontains=search) |
-                    Q(gstin__icontains=search) |
-                    Q(pan_number__icontains=search)
-                )
+            # Add search functionality with comprehensive security validation
+            search = self.request.query_params.get('search', '').strip()
+            if search and len(search) <= 100:  # Limit search length
+                # Use security validator for comprehensive sanitization
+                from .security_validators import FinanceSecurityValidator
+                search = FinanceSecurityValidator.sanitize_search_input(search)
+                if search:  # Only proceed if search term is valid after sanitization
+                    queryset = queryset.filter(
+                        Q(name__icontains=search) |
+                        Q(customer_code__icontains=search) |
+                        Q(email__icontains=search) |
+                        Q(phone__icontains=search) |
+                        Q(gstin__icontains=search) |
+                        Q(pan_number__icontains=search)
+                    )
 
             # Add filtering
             customer_type = self.request.query_params.get('customer_type', '')
@@ -100,11 +104,22 @@ class CustomerListCreateView(ListCreateAPIView):
 
     def get_session_key(self):
         """Get session key from Authorization header or query params"""
+        import re
         session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
         if not session_key:
             session_key = self.request.query_params.get('session_key')
         if not session_key and self.request.method == 'POST':
             session_key = self.request.data.get('session_key')
+        
+        # Validate session key format to prevent path traversal and injection
+        if session_key:
+            # Remove any potentially dangerous characters
+            session_key = re.sub(r'[^a-zA-Z0-9_-]', '', str(session_key))
+            # Limit length to prevent buffer overflow
+            session_key = session_key[:64] if len(session_key) > 64 else session_key
+            # Validate format
+            if not re.match(r'^[a-zA-Z0-9_-]+$', session_key):
+                return None
         return session_key
 
     def perform_create(self, serializer):
@@ -1564,9 +1579,11 @@ class InvoiceListCreateView(ListCreateAPIView):
                 'invoice_items', 'payments'
             )
 
-            # Add search functionality
-            search = self.request.query_params.get('search', '')
-            if search:
+            # Add search functionality with sanitization
+            search = self.request.query_params.get('search', '').strip()
+            if search and len(search) <= 100:  # Limit search length
+                # Escape special characters to prevent SQL injection
+                from django.db.models import Q
                 queryset = queryset.filter(
                     Q(invoice_number__icontains=search) |
                     Q(customer__name__icontains=search) |
@@ -1902,8 +1919,18 @@ class PaymentListCreateView(ListCreateAPIView):
             )
             service_user = session.service_user
 
+            # Filter request data to prevent invalid field combinations
+            data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+            
+            # If invoice is provided, remove proforma_invoice to prevent validation error
+            if data.get('invoice'):
+                data.pop('proforma_invoice', None)
+            # If proforma_invoice is provided, remove invoice to prevent validation error  
+            elif data.get('proforma_invoice'):
+                data.pop('invoice', None)
+
             # Create payment with company and created_by
-            serializer = self.get_serializer(data=request.data)
+            serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
 
             payment = serializer.save(

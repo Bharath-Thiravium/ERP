@@ -139,14 +139,27 @@ class EmailAutomationService:
                 # Add finance user emails
                 pass
             
-            # Render email content
-            subject = Template(automation.subject_template).render(Context({
-                'company': automation.company,
+            # Comprehensive email template sanitization for security
+            import re
+            from django.utils.html import escape
+            
+            # Sanitize subject template
+            safe_subject_template = re.sub(r'[<>"\\;]', '', automation.subject_template)
+            safe_subject_template = re.sub(r'javascript:', '', safe_subject_template, flags=re.IGNORECASE)
+            
+            # Sanitize body template
+            safe_body_template = re.sub(r'<script[^>]*>.*?</script>', '', automation.body_template, flags=re.IGNORECASE | re.DOTALL)
+            safe_body_template = re.sub(r'javascript:', '', safe_body_template, flags=re.IGNORECASE)
+            safe_body_template = re.sub(r'on\w+\s*=', '', safe_body_template, flags=re.IGNORECASE)
+            
+            # Render email content with sanitized templates
+            subject = Template(safe_subject_template).render(Context({
+                'company': escape(str(automation.company)),
                 'date': timezone.now().date()
             }))
             
-            body = Template(automation.body_template).render(Context({
-                'company': automation.company,
+            body = Template(safe_body_template).render(Context({
+                'company': escape(str(automation.company)),
                 'date': timezone.now().date(),
                 'due_date': timezone.now().date() + timedelta(days=automation.send_days_before)
             }))

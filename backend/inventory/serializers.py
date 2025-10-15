@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from django.core.exceptions import ValidationError
+from .security_validators import InventorySecurityValidator
 from .models import (
     Category, Supplier, Warehouse, Product, ProductVariant, 
     StockLevel, StockMovement, StockAlert, InventoryAudit, InventoryAuditItem,
@@ -21,10 +23,25 @@ class CategorySerializer(serializers.ModelSerializer):
         read_only_fields = ['code', 'created_at', 'updated_at']
 
     def get_subcategories_count(self, obj):
-        return obj.subcategories.filter(is_active=True).count()
+        try:
+            return obj.subcategories.filter(is_active=True).count()
+        except Exception:
+            return 0
 
     def get_products_count(self, obj):
-        return obj.products.filter(is_active=True).count()
+        try:
+            return obj.products.filter(is_active=True).count()
+        except Exception:
+            return 0
+    
+    def validate_name(self, value):
+        return InventorySecurityValidator.sanitize_input(value)
+    
+    def validate_description(self, value):
+        return InventorySecurityValidator.sanitize_input(value)
+    
+    def validate_ai_suggested_attributes(self, value):
+        return InventorySecurityValidator.validate_json_field(value)
 
 
 class SupplierSerializer(serializers.ModelSerializer):
@@ -42,7 +59,31 @@ class SupplierSerializer(serializers.ModelSerializer):
         read_only_fields = ['supplier_code', 'created_at', 'updated_at']
 
     def get_products_count(self, obj):
-        return obj.primary_products.filter(is_active=True).count()
+        try:
+            return obj.primary_products.filter(is_active=True).count()
+        except Exception:
+            return 0
+    
+    def validate_name(self, value):
+        return InventorySecurityValidator.sanitize_input(value)
+    
+    def validate_contact_person(self, value):
+        return InventorySecurityValidator.sanitize_input(value)
+    
+    def validate_address(self, value):
+        return InventorySecurityValidator.sanitize_input(value)
+    
+    def validate_email(self, value):
+        return InventorySecurityValidator.validate_email(value)
+    
+    def validate_phone(self, value):
+        return InventorySecurityValidator.validate_phone(value)
+    
+    def validate_gst_number(self, value):
+        return InventorySecurityValidator.validate_gst_number(value)
+    
+    def validate_pan_number(self, value):
+        return InventorySecurityValidator.validate_pan_number(value)
 
 
 class WarehouseSerializer(serializers.ModelSerializer):
@@ -172,9 +213,37 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_barcode(self, value):
-        if value and Product.objects.filter(barcode=value).exists():
-            raise serializers.ValidationError("Barcode must be unique.")
+        if value:
+            validated_barcode = InventorySecurityValidator.validate_barcode(value)
+            if Product.objects.filter(barcode=validated_barcode).exists():
+                raise serializers.ValidationError("Barcode must be unique.")
+            return validated_barcode
         return value
+    
+    def validate_name(self, value):
+        return InventorySecurityValidator.sanitize_input(value)
+    
+    def validate_description(self, value):
+        return InventorySecurityValidator.sanitize_input(value)
+    
+    def validate_hsn_code(self, value):
+        return InventorySecurityValidator.validate_hsn_code(value)
+    
+    def validate_variant_attributes(self, value):
+        return InventorySecurityValidator.validate_json_field(value)
+    
+    def validate_dimensions(self, value):
+        return InventorySecurityValidator.validate_json_field(value)
+    
+    def validate_additional_images(self, value):
+        validated_images = []
+        for img_url in value:
+            try:
+                validated_url = InventorySecurityValidator.validate_image_url(img_url)
+                validated_images.append(validated_url)
+            except ValidationError:
+                continue
+        return validated_images
 
 
 class StockMovementSerializer(serializers.ModelSerializer):

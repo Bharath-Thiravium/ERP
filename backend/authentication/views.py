@@ -297,11 +297,13 @@ SERVICE PASSWORDS:
 Type: {cred['service_type']}
 Service ID: {cred['service_id']}
 Password: {cred['password']}
+Unique Service IDs: {', '.join(cred.get('unique_service_ids', ['N/A']))}
 
 """
 
         content += """NOTE: These passwords expire in 90 days.
 You can change them after logging into each service.
+Use the Unique Service ID for login instead of username.
 """
 
         # Write to file
@@ -1366,11 +1368,21 @@ class CompanyServiceCredentialsView(APIView):
             cs.password_expires_at = timezone.now() + timezone.timedelta(days=90)
             cs.save()
 
+            # Get service users for this service to include unique_service_id
+            service_users = CompanyServiceUser.objects.filter(
+                company=company,
+                service=cs.service,
+                is_active=True
+            )
+            
+            unique_service_ids = [su.unique_service_id for su in service_users] if service_users.exists() else ['N/A']
+
             service_credentials.append({
                 'service_id': cs.service.id,
                 'service_name': cs.service.name,
                 'service_type': cs.service.service_type,
-                'password': new_password
+                'password': new_password,
+                'unique_service_ids': unique_service_ids
             })
 
         # Save credentials to file
@@ -1441,11 +1453,13 @@ SERVICE PASSWORDS:
 Type: {cred['service_type']}
 Service ID: {cred['service_id']}
 Password: {cred['password']}
+Unique Service IDs: {', '.join(cred.get('unique_service_ids', ['N/A']))}
 
 """
 
         content += """NOTE: These passwords expire in 90 days.
 You can change them after logging into each service.
+Use the Unique Service ID for login instead of username.
 """
 
         # Write to file
@@ -1554,6 +1568,7 @@ class CompanyServiceUserListCreateView(ListCreateAPIView):
         if hasattr(service_user, '_plain_password'):
             self.created_credentials = {
                 'username': service_user.username,
+                'unique_service_id': service_user.unique_service_id,
                 'password': service_user._plain_password
             }
 

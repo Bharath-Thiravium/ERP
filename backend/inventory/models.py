@@ -1,10 +1,12 @@
 from html import escape
 from django.db import models
 from django.core.validators import RegexValidator, MinValueValidator
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from authentication.models import Company, CompanyServiceUser
 from decimal import Decimal
 import json
+from .security_validators import InventorySecurityValidator
 
 
 class Category(models.Model):
@@ -36,7 +38,23 @@ class Category(models.Model):
     def __str__(self):
         return escape(f"{self.code} - {self.name}")
 
+    def clean(self):
+        """Validate and sanitize fields"""
+        super().clean()
+        
+        # Sanitize text fields
+        if self.name:
+            self.name = InventorySecurityValidator.sanitize_input(self.name)
+        if self.description:
+            self.description = InventorySecurityValidator.sanitize_input(self.description)
+        
+        # Validate JSON fields
+        if self.ai_suggested_attributes:
+            self.ai_suggested_attributes = InventorySecurityValidator.validate_json_field(self.ai_suggested_attributes)
+    
     def save(self, *args, **kwargs):
+        self.clean()
+        
         if not self.code:
             try:
                 from authentication.utils import generate_auto_code
@@ -48,10 +66,18 @@ class Category(models.Model):
                     code__startswith='CAT-'
                 ).order_by('-id').first()
                 if last_category:
-                    last_number = int(last_category.code.split('-')[-1])
-                    self.code = f"CAT-{last_number + 1:06d}"
+                    try:
+                        last_number = int(last_category.code.split('-')[-1])
+                        self.code = f"CAT-{last_number + 1:06d}"
+                    except (ValueError, IndexError):
+                        self.code = "CAT-000001"
                 else:
                     self.code = "CAT-000001"
+        
+        # Validate code
+        if self.code:
+            self.code = InventorySecurityValidator.validate_code_field(self.code)
+            
         super().save(*args, **kwargs)
 
 
@@ -92,7 +118,41 @@ class Supplier(models.Model):
     def __str__(self):
         return escape(f"{self.supplier_code} - {self.name}")
 
+    def clean(self):
+        """Validate and sanitize fields"""
+        super().clean()
+        
+        # Sanitize text fields
+        if self.name:
+            self.name = InventorySecurityValidator.sanitize_input(self.name)
+        if self.contact_person:
+            self.contact_person = InventorySecurityValidator.sanitize_input(self.contact_person)
+        if self.address:
+            self.address = InventorySecurityValidator.sanitize_input(self.address)
+        
+        # Validate email
+        if self.email:
+            self.email = InventorySecurityValidator.validate_email(self.email)
+        
+        # Validate phone
+        if self.phone:
+            self.phone = InventorySecurityValidator.validate_phone(self.phone)
+        
+        # Validate GST and PAN
+        if self.gst_number:
+            self.gst_number = InventorySecurityValidator.validate_gst_number(self.gst_number)
+        if self.pan_number:
+            self.pan_number = InventorySecurityValidator.validate_pan_number(self.pan_number)
+        
+        # Validate numeric fields
+        self.performance_score = InventorySecurityValidator.validate_numeric_field(self.performance_score, "Performance score")
+        self.reliability_score = InventorySecurityValidator.validate_numeric_field(self.reliability_score, "Reliability score")
+        self.quality_score = InventorySecurityValidator.validate_numeric_field(self.quality_score, "Quality score")
+        self.credit_limit = InventorySecurityValidator.validate_numeric_field(self.credit_limit, "Credit limit")
+    
     def save(self, *args, **kwargs):
+        self.clean()
+        
         if not self.supplier_code:
             try:
                 from authentication.utils import generate_auto_code
@@ -104,10 +164,18 @@ class Supplier(models.Model):
                     supplier_code__startswith='SUP-'
                 ).order_by('-id').first()
                 if last_supplier:
-                    last_number = int(last_supplier.supplier_code.split('-')[-1])
-                    self.supplier_code = f"SUP-{last_number + 1:06d}"
+                    try:
+                        last_number = int(last_supplier.supplier_code.split('-')[-1])
+                        self.supplier_code = f"SUP-{last_number + 1:06d}"
+                    except (ValueError, IndexError):
+                        self.supplier_code = "SUP-000001"
                 else:
                     self.supplier_code = "SUP-000001"
+        
+        # Validate code
+        if self.supplier_code:
+            self.supplier_code = InventorySecurityValidator.validate_code_field(self.supplier_code)
+            
         super().save(*args, **kwargs)
 
 
@@ -145,7 +213,29 @@ class Warehouse(models.Model):
     def __str__(self):
         return escape(f"{self.code} - {self.name}")
 
+    def clean(self):
+        """Validate and sanitize fields"""
+        super().clean()
+        
+        # Sanitize text fields
+        if self.name:
+            self.name = InventorySecurityValidator.sanitize_input(self.name)
+        if self.address:
+            self.address = InventorySecurityValidator.sanitize_input(self.address)
+        if self.city:
+            self.city = InventorySecurityValidator.sanitize_input(self.city)
+        if self.state:
+            self.state = InventorySecurityValidator.sanitize_input(self.state)
+        if self.pincode:
+            self.pincode = InventorySecurityValidator.sanitize_input(self.pincode)
+        
+        # Validate numeric fields
+        self.total_capacity = InventorySecurityValidator.validate_numeric_field(self.total_capacity, "Total capacity")
+        self.used_capacity = InventorySecurityValidator.validate_numeric_field(self.used_capacity, "Used capacity")
+    
     def save(self, *args, **kwargs):
+        self.clean()
+        
         if not self.code:
             try:
                 from authentication.utils import generate_auto_code
@@ -157,18 +247,29 @@ class Warehouse(models.Model):
                     code__startswith='WH-'
                 ).order_by('-id').first()
                 if last_warehouse:
-                    last_number = int(last_warehouse.code.split('-')[-1])
-                    self.code = f"WH-{last_number + 1:06d}"
+                    try:
+                        last_number = int(last_warehouse.code.split('-')[-1])
+                        self.code = f"WH-{last_number + 1:06d}"
+                    except (ValueError, IndexError):
+                        self.code = "WH-000001"
                 else:
                     self.code = "WH-000001"
+        
+        # Validate code
+        if self.code:
+            self.code = InventorySecurityValidator.validate_code_field(self.code)
+            
         super().save(*args, **kwargs)
 
     @property
     def capacity_utilization(self):
         """Calculate capacity utilization percentage"""
-        if self.total_capacity > 0:
-            return (self.used_capacity / self.total_capacity) * 100
-        return 0
+        try:
+            if self.total_capacity and self.total_capacity > 0:
+                return (self.used_capacity / self.total_capacity) * 100
+            return 0
+        except (TypeError, ZeroDivisionError):
+            return 0
 
 
 class Product(models.Model):
@@ -264,7 +365,54 @@ class Product(models.Model):
     def __str__(self):
         return escape(f"{self.product_code} - {self.name}")
 
+    def clean(self):
+        """Validate and sanitize fields"""
+        super().clean()
+        
+        # Sanitize text fields
+        if self.name:
+            self.name = InventorySecurityValidator.sanitize_input(self.name)
+        if self.description:
+            self.description = InventorySecurityValidator.sanitize_input(self.description)
+        
+        # Validate JSON fields
+        if self.variant_attributes:
+            self.variant_attributes = InventorySecurityValidator.validate_json_field(self.variant_attributes)
+        if self.dimensions:
+            self.dimensions = InventorySecurityValidator.validate_json_field(self.dimensions)
+        if self.additional_images:
+            # Validate each image URL
+            validated_images = []
+            for img_url in self.additional_images:
+                try:
+                    validated_url = InventorySecurityValidator.validate_image_url(img_url)
+                    validated_images.append(validated_url)
+                except ValidationError:
+                    continue  # Skip invalid URLs
+            self.additional_images = validated_images
+        
+        # Validate numeric fields
+        self.cost_price = InventorySecurityValidator.validate_numeric_field(self.cost_price, "Cost price")
+        self.selling_price = InventorySecurityValidator.validate_numeric_field(self.selling_price, "Selling price")
+        self.mrp = InventorySecurityValidator.validate_numeric_field(self.mrp, "MRP")
+        self.tax_rate = InventorySecurityValidator.validate_numeric_field(self.tax_rate, "Tax rate")
+        self.min_stock_level = InventorySecurityValidator.validate_numeric_field(self.min_stock_level, "Min stock level")
+        self.max_stock_level = InventorySecurityValidator.validate_numeric_field(self.max_stock_level, "Max stock level")
+        self.reorder_point = InventorySecurityValidator.validate_numeric_field(self.reorder_point, "Reorder point")
+        self.reorder_quantity = InventorySecurityValidator.validate_numeric_field(self.reorder_quantity, "Reorder quantity")
+        self.weight = InventorySecurityValidator.validate_numeric_field(self.weight, "Weight")
+        self.demand_forecast = InventorySecurityValidator.validate_numeric_field(self.demand_forecast, "Demand forecast")
+        self.seasonality_factor = InventorySecurityValidator.validate_numeric_field(self.seasonality_factor, "Seasonality factor")
+        
+        # Validate special fields
+        if self.hsn_code:
+            self.hsn_code = InventorySecurityValidator.validate_hsn_code(self.hsn_code)
+        if self.barcode:
+            self.barcode = InventorySecurityValidator.validate_barcode(self.barcode)
+    
     def save(self, *args, **kwargs):
+        self.clean()
+        
         if not self.product_code:
             try:
                 from authentication.utils import generate_auto_code
@@ -276,35 +424,57 @@ class Product(models.Model):
                     product_code__startswith='PRD-'
                 ).order_by('-id').first()
                 if last_product:
-                    last_number = int(last_product.product_code.split('-')[-1])
-                    self.product_code = f"PRD-{last_number + 1:06d}"
+                    try:
+                        last_number = int(last_product.product_code.split('-')[-1])
+                        self.product_code = f"PRD-{last_number + 1:06d}"
+                    except (ValueError, IndexError):
+                        self.product_code = "PRD-000001"
                 else:
                     self.product_code = "PRD-000001"
         
         if not self.sku:
             self.sku = self.product_code
+        
+        # Validate codes
+        if self.product_code:
+            self.product_code = InventorySecurityValidator.validate_code_field(self.product_code)
+        if self.sku:
+            self.sku = InventorySecurityValidator.validate_code_field(self.sku)
             
         super().save(*args, **kwargs)
 
     @property
     def current_stock(self):
         """Get current total stock across all warehouses"""
-        return self.stock_levels.aggregate(
-            total=models.Sum('quantity_available')
-        )['total'] or 0
+        try:
+            result = self.stock_levels.aggregate(
+                total=models.Sum('quantity_available')
+            )['total']
+            return result or 0
+        except Exception:
+            return 0
 
     @property
     def stock_value(self):
         """Calculate total stock value"""
-        return self.current_stock * self.cost_price
+        try:
+            return self.current_stock * self.cost_price
+        except (TypeError, AttributeError):
+            return 0
 
     def is_low_stock(self):
         """Check if product is below minimum stock level"""
-        return self.current_stock <= self.min_stock_level
+        try:
+            return self.current_stock <= self.min_stock_level
+        except (TypeError, AttributeError):
+            return False
 
     def needs_reorder(self):
         """Check if product needs reordering"""
-        return self.current_stock <= self.reorder_point
+        try:
+            return self.current_stock <= self.reorder_point
+        except (TypeError, AttributeError):
+            return False
 
 
 class ProductVariant(models.Model):
@@ -528,7 +698,17 @@ class InventoryAudit(models.Model):
     def __str__(self):
         return escape(f"{self.audit_number} - {self.audit_name}")
 
+    def clean(self):
+        """Validate and sanitize fields"""
+        super().clean()
+        
+        # Sanitize text fields
+        if self.audit_name:
+            self.audit_name = InventorySecurityValidator.sanitize_input(self.audit_name)
+    
     def save(self, *args, **kwargs):
+        self.clean()
+        
         if not self.audit_number:
             try:
                 from authentication.utils import generate_auto_code
@@ -540,10 +720,18 @@ class InventoryAudit(models.Model):
                     audit_number__startswith='AUD-'
                 ).order_by('-id').first()
                 if last_audit:
-                    last_number = int(last_audit.audit_number.split('-')[-1])
-                    self.audit_number = f"AUD-{last_number + 1:06d}"
+                    try:
+                        last_number = int(last_audit.audit_number.split('-')[-1])
+                        self.audit_number = f"AUD-{last_number + 1:06d}"
+                    except (ValueError, IndexError):
+                        self.audit_number = "AUD-000001"
                 else:
                     self.audit_number = "AUD-000001"
+        
+        # Validate code
+        if self.audit_number:
+            self.audit_number = InventorySecurityValidator.validate_code_field(self.audit_number)
+            
         super().save(*args, **kwargs)
 
 
@@ -569,9 +757,31 @@ class InventoryAuditItem(models.Model):
     audited_by = models.ForeignKey('hr.Employee', on_delete=models.SET_NULL, null=True, blank=True)
     audited_at = models.DateTimeField(auto_now_add=True)
 
+    def clean(self):
+        """Validate and sanitize fields"""
+        super().clean()
+        
+        # Sanitize text fields
+        if self.notes:
+            self.notes = InventorySecurityValidator.sanitize_input(self.notes)
+        if self.reason_for_difference:
+            self.reason_for_difference = InventorySecurityValidator.sanitize_input(self.reason_for_difference)
+        
+        # Validate numeric fields
+        self.expected_quantity = InventorySecurityValidator.validate_numeric_field(self.expected_quantity, "Expected quantity")
+        self.actual_quantity = InventorySecurityValidator.validate_numeric_field(self.actual_quantity, "Actual quantity")
+        self.unit_cost = InventorySecurityValidator.validate_numeric_field(self.unit_cost, "Unit cost")
+    
     def save(self, *args, **kwargs):
-        self.difference = self.actual_quantity - self.expected_quantity
-        self.value_difference = self.difference * self.unit_cost
+        self.clean()
+        
+        try:
+            self.difference = self.actual_quantity - self.expected_quantity
+            self.value_difference = self.difference * self.unit_cost
+        except (TypeError, AttributeError):
+            self.difference = 0
+            self.value_difference = 0
+            
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -624,7 +834,24 @@ class PurchaseOrder(models.Model):
     def __str__(self):
         return escape(f"{self.po_number} - {self.supplier.name}")
 
+    def clean(self):
+        """Validate and sanitize fields"""
+        super().clean()
+        
+        # Sanitize text fields
+        if self.notes:
+            self.notes = InventorySecurityValidator.sanitize_input(self.notes)
+        if self.terms_conditions:
+            self.terms_conditions = InventorySecurityValidator.sanitize_input(self.terms_conditions)
+        
+        # Validate numeric fields
+        self.subtotal = InventorySecurityValidator.validate_numeric_field(self.subtotal, "Subtotal")
+        self.tax_amount = InventorySecurityValidator.validate_numeric_field(self.tax_amount, "Tax amount")
+        self.total_amount = InventorySecurityValidator.validate_numeric_field(self.total_amount, "Total amount")
+    
     def save(self, *args, **kwargs):
+        self.clean()
+        
         if not self.po_number:
             try:
                 from authentication.utils import generate_auto_code
@@ -636,10 +863,18 @@ class PurchaseOrder(models.Model):
                     po_number__startswith='PO-'
                 ).order_by('-id').first()
                 if last_po:
-                    last_number = int(last_po.po_number.split('-')[-1])
-                    self.po_number = f"PO-{last_number + 1:06d}"
+                    try:
+                        last_number = int(last_po.po_number.split('-')[-1])
+                        self.po_number = f"PO-{last_number + 1:06d}"
+                    except (ValueError, IndexError):
+                        self.po_number = "PO-000001"
                 else:
                     self.po_number = "PO-000001"
+        
+        # Validate code
+        if self.po_number:
+            self.po_number = InventorySecurityValidator.validate_code_field(self.po_number)
+            
         super().save(*args, **kwargs)
 
 
@@ -661,8 +896,27 @@ class PurchaseOrderItem(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def clean(self):
+        """Validate and sanitize fields"""
+        super().clean()
+        
+        # Sanitize text fields
+        if self.notes:
+            self.notes = InventorySecurityValidator.sanitize_input(self.notes)
+        
+        # Validate numeric fields
+        self.quantity_ordered = InventorySecurityValidator.validate_numeric_field(self.quantity_ordered, "Quantity ordered")
+        self.quantity_received = InventorySecurityValidator.validate_numeric_field(self.quantity_received, "Quantity received")
+        self.unit_price = InventorySecurityValidator.validate_numeric_field(self.unit_price, "Unit price")
+    
     def save(self, *args, **kwargs):
-        self.total_price = self.quantity_ordered * self.unit_price
+        self.clean()
+        
+        try:
+            self.total_price = self.quantity_ordered * self.unit_price
+        except (TypeError, AttributeError):
+            self.total_price = 0
+            
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -670,8 +924,14 @@ class PurchaseOrderItem(models.Model):
 
     @property
     def quantity_pending(self):
-        return self.quantity_ordered - self.quantity_received
+        try:
+            return self.quantity_ordered - self.quantity_received
+        except (TypeError, AttributeError):
+            return 0
 
     @property
     def is_fully_received(self):
-        return self.quantity_received >= self.quantity_ordered
+        try:
+            return self.quantity_received >= self.quantity_ordered
+        except (TypeError, AttributeError):
+            return False

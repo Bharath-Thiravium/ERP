@@ -9,8 +9,13 @@ from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Count, Sum, Avg, F
 from django.db import transaction
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 from authentication.models import ServiceUserSession
 from django.contrib.auth.hashers import make_password
+from .security_validators import InventorySecurityValidator
+import logging
+import os
+from django.conf import settings
 from .models import (
     Category, Supplier, Warehouse, Product, ProductVariant,
     StockLevel, StockMovement, StockAlert, InventoryAudit, InventoryAuditItem,
@@ -56,19 +61,32 @@ class InventoryDashboardViewSet(viewsets.ViewSet):
             service_user = session.service_user
             company = service_user.company
 
-            # Basic Statistics
-            total_products = Product.objects.filter(company=company, is_active=True).count()
-            total_categories = Category.objects.filter(company=company, is_active=True).count()
-            total_suppliers = Supplier.objects.filter(company=company, is_active=True).count()
-            total_warehouses = Warehouse.objects.filter(company=company, is_active=True).count()
+            # Basic Statistics with error handling
+            try:
+                total_products = Product.objects.filter(company=company, is_active=True).count()
+                total_categories = Category.objects.filter(company=company, is_active=True).count()
+                total_suppliers = Supplier.objects.filter(company=company, is_active=True).count()
+                total_warehouses = Warehouse.objects.filter(company=company, is_active=True).count()
+            except Exception as e:
+                logging.error(f"Error fetching basic statistics: {e}")
+                total_products = total_categories = total_suppliers = total_warehouses = 0
 
-            # Stock Value Calculation
-            products = Product.objects.filter(company=company, is_active=True)
-            total_stock_value = sum(product.stock_value for product in products)
+            # Stock Value Calculation with error handling
+            try:
+                products = Product.objects.filter(company=company, is_active=True)
+                total_stock_value = sum(product.stock_value for product in products)
+            except Exception as e:
+                logging.error(f"Error calculating stock value: {e}")
+                total_stock_value = 0
+                products = Product.objects.none()
 
-            # Low Stock & Out of Stock
-            low_stock_products = sum(1 for product in products if product.is_low_stock())
-            out_of_stock_products = sum(1 for product in products if product.current_stock <= 0)
+            # Low Stock & Out of Stock with error handling
+            try:
+                low_stock_products = sum(1 for product in products if product.is_low_stock())
+                out_of_stock_products = sum(1 for product in products if product.current_stock <= 0)
+            except Exception as e:
+                logging.error(f"Error calculating stock levels: {e}")
+                low_stock_products = out_of_stock_products = 0
 
             # Pending Alerts
             pending_alerts = StockAlert.objects.filter(
@@ -152,6 +170,12 @@ class InventoryDashboardViewSet(viewsets.ViewSet):
             return Response(
                 {'error': 'Invalid session'},
                 status=status.HTTP_401_UNAUTHORIZED
+            )
+        except Exception as e:
+            logging.error(f"Unexpected error in dashboard: {e}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
@@ -420,6 +444,12 @@ class ProductBarcodeGenerateView(APIView):
             return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
+            # Validate pk parameter
+            try:
+                pk = int(pk)
+            except (ValueError, TypeError):
+                return Response({'error': 'Invalid product ID'}, status=status.HTTP_400_BAD_REQUEST)
+            
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             # Ensure user can only access products from their company
             product = Product.objects.get(
@@ -433,12 +463,21 @@ class ProductBarcodeGenerateView(APIView):
             
             # Generate a cryptographically secure barcode
             barcode = ''.join(secrets.choice(string.digits) for _ in range(12))
-            product.barcode = barcode
-            product.save()
+            
+            # Validate barcode before saving
+            try:
+                validated_barcode = InventorySecurityValidator.validate_barcode(barcode)
+                product.barcode = validated_barcode
+                product.save()
+            except ValidationError as e:
+                return Response({
+                    'success': False,
+                    'error': f'Barcode validation failed: {str(e)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             return Response({
                 'success': True,
-                'barcode': barcode,
+                'barcode': validated_barcode,
                 'message': 'Barcode generated successfully'
             })
         except ServiceUserSession.DoesNotExist:
@@ -446,10 +485,11 @@ class ProductBarcodeGenerateView(APIView):
         except Product.DoesNotExist:
             return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            logging.error(f"Error generating barcode for product {pk}: {e}")
             return Response({
                 'success': False,
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+                'error': 'Internal server error'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ProductListCreateView(ListCreateAPIView):
@@ -1166,6 +1206,12 @@ def resolve_stock_alert(request, alert_id):
         return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
     
     try:
+        # Validate alert_id parameter
+        try:
+            alert_id = int(alert_id)
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid alert ID'}, status=status.HTTP_400_BAD_REQUEST)
+        
         session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
         service_user = session.service_user
         
@@ -1189,3 +1235,6 @@ def resolve_stock_alert(request, alert_id):
         return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
     except StockAlert.DoesNotExist:
         return Response({'error': 'Alert not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logging.error(f"Error resolving stock alert {alert_id}: {e}")
+        return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

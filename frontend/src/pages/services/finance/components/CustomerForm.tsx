@@ -75,6 +75,8 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
     pincode: string
     country: string
   }>>([])
+  const [stateSearchTerm, setStateSearchTerm] = useState('')
+  const [showStateDropdown, setShowStateDropdown] = useState(false)
   const [formData, setFormData] = useState<Customer>({
     customer_type: 'business',
     name: '',
@@ -133,6 +135,17 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
       }
     }
   }, [customer])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showStateDropdown) {
+        setShowStateDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showStateDropdown])
 
   const fetchCustomerDetails = async (customerId: number) => {
     try {
@@ -257,6 +270,67 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
   const validatePincode = (pincode: string) => {
     const pincodeRegex = /^[0-9]{6}$/
     return pincodeRegex.test(pincode)
+  }
+
+  // State data and helper functions
+  const states = [
+    { code: '01', name: 'Jammu and Kashmir' },
+    { code: '02', name: 'Himachal Pradesh' },
+    { code: '03', name: 'Punjab' },
+    { code: '04', name: 'Chandigarh' },
+    { code: '05', name: 'Uttarakhand' },
+    { code: '06', name: 'Haryana' },
+    { code: '07', name: 'Delhi' },
+    { code: '08', name: 'Rajasthan' },
+    { code: '09', name: 'Uttar Pradesh' },
+    { code: '10', name: 'Bihar' },
+    { code: '11', name: 'Sikkim' },
+    { code: '12', name: 'Arunachal Pradesh' },
+    { code: '13', name: 'Nagaland' },
+    { code: '14', name: 'Manipur' },
+    { code: '15', name: 'Mizoram' },
+    { code: '16', name: 'Tripura' },
+    { code: '17', name: 'Meghalaya' },
+    { code: '18', name: 'Assam' },
+    { code: '19', name: 'West Bengal' },
+    { code: '20', name: 'Jharkhand' },
+    { code: '21', name: 'Odisha' },
+    { code: '22', name: 'Chhattisgarh' },
+    { code: '23', name: 'Madhya Pradesh' },
+    { code: '24', name: 'Gujarat' },
+    { code: '25', name: 'Daman and Diu' },
+    { code: '26', name: 'Dadra and Nagar Haveli' },
+    { code: '27', name: 'Maharashtra' },
+    { code: '28', name: 'Andhra Pradesh' },
+    { code: '29', name: 'Karnataka' },
+    { code: '30', name: 'Goa' },
+    { code: '31', name: 'Lakshadweep' },
+    { code: '32', name: 'Kerala' },
+    { code: '33', name: 'Tamil Nadu' },
+    { code: '34', name: 'Puducherry' },
+    { code: '35', name: 'Andaman and Nicobar Islands' },
+    { code: '36', name: 'Telangana' },
+    { code: '37', name: 'Andhra Pradesh (New)' }
+  ]
+
+  const getStateNameByCode = (code: string) => {
+    const state = states.find(s => s.code === code)
+    return state ? state.name : ''
+  }
+
+  const getFilteredStates = () => {
+    if (!stateSearchTerm) return states
+    return states.filter(state => 
+      state.name.toLowerCase().includes(stateSearchTerm.toLowerCase()) ||
+      state.code.includes(stateSearchTerm)
+    ).sort((a, b) => {
+      // Prioritize matches that start with the search term
+      const aStartsWith = a.name.toLowerCase().startsWith(stateSearchTerm.toLowerCase())
+      const bStartsWith = b.name.toLowerCase().startsWith(stateSearchTerm.toLowerCase())
+      if (aStartsWith && !bStartsWith) return -1
+      if (!aStartsWith && bStartsWith) return 1
+      return 0
+    })
   }
 
   const validateForm = () => {
@@ -695,8 +769,8 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   {renderInput('name', 'Customer Name', 'text', 'Enter customer name', true)}
                   {renderInput('display_name', 'Display Name', 'text', 'Name to show on invoices', true)}
                   {renderInput('email', 'Email', 'email', 'customer@example.com', true, undefined, <Mail className="w-4 h-4" />)}
-                  {renderInput('phone', 'Phone', 'tel', '+91 98765 43210', true, undefined, <Phone className="w-4 h-4" />)}
-                  {renderInput('mobile', 'Mobile', 'tel', '+91 98765 43210', false, undefined, <Phone className="w-4 h-4" />)}
+                  {renderInput('phone', 'Phone', 'tel', '9876543210', true, undefined, <Phone className="w-4 h-4" />)}
+                  {renderInput('mobile', 'Mobile', 'tel', '9876543210', false, undefined, <Phone className="w-4 h-4" />)}
                   {renderInput('website', 'Website', 'url', 'https://example.com', false, undefined, <Globe className="w-4 h-4" />)}
 
                   {formData.customer_type === 'business' && (
@@ -965,54 +1039,45 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                     </h3>
                   </div>
                   
-                  <div>
+                  <div className="relative">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       State Code
                     </label>
-                    <select
-                      value={formData.state_code || ''}
-                      onChange={(e) => handleInputChange('state_code', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Select State</option>
-                      <option value="01">01 - Jammu and Kashmir</option>
-                      <option value="02">02 - Himachal Pradesh</option>
-                      <option value="03">03 - Punjab</option>
-                      <option value="04">04 - Chandigarh</option>
-                      <option value="05">05 - Uttarakhand</option>
-                      <option value="06">06 - Haryana</option>
-                      <option value="07">07 - Delhi</option>
-                      <option value="08">08 - Rajasthan</option>
-                      <option value="09">09 - Uttar Pradesh</option>
-                      <option value="10">10 - Bihar</option>
-                      <option value="11">11 - Sikkim</option>
-                      <option value="12">12 - Arunachal Pradesh</option>
-                      <option value="13">13 - Nagaland</option>
-                      <option value="14">14 - Manipur</option>
-                      <option value="15">15 - Mizoram</option>
-                      <option value="16">16 - Tripura</option>
-                      <option value="17">17 - Meghalaya</option>
-                      <option value="18">18 - Assam</option>
-                      <option value="19">19 - West Bengal</option>
-                      <option value="20">20 - Jharkhand</option>
-                      <option value="21">21 - Odisha</option>
-                      <option value="22">22 - Chhattisgarh</option>
-                      <option value="23">23 - Madhya Pradesh</option>
-                      <option value="24">24 - Gujarat</option>
-                      <option value="25">25 - Daman and Diu</option>
-                      <option value="26">26 - Dadra and Nagar Haveli</option>
-                      <option value="27">27 - Maharashtra</option>
-                      <option value="28">28 - Andhra Pradesh</option>
-                      <option value="29">29 - Karnataka</option>
-                      <option value="30">30 - Goa</option>
-                      <option value="31">31 - Lakshadweep</option>
-                      <option value="32">32 - Kerala</option>
-                      <option value="33">33 - Tamil Nadu</option>
-                      <option value="34">34 - Puducherry</option>
-                      <option value="35">35 - Andaman and Nicobar Islands</option>
-                      <option value="36">36 - Telangana</option>
-                      <option value="37">37 - Andhra Pradesh (New)</option>
-                    </select>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={stateSearchTerm || (formData.state_code ? getStateNameByCode(formData.state_code) : '')}
+                        onChange={(e) => {
+                          setStateSearchTerm(e.target.value)
+                          setShowStateDropdown(true)
+                        }}
+                        onFocus={() => setShowStateDropdown(true)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Type to search states..."
+                      />
+                      {showStateDropdown && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {getFilteredStates().map((state) => (
+                            <div
+                              key={state.code}
+                              onClick={() => {
+                                handleInputChange('state_code', state.code)
+                                setStateSearchTerm(state.name)
+                                setShowStateDropdown(false)
+                              }}
+                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                              {state.code} - {state.name}
+                            </div>
+                          ))}
+                          {getFilteredStates().length === 0 && (
+                            <div className="px-3 py-2 text-gray-500 text-center">
+                              No states found
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
                   <div>

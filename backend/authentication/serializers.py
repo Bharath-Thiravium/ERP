@@ -431,12 +431,12 @@ class CompanyServiceUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CompanyServiceUser
-        fields = ['id', 'username', 'email', 'full_name', 'role', 'is_active',
+        fields = ['id', 'username', 'unique_service_id', 'email', 'full_name', 'role', 'is_active',
                  'service_name', 'service_type', 'company_name', 'created_by_email',
                  'created_at', 'updated_at', 'last_login', 'login_count',
                  'password_expires_at', 'password_changed_at', 'must_change_password',
                  'is_password_expired']
-        read_only_fields = ['id', 'created_at', 'updated_at', 'last_login',
+        read_only_fields = ['id', 'unique_service_id', 'created_at', 'updated_at', 'last_login',
                            'login_count', 'password_changed_at']
 
     def get_is_password_expired(self, obj):
@@ -518,31 +518,32 @@ class CompanyServiceUserCreateSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
-        # Store plain password for response (will be shown once)
+        # Store plain password and unique_service_id for response (will be shown once)
         service_user._plain_password = password
+        service_user._unique_service_id = service_user.unique_service_id
 
         return service_user
 
 
 class ServiceUserLoginSerializer(serializers.Serializer):
     """Service User login serializer"""
-    username = serializers.CharField()
+    unique_service_id = serializers.CharField()
     password = serializers.CharField(write_only=True)
     service_type = serializers.CharField()
 
     def validate(self, attrs):
-        username = attrs.get('username')
+        unique_service_id = attrs.get('unique_service_id')
         password = attrs.get('password')
         service_type = attrs.get('service_type')
 
-        if username and password and service_type:
+        if unique_service_id and password and service_type:
             try:
                 # Find service by type
                 service = Service.objects.get(service_type=service_type, is_active=True)
 
-                # Find service user
+                # Find service user by unique_service_id
                 service_user = CompanyServiceUser.objects.get(
-                    username=username,
+                    unique_service_id=unique_service_id,
                     service=service,
                     is_active=True
                 )
@@ -565,7 +566,7 @@ class ServiceUserLoginSerializer(serializers.Serializer):
             except (Service.DoesNotExist, CompanyServiceUser.DoesNotExist):
                 raise serializers.ValidationError('Invalid credentials.')
 
-        raise serializers.ValidationError('Must include username, password, and service_type.')
+        raise serializers.ValidationError('Must include unique_service_id, password, and service_type.')
 
 
 class CompanyUserPasswordChangeSerializer(serializers.Serializer):

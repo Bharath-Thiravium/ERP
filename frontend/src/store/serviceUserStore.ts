@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 
 interface ServiceUser {
   id: number
-  username: string
+  unique_service_id: string
   email: string
   full_name: string
   role: string
@@ -28,7 +28,7 @@ interface ServiceUserState {
   lastActivity: number | null
 
   // Actions
-  login: (credentials: { username: string; password: string; service_type: string }) => Promise<boolean>
+  login: (credentials: { unique_service_id: string; password: string; service_type: string }) => Promise<boolean>
   logout: () => Promise<void>
   refreshSession: () => Promise<boolean>
   updateLastActivity: () => void

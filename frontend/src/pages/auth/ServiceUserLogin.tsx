@@ -28,7 +28,7 @@ const ServiceUserLogin: React.FC = () => {
   const [step, setStep] = useState<'select-service' | 'login'>(preSelectedService ? 'login' : 'select-service')
   const [selectedService, setSelectedService] = useState(preSelectedService || '')
   const [formData, setFormData] = useState({
-    username: '',
+    unique_service_id: '',
     password: '',
     service_type: preSelectedService || ''
   })
@@ -132,7 +132,7 @@ const ServiceUserLogin: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.username || !formData.password) {
+    if (!formData.unique_service_id || !formData.password) {
       toast.error('Please fill in all fields')
       return
     }
@@ -179,7 +179,7 @@ const ServiceUserLogin: React.FC = () => {
   const handleBackToServiceSelection = () => {
     setStep('select-service')
     setSelectedService('')
-    setFormData(prev => ({ ...prev, service_type: '', username: '', password: '' }))
+    setFormData(prev => ({ ...prev, service_type: '', unique_service_id: '', password: '' }))
   }
 
   return (
@@ -287,22 +287,25 @@ const ServiceUserLogin: React.FC = () => {
                 </div>
               </div>
 
-              {/* Username Field */}
+              {/* Unique Service ID Field */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Username
+                  Unique Service ID
                 </label>
                 <div className="relative">
                   <input
                     type="text"
-                    value={formData.username}
-                    onChange={(e) => handleInputChange('username', e.target.value)}
+                    value={formData.unique_service_id}
+                    onChange={(e) => handleInputChange('unique_service_id', e.target.value)}
                     className="w-full px-4 py-3 pl-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    placeholder="Enter your username"
+                    placeholder="e.g., COMPANY_username_001"
                     disabled={isLoading}
                   />
                   <User className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
                 </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Use the Unique Service ID provided in your credentials file
+                </p>
               </div>
 
               {/* Password Field */}

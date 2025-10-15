@@ -32,7 +32,7 @@ def update_invoice_payment(request, invoice_id):
         except Invoice.DoesNotExist:
             return Response({'error': 'Invoice not found'}, status=404)
         
-        # Extract payment data
+        # Extract payment data - exclude proforma_invoice for tax invoices
         payment_data = {
             'invoice': invoice.id,
             'customer': invoice.customer.id,
@@ -49,8 +49,8 @@ def update_invoice_payment(request, invoice_id):
             'net_amount_received': request.data.get('net_amount', 0),
         }
         
-        # Create payment using serializer
-        serializer = WorldClassPaymentCreateSerializer(data=payment_data)
+        # Create payment using serializer with request context
+        serializer = WorldClassPaymentCreateSerializer(data=payment_data, context={'request': request})
         if serializer.is_valid():
             payment = serializer.save(
                 company=service_user.company,
@@ -94,7 +94,7 @@ def update_proforma_payment(request, proforma_id):
         except ProformaInvoice.DoesNotExist:
             return Response({'error': 'Proforma invoice not found'}, status=404)
         
-        # Extract payment data
+        # Extract payment data - exclude invoice for proforma payments
         payment_data = {
             'proforma_invoice': proforma.id,
             'customer': proforma.customer.id,
@@ -111,8 +111,8 @@ def update_proforma_payment(request, proforma_id):
             'net_amount_received': request.data.get('net_amount', 0),
         }
         
-        # Create payment using serializer
-        serializer = WorldClassPaymentCreateSerializer(data=payment_data)
+        # Create payment using serializer with request context
+        serializer = WorldClassPaymentCreateSerializer(data=payment_data, context={'request': request})
         if serializer.is_valid():
             payment = serializer.save(
                 company=service_user.company,

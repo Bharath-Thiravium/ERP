@@ -7,6 +7,7 @@ import json
 import hashlib
 import hmac
 import base64
+import os
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.core.cache import cache
@@ -18,11 +19,11 @@ class GSTAPIService:
     """GST API integration service"""
     
     def __init__(self):
-        self.base_url = getattr(settings, 'GST_API_BASE_URL', 'https://api.gst.gov.in')
-        self.client_id = getattr(settings, 'GST_CLIENT_ID', '')
-        self.client_secret = getattr(settings, 'GST_CLIENT_SECRET', '')
-        self.username = getattr(settings, 'GST_USERNAME', '')
-        self.password = getattr(settings, 'GST_PASSWORD', '')
+        self.base_url = os.getenv('GST_API_BASE_URL', 'https://api.gst.gov.in')
+        self.client_id = os.getenv('GST_CLIENT_ID', '')
+        self.client_secret = os.getenv('GST_CLIENT_SECRET', '')
+        self.username = os.getenv('GST_USERNAME', '')
+        self.password = os.getenv('GST_PASSWORD', '')
         
     def get_auth_token(self):
         """Get authentication token from GST API"""
@@ -179,11 +180,11 @@ class TDSAPIService:
     """TDS API integration service"""
     
     def __init__(self):
-        self.base_url = getattr(settings, 'TDS_API_BASE_URL', 'https://incometaxindiaefiling.gov.in')
-        self.pan = getattr(settings, 'COMPANY_PAN', '')
-        self.tan = getattr(settings, 'COMPANY_TAN', '')
-        self.username = getattr(settings, 'TDS_USERNAME', '')
-        self.password = getattr(settings, 'TDS_PASSWORD', '')
+        self.base_url = os.getenv('TDS_API_BASE_URL', 'https://incometaxindiaefiling.gov.in')
+        self.pan = os.getenv('COMPANY_PAN', '')
+        self.tan = os.getenv('COMPANY_TAN', '')
+        self.username = os.getenv('TDS_USERNAME', '')
+        self.password = os.getenv('TDS_PASSWORD', '')
     
     def get_auth_token(self):
         """Get TDS API authentication token"""
@@ -333,10 +334,10 @@ class EInvoiceService:
     """E-Invoice API integration"""
     
     def __init__(self):
-        self.base_url = getattr(settings, 'EINVOICE_API_BASE_URL', 'https://einvoice1.gst.gov.in')
-        self.client_id = getattr(settings, 'EINVOICE_CLIENT_ID', '')
-        self.client_secret = getattr(settings, 'EINVOICE_CLIENT_SECRET', '')
-        self.gstin = getattr(settings, 'COMPANY_GSTIN', '')
+        self.base_url = os.getenv('EINVOICE_API_BASE_URL', 'https://einvoice1.gst.gov.in')
+        self.client_id = os.getenv('EINVOICE_CLIENT_ID', '')
+        self.client_secret = os.getenv('EINVOICE_CLIENT_SECRET', '')
+        self.gstin = os.getenv('COMPANY_GSTIN', '')
     
     def generate_irn(self, invoice_data):
         """Generate IRN for e-invoice"""

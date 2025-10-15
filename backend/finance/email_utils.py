@@ -78,8 +78,25 @@ Due Date: {invoice.due_date.strftime('%d/%m/%Y')}"""
         shipping_address = f"""{invoice.customer.name}
 {invoice.shipping_address.full_address}"""
     else:
+        # Fallback to customer's billing address with proper formatting
+        billing_parts = []
+        if hasattr(invoice.customer, 'billing_address_line1') and invoice.customer.billing_address_line1:
+            billing_parts.append(invoice.customer.billing_address_line1)
+        if hasattr(invoice.customer, 'billing_address_line2') and invoice.customer.billing_address_line2:
+            billing_parts.append(invoice.customer.billing_address_line2)
+        if hasattr(invoice.customer, 'billing_city') and invoice.customer.billing_city:
+            city_state_pin = f"{invoice.customer.billing_city}"
+            if hasattr(invoice.customer, 'billing_state') and invoice.customer.billing_state:
+                city_state_pin += f", {invoice.customer.billing_state}"
+            if hasattr(invoice.customer, 'billing_pincode') and invoice.customer.billing_pincode:
+                city_state_pin += f", {invoice.customer.billing_pincode}"
+            if hasattr(invoice.customer, 'billing_country') and invoice.customer.billing_country:
+                city_state_pin += f", {invoice.customer.billing_country}"
+            billing_parts.append(city_state_pin)
+        
+        billing_address = ', '.join(billing_parts) if billing_parts else 'N/A'
         shipping_address = f"""{invoice.customer.name}
-{getattr(invoice.customer, 'address', 'N/A')}"""
+{billing_address}"""
     
     dispatched_to = f"""Dispatched To:
 {shipping_address}"""
@@ -271,9 +288,25 @@ Due Date: {proforma.due_date.strftime('%d/%m/%Y')}"""
         shipping_address = f"""{proforma.customer.name}
 {proforma.shipping_address.full_address}"""
     else:
-        # Fallback to customer's default billing address
+        # Fallback to customer's billing address with proper formatting
+        billing_parts = []
+        if hasattr(proforma.customer, 'billing_address_line1') and proforma.customer.billing_address_line1:
+            billing_parts.append(proforma.customer.billing_address_line1)
+        if hasattr(proforma.customer, 'billing_address_line2') and proforma.customer.billing_address_line2:
+            billing_parts.append(proforma.customer.billing_address_line2)
+        if hasattr(proforma.customer, 'billing_city') and proforma.customer.billing_city:
+            city_state_pin = f"{proforma.customer.billing_city}"
+            if hasattr(proforma.customer, 'billing_state') and proforma.customer.billing_state:
+                city_state_pin += f", {proforma.customer.billing_state}"
+            if hasattr(proforma.customer, 'billing_pincode') and proforma.customer.billing_pincode:
+                city_state_pin += f", {proforma.customer.billing_pincode}"
+            if hasattr(proforma.customer, 'billing_country') and proforma.customer.billing_country:
+                city_state_pin += f", {proforma.customer.billing_country}"
+            billing_parts.append(city_state_pin)
+        
+        billing_address = ', '.join(billing_parts) if billing_parts else 'N/A'
         shipping_address = f"""{proforma.customer.name}
-{getattr(proforma.customer, 'address', 'N/A')}"""
+{billing_address}"""
     
     dispatched_to = f"""Dispatched To:
 {shipping_address}"""

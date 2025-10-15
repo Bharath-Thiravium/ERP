@@ -308,7 +308,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
                       <div className="flex items-center">
                         <User className="w-4 h-4 text-gray-400 mr-2" />
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{invoice.customer_name}</div>
+                          <div className="text-sm font-medium text-gray-900">{invoice.customer_name ? invoice.customer_name.replace(/[<>"'&]/g, '') : ''}</div>
                           <div className="text-sm text-gray-500">{invoice.customer_code}</div>
                         </div>
                       </div>

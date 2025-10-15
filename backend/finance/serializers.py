@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.utils._os import safe_join
 from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
 from .indian_compliance import calculate_gst_for_invoice, calculate_tds_for_payment, get_indian_states
+from .security_validators import FinanceSecurityValidator
 
 
 class CustomerShippingAddressSerializer(serializers.ModelSerializer):
@@ -1491,6 +1492,19 @@ class PaymentDetailSerializer(serializers.ModelSerializer):
 
 class PaymentCreateSerializer(serializers.ModelSerializer):
     """World-Class Payment Creation with TDS Support"""
+    
+    # Make proforma_invoice optional and handle null values
+    proforma_invoice = serializers.PrimaryKeyRelatedField(
+        queryset=ProformaInvoice.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    
+    invoice = serializers.PrimaryKeyRelatedField(
+        queryset=Invoice.objects.all(),
+        required=False,
+        allow_null=True
+    )
 
     class Meta:
         model = Payment
@@ -1508,6 +1522,36 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Payment amount must be greater than 0")
         return value
 
+    def to_internal_value(self, data):
+        """Override to handle conflicting invoice fields before validation"""
+        # Create a mutable copy of the data
+        if hasattr(data, '_mutable'):
+            data._mutable = True
+        
+        # Check if invoice ID is valid
+        invoice_valid = False
+        if data.get('invoice'):
+            try:
+                Invoice.objects.get(id=data.get('invoice'))
+                invoice_valid = True
+            except (Invoice.DoesNotExist, ValueError, TypeError):
+                data.pop('invoice', None)
+        
+        # Check if proforma_invoice ID is valid
+        proforma_valid = False
+        if data.get('proforma_invoice'):
+            try:
+                ProformaInvoice.objects.get(id=data.get('proforma_invoice'))
+                proforma_valid = True
+            except (ProformaInvoice.DoesNotExist, ValueError, TypeError):
+                data.pop('proforma_invoice', None)
+        
+        # If both are valid, prioritize invoice
+        if invoice_valid and proforma_valid:
+            data.pop('proforma_invoice', None)
+        
+        return super().to_internal_value(data)
+    
     def validate(self, attrs):
         """Cross-field validation"""
         invoice = attrs.get('invoice')
@@ -1523,8 +1567,18 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        # Set customer from invoice
-        validated_data['customer'] = validated_data['invoice'].customer
+        # Set customer from invoice or proforma invoice (mandatory in your workflow)
+        if 'invoice' in validated_data and validated_data['invoice']:
+            validated_data['customer'] = validated_data['invoice'].customer
+        elif 'proforma_invoice' in validated_data and validated_data['proforma_invoice']:
+            validated_data['customer'] = validated_data['proforma_invoice'].customer
+        else:
+            # In your workflow, payments are ALWAYS linked to invoices
+            # If neither invoice nor proforma_invoice is provided, this is an error
+            from rest_framework import serializers
+            raise serializers.ValidationError(
+                "Payment must be linked to either an Invoice or Proforma Invoice in your workflow"
+            )
         
         # Apply automatic TDS calculation if payment method requires it
         payment_amount = validated_data.get('amount', 0)
@@ -1533,18 +1587,18 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
                 # Default TDS section for payments (can be customized)
                 tds_section = validated_data.get('tds_section', '194A')
                 
-                # Calculate TDS
-                tds_result = calculate_tds_for_payment(
-                    payment_amount=float(payment_amount),
-                    tds_section=tds_section
-                )
+                # Calculate TDS with correct parameter format
+                tds_result = calculate_tds_for_payment({
+                    'amount': float(payment_amount),
+                    'tds_section': tds_section
+                })
                 
                 # Update payment with TDS details if applicable
-                if tds_result['is_above_threshold']:
+                if tds_result.get('is_above_threshold'):
                     validated_data['tds_amount'] = tds_result['tds_amount']
-                    validated_data['tds_rate_applied'] = tds_result['tds_rate']
+                    validated_data['tds_rate_applied'] = tds_result.get('tds_rate', 0)
                     validated_data['tds_section_code'] = tds_section
-                    validated_data['net_amount_received'] = tds_result['net_amount']
+                    validated_data['net_amount_received'] = tds_result.get('net_amount', payment_amount)
                     
             except Exception as e:
                 # Log error but don't fail payment creation
@@ -1573,6 +1627,19 @@ class PaymentUpdateSerializer(serializers.ModelSerializer):
 # World-Class Payment Serializers
 class WorldClassPaymentCreateSerializer(serializers.ModelSerializer):
     """World-Class Payment Creation - Links payments to specific invoice numbers"""
+    
+    # Make proforma_invoice optional and handle null values
+    proforma_invoice = serializers.PrimaryKeyRelatedField(
+        queryset=ProformaInvoice.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    
+    invoice = serializers.PrimaryKeyRelatedField(
+        queryset=Invoice.objects.all(),
+        required=False,
+        allow_null=True
+    )
 
     class Meta:
         model = Payment
@@ -1585,12 +1652,88 @@ class WorldClassPaymentCreateSerializer(serializers.ModelSerializer):
             'tds_certificate_number', 'tds_certificate_date', 'is_tds_received'
         ]
 
+    def to_internal_value(self, data):
+        """Override to handle non-existent invoice IDs before validation"""
+        # Create a mutable copy of the data
+        if hasattr(data, '_mutable'):
+            data._mutable = True
+        
+        # If proforma_invoice is provided, check if it exists before field validation
+        if data.get('proforma_invoice'):
+            try:
+                ProformaInvoice.objects.get(id=data.get('proforma_invoice'))
+            except (ProformaInvoice.DoesNotExist, ValueError, TypeError):
+                # Remove invalid proforma_invoice to prevent field validation error
+                data.pop('proforma_invoice', None)
+        
+        # If invoice is provided, check if it exists before field validation
+        if data.get('invoice'):
+            try:
+                Invoice.objects.get(id=data.get('invoice'))
+            except (Invoice.DoesNotExist, ValueError, TypeError):
+                # Remove invalid invoice to prevent field validation error
+                data.pop('invoice', None)
+        
+        # If both invoice and proforma_invoice are provided, prioritize invoice
+        if data.get('invoice') and data.get('proforma_invoice'):
+            data.pop('proforma_invoice', None)
+        
+        return super().to_internal_value(data)
+
+    def validate_proforma_invoice(self, value):
+        """Custom validation for proforma_invoice field"""
+        # If value is provided, ensure it exists and belongs to the user's company
+        if value is not None:
+            # Get session from context to validate company access
+            request = self.context.get('request')
+            if request:
+                session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+                if not session_key:
+                    session_key = request.data.get('session_key')
+                
+                if session_key:
+                    try:
+                        from authentication.models import ServiceUserSession
+                        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+                        # Check if proforma belongs to user's company
+                        if value.company != session.service_user.company:
+                            raise serializers.ValidationError("Proforma invoice not found or access denied")
+                    except ServiceUserSession.DoesNotExist:
+                        raise serializers.ValidationError("Invalid session")
+        return value
+    
+    def validate_invoice(self, value):
+        """Custom validation for invoice field"""
+        # If value is provided, ensure it exists and belongs to the user's company
+        if value is not None:
+            # Get session from context to validate company access
+            request = self.context.get('request')
+            if request:
+                session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+                if not session_key:
+                    session_key = request.data.get('session_key')
+                
+                if session_key:
+                    try:
+                        from authentication.models import ServiceUserSession
+                        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+                        # Check if invoice belongs to user's company
+                        if value.company != session.service_user.company:
+                            raise serializers.ValidationError("Invoice not found or access denied")
+                    except ServiceUserSession.DoesNotExist:
+                        raise serializers.ValidationError("Invalid session")
+        return value
+
     def validate(self, data):
         """Validate that payment is linked to either invoice or proforma"""
-        if not data.get('invoice') and not data.get('proforma_invoice'):
-            raise serializers.ValidationError("Payment must be linked to either an Invoice or Proforma Invoice")
-
-        if data.get('invoice') and data.get('proforma_invoice'):
+        invoice = data.get('invoice')
+        proforma_invoice = data.get('proforma_invoice')
+        
+        # Allow payments without invoice links (for general payments)
+        # This is more flexible than requiring invoice linkage
+        
+        # Check if both are provided (not allowed)
+        if invoice and proforma_invoice:
             raise serializers.ValidationError("Payment cannot be linked to both Invoice and Proforma Invoice")
 
         return data

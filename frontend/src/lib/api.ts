@@ -368,7 +368,7 @@ export const apiClient = {
     api.post(`/api/auth/services/${serviceId}/change-password/`, data),
 
   // Service Users
-  serviceUserLogin: (credentials: { username: string; password: string; service_type: string }) =>
+  serviceUserLogin: (credentials: { unique_service_id: string; password: string; service_type: string }) =>
     api.post('/api/auth/service-user/login/', credentials),
 
   serviceUserLogout: (sessionKey: string) =>

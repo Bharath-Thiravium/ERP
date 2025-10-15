@@ -138,7 +138,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (_event: MouseEvent) => {
       if (showStateDropdown) {
         setShowStateDropdown(false)
       }

@@ -307,7 +307,7 @@ const Dashboard: React.FC = () => {
                 Username
               </label>
               <p className="text-gray-900 dark:text-white font-medium">
-                {serviceUser?.username || 'N/A'}
+                {serviceUser?.unique_service_id || 'N/A'}
               </p>
             </div>
             <div>

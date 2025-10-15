@@ -125,7 +125,7 @@ export const SettingsPage: React.FC = () => {
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Username
                       </label>
-                      <p className="text-gray-900 dark:text-white">{serviceUser?.username || 'Not set'}</p>
+                      <p className="text-gray-900 dark:text-white">{serviceUser?.unique_service_id || 'Not set'}</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

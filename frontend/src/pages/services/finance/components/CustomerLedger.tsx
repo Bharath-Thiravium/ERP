@@ -27,6 +27,7 @@ interface LedgerEntry {
 interface CustomerLedgerData {
   customer: Customer;
   opening_balance: number;
+  opening_balance_date: string | null;
   total_invoiced: number;
   total_paid: number;
   outstanding_amount: number;
@@ -214,7 +215,27 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
 
       {/* Customer Summary */}
       {ledgerData && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          {/* Opening Balance */}
+          <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-6 text-white shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-indigo-100 text-sm font-medium">Opening Balance</p>
+                <p className="text-2xl font-bold">
+                  ₹{ledgerData.opening_balance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                </p>
+                {ledgerData.opening_balance_date && (
+                  <p className="text-indigo-100 text-xs">
+                    As of {new Date(ledgerData.opening_balance_date).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+              <div className="bg-indigo-400 bg-opacity-30 rounded-lg p-3">
+                <TrendingUp className="w-6 h-6" />
+              </div>
+            </div>
+          </div>
+
           {/* Total Invoiced */}
           <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
             <div className="flex items-center justify-between">

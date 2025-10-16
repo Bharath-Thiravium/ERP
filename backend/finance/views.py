@@ -2175,8 +2175,55 @@ def customer_ledger(request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
 
+        # Calculate period opening balance first
+        period_opening_balance = customer.opening_balance or 0
+        if start_date and customer.opening_balance_date:
+            from datetime import datetime
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+            if customer.opening_balance_date < start_dt:
+                # Calculate transactions between opening balance date and start_date
+                period_invoices = Invoice.objects.filter(
+                    customer=customer,
+                    company=service_user.company,
+                    invoice_date__gte=customer.opening_balance_date,
+                    invoice_date__lt=start_date
+                )
+                period_payments = Payment.objects.filter(
+                    customer=customer,
+                    company=service_user.company,
+                    payment_date__gte=customer.opening_balance_date,
+                    payment_date__lt=start_date
+                )
+                period_invoiced = sum(float(inv.total_amount) if str(inv.total_amount).lower() != "nan" else 0.0 for inv in period_invoices)
+                period_paid = sum(float(pay.amount) if str(pay.amount).lower() != "nan" else 0.0 for pay in period_payments if pay.status == 'completed')
+                period_opening_balance = customer.opening_balance + period_invoiced - period_paid
+
         # Build ledger entries from invoices and payments
         entries = []
+
+        # Add opening balance entry if it exists and is within date range
+        if customer.opening_balance and customer.opening_balance != 0:
+            opening_date = customer.opening_balance_date or customer.created_at.date()
+            
+            # Check if opening balance should be included based on date filter
+            include_opening = True
+            if start_date:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+                if opening_date < start_dt:
+                    include_opening = False
+            
+            if include_opening:
+                entries.append({
+                    'id': 'opening_balance',
+                    'date': opening_date.isoformat(),
+                    'document_type': 'Opening Balance',
+                    'document_number': 'OB-001',
+                    'description': 'Opening balance brought forward',
+                    'debit_amount': float(customer.opening_balance) if customer.opening_balance > 0 else 0,
+                    'credit_amount': float(abs(customer.opening_balance)) if customer.opening_balance < 0 else 0,
+                    'balance': 0,  # Will be calculated later
+                    'status': 'confirmed',
+                })
 
         # Get invoices for this customer
         invoices = Invoice.objects.filter(
@@ -2231,9 +2278,19 @@ def customer_ledger(request):
         # Sort entries by date
         entries.sort(key=lambda x: x['date'])
 
-        # Calculate running balance
-        balance = 0
-        for entry in entries:
+        # Calculate running balance starting with opening balance
+        balance = float(period_opening_balance) if period_opening_balance else 0
+        
+        # If opening balance entry exists, set its balance
+        if entries and entries[0]['id'] == 'opening_balance':
+            entries[0]['balance'] = balance
+            # Start from second entry for remaining calculations
+            start_index = 1
+        else:
+            start_index = 0
+        
+        # Calculate running balance for remaining entries
+        for entry in entries[start_index:]:
             balance += entry['debit_amount'] - entry['credit_amount']
             entry['balance'] = balance
 
@@ -2245,6 +2302,8 @@ def customer_ledger(request):
         # Get customer credit limit (default to 100000 if not set)
         credit_limit = getattr(customer, 'credit_limit', 100000)
 
+
+
         return Response({
             'customer': {
                 'id': customer.id,
@@ -2253,7 +2312,8 @@ def customer_ledger(request):
                 'email': customer.email,
                 'phone': customer.phone,
             },
-            'opening_balance': 0,  # Could be calculated from previous periods
+            'opening_balance': float(period_opening_balance),
+            'opening_balance_date': customer.opening_balance_date.isoformat() if customer.opening_balance_date else None,
             'total_invoiced': total_invoiced,
             'total_paid': total_paid,
             'outstanding_amount': outstanding_amount,

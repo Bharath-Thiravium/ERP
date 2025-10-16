@@ -47,6 +47,9 @@ interface Customer {
   project_area: string
   notes: string
   is_active: boolean
+  // Opening Balance Fields
+  opening_balance?: number
+  opening_balance_date?: string
   // Indian Compliance Fields
   state_code?: string
   is_gst_registered?: boolean
@@ -118,6 +121,9 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
     project_area: '',
     notes: '',
     is_active: true,
+    // Opening Balance Fields
+    opening_balance: 0,
+    opening_balance_date: '',
     // Indian Compliance Fields
     state_code: '',
     is_gst_registered: false,
@@ -199,6 +205,9 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
         project_area: customerData.project_area || '',
         notes: customerData.notes || '',
         is_active: customerData.is_active ?? true,
+        // Opening Balance Fields
+        opening_balance: customerData.opening_balance || 0,
+        opening_balance_date: customerData.opening_balance_date || '',
         // Indian Compliance Fields
         state_code: customerData.state_code || '',
         is_gst_registered: customerData.is_gst_registered ?? false,
@@ -336,66 +345,39 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
 
-    // Basic Info - Required fields
+    // Only validate essential fields
     if (!formData.name.trim()) {
       newErrors.name = 'Customer name is required'
     }
-    if (!formData.display_name.trim()) {
-      newErrors.display_name = 'Display name is required'
-    }
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required'
-    } else if (!validateEmail(formData.email)) {
+    
+    // Email validation (only if provided)
+    if (formData.email && formData.email.trim() && !validateEmail(formData.email)) {
       newErrors.email = 'Please enter a valid email address'
     }
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Phone number is required'
-    } else if (!validatePhone(formData.phone)) {
+    
+    // Phone validation (only if provided)
+    if (formData.phone && formData.phone.trim() && !validatePhone(formData.phone)) {
       newErrors.phone = 'Please enter a valid phone number'
     }
-
-    // Address - Required fields
-    if (!formData.billing_address_line1.trim()) {
-      newErrors.billing_address_line1 = 'Billing address is required'
-    }
-    if (!formData.billing_city.trim()) {
-      newErrors.billing_city = 'Billing city is required'
-    }
-    if (!formData.billing_state.trim()) {
-      newErrors.billing_state = 'Billing state is required'
-    }
-    if (!formData.billing_pincode.trim()) {
-      newErrors.billing_pincode = 'Billing PIN code is required'
-    } else if (!validatePincode(formData.billing_pincode)) {
-      newErrors.billing_pincode = 'PIN code must be exactly 6 digits'
-    }
-
-    // Tax & Legal - Required fields
-    if (!formData.gstin.trim()) {
-      newErrors.gstin = 'GSTIN is required'
-    } else if (!validateGSTIN(formData.gstin)) {
+    
+    // GSTIN validation (only if provided)
+    if (formData.gstin && formData.gstin.trim() && !validateGSTIN(formData.gstin)) {
       newErrors.gstin = 'Please enter a valid GSTIN (15 characters)'
     }
-    if (!formData.pan_number.trim()) {
-      newErrors.pan_number = 'PAN number is required'
-    } else if (!validatePAN(formData.pan_number)) {
+    
+    // PAN validation (only if provided)
+    if (formData.pan_number && formData.pan_number.trim() && !validatePAN(formData.pan_number)) {
       newErrors.pan_number = 'Please enter a valid PAN (10 characters)'
     }
-
-    // Banking - Required fields
-    if (!formData.bank_name.trim()) {
-      newErrors.bank_name = 'Bank name is required'
-    }
-    if (!formData.bank_account_number.trim()) {
-      newErrors.bank_account_number = 'Bank account number is required'
-    }
-    if (!formData.bank_ifsc_code.trim()) {
-      newErrors.bank_ifsc_code = 'IFSC code is required'
-    } else if (!validateIFSC(formData.bank_ifsc_code)) {
+    
+    // IFSC validation (only if provided)
+    if (formData.bank_ifsc_code && formData.bank_ifsc_code.trim() && !validateIFSC(formData.bank_ifsc_code)) {
       newErrors.bank_ifsc_code = 'Please enter a valid IFSC code'
     }
-    if (!formData.account_holder_name.trim()) {
-      newErrors.account_holder_name = 'Account holder name is required'
+    
+    // Pincode validation (only if provided)
+    if (formData.billing_pincode && formData.billing_pincode.trim() && !validatePincode(formData.billing_pincode)) {
+      newErrors.billing_pincode = 'PIN code must be exactly 6 digits'
     }
 
     // Optional validations
@@ -497,9 +479,13 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    console.log('Form submitted with data:', formData)
+    console.log('Customer ID:', customer?.id)
 
     // Validate form
     if (!validateForm()) {
+      console.log('Validation failed with errors:', errors)
       // Find the first tab with errors and switch to it
       const errorFields = Object.keys(errors)
       if (errorFields.some(field => ['name', 'display_name', 'email', 'phone', 'mobile', 'website', 'business_type', 'industry'].includes(field))) {
@@ -516,6 +502,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
       return
     }
 
+    console.log('Validation passed, proceeding with save...')
     setLoading(true)
 
     try {
@@ -539,13 +526,19 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
         payload.shipping_country = ''
       }
 
+      console.log('Sending payload:', payload)
+      
       if (customer?.id) {
         // Update existing customer
-        await apiClient.updateFinanceCustomer(customer.id, payload)
+        console.log('Updating customer with ID:', customer.id)
+        const response = await apiClient.updateFinanceCustomer(customer.id, payload)
+        console.log('Update response:', response)
         toast.success('Customer updated successfully!')
       } else {
         // Create new customer
-        await apiClient.createFinanceCustomer(payload)
+        console.log('Creating new customer')
+        const response = await apiClient.createFinanceCustomer(payload)
+        console.log('Create response:', response)
         toast.success('Customer created successfully!')
       }
 
@@ -1330,6 +1323,38 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                       <option value="EUR">EUR - Euro</option>
                       <option value="GBP">GBP - British Pound</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Opening Balance (₹)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.opening_balance || 0}
+                      onChange={(e) => handleInputChange('opening_balance', parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      step="0.01"
+                      placeholder="0.00"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Initial balance for this customer (positive for receivable, negative for payable)
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Opening Balance Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.opening_balance_date || ''}
+                      onChange={(e) => handleInputChange('opening_balance_date', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Date when the opening balance was set
+                    </p>
                   </div>
 
                   <div>

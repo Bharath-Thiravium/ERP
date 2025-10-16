@@ -262,6 +262,10 @@ class Customer(models.Model):
     credit_limit = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
     payment_terms = models.CharField(max_length=100, blank=True, help_text="e.g., Net 30, COD, Advance")
     currency = models.CharField(max_length=3, default='INR')
+    
+    # Opening Balance
+    opening_balance = models.DecimalField(max_digits=15, decimal_places=2, default=0.00, help_text="Opening balance for this customer")
+    opening_balance_date = models.DateField(null=True, blank=True, help_text="Date when opening balance was set")
 
     # Additional Information
     project_area = models.CharField(max_length=255, blank=True, help_text="Project area or address label for easy identification")

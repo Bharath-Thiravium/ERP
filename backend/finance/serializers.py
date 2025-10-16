@@ -61,7 +61,7 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
             'business_type', 'industry', 'gstin', 'pan_number', 'aadhar_number',
             'bank_name', 'bank_account_number', 'bank_ifsc_code', 'bank_branch',
             'credit_limit', 'payment_terms', 'currency', 'project_area', 'notes', 'is_active',
-            'shipping_addresses',
+            'opening_balance', 'opening_balance_date', 'shipping_addresses',
             # Indian Compliance Fields
             'state_code', 'is_gst_registered', 'gst_registration_date'
         ]
@@ -168,7 +168,7 @@ class CustomerUpdateSerializer(serializers.ModelSerializer):
             'business_type', 'industry', 'gstin', 'pan_number', 'aadhar_number',
             'bank_name', 'bank_account_number', 'bank_ifsc_code', 'bank_branch',
             'credit_limit', 'payment_terms', 'currency', 'project_area', 'notes', 'is_active',
-            'shipping_addresses',
+            'opening_balance', 'opening_balance_date', 'shipping_addresses',
             # Indian Compliance Fields
             'state_code', 'is_gst_registered', 'gst_registration_date'
         ]

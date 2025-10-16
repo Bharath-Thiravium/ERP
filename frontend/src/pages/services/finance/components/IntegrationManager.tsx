@@ -1,21 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { integrationApi, EmailAutomation, MobileAppConfig } from '../../../../services/integrationApi';
-import { DataTable } from '../../../../components/ui/DataTable';
-import { Button } from '../../../../components/ui/Button';
-
-
+import { integrationApi, MobileAppConfig } from '../../../../services/integrationApi';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../components/ui/Tabs';
 import { Card } from '../../../../components/ui/Card';
-import { Badge } from '../../../../components/ui/Badge';
+
 import { Checkbox } from '../../../../components/ui/Checkbox';
 import BankIntegrationTab from './BankIntegrationTab';
 import ERPConnectorsTab from './ERPConnectorsTab';
 import PaymentGatewayTab from './PaymentGatewayTab';
+import EmailAutomationTab from './EmailAutomationTab';
 
 const IntegrationManager: React.FC = () => {
   const [dashboardData, setDashboardData] = useState<any>(null);
-  const [emailAutomations, setEmailAutomations] = useState<EmailAutomation[]>([]);
+
   const [mobileConfig, setMobileConfig] = useState<MobileAppConfig | null>(null);
 
   useEffect(() => {
@@ -23,7 +20,6 @@ const IntegrationManager: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadEmailAutomations();
     loadMobileConfig();
   }, []);
 
@@ -36,14 +32,7 @@ const IntegrationManager: React.FC = () => {
     }
   };
 
-  const loadEmailAutomations = async () => {
-    try {
-      const response = await integrationApi.getEmailAutomations();
-      setEmailAutomations(response.results);
-    } catch (error) {
-      console.error('Error loading email automations:', error);
-    }
-  };
+
 
   const loadMobileConfig = async () => {
     try {
@@ -64,21 +53,7 @@ const IntegrationManager: React.FC = () => {
 
 
 
-  const emailColumns = [
-    { key: 'title', header: 'Title' },
-    { key: 'email_type', header: 'Type' },
-    { key: 'frequency', header: 'Frequency' },
-    { 
-      key: 'is_active', 
-      header: 'Status',
-      render: (value: boolean) => (
-        <Badge variant={value ? 'success' : 'error'}>
-          {value ? 'Active' : 'Inactive'}
-        </Badge>
-      )
-    },
-    { key: 'last_sent', header: 'Last Sent' }
-  ];
+
 
   return (
     <div className="space-y-6">
@@ -157,19 +132,7 @@ const IntegrationManager: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="email">
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-semibold">Email Automation</h3>
-              <Button>
-                Add Email Automation
-              </Button>
-            </div>
-
-            <DataTable
-              data={emailAutomations}
-              columns={emailColumns}
-            />
-          </div>
+          <EmailAutomationTab />
         </TabsContent>
 
         <TabsContent value="mobile">

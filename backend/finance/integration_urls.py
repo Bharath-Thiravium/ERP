@@ -41,4 +41,9 @@ urlpatterns = [
     
     # Dashboard
     path('dashboard/', integration_views.integration_dashboard, name='integration-dashboard'),
+    
+    # Email Automation Detail
+    path('email-automations/<int:pk>/', integration_views.EmailAutomationDetailView.as_view(), name='email-automation-detail'),
+    path('email-automations/<int:automation_id>/test/', integration_views.test_email_automation, name='test-email-automation'),
+    path('email-automations/<int:automation_id>/trigger/', integration_views.trigger_email_automation, name='trigger-email-automation'),
 ]

@@ -23,7 +23,7 @@ import {
 interface Invoice {
   id: string
   invoice_number: string
-  customer: {
+  customer?: {
     name: string
     gstin?: string
   }
@@ -94,7 +94,7 @@ export const EInvoiceManager: React.FC<EInvoiceManagerProps> = ({ className = ''
   const getEInvoiceStatus = (invoice: Invoice) => {
     if (invoice.einvoice_irn) {
       return <Badge color="green">Generated</Badge>
-    } else if (invoice.customer.gstin) {
+    } else if (invoice.customer?.gstin) {
       return <Badge color="yellow">Pending</Badge>
     } else {
       return <Badge color="gray">Not Required</Badge>
@@ -102,7 +102,7 @@ export const EInvoiceManager: React.FC<EInvoiceManagerProps> = ({ className = ''
   }
 
   const canGenerateEInvoice = (invoice: Invoice): boolean => {
-    return !!(invoice.customer.gstin && !invoice.einvoice_irn && invoice.total_amount >= 50000)
+    return !!(invoice.customer?.gstin && !invoice.einvoice_irn && invoice.total_amount >= 50000)
   }
 
   const columns = [
@@ -123,8 +123,8 @@ export const EInvoiceManager: React.FC<EInvoiceManagerProps> = ({ className = ''
       header: 'Customer',
       render: (invoice: Invoice) => (
         <div>
-          <div className="font-medium">{invoice.customer.name}</div>
-          {invoice.customer.gstin && (
+          <div className="font-medium">{invoice.customer?.name || 'N/A'}</div>
+          {invoice.customer?.gstin && (
             <div className="text-xs text-gray-500">GSTIN: {invoice.customer.gstin}</div>
           )}
         </div>

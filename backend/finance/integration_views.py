@@ -4,11 +4,13 @@ from rest_framework.response import Response
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.exceptions import ValidationError
 from django.db.models import Q, Sum
 from django.db import transaction
 from django.utils import timezone
 from django.http import JsonResponse
 from django.core.files.storage import default_storage
+from datetime import timedelta
 import json
 
 from authentication.models import ServiceUserSession
@@ -138,9 +140,62 @@ class EmailAutomationListCreateView(ListCreateAPIView):
         session_key = self.get_session_key()
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            serializer.save(company=session.service_user.company)
+            # Calculate next send time
+            from django.utils import timezone
+            from datetime import timedelta
+            
+            automation = serializer.save(company=session.service_user.company)
+            
+            # Set initial next_send time
+            now = timezone.now()
+            if automation.frequency == 'daily':
+                next_send = now + timedelta(days=1)
+            elif automation.frequency == 'weekly':
+                next_send = now + timedelta(weeks=1)
+            elif automation.frequency == 'monthly':
+                next_send = now + timedelta(days=30)
+            elif automation.frequency == 'quarterly':
+                next_send = now + timedelta(days=90)
+            else:
+                next_send = now + timedelta(days=1)
+            
+            next_send = next_send.replace(
+                hour=automation.send_time.hour,
+                minute=automation.send_time.minute,
+                second=0,
+                microsecond=0
+            )
+            
+            automation.next_send = next_send
+            automation.save(update_fields=['next_send'])
+            
         except ServiceUserSession.DoesNotExist:
             raise ValidationError({'session_key': 'Invalid session'})
+
+class EmailAutomationDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete email automation"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = EmailAutomationSerializer
+    
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return EmailAutomation.objects.none()
+        
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return EmailAutomation.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return EmailAutomation.objects.none()
+    
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH']:
+            session_key = self.request.data.get('session_key')
+        return session_key
 
 # Mobile App Views
 class MobileAppConfigView(APIView):
@@ -303,5 +358,103 @@ def integration_dashboard(request):
         
     except ServiceUserSession.DoesNotExist:
         return Response({'error': 'Invalid session'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
+def test_email_automation(request, automation_id):
+    """Test email automation by sending a test email"""
+    session_key = request.data.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+        
+        automation = EmailAutomation.objects.get(
+            id=automation_id,
+            company=company
+        )
+        
+        from .email_automation_service import EmailAutomationService
+        service = EmailAutomationService(company)
+        
+        # Get test recipients (just the current user's email)
+        test_recipients = [session.service_user.email] if session.service_user.email else []
+        if not test_recipients:
+            return Response({'error': 'No email address found for current user'}, status=400)
+        
+        # Create test context
+        context = {
+            'company_name': company.name,
+            'automation_title': f"[TEST] {automation.title}",
+            'current_date': timezone.now().strftime('%d %B %Y'),
+            'due_date': (timezone.now().date() + timezone.timedelta(days=7)).strftime('%d %B %Y'),
+            'days_remaining': 7,
+            'invoice_count': 5,
+            'total_outstanding': '₹50,000.00'
+        }
+        
+        subject = service._render_template(automation.subject_template, context)
+        body = service._render_template(automation.body_template, context)
+        
+        success = service.email_service.send_email(
+            to_emails=test_recipients,
+            subject=f"[TEST] {subject}",
+            html_content=service._create_html_email(body, context),
+            text_content=body
+        )
+        
+        return Response({
+            'success': success,
+            'message': 'Test email sent successfully!' if success else 'Failed to send test email',
+            'recipients': test_recipients
+        })
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except EmailAutomation.DoesNotExist:
+        return Response({'error': 'Email automation not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
+def trigger_email_automation(request, automation_id):
+    """Manually trigger email automation"""
+    session_key = request.data.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+        
+        automation = EmailAutomation.objects.get(
+            id=automation_id,
+            company=company
+        )
+        
+        from .email_automation_service import EmailAutomationService
+        service = EmailAutomationService(company)
+        
+        # Process the automation
+        service.process_automation(automation)
+        
+        return Response({
+            'success': True,
+            'message': f"Email automation '{automation.title}' triggered successfully",
+            'last_sent': automation.last_sent,
+            'next_send': automation.next_send
+        })
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except EmailAutomation.DoesNotExist:
+        return Response({'error': 'Email automation not found'}, status=404)
     except Exception as e:
         return Response({'error': str(e)}, status=500)

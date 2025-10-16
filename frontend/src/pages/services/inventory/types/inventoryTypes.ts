@@ -219,10 +219,87 @@ export interface InventoryDashboardStats {
   };
 }
 
+export interface ProductBundle {
+  id: number;
+  bundle_name: string;
+  bundle_code: string;
+  description: string;
+  bundle_price: number;
+  discount_percentage: number;
+  bundle_image?: string;
+  is_active: boolean;
+  bundle_items: ProductBundleItem[];
+  total_cost: number;
+  profit_margin: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductBundleItem {
+  id: number;
+  product: number;
+  product_name: string;
+  quantity: number;
+  unit_price_override?: number;
+  effective_price: number;
+  line_total: number;
+  created_at: string;
+}
+
+export interface CycleCount {
+  id: number;
+  count_name: string;
+  count_number: string;
+  warehouse: number;
+  warehouse_name: string;
+  frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly';
+  next_count_date: string;
+  last_count_date?: string;
+  abc_classes: string[];
+  categories: number[];
+  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+  items_counted: number;
+  discrepancies_found: number;
+  accuracy_percentage: number;
+  count_items: CycleCountItem[];
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface CycleCountItem {
+  id: number;
+  product: number;
+  product_name: string;
+  expected_quantity: number;
+  counted_quantity: number;
+  variance: number;
+  is_counted: boolean;
+  notes: string;
+  counted_by?: number;
+  counted_by_name?: string;
+  counted_at?: string;
+}
+
+export interface AgingAnalysisItem {
+  product_id: number;
+  product_name: string;
+  product_code: string;
+  category: string;
+  current_stock: number;
+  stock_value: number;
+  last_movement_date: string;
+  days_old: number;
+  aging_category: string;
+  is_dead_stock: boolean;
+  turnover_rate: number;
+}
+
 export interface InventoryFormData {
   category?: Partial<Category>;
   supplier?: Partial<Supplier>;
   warehouse?: Partial<Warehouse>;
   product?: Partial<Product>;
   stockMovement?: Partial<StockMovement>;
+  productBundle?: Partial<ProductBundle>;
+  cycleCount?: Partial<CycleCount>;
 }

@@ -338,6 +338,7 @@ class Product(models.Model):
     # Product Images
     primary_image = models.ImageField(upload_to='product_images/', null=True, blank=True)
     additional_images = models.JSONField(default=list, help_text="List of additional image URLs")
+    image_gallery = models.JSONField(default=list, help_text="Uploaded image files")
     
     # Barcode
     barcode = models.CharField(max_length=50, blank=True, unique=True)
@@ -475,6 +476,93 @@ class Product(models.Model):
             return self.current_stock <= self.reorder_point
         except (TypeError, AttributeError):
             return False
+
+
+class ProductBundle(models.Model):
+    """Product bundles and kits"""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='product_bundles')
+    bundle_name = models.CharField(max_length=200)
+    bundle_code = models.CharField(max_length=50, unique=True)
+    description = models.TextField(blank=True)
+    
+    # Pricing
+    bundle_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    
+    # Bundle Image
+    bundle_image = models.ImageField(upload_to='bundle_images/', null=True, blank=True)
+    
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ['company', 'bundle_code']
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return escape(f"{self.bundle_code} - {self.bundle_name}")
+    
+    def save(self, *args, **kwargs):
+        if not self.bundle_code:
+            try:
+                from authentication.utils import generate_auto_code
+                self.bundle_code = generate_auto_code(self.company.id, 'bundle')
+            except Exception:
+                last_bundle = ProductBundle.objects.filter(
+                    company=self.company,
+                    bundle_code__startswith='BUN-'
+                ).order_by('-id').first()
+                if last_bundle:
+                    try:
+                        last_number = int(last_bundle.bundle_code.split('-')[-1])
+                        self.bundle_code = f"BUN-{last_number + 1:06d}"
+                    except (ValueError, IndexError):
+                        self.bundle_code = "BUN-000001"
+                else:
+                    self.bundle_code = "BUN-000001"
+        super().save(*args, **kwargs)
+    
+    @property
+    def total_cost(self):
+        """Calculate total cost of bundle items"""
+        return sum(item.quantity * item.product.cost_price for item in self.bundle_items.all())
+    
+    @property
+    def profit_margin(self):
+        """Calculate profit margin"""
+        if self.total_cost > 0:
+            return ((self.bundle_price - self.total_cost) / self.bundle_price) * 100
+        return 0
+
+
+class ProductBundleItem(models.Model):
+    """Items in a product bundle"""
+    bundle = models.ForeignKey(ProductBundle, on_delete=models.CASCADE, related_name='bundle_items')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    
+    # Optional item-specific pricing
+    unit_price_override = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ['bundle', 'product']
+    
+    def __str__(self):
+        return escape(f"{self.bundle.bundle_name} - {self.product.name} ({self.quantity})")
+    
+    @property
+    def effective_price(self):
+        """Get effective price (override or product price)"""
+        return self.unit_price_override or self.product.selling_price
+    
+    @property
+    def line_total(self):
+        """Calculate line total"""
+        return self.quantity * self.effective_price
 
 
 class ProductVariant(models.Model):
@@ -733,6 +821,100 @@ class InventoryAudit(models.Model):
             self.audit_number = InventorySecurityValidator.validate_code_field(self.audit_number)
             
         super().save(*args, **kwargs)
+
+
+class CycleCount(models.Model):
+    """Automated cycle counting system"""
+    FREQUENCY_CHOICES = [
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly')
+    ]
+    
+    STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled')
+    ]
+    
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='cycle_counts')
+    count_name = models.CharField(max_length=100)
+    count_number = models.CharField(max_length=50, unique=True)
+    warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, related_name='cycle_counts')
+    
+    # Scheduling
+    frequency = models.CharField(max_length=20, choices=FREQUENCY_CHOICES, default='monthly')
+    next_count_date = models.DateField()
+    last_count_date = models.DateField(null=True, blank=True)
+    
+    # Scope
+    abc_classes = models.JSONField(default=list, help_text="ABC classes to include")
+    categories = models.ManyToManyField(Category, blank=True)
+    
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
+    
+    # Results
+    items_counted = models.IntegerField(default=0)
+    discrepancies_found = models.IntegerField(default=0)
+    accuracy_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    
+    created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return escape(f"{self.count_number} - {self.count_name}")
+    
+    def save(self, *args, **kwargs):
+        if not self.count_number:
+            try:
+                from authentication.utils import generate_auto_code
+                self.count_number = generate_auto_code(self.company.id, 'cycle_count')
+            except Exception:
+                last_count = CycleCount.objects.filter(
+                    company=self.company,
+                    count_number__startswith='CC-'
+                ).order_by('-id').first()
+                if last_count:
+                    try:
+                        last_number = int(last_count.count_number.split('-')[-1])
+                        self.count_number = f"CC-{last_number + 1:06d}"
+                    except (ValueError, IndexError):
+                        self.count_number = "CC-000001"
+                else:
+                    self.count_number = "CC-000001"
+        super().save(*args, **kwargs)
+
+
+class CycleCountItem(models.Model):
+    """Individual cycle count items"""
+    cycle_count = models.ForeignKey(CycleCount, on_delete=models.CASCADE, related_name='count_items')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    
+    # Expected vs Counted
+    expected_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    counted_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    variance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    # Status
+    is_counted = models.BooleanField(default=False)
+    notes = models.TextField(blank=True)
+    
+    counted_by = models.ForeignKey('hr.Employee', on_delete=models.SET_NULL, null=True, blank=True)
+    counted_at = models.DateTimeField(null=True, blank=True)
+    
+    def save(self, *args, **kwargs):
+        self.variance = self.counted_quantity - self.expected_quantity
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return escape(f"{self.cycle_count.count_number} - {self.product.name}")
 
 
 class InventoryAuditItem(models.Model):

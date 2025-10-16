@@ -1,7 +1,8 @@
 from django.contrib import admin
 from .models import (
-    Category, Supplier, Warehouse, Product, ProductVariant,
-    StockLevel, StockMovement, StockAlert, InventoryAudit, InventoryAuditItem
+    Category, Supplier, Warehouse, Product, ProductVariant, ProductBundle, ProductBundleItem,
+    StockLevel, StockMovement, StockAlert, InventoryAudit, InventoryAuditItem,
+    PurchaseOrder, PurchaseOrderItem, CycleCount, CycleCountItem
 )
 
 @admin.register(Category)
@@ -80,3 +81,46 @@ class InventoryAuditItemAdmin(admin.ModelAdmin):
     list_filter = ['audit__warehouse', 'audit__status']
     search_fields = ['product__name', 'audit__audit_name']
     readonly_fields = ['difference', 'value_difference', 'audited_at']
+
+@admin.register(ProductBundle)
+class ProductBundleAdmin(admin.ModelAdmin):
+    list_display = ['bundle_name', 'bundle_code', 'company', 'bundle_price', 'is_active']
+    list_filter = ['company', 'is_active']
+    search_fields = ['bundle_name', 'bundle_code']
+    readonly_fields = ['bundle_code', 'total_cost', 'profit_margin', 'created_at', 'updated_at']
+
+@admin.register(ProductBundleItem)
+class ProductBundleItemAdmin(admin.ModelAdmin):
+    list_display = ['bundle', 'product', 'quantity', 'effective_price']
+    list_filter = ['bundle__company']
+    search_fields = ['bundle__bundle_name', 'product__name']
+    readonly_fields = ['effective_price', 'line_total']
+
+@admin.register(CycleCount)
+class CycleCountAdmin(admin.ModelAdmin):
+    list_display = ['count_name', 'count_number', 'warehouse', 'frequency', 'status', 'next_count_date']
+    list_filter = ['company', 'warehouse', 'frequency', 'status']
+    search_fields = ['count_name', 'count_number']
+    readonly_fields = ['count_number', 'accuracy_percentage', 'created_at', 'completed_at']
+    filter_horizontal = ['categories']
+
+@admin.register(CycleCountItem)
+class CycleCountItemAdmin(admin.ModelAdmin):
+    list_display = ['cycle_count', 'product', 'expected_quantity', 'counted_quantity', 'variance']
+    list_filter = ['cycle_count__warehouse', 'is_counted']
+    search_fields = ['product__name', 'cycle_count__count_name']
+    readonly_fields = ['variance', 'counted_at']
+
+@admin.register(PurchaseOrder)
+class PurchaseOrderAdmin(admin.ModelAdmin):
+    list_display = ['po_number', 'supplier', 'warehouse', 'status', 'total_amount', 'order_date']
+    list_filter = ['company', 'supplier', 'warehouse', 'status']
+    search_fields = ['po_number', 'supplier__name']
+    readonly_fields = ['po_number', 'created_at', 'updated_at']
+
+@admin.register(PurchaseOrderItem)
+class PurchaseOrderItemAdmin(admin.ModelAdmin):
+    list_display = ['purchase_order', 'product', 'quantity_ordered', 'quantity_received', 'unit_price']
+    list_filter = ['purchase_order__supplier', 'purchase_order__status']
+    search_fields = ['product__name', 'purchase_order__po_number']
+    readonly_fields = ['total_price', 'quantity_pending', 'is_fully_received']

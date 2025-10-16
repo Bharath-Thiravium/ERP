@@ -35,6 +35,13 @@ urlpatterns = [
     # Inventory Audits
     path('audits/', views.InventoryAuditListCreateView.as_view(), name='inventory-audit-list-create'),
     
+    # Product Bundles
+    path('bundles/', views.ProductBundleListCreateView.as_view(), name='product-bundle-list-create'),
+    
+    # Cycle Counts
+    path('cycle-counts/', views.CycleCountListCreateView.as_view(), name='cycle-count-list-create'),
+    path('cycle-counts/<int:count_id>/start/', views.start_cycle_count, name='start-cycle-count'),
+    
     # Dropdown APIs
     path('api/categories/', views.get_categories, name='get-categories'),
     path('api/suppliers/', views.get_suppliers, name='get-suppliers'),
@@ -44,6 +51,11 @@ urlpatterns = [
     path('reports/low-stock/', views.low_stock_report, name='low-stock-report'),
     path('reports/stock-valuation/', views.stock_valuation_report, name='stock-valuation-report'),
     path('reports/abc-analysis/', views.abc_analysis_report, name='abc-analysis-report'),
+    path('reports/aging-analysis/', views.inventory_aging_report, name='aging-analysis-report'),
+    path('reports/dead-stock/', views.dead_stock_report, name='dead-stock-report'),
+    
+    # File Upload
+    path('products/<int:product_id>/upload-image/', views.upload_product_image, name='upload-product-image'),
     
     # Alert Actions
     path('alerts/<int:alert_id>/resolve/', views.resolve_stock_alert, name='resolve-stock-alert'),

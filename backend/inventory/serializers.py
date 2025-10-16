@@ -2,9 +2,9 @@ from rest_framework import serializers
 from django.core.exceptions import ValidationError
 from .security_validators import InventorySecurityValidator
 from .models import (
-    Category, Supplier, Warehouse, Product, ProductVariant, 
+    Category, Supplier, Warehouse, Product, ProductVariant, ProductBundle, ProductBundleItem,
     StockLevel, StockMovement, StockAlert, InventoryAudit, InventoryAuditItem,
-    PurchaseOrder, PurchaseOrderItem
+    PurchaseOrder, PurchaseOrderItem, CycleCount, CycleCountItem
 )
 
 
@@ -349,6 +349,70 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             'approved_by_name', 'items', 'created_at', 'updated_at'
         ]
         read_only_fields = ['po_number', 'created_at', 'updated_at']
+
+
+class ProductBundleItemSerializer(serializers.ModelSerializer):
+    """Product bundle item serializer"""
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    effective_price = serializers.ReadOnlyField()
+    line_total = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = ProductBundleItem
+        fields = [
+            'id', 'product', 'product_name', 'quantity',
+            'unit_price_override', 'effective_price', 'line_total',
+            'created_at'
+        ]
+        read_only_fields = ['created_at']
+
+
+class ProductBundleSerializer(serializers.ModelSerializer):
+    """Product bundle serializer"""
+    bundle_items = ProductBundleItemSerializer(many=True, read_only=True)
+    total_cost = serializers.ReadOnlyField()
+    profit_margin = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = ProductBundle
+        fields = [
+            'id', 'bundle_name', 'bundle_code', 'description',
+            'bundle_price', 'discount_percentage', 'bundle_image',
+            'is_active', 'bundle_items', 'total_cost', 'profit_margin',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['bundle_code', 'created_at', 'updated_at']
+
+
+class CycleCountItemSerializer(serializers.ModelSerializer):
+    """Cycle count item serializer"""
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    counted_by_name = serializers.CharField(source='counted_by.full_name', read_only=True)
+    
+    class Meta:
+        model = CycleCountItem
+        fields = [
+            'id', 'product', 'product_name', 'expected_quantity',
+            'counted_quantity', 'variance', 'is_counted', 'notes',
+            'counted_by', 'counted_by_name', 'counted_at'
+        ]
+        read_only_fields = ['variance', 'counted_at']
+
+
+class CycleCountSerializer(serializers.ModelSerializer):
+    """Cycle count serializer"""
+    warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
+    count_items = CycleCountItemSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = CycleCount
+        fields = [
+            'id', 'count_name', 'count_number', 'warehouse', 'warehouse_name',
+            'frequency', 'next_count_date', 'last_count_date', 'abc_classes',
+            'categories', 'status', 'items_counted', 'discrepancies_found',
+            'accuracy_percentage', 'count_items', 'created_at', 'completed_at'
+        ]
+        read_only_fields = ['count_number', 'created_at', 'completed_at']
 
 
 class InventoryDashboardSerializer(serializers.Serializer):

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import {
   BarChart3,
   TrendingUp,
@@ -22,6 +21,8 @@ import {
 import { Card } from '../../../../../components/ui/Card';
 import { Button } from '../../../../../components/ui/Button';
 import { LoadingSpinner } from '../../../../../components/ui/LoadingSpinner';
+import { inventoryApi } from '../../utils/inventoryApi';
+import toast from 'react-hot-toast';
 
 interface MetricCardProps {
   title: string;
@@ -42,12 +43,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
   color, 
   description 
 }) => (
-  <motion.div
-    initial={{ opacity: 0, scale: 0.9 }}
-    animate={{ opacity: 1, scale: 1 }}
-    whileHover={{ scale: 1.02, y: -5 }}
-    className="group"
-  >
+  <div className="group hover:transform hover:scale-105 transition-transform duration-200">
     <Card className={`p-6 bg-gradient-to-br ${color} border-0 shadow-lg hover:shadow-xl transition-all duration-300 text-white`}>
       <div className="flex items-center justify-between mb-4">
         <div className="p-3 bg-white/10 rounded-xl backdrop-blur-sm">
@@ -77,13 +73,13 @@ const MetricCard: React.FC<MetricCardProps> = ({
         )}
       </div>
       
-      {/* Animated background pattern */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute -right-4 -top-4 w-24 h-24 bg-white rounded-full animate-pulse" />
-        <div className="absolute -left-4 -bottom-4 w-16 h-16 bg-white rounded-full animate-pulse delay-1000" />
+      {/* Static background pattern */}
+      <div className="absolute inset-0 opacity-5">
+        <div className="absolute -right-4 -top-4 w-24 h-24 bg-white rounded-full" />
+        <div className="absolute -left-4 -bottom-4 w-16 h-16 bg-white rounded-full" />
       </div>
     </Card>
-  </motion.div>
+  </div>
 );
 
 interface AIInsightCardProps {
@@ -122,12 +118,8 @@ const AIInsightCard: React.FC<AIInsightCardProps> = ({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      whileHover={{ scale: 1.02 }}
-      className={`p-4 rounded-lg border ${getPriorityColor(priority)} hover:shadow-md transition-all duration-200`}
-    >
+    <div className={`p-4 rounded-lg border ${getPriorityColor(priority)} hover:shadow-md transition-all duration-200`}>
+    
       <div className="flex items-start space-x-3">
         <div className={`p-2 rounded-lg ${getPriorityTextColor(priority)} bg-white/50`}>
           {icon}
@@ -153,7 +145,7 @@ const AIInsightCard: React.FC<AIInsightCardProps> = ({
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
@@ -169,64 +161,140 @@ const InventoryAnalytics: React.FC = () => {
   const loadAnalytics = async () => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Mock data - replace with actual API call
+      // Load only dashboard data to avoid multiple API calls
+      const dashboard = await inventoryApi.getDashboardStats();
+      
+      // Calculate analytics from dashboard data
+      const totalProducts = dashboard.inventory_stats?.total_products || 0;
+      const lowStockCount = dashboard.inventory_stats?.low_stock_products || 0;
+      const outOfStockCount = dashboard.inventory_stats?.out_of_stock_products || 0;
+      const totalValue = dashboard.inventory_stats?.total_stock_value || 0;
+      
       setAnalyticsData({
-        turnoverRate: 4.2,
-        stockAccuracy: 96.8,
-        carryingCost: 12.5,
-        fillRate: 98.2,
-        deadStock: 2.1,
-        reorderEfficiency: 89.3
+        turnoverRate: (dashboard.ai_insights?.inventory_turnover / 10) || 0,
+        stockAccuracy: totalProducts > 0 ? ((totalProducts - outOfStockCount) / totalProducts * 100).toFixed(1) : '0',
+        carryingCost: 0, // This needs to be calculated from actual cost data
+        fillRate: totalProducts > 0 ? ((totalProducts - lowStockCount) / totalProducts * 100).toFixed(1) : '0',
+        deadStock: totalProducts > 0 ? ((lowStockCount / totalProducts) * 100).toFixed(1) : '0',
+        reorderEfficiency: dashboard.ai_insights?.optimization_score || 0,
+        totalValue: totalValue,
+        totalProducts: totalProducts,
+        lowStockProducts: lowStockCount,
+        outOfStockProducts: outOfStockCount
       });
-    } catch (error) {
+      
+      // Additional data loading can be added here if needed in the future
+      
+    } catch (error: any) {
       console.error('Failed to load analytics:', error);
+      toast.error('Failed to load analytics data');
+      
+      // Fallback to safe default data
+      setAnalyticsData({
+        turnoverRate: 0,
+        stockAccuracy: '0',
+        carryingCost: 0,
+        fillRate: '0',
+        deadStock: '0',
+        reorderEfficiency: 0,
+        totalValue: 0,
+        totalProducts: 0,
+        lowStockProducts: 0,
+        outOfStockProducts: 0
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const aiInsights = [
-    {
-      title: "Demand Spike Predicted",
-      insight: "AI models predict 35% increase in demand for Electronics category next month based on seasonal patterns and market trends.",
-      confidence: 87,
-      action: "Increase stock levels by 25% for top 10 electronics products",
-      priority: "high" as const,
-      icon: <TrendingUp className="w-4 h-4" />
-    },
-    {
-      title: "Slow Moving Inventory",
-      insight: "15 products haven't moved in 90+ days, tying up ₹2.3L in capital. Consider promotional strategies or liquidation.",
-      confidence: 94,
-      action: "Create clearance campaign for slow-moving items",
-      priority: "medium" as const,
-      icon: <Clock className="w-4 h-4" />
-    },
-    {
-      title: "Optimal Reorder Point",
-      insight: "Product SKU-001 reorder point can be optimized from 100 to 75 units, reducing carrying costs by 12%.",
-      confidence: 91,
-      action: "Update reorder points for 23 similar products",
-      priority: "low" as const,
-      icon: <Target className="w-4 h-4" />
-    },
-    {
-      title: "Supplier Performance Alert",
-      insight: "Supplier ABC Corp has 15% delivery delays this month. Consider backup suppliers for critical items.",
-      confidence: 89,
-      action: "Review supplier contracts and diversify supply chain",
-      priority: "critical" as const,
-      icon: <AlertTriangle className="w-4 h-4" />
+  // Generate AI insights based on real data
+  const generateAIInsights = () => {
+    const insights = [];
+    
+    if (analyticsData?.lowStockProducts > 0) {
+      insights.push({
+        title: "Low Stock Alert",
+        insight: `${analyticsData.lowStockProducts} products are below minimum stock levels. Immediate reordering required to avoid stockouts.`,
+        confidence: 95,
+        action: "Review and reorder low stock items",
+        priority: "high" as const,
+        icon: <AlertTriangle className="w-4 h-4" />
+      });
     }
-  ];
+    
+    if (analyticsData?.outOfStockProducts > 0) {
+      insights.push({
+        title: "Out of Stock Items",
+        insight: `${analyticsData.outOfStockProducts} products are completely out of stock, potentially causing lost sales.`,
+        confidence: 98,
+        action: "Emergency reorder for out-of-stock items",
+        priority: "critical" as const,
+        icon: <TrendingDown className="w-4 h-4" />
+      });
+    }
+    
+    if (analyticsData?.turnoverRate < 2) {
+      insights.push({
+        title: "Low Inventory Turnover",
+        insight: `Current turnover rate of ${analyticsData.turnoverRate}x is below optimal. Consider reducing slow-moving inventory.`,
+        confidence: 87,
+        action: "Analyze slow-moving products and optimize stock levels",
+        priority: "medium" as const,
+        icon: <Clock className="w-4 h-4" />
+      });
+    }
+    
+    if (analyticsData?.stockAccuracy < 95) {
+      insights.push({
+        title: "Stock Accuracy Issue",
+        insight: `Stock accuracy of ${analyticsData.stockAccuracy}% is below target. Consider cycle counting or inventory audit.`,
+        confidence: 92,
+        action: "Implement cycle counting program",
+        priority: "medium" as const,
+        icon: <Target className="w-4 h-4" />
+      });
+    }
+    
+    // Add positive insights if metrics are good
+    if (insights.length === 0) {
+      insights.push({
+        title: "Optimal Performance",
+        insight: "Your inventory metrics are performing well. Continue monitoring for sustained efficiency.",
+        confidence: 88,
+        action: "Maintain current inventory practices",
+        priority: "low" as const,
+        icon: <CheckCircle className="w-4 h-4" />
+      });
+    }
+    
+    return insights;
+  };
+  
+  const aiInsights = generateAIInsights();
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <LoadingSpinner size="lg" />
+        <div className="text-center">
+          <LoadingSpinner size="lg" />
+          <p className="mt-4 text-gray-600">Loading analytics data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!analyticsData) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <AlertTriangle className="w-12 h-12 text-orange-500 mx-auto mb-4" />
+          <p className="text-gray-600 font-medium">No analytics data available</p>
+          <Button onClick={loadAnalytics} className="mt-4">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Retry Loading
+          </Button>
+        </div>
       </div>
     );
   }
@@ -234,11 +302,7 @@ const InventoryAnalytics: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center space-x-3">
             <div className="p-2 bg-gradient-to-r from-purple-500 to-blue-600 rounded-xl text-white">
@@ -271,15 +335,13 @@ const InventoryAnalytics: React.FC = () => {
             Export Report
           </Button>
         </div>
-      </motion.div>
+      </div>
 
       {/* Key Performance Indicators */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <MetricCard
           title="Inventory Turnover"
           value={`${analyticsData?.turnoverRate}x`}
-          change={12}
-          trend="up"
           icon={<RefreshCw className="w-6 h-6" />}
           color="from-blue-500 to-blue-600"
           description="Times inventory sold per year"
@@ -288,8 +350,6 @@ const InventoryAnalytics: React.FC = () => {
         <MetricCard
           title="Stock Accuracy"
           value={`${analyticsData?.stockAccuracy}%`}
-          change={2.1}
-          trend="up"
           icon={<CheckCircle className="w-6 h-6" />}
           color="from-green-500 to-green-600"
           description="Physical vs system accuracy"
@@ -297,9 +357,7 @@ const InventoryAnalytics: React.FC = () => {
         
         <MetricCard
           title="Carrying Cost"
-          value={`${analyticsData?.carryingCost}%`}
-          change={-1.8}
-          trend="down"
+          value={analyticsData?.carryingCost > 0 ? `${analyticsData?.carryingCost}%` : 'Not Available'}
           icon={<DollarSign className="w-6 h-6" />}
           color="from-purple-500 to-purple-600"
           description="Cost of holding inventory"
@@ -308,8 +366,6 @@ const InventoryAnalytics: React.FC = () => {
         <MetricCard
           title="Fill Rate"
           value={`${analyticsData?.fillRate}%`}
-          change={0.5}
-          trend="up"
           icon={<Target className="w-6 h-6" />}
           color="from-orange-500 to-orange-600"
           description="Orders fulfilled from stock"
@@ -318,8 +374,6 @@ const InventoryAnalytics: React.FC = () => {
         <MetricCard
           title="Dead Stock"
           value={`${analyticsData?.deadStock}%`}
-          change={-0.3}
-          trend="down"
           icon={<Clock className="w-6 h-6" />}
           color="from-red-500 to-red-600"
           description="Non-moving inventory"
@@ -327,9 +381,7 @@ const InventoryAnalytics: React.FC = () => {
         
         <MetricCard
           title="Reorder Efficiency"
-          value={`${analyticsData?.reorderEfficiency}%`}
-          change={5.2}
-          trend="up"
+          value={analyticsData?.reorderEfficiency > 0 ? `${analyticsData?.reorderEfficiency}%` : 'Not Available'}
           icon={<Zap className="w-6 h-6" />}
           color="from-teal-500 to-teal-600"
           description="Optimal reorder timing"
@@ -337,11 +389,7 @@ const InventoryAnalytics: React.FC = () => {
       </div>
 
       {/* AI Insights Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl p-6 text-white"
-      >
+      <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl p-6 text-white">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
             <Brain className="w-6 h-6" />
@@ -349,16 +397,16 @@ const InventoryAnalytics: React.FC = () => {
           </div>
           <div className="flex items-center space-x-4">
             <div className="text-center">
-              <div className="text-2xl font-bold">94%</div>
-              <div className="text-purple-200 text-sm">Prediction Accuracy</div>
+              <div className="text-2xl font-bold">{analyticsData?.stockAccuracy || 0}%</div>
+              <div className="text-purple-200 text-sm">Stock Accuracy</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold">12</div>
-              <div className="text-purple-200 text-sm">Active Models</div>
+              <div className="text-2xl font-bold">{analyticsData?.totalProducts || 0}</div>
+              <div className="text-purple-200 text-sm">Total Products</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold">₹2.8L</div>
-              <div className="text-purple-200 text-sm">Cost Savings</div>
+              <div className="text-2xl font-bold">₹{((analyticsData?.totalValue || 0) / 100000).toFixed(1)}L</div>
+              <div className="text-purple-200 text-sm">Stock Value</div>
             </div>
           </div>
         </div>
@@ -370,7 +418,7 @@ const InventoryAnalytics: React.FC = () => {
               <span>Demand Forecasting</span>
             </h3>
             <p className="text-purple-100 text-sm">
-              Next 30 days demand prediction with 94% accuracy using advanced ML models
+              Real-time demand analysis based on {analyticsData?.totalProducts || 0} products and current stock levels
             </p>
           </div>
           
@@ -380,11 +428,11 @@ const InventoryAnalytics: React.FC = () => {
               <span>Smart Optimization</span>
             </h3>
             <p className="text-purple-100 text-sm">
-              Automated reorder points and safety stock calculations based on real-time data
+              Smart reorder suggestions for {analyticsData?.lowStockProducts || 0} low-stock items
             </p>
           </div>
         </div>
-      </motion.div>
+      </div>
 
       {/* AI Insights Cards */}
       <div className="space-y-6">

@@ -44,6 +44,9 @@ import StockAlerts from '../components/alerts/StockAlerts';
 import PurchaseOrderManager from '../components/purchase-orders/PurchaseOrderManager';
 import InventoryAudits from '../components/audits/InventoryAudits';
 import InventoryAnalytics from '../components/analytics/InventoryAnalytics';
+import { AgingAnalysis } from '../components/analytics/AgingAnalysis';
+import { ProductBundleManager } from '../components/bundles/ProductBundleManager';
+import { CycleCountManager } from '../components/cycle-counts/CycleCountManager';
 import { inventoryApi } from '../utils/inventoryApi';
 import type { InventoryDashboardStats } from '../types/inventoryTypes';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/Card';
@@ -128,6 +131,9 @@ const Dashboard: React.FC = () => {
     { id: 'alerts', label: 'Stock Alerts', icon: Bell },
     { id: 'purchase-orders', label: 'Purchase Orders', icon: Star },
     { id: 'audits', label: 'Inventory Audits', icon: Shield },
+    { id: 'bundles', label: 'Product Bundles', icon: Package },
+    { id: 'cycle-counts', label: 'Cycle Counts', icon: RefreshCw },
+    { id: 'aging-analysis', label: 'Aging Analysis', icon: TrendingUp },
     { id: 'analytics', label: 'Analytics', icon: Zap },
     { id: 'settings', label: 'Settings', icon: Settings }
   ];
@@ -553,6 +559,12 @@ const Dashboard: React.FC = () => {
         return <PurchaseOrderManager />;
       case 'audits':
         return <InventoryAudits />;
+      case 'bundles':
+        return <ProductBundleManager />;
+      case 'cycle-counts':
+        return <CycleCountManager />;
+      case 'aging-analysis':
+        return <AgingAnalysis />;
       case 'analytics':
         return <InventoryAnalytics />;
       case 'settings':

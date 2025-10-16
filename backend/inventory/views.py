@@ -17,10 +17,12 @@ import logging
 import os
 from django.conf import settings
 from .models import (
-    Category, Supplier, Warehouse, Product, ProductVariant,
+    Category, Supplier, Warehouse, Product, ProductVariant, ProductBundle, ProductBundleItem,
     StockLevel, StockMovement, StockAlert, InventoryAudit, InventoryAuditItem,
-    PurchaseOrder, PurchaseOrderItem
+    PurchaseOrder, PurchaseOrderItem, CycleCount, CycleCountItem
 )
+from .file_handlers import InventoryFileHandler
+from .aging_analyzer import InventoryAgingAnalyzer
 from .serializers import (
     CategorySerializer, SupplierSerializer, WarehouseSerializer,
     ProductListSerializer, ProductDetailSerializer, ProductCreateSerializer,
@@ -159,8 +161,8 @@ class InventoryDashboardViewSet(viewsets.ViewSet):
                 'ai_insights': {
                     'reorder_suggestions': low_stock_products,
                     'demand_trend': 'stable',
-                    'inventory_turnover': 85,
-                    'optimization_score': 92
+                    'inventory_turnover': 0,  # Calculate from actual data
+                    'optimization_score': 0   # Calculate from actual data
                 }
             }
 
@@ -995,6 +997,133 @@ def stock_valuation_report(request):
         return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def upload_product_image(request, product_id):
+    """Upload product image"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.data.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        product = Product.objects.get(
+            id=product_id,
+            company=service_user.company,
+            is_active=True
+        )
+        
+        if 'image' not in request.FILES:
+            return Response({'error': 'No image file provided'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        image_file = request.FILES['image']
+        
+        # Upload image
+        file_path = InventoryFileHandler.upload_product_image(
+            image_file, product_id, service_user.company.id
+        )
+        
+        # Update product image gallery
+        if not product.image_gallery:
+            product.image_gallery = []
+        
+        product.image_gallery.append({
+            'filename': image_file.name,
+            'path': file_path,
+            'uploaded_at': timezone.now().isoformat()
+        })
+        
+        # Set as primary image if none exists
+        if not product.primary_image:
+            product.primary_image = file_path
+        
+        product.save()
+        
+        return Response({
+            'success': True,
+            'file_path': file_path,
+            'message': 'Image uploaded successfully'
+        })
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def inventory_aging_report(request):
+    """Get inventory aging analysis"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.query_params.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+        
+        warehouse_id = request.query_params.get('warehouse')
+        aging_data = InventoryAgingAnalyzer.get_aging_analysis(company, warehouse_id)
+        
+        # Categorize data
+        aging_summary = {}
+        for item in aging_data:
+            category = item['aging_category']
+            if category not in aging_summary:
+                aging_summary[category] = {'count': 0, 'value': 0}
+            aging_summary[category]['count'] += 1
+            aging_summary[category]['value'] += item['stock_value']
+        
+        return Response({
+            'aging_data': aging_data,
+            'aging_summary': aging_summary,
+            'total_items': len(aging_data),
+            'total_value': sum(item['stock_value'] for item in aging_data),
+            'generated_at': timezone.now().isoformat()
+        })
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def dead_stock_report(request):
+    """Get dead stock report"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.query_params.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+        
+        days_threshold = int(request.query_params.get('days', 365))
+        report = InventoryAgingAnalyzer.get_dead_stock_report(company, days_threshold)
+        
+        return Response(report)
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([permissions.AllowAny])
@@ -1191,6 +1320,183 @@ class InventoryAuditListCreateView(ListCreateAPIView):
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class ProductBundleListCreateView(ListCreateAPIView):
+    """List and create product bundles"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    
+    def get_serializer_class(self):
+        from .serializers import ProductBundleSerializer
+        return ProductBundleSerializer
+    pagination_class = InventoryPagination
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return ProductBundle.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+            return ProductBundle.objects.filter(company=company, is_active=True).prefetch_related('bundle_items__product')
+        except ServiceUserSession.DoesNotExist:
+            return ProductBundle.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            service_user = session.service_user
+
+            with transaction.atomic():
+                serializer = self.get_serializer(data=request.data)
+                serializer.is_valid(raise_exception=True)
+                
+                bundle = serializer.save(
+                    company=service_user.company,
+                    created_by=service_user
+                )
+                
+                # Add bundle items
+                items_data = request.data.get('bundle_items', [])
+                for item_data in items_data:
+                    ProductBundleItem.objects.create(
+                        bundle=bundle,
+                        product_id=item_data['product'],
+                        quantity=item_data['quantity'],
+                        unit_price_override=item_data.get('unit_price_override')
+                    )
+                
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class CycleCountListCreateView(ListCreateAPIView):
+    """List and create cycle counts"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    
+    def get_serializer_class(self):
+        from .serializers import CycleCountSerializer
+        return CycleCountSerializer
+    pagination_class = InventoryPagination
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return CycleCount.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+            return CycleCount.objects.filter(company=company).select_related('warehouse').prefetch_related('count_items__product')
+        except ServiceUserSession.DoesNotExist:
+            return CycleCount.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            service_user = session.service_user
+
+            with transaction.atomic():
+                serializer = self.get_serializer(data=request.data)
+                serializer.is_valid(raise_exception=True)
+                
+                cycle_count = serializer.save(
+                    company=service_user.company,
+                    created_by=service_user
+                )
+                
+                # Auto-generate count items based on criteria
+                products = Product.objects.filter(
+                    company=service_user.company,
+                    is_active=True
+                )
+                
+                # Filter by categories if specified
+                categories = request.data.get('categories', [])
+                if categories:
+                    products = products.filter(category_id__in=categories)
+                
+                # Filter by ABC classes if specified
+                abc_classes = request.data.get('abc_classes', [])
+                if abc_classes:
+                    products = products.filter(abc_classification__in=abc_classes)
+                
+                # Create count items
+                for product in products[:50]:  # Limit to 50 items for demo
+                    CycleCountItem.objects.create(
+                        cycle_count=cycle_count,
+                        product=product,
+                        expected_quantity=product.current_stock
+                    )
+                
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def start_cycle_count(request, count_id):
+    """Start a cycle count"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.data.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        cycle_count = CycleCount.objects.get(
+            id=count_id,
+            company=service_user.company
+        )
+        
+        cycle_count.status = 'in_progress'
+        cycle_count.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Cycle count started successfully'
+        })
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except CycleCount.DoesNotExist:
+        return Response({'error': 'Cycle count not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['POST'])

@@ -167,11 +167,7 @@ export const inventoryApi = {
     return response.data;
   },
 
-  // Analytics
-  getInventoryAnalytics: async (params?: any) => {
-    const response = await apiClient.get('/api/inventory/analytics/', params);
-    return response.data;
-  },
+
 
   // Export/Import
   exportProducts: async (format: 'csv' | 'excel' = 'excel') => {
@@ -217,6 +213,83 @@ export const inventoryApi = {
     return response.data;
   },
 
+  // Image Upload
+  uploadProductImage: async (productId: number, imageFile: File) => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    
+    const response = await apiClient.post(`/api/inventory/products/${productId}/upload-image/`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
+
+  // Aging Analysis
+  getAgingAnalysisReport: async (params?: any) => {
+    const response = await apiClient.get('/api/inventory/reports/aging-analysis/', params);
+    return response.data;
+  },
+
+  // Dead Stock Report
+  getDeadStockReport: async (days: number = 365) => {
+    const response = await apiClient.get('/api/inventory/reports/dead-stock/', { days });
+    return response.data;
+  },
+
+  // Product Bundles
+  getProductBundles: async (params?: any) => {
+    const response = await apiClient.get('/api/inventory/bundles/', params);
+    return response.data;
+  },
+
+  createProductBundle: async (data: any) => {
+    const response = await apiClient.post('/api/inventory/bundles/', data);
+    return response.data;
+  },
+
+  getProductBundle: async (id: number) => {
+    const response = await apiClient.get(`/api/inventory/bundles/${id}/`);
+    return response.data;
+  },
+
+  updateProductBundle: async (id: number, data: any) => {
+    const response = await apiClient.put(`/api/inventory/bundles/${id}/`, data);
+    return response.data;
+  },
+
+  deleteProductBundle: async (id: number) => {
+    const response = await apiClient.delete(`/api/inventory/bundles/${id}/`);
+    return response.data;
+  },
+
+  // Cycle Counts
+  getCycleCounts: async (params?: any) => {
+    const response = await apiClient.get('/api/inventory/cycle-counts/', params);
+    return response.data;
+  },
+
+  createCycleCount: async (data: any) => {
+    const response = await apiClient.post('/api/inventory/cycle-counts/', data);
+    return response.data;
+  },
+
+  getCycleCount: async (id: number) => {
+    const response = await apiClient.get(`/api/inventory/cycle-counts/${id}/`);
+    return response.data;
+  },
+
+  updateCycleCount: async (id: number, data: any) => {
+    const response = await apiClient.put(`/api/inventory/cycle-counts/${id}/`, data);
+    return response.data;
+  },
+
+  startCycleCount: async (id: number) => {
+    const response = await apiClient.post(`/api/inventory/cycle-counts/${id}/start/`, {});
+    return response.data;
+  },
+
   // Purchase Orders
   getPurchaseOrders: async (params?: any) => {
     const response = await apiClient.get('/api/inventory/purchase-orders/', params);
@@ -257,5 +330,30 @@ export const inventoryApi = {
   updateInventoryAudit: async (id: number, data: any) => {
     const response = await apiClient.put(`/api/inventory/audits/${id}/`, data);
     return response.data;
+  },
+
+  // Analytics (using existing endpoints)
+  getInventoryAnalytics: async () => {
+    // This uses the dashboard endpoint for now
+    const response = await apiClient.getInventoryDashboard();
+    return response.data;
+  },
+
+  // Enhanced Analytics
+  getAnalyticsMetrics: async () => {
+    try {
+      // Use existing dashboard data for analytics
+      const dashboard = await apiClient.getInventoryDashboard();
+      return {
+        success: true,
+        data: dashboard.data
+      };
+    } catch (error) {
+      console.error('Analytics API error:', error);
+      return {
+        success: false,
+        error: error
+      };
+    }
   }
 };

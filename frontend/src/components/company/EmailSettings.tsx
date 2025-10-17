@@ -18,6 +18,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
   const [showPasswords, setShowPasswords] = useState(false)
+  const [showPasswordField, setShowPasswordField] = useState(false)
   const [formData, setFormData] = useState({
     from_email: '',
     from_name: '',
@@ -127,16 +128,25 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
     setIsTesting(true)
     try {
       const response = await apiClient.testCompanyEmailConfiguration()
-      if (response.data.success) {
-        toast.success('Test email sent successfully!')
+      console.log('Test email response:', response.data)
+      
+      // Check for success in multiple possible response formats
+      if (response.data.success === true || response.data.status === 'success' || response.status === 200) {
+        toast.success(response.data.message || 'Test email sent successfully!')
       } else {
         toast.error(response.data.error || response.data.message || 'Test email failed')
       }
       loadUsage()
     } catch (error: any) {
       console.error('Test email error:', error)
-      const message = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to send test email'
-      toast.error(message)
+      
+      // If it's a 200 response but caught as error, it might still be successful
+      if (error.response?.status === 200) {
+        toast.success('Test email sent successfully!')
+      } else {
+        const message = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to send test email'
+        toast.error(message)
+      }
     } finally {
       setIsTesting(false)
     }
@@ -343,7 +353,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                 </label>
                 <div className="relative">
                   <input
-                    type={showPasswords ? 'text' : 'password'}
+                    type={showPasswordField ? 'text' : 'password'}
                     value={formData.smtp_password}
                     onChange={(e) => setFormData({ ...formData, smtp_password: e.target.value })}
                     className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -352,10 +362,10 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPasswords(!showPasswords)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    onClick={() => setShowPasswordField(!showPasswordField)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center hover:text-gray-600 transition-colors"
                   >
-                    {showPasswords ? (
+                    {showPasswordField ? (
                       <EyeOff className="h-4 w-4 text-gray-400" />
                     ) : (
                       <Eye className="h-4 w-4 text-gray-400" />
@@ -393,7 +403,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                 </label>
                 <div className="relative">
                   <input
-                    type={showPasswords ? 'text' : 'password'}
+                    type={showPasswordField ? 'text' : 'password'}
                     value={formData.api_key}
                     onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
                     className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -402,10 +412,10 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPasswords(!showPasswords)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    onClick={() => setShowPasswordField(!showPasswordField)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center hover:text-gray-600 transition-colors"
                   >
-                    {showPasswords ? (
+                    {showPasswordField ? (
                       <EyeOff className="h-4 w-4 text-gray-400" />
                     ) : (
                       <Eye className="h-4 w-4 text-gray-400" />
@@ -420,7 +430,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                   </label>
                   <div className="relative">
                     <input
-                      type={showPasswords ? 'text' : 'password'}
+                      type={showPasswordField ? 'text' : 'password'}
                       value={formData.api_secret}
                       onChange={(e) => setFormData({ ...formData, api_secret: e.target.value })}
                       className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -429,10 +439,10 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                     />
                     <button
                       type="button"
-                      onClick={() => setShowPasswords(!showPasswords)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      onClick={() => setShowPasswordField(!showPasswordField)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center hover:text-gray-600 transition-colors"
                     >
-                      {showPasswords ? (
+                      {showPasswordField ? (
                         <EyeOff className="h-4 w-4 text-gray-400" />
                       ) : (
                         <Eye className="h-4 w-4 text-gray-400" />

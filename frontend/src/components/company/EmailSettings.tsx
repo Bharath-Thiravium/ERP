@@ -17,7 +17,6 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
-  const [showPasswords, setShowPasswords] = useState(false)
   const [showPasswordField, setShowPasswordField] = useState(false)
   const [formData, setFormData] = useState({
     from_email: '',

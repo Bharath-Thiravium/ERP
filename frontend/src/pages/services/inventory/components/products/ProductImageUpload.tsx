@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, X, Image as ImageIcon } from 'lucide-react';
 import { Button } from '../../../../../components/ui/Button';
 import { inventoryApi } from '../../utils/inventoryApi';
+import { API_BASE_URL } from '../../../../../lib/api';
 import toast from 'react-hot-toast';
 
 interface ProductImageUploadProps {
@@ -89,7 +90,7 @@ export const ProductImageUpload: React.FC<ProductImageUploadProps> = ({
           <div key={index} className="relative group">
             <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden">
               <img
-                src={imagePath.startsWith('http') ? imagePath : `/media/${imagePath}`}
+                src={imagePath.startsWith('http') ? imagePath : `${API_BASE_URL}/media/${imagePath}`}
                 alt={`Product image ${index + 1}`}
                 className="w-full h-full object-cover"
                 onError={(e) => {

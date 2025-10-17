@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { X, CheckCircle, XCircle, FileText, Download, Eye, MessageSquare, AlertTriangle, Building2, User } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { LoadingSpinner } from '../ui/LoadingSpinner'
+import { API_BASE_URL } from '../../lib/api'
 
 interface CompanyApprovalModalProps {
   isOpen: boolean
@@ -257,7 +258,7 @@ const CompanyApprovalModal: React.FC<CompanyApprovalModalProps> = ({
                             </div>
                             <div className="flex space-x-1">
                               <button
-                                onClick={() => window.open(`http://localhost:8000/media/${path}`, '_blank')}
+                                onClick={() => window.open(`${API_BASE_URL}/media/${path}`, '_blank')}
                                 className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded transition-colors"
                                 title="View Document"
                               >
@@ -266,7 +267,7 @@ const CompanyApprovalModal: React.FC<CompanyApprovalModalProps> = ({
                               <button
                                 onClick={() => {
                                   const link = document.createElement('a')
-                                  link.href = `http://localhost:8000/media/${path}`
+                                  link.href = `${API_BASE_URL}/media/${path}`
                                   link.download = key
                                   link.click()
                                 }}
@@ -282,7 +283,7 @@ const CompanyApprovalModal: React.FC<CompanyApprovalModalProps> = ({
                           {isImage ? (
                             <div className="relative">
                               <img 
-                                src={`http://localhost:8000/media/${path}`} 
+                                src={`${API_BASE_URL}/media/${path}`} 
                                 alt={key}
                                 className="w-full h-32 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
                                 onError={(e) => {

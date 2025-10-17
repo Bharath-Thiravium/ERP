@@ -182,7 +182,7 @@ class ServiceListView(ListAPIView):
     """List all available services"""
     queryset = Service.objects.filter(is_active=True)
     serializer_class = ServiceSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]  # Public endpoint for company creation
 
 
 class CompanyListCreateView(ListCreateAPIView):

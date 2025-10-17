@@ -17,6 +17,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
+  const [showPasswords, setShowPasswords] = useState(false)
   const [showPasswordField, setShowPasswordField] = useState(false)
   const [formData, setFormData] = useState({
     from_email: '',
@@ -429,7 +430,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                   </label>
                   <div className="relative">
                     <input
-                      type={showPasswordField ? 'text' : 'password'}
+                      type={showPasswords ? 'text' : 'password'}
                       value={formData.api_secret}
                       onChange={(e) => setFormData({ ...formData, api_secret: e.target.value })}
                       className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -438,10 +439,10 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                     />
                     <button
                       type="button"
-                      onClick={() => setShowPasswordField(!showPasswordField)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center hover:text-gray-600 transition-colors"
+                      onClick={() => setShowPasswords(!showPasswords)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
                     >
-                      {showPasswordField ? (
+                      {showPasswords ? (
                         <EyeOff className="h-4 w-4 text-gray-400" />
                       ) : (
                         <Eye className="h-4 w-4 text-gray-400" />

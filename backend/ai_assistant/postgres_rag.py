@@ -76,18 +76,74 @@ class NLQueryProcessor:
             
         except Exception as e:
             from html import escape
-            return {
-                'type': 'error',
-                'message': 'No results found in database',
-                'suggestion': 'Try asking about: employees, products, customers, orders',
-                'error': escape(str(e))
-            }
+            error_msg = str(e)
+            
+            # Better error messages with comprehensive suggestions
+            if 'does not exist' in error_msg:
+                return {
+                    'type': 'error',
+                    'message': 'Table not found in database',
+                    'suggestion': 'Try asking about: departments, employees, products, customers, invoices, suppliers, leads, contacts',
+                    'available_queries': [
+                        'list all departments',
+                        'show me employees', 
+                        'count products',
+                        'recent customers',
+                        'top invoices',
+                        'all suppliers'
+                    ],
+                    'error': escape(error_msg)
+                }
+            else:
+                return {
+                    'type': 'error', 
+                    'message': 'Query execution failed',
+                    'suggestion': 'Try simpler queries like: "list departments", "show employees", "count products"',
+                    'available_topics': ['HR', 'Finance', 'Inventory', 'CRM'],
+                    'error': escape(error_msg)
+                }
     
     def find_relevant_tables(self, question: str) -> List[tuple]:
         """Find relevant tables using similarity search"""
-        question_embedding = self.rag.model.encode(question).tolist()
-        
         from .models import DocumentEmbedding
+        
+        # Check if embeddings exist, if not return default tables
+        if not DocumentEmbedding.objects.exists():
+            # Return default relevant tables based on keywords
+            question_lower = question.lower()
+            
+            keyword_tables = {
+                'department': ('hr_department', 'name'),
+                'employee': ('hr_employee', 'full_name'),
+                'attendance': ('hr_attendance', 'date'),
+                'payroll': ('hr_payrollcycle', 'cycle_name'),
+                'salary': ('hr_employee', 'base_salary'),
+                'leave': ('hr_leaveapplication', 'leave_type'),
+                'product': ('inventory_product', 'name'),
+                'category': ('inventory_category', 'name'),
+                'supplier': ('inventory_supplier', 'name'),
+                'warehouse': ('inventory_warehouse', 'name'),
+                'stock': ('inventory_stocklevel', 'quantity_available'),
+                'inventory': ('inventory_product', 'name'),
+                'customer': ('finance_customer', 'name'),
+                'invoice': ('finance_invoices', 'invoice_number'),
+                'payment': ('finance_payments', 'amount'),
+                'quotation': ('finance_quotations', 'quotation_number'),
+                'purchase': ('finance_purchase_orders', 'po_number'),
+                'lead': ('crm_lead', 'name'),
+                'contact': ('crm_contact', 'name'),
+                'deal': ('crm_deal', 'name'),
+                'opportunity': ('crm_opportunity', 'name'),
+                'campaign': ('crm_campaign', 'name')
+            }
+            
+            for keyword, (table, column) in keyword_tables.items():
+                if keyword in question_lower:
+                    return [(table, column, 1.0)]
+            
+            return [('hr_department', 'name', 1.0)]
+        
+        question_embedding = self.rag.model.encode(question).tolist()
         
         # Simple similarity calculation (in production, use pgvector)
         embeddings = DocumentEmbedding.objects.all()
@@ -113,12 +169,54 @@ class NLQueryProcessor:
                 unique_tables.append((table, column, sim))
                 seen_tables.add(table)
         
-        return unique_tables[:10]
+        return unique_tables[:10] if unique_tables else [('hr_department', 'name', 1.0)]
     
     def generate_sql(self, question: str, relevant_tables: List[tuple]) -> str:
         """Generate SQL from natural language"""
         question_lower = question.lower()
-        main_table = relevant_tables[0][0] if relevant_tables else 'employees'
+        
+        # Smart table selection based on question keywords
+        table_mapping = {
+            # HR related
+            'department': 'hr_department',
+            'employee': 'hr_employee', 
+            'attendance': 'hr_attendance',
+            'payroll': 'hr_payrollcycle',
+            'salary': 'hr_employee',
+            'leave': 'hr_leaveapplication',
+            'holiday': 'hr_holiday',
+            
+            # Finance related
+            'customer': 'finance_customer',
+            'invoice': 'finance_invoices',
+            'payment': 'finance_payments',
+            'quotation': 'finance_quotations',
+            'purchase': 'finance_purchase_orders',
+            
+            # Inventory related
+            'product': 'inventory_product',
+            'category': 'inventory_category',
+            'supplier': 'inventory_supplier',
+            'warehouse': 'inventory_warehouse',
+            'stock': 'inventory_stocklevel',
+            'inventory': 'inventory_product',
+            
+            # CRM related
+            'lead': 'crm_lead',
+            'contact': 'crm_contact',
+            'deal': 'crm_deal',
+            'opportunity': 'crm_opportunity',
+            'campaign': 'crm_campaign'
+        }
+        
+        main_table = None
+        for keyword, table in table_mapping.items():
+            if keyword in question_lower:
+                main_table = table
+                break
+        
+        if not main_table:
+            main_table = relevant_tables[0][0] if relevant_tables else 'hr_department'
         
         # Extract numbers for LIMIT
         numbers = re.findall(r'\d+', question)

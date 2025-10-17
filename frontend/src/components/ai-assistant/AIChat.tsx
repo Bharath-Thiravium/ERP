@@ -156,35 +156,39 @@ const AIChat: React.FC = () => {
           )}
           
           {message.data && message.data.length > 0 && (
-            <div className="mt-2 max-w-full overflow-x-auto">
-              <div className="bg-white dark:bg-gray-900 rounded border">
-                <table className="min-w-full text-xs">
-                  <thead className="bg-gray-50 dark:bg-gray-800">
-                    <tr>
-                      {Object.keys(message.data[0]).map((key) => (
-                        <th key={key} className="px-2 py-1 text-left font-medium text-gray-700 dark:text-gray-300">
-                          {key}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {message.data.slice(0, 5).map((row, i) => (
-                      <tr key={i} className="border-t">
-                        {Object.values(row).map((cell: any, j) => (
-                          <td key={j} className="px-2 py-1 text-gray-900 dark:text-gray-100">
-                            {String(cell).length > 50 ? String(cell).substring(0, 50) + '...' : String(cell)}
-                          </td>
+            <div className="mt-2 w-full max-w-[400px]">
+              <div className="bg-white dark:bg-gray-900 rounded border overflow-hidden">
+                <div className="overflow-auto max-h-48" style={{maxWidth: '400px'}}>
+                  <table className="text-xs border-collapse" style={{minWidth: '100%'}}>
+                    <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0">
+                      <tr>
+                        {Object.keys(message.data[0]).slice(0, 4).map((key) => (
+                          <th key={key} className="px-1 py-1 text-left font-medium text-gray-700 dark:text-gray-300 border-b" style={{width: '100px'}}>
+                            <div className="truncate" title={key}>
+                              {key.length > 10 ? key.substring(0, 10) + '...' : key}
+                            </div>
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {message.data.length > 5 && (
-                  <div className="p-2 text-center text-xs text-gray-500 bg-gray-50 dark:bg-gray-800">
-                    Showing 5 of {message.data.length} results
-                  </div>
-                )}
+                    </thead>
+                    <tbody>
+                      {message.data.slice(0, 5).map((row, i) => (
+                        <tr key={i} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800">
+                          {Object.values(row).slice(0, 4).map((cell: any, j) => (
+                            <td key={j} className="px-1 py-1 text-gray-900 dark:text-gray-100 border-b" style={{width: '100px'}}>
+                              <div className="truncate" title={String(cell)}>
+                                {cell === null || cell === undefined ? '-' : String(cell).substring(0, 15)}
+                              </div>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="p-1 text-center text-xs text-gray-500 bg-gray-50 dark:bg-gray-800 border-t">
+                  {message.data.length} records • First 4 columns shown
+                </div>
               </div>
             </div>
           )}

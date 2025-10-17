@@ -1,0 +1,17 @@
+[Unit]
+Description=SAP Backend Gunicorn daemon
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/SAP-Python/backend
+Environment="PATH=/var/www/SAP-Python/backend/venv/bin"
+EnvironmentFile=/var/www/SAP-Python/backend/.env
+ExecStart=/var/www/SAP-Python/backend/venv/bin/gunicorn --workers 3 --bind unix:/var/www/SAP-Python/backend/sap_backend.sock sap_backend.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

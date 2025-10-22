@@ -125,7 +125,7 @@ class CompanySecurityLog(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='security_logs')
     user_email = models.EmailField()
     action = models.CharField(max_length=50, choices=ACTION_CHOICES)
-    ip_address = models.GenericIPAddressField()
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
     success = models.BooleanField()
     details = models.TextField(blank=True)

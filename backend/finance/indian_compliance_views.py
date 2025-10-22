@@ -10,6 +10,7 @@ from authentication.models import ServiceUserSession
 from .models import Invoice, Payment, Customer
 from .indian_compliance import IndianComplianceManager, INDIAN_STATE_CODES, TDS_SECTIONS
 from .compliance_notifications import get_compliance_summary, get_compliance_alerts
+from .government_api import get_company_services
 
 
 class GSTCalculatorView(APIView):
@@ -80,27 +81,64 @@ class GSTCalculatorView(APIView):
 
 
 class GSTINValidatorView(APIView):
-    """Validate GSTIN format and extract state code"""
+    """Validate GSTIN format and with government API if credentials available"""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        session_key = request.data.get('session_key')
         gstin = request.data.get('gstin', '').strip().upper()
         
         if not gstin:
             return Response({'error': 'GSTIN is required'}, status=400)
         
+        # Basic format validation
         is_valid = IndianComplianceManager.validate_gstin(gstin)
         state_code = IndianComplianceManager.get_state_code_from_gstin(gstin) if is_valid else None
         state_name = INDIAN_STATE_CODES.get(state_code, '') if state_code else ''
         
-        return Response({
+        response_data = {
             'gstin': gstin,
             'is_valid': is_valid,
             'state_code': state_code,
             'state_name': state_name,
-            'message': 'Valid GSTIN' if is_valid else 'Invalid GSTIN format'
-        })
+            'message': 'Valid GSTIN format' if is_valid else 'Invalid GSTIN format',
+            'format_validation_only': True
+        }
+        
+        # If session provided, try government API validation
+        if session_key and is_valid:
+            try:
+                session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+                company = session.service_user.company
+                
+                # Use company-specific GST service for real validation
+                company_services = get_company_services(company)
+                api_result = company_services['gst'].validate_gstin(gstin)
+                
+                if not api_result.get('mock', False):
+                    # Real API validation successful
+                    response_data.update({
+                        'api_validation': True,
+                        'format_validation_only': False,
+                        'business_name': api_result.get('business_name', ''),
+                        'legal_name': api_result.get('legal_name', ''),
+                        'status': api_result.get('status', ''),
+                        'registration_date': api_result.get('registration_date', ''),
+                        'taxpayer_type': api_result.get('taxpayer_type', ''),
+                        'is_valid': api_result.get('valid', False),
+                        'message': 'Government API validation completed'
+                    })
+                else:
+                    # Mock or no credentials
+                    response_data['message'] += ' (Government API credentials not configured)'
+                    
+            except ServiceUserSession.DoesNotExist:
+                pass  # Continue with format validation only
+            except Exception as e:
+                response_data['api_error'] = str(e)
+        
+        return Response(response_data)
 
 
 class TDSCalculatorView(APIView):

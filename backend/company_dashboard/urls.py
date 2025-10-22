@@ -32,4 +32,7 @@ urlpatterns = [
     
     # Advanced Security (Phase 4)
     path('advanced-security/', include('company_dashboard.advanced_security_urls')),
+    
+    # Government API Credentials Management (Phase 1)
+    path('government-api/', include('company_dashboard.government_credentials_urls')),
 ]

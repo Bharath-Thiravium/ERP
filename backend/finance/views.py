@@ -2336,13 +2336,14 @@ def generate_invoice_pdf(request, invoice_id):
     """Generate PDF for an invoice"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not session_key:
-        session_key = request.query_params.get('session_key')
+        session_key = request.GET.get('session_key')
 
     if not session_key:
         return Response({'error': 'Session key required'}, status=400)
 
     try:
-        from .pdf_utils import generate_invoice_pdf, create_pdf_response
+        from .email_utils import generate_invoice_pdf_content
+        from django.http import HttpResponse
 
         session = ServiceUserSession.objects.get(
             session_key=session_key,
@@ -2356,14 +2357,16 @@ def generate_invoice_pdf(request, invoice_id):
             company=service_user.company
         )
 
-        # Generate PDF
-        pdf_data = generate_invoice_pdf(invoice)
+        # Generate PDF using same function as email (with logo and from address)
+        pdf_buffer = generate_invoice_pdf_content(invoice)
 
         # Create filename
         filename = f"Invoice_{invoice.invoice_number}.pdf"
 
         # Return PDF response
-        return create_pdf_response(pdf_data, filename)
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
     except ServiceUserSession.DoesNotExist:
         return Response({'error': 'Invalid session'}, status=404)
@@ -2376,8 +2379,8 @@ def generate_invoice_pdf(request, invoice_id):
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([])
-def generate_proforma_pdf(request, proforma_id):
-    """Generate PDF for a proforma invoice"""
+def generate_quotation_pdf(request, quotation_id):
+    """Generate PDF for a quotation"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not session_key:
         session_key = request.query_params.get('session_key')
@@ -2386,7 +2389,52 @@ def generate_proforma_pdf(request, proforma_id):
         return Response({'error': 'Session key required'}, status=400)
 
     try:
-        from .pdf_utils import generate_invoice_pdf, create_pdf_response
+        from .email_utils import generate_quotation_pdf_content
+        from django.http import HttpResponse
+
+        session = ServiceUserSession.objects.get(
+            session_key=session_key,
+            is_active=True
+        )
+        service_user = session.service_user
+
+        # Get quotation
+        quotation = Quotation.objects.select_related('customer', 'company').prefetch_related('quotation_items').get(
+            id=quotation_id,
+            company=service_user.company
+        )
+
+        # Generate PDF using the same function as email (which has logo and from address)
+        pdf_buffer = generate_quotation_pdf_content(quotation)
+
+        # Create filename
+        filename = f"Quotation_{quotation.quotation_number}.pdf"
+
+        # Return PDF response
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=404)
+    except Quotation.DoesNotExist:
+        return Response({'error': 'Quotation not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+def generate_proforma_pdf(request, proforma_id):
+    """Generate PDF for a proforma invoice"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.GET.get('session_key')
+
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    try:
+        from .email_utils import generate_proforma_pdf_content
+        from django.http import HttpResponse
 
         session = ServiceUserSession.objects.get(
             session_key=session_key,
@@ -2400,36 +2448,16 @@ def generate_proforma_pdf(request, proforma_id):
             company=service_user.company
         )
 
-        # Convert proforma to invoice-like object for PDF generation
-        # This is a temporary solution - ideally we'd have a separate ProformaPDFGenerator
-        class ProformaWrapper:
-            def __init__(self, proforma):
-                self.invoice_number = proforma.proforma_number
-                self.invoice_date = proforma.proforma_date
-                self.due_date = proforma.due_date
-                self.payment_status = proforma.status
-                self.customer_details = proforma.customer_details
-                self.company = proforma.company
-                self.subtotal = proforma.subtotal
-                self.total_tax = proforma.total_tax
-                self.total_amount = proforma.total_amount
-                self.paid_amount = 0
-                self.outstanding_amount = proforma.total_amount
-
-            def invoice_items(self):
-                return proforma.proforma_items
-
-        wrapped_proforma = ProformaWrapper(proforma)
-        wrapped_proforma.invoice_items = proforma.proforma_items
-
-        # Generate PDF
-        pdf_data = generate_invoice_pdf(wrapped_proforma)
+        # Generate PDF using same function as email (with logo and from address)
+        pdf_buffer = generate_proforma_pdf_content(proforma)
 
         # Create filename
         filename = f"Proforma_{proforma.proforma_number}.pdf"
 
         # Return PDF response
-        return create_pdf_response(pdf_data, filename)
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
     except ServiceUserSession.DoesNotExist:
         return Response({'error': 'Invalid session'}, status=404)

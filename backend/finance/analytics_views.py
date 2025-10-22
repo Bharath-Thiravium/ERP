@@ -20,6 +20,9 @@ from .report_generators import (
     ComplianceAnalytics, 
     AuditTrailGenerator
 )
+from .financial_reports import FinancialReportsGenerator
+from .ai_features import PaymentPredictionEngine, FraudDetectionEngine
+from .advanced_compliance import AdvancedComplianceEngine
 
 def get_session_key(request):
     """Get session key from Authorization header or query params"""
@@ -513,6 +516,262 @@ def bulk_generate_tds_certificates(request):
             'certificates': certificates,
             'generated_at': timezone.now().isoformat()
         })
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Financial Reports API Views
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def generate_profit_loss_report(request):
+    """Generate Profit & Loss Statement"""
+    session_key = get_session_key(request)
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        start_date = parse_date(request.GET.get('start_date'))
+        end_date = parse_date(request.GET.get('end_date'))
+        
+        if not start_date or not end_date:
+            return Response({'error': 'start_date and end_date are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        generator = FinancialReportsGenerator(service_user.company)
+        report_data = generator.generate_profit_loss_report(start_date, end_date)
+        
+        return Response(report_data)
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def generate_balance_sheet(request):
+    """Generate Balance Sheet"""
+    session_key = get_session_key(request)
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        as_of_date = parse_date(request.GET.get('as_of_date')) or timezone.now().date()
+        
+        generator = FinancialReportsGenerator(service_user.company)
+        report_data = generator.generate_balance_sheet(as_of_date)
+        
+        return Response(report_data)
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def generate_cash_flow_statement(request):
+    """Generate Cash Flow Statement"""
+    session_key = get_session_key(request)
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        start_date = parse_date(request.GET.get('start_date'))
+        end_date = parse_date(request.GET.get('end_date'))
+        
+        if not start_date or not end_date:
+            return Response({'error': 'start_date and end_date are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        generator = FinancialReportsGenerator(service_user.company)
+        report_data = generator.generate_cash_flow_statement(start_date, end_date)
+        
+        return Response(report_data)
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# AI Features API Views
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def predict_payment_likelihood(request):
+    """Predict payment likelihood for a customer and invoice amount"""
+    session_key = get_session_key(request)
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        customer_id = request.data.get('customer_id')
+        invoice_amount = request.data.get('invoice_amount')
+        
+        if not customer_id or not invoice_amount:
+            return Response({'error': 'customer_id and invoice_amount are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        engine = PaymentPredictionEngine(service_user.company)
+        prediction = engine.predict_payment_likelihood(customer_id, invoice_amount)
+        
+        return Response(prediction)
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def generate_payment_insights(request):
+    """Generate AI-powered payment insights"""
+    session_key = get_session_key(request)
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        start_date_str = request.GET.get('start_date')
+        end_date_str = request.GET.get('end_date')
+        
+        if start_date_str:
+            start_date = parse_date(start_date_str)
+        else:
+            start_date = timezone.now().date() - timedelta(days=90)
+            
+        if end_date_str:
+            end_date = parse_date(end_date_str)
+        else:
+            end_date = timezone.now().date()
+        
+        engine = PaymentPredictionEngine(service_user.company)
+        insights = engine.generate_payment_insights(start_date, end_date)
+        
+        return Response(insights)
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def detect_fraud_anomalies(request):
+    """Detect fraud and anomalies using AI"""
+    session_key = get_session_key(request)
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        start_date_str = request.GET.get('start_date')
+        end_date_str = request.GET.get('end_date')
+        
+        if start_date_str:
+            start_date = parse_date(start_date_str)
+        else:
+            start_date = timezone.now().date() - timedelta(days=30)
+            
+        if end_date_str:
+            end_date = parse_date(end_date_str)
+        else:
+            end_date = timezone.now().date()
+        
+        engine = FraudDetectionEngine(service_user.company)
+        anomalies = engine.detect_anomalies(start_date, end_date)
+        
+        return Response(anomalies)
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Advanced Compliance API Views
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def generate_complete_gstr3b_report(request):
+    """Generate comprehensive GSTR-3B report"""
+    session_key = get_session_key(request)
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        start_date = parse_date(request.GET.get('start_date'))
+        end_date = parse_date(request.GET.get('end_date'))
+        
+        if not start_date or not end_date:
+            return Response({'error': 'start_date and end_date are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        engine = AdvancedComplianceEngine(service_user.company)
+        report_data = engine.generate_complete_gstr3b_report(start_date, end_date)
+        
+        return Response(report_data)
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def generate_eway_bill_data(request, invoice_id):
+    """Generate E-way bill data for an invoice"""
+    session_key = get_session_key(request)
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        engine = AdvancedComplianceEngine(service_user.company)
+        eway_data = engine.generate_eway_bill_data(invoice_id)
+        
+        return Response(eway_data)
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def generate_compliance_checklist(request):
+    """Generate monthly compliance checklist"""
+    session_key = get_session_key(request)
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        month = int(request.GET.get('month', timezone.now().month))
+        year = int(request.GET.get('year', timezone.now().year))
+        
+        engine = AdvancedComplianceEngine(service_user.company)
+        checklist = engine.generate_compliance_checklist(month, year)
+        
+        return Response(checklist)
     except ServiceUserSession.DoesNotExist:
         return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
     except Exception as e:

@@ -11,6 +11,7 @@ import os
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.core.cache import cache
+from company_dashboard.government_credentials_models import CompanyGovernmentCredentials
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,12 +19,40 @@ logger = logging.getLogger(__name__)
 class GSTAPIService:
     """GST API integration service"""
     
-    def __init__(self):
+    def __init__(self, company=None):
+        self.company = company
         self.base_url = os.getenv('GST_API_BASE_URL', 'https://api.gst.gov.in')
         self.client_id = os.getenv('GST_CLIENT_ID', '')
         self.client_secret = os.getenv('GST_CLIENT_SECRET', '')
         self.username = os.getenv('GST_USERNAME', '')
         self.password = os.getenv('GST_PASSWORD', '')
+        
+        # Load credentials from database if company is provided
+        if company:
+            self._load_company_credentials()
+    
+    def _load_company_credentials(self):
+        """Load GST credentials from company dashboard"""
+        try:
+            credential = CompanyGovernmentCredentials.objects.filter(
+                company=self.company,
+                api_type='gst',
+                is_active=True
+            ).first()
+            
+            if credential:
+                self.client_id = credential.get_client_id()
+                self.client_secret = credential.get_client_secret()
+                self.username = credential.get_username()
+                self.password = credential.get_password()
+                if credential.base_url:
+                    self.base_url = credential.base_url
+                logger.info(f"Loaded GST credentials for company: {self.company.name}")
+            else:
+                logger.warning(f"No active GST credentials found for company: {self.company.name}")
+        except Exception as e:
+            logger.error(f"Error loading GST credentials: {str(e)}")
+            # Fall back to environment variables
         
     def get_auth_token(self):
         """Get authentication token from GST API"""
@@ -64,9 +93,29 @@ class GSTAPIService:
     
     def validate_gstin(self, gstin):
         """Validate GSTIN with government database"""
+        # Check if API credentials are configured
+        if not all([self.client_id, self.client_secret, self.username]):
+            logger.warning("GST API credentials not configured - format validation only")
+            # Format validation only when no credentials
+            if len(gstin) == 15 and gstin.isalnum():
+                return {
+                    'valid': True,
+                    'business_name': 'Format Valid - No API Credentials',
+                    'legal_name': 'Please configure GST API credentials', 
+                    'status': 'Format Valid',
+                    'registration_date': '',
+                    'state_code': gstin[:2],
+                    'taxpayer_type': 'Unknown',
+                    'mock': True,
+                    'error': 'GST API credentials not configured'
+                }
+            else:
+                return {'valid': False, 'error': 'Invalid GSTIN format'}
+        
+        # Real API validation with stored credentials
         token = self.get_auth_token()
         if not token:
-            return {'valid': False, 'error': 'Authentication failed'}
+            return {'valid': False, 'error': 'GST API authentication failed'}
             
         try:
             headers = {
@@ -179,12 +228,40 @@ class GSTAPIService:
 class TDSAPIService:
     """TDS API integration service"""
     
-    def __init__(self):
+    def __init__(self, company=None):
+        self.company = company
         self.base_url = os.getenv('TDS_API_BASE_URL', 'https://incometaxindiaefiling.gov.in')
         self.pan = os.getenv('COMPANY_PAN', '')
         self.tan = os.getenv('COMPANY_TAN', '')
         self.username = os.getenv('TDS_USERNAME', '')
         self.password = os.getenv('TDS_PASSWORD', '')
+        
+        # Load credentials from database if company is provided
+        if company:
+            self._load_company_credentials()
+    
+    def _load_company_credentials(self):
+        """Load TDS credentials from company dashboard"""
+        try:
+            credential = CompanyGovernmentCredentials.objects.filter(
+                company=self.company,
+                api_type='tds',
+                is_active=True
+            ).first()
+            
+            if credential:
+                self.username = credential.get_username()
+                self.password = credential.get_password()
+                self.pan = credential.get_pan()
+                self.tan = credential.get_tan()
+                if credential.base_url:
+                    self.base_url = credential.base_url
+                logger.info(f"Loaded TDS credentials for company: {self.company.name}")
+            else:
+                logger.warning(f"No active TDS credentials found for company: {self.company.name}")
+        except Exception as e:
+            logger.error(f"Error loading TDS credentials: {str(e)}")
+            # Fall back to environment variables
     
     def get_auth_token(self):
         """Get TDS API authentication token"""
@@ -218,9 +295,26 @@ class TDSAPIService:
     
     def validate_pan(self, pan):
         """Validate PAN with income tax database"""
+        # Check if API credentials are configured
+        if not all([self.username, self.password, self.tan]):
+            logger.warning("TDS API credentials not configured - format validation only")
+            # Format validation only when no credentials
+            if len(pan) == 10 and pan[:5].isalpha() and pan[5:9].isdigit() and pan[9].isalpha():
+                return {
+                    'valid': True,
+                    'name': 'Format Valid - No API Credentials',
+                    'status': 'Format Valid',
+                    'category': 'Unknown',
+                    'mock': True,
+                    'error': 'TDS API credentials not configured'
+                }
+            else:
+                return {'valid': False, 'error': 'Invalid PAN format'}
+        
+        # Real API validation with stored credentials
         token = self.get_auth_token()
         if not token:
-            return {'valid': False, 'error': 'Authentication failed'}
+            return {'valid': False, 'error': 'TDS API authentication failed'}
             
         try:
             headers = {
@@ -333,11 +427,38 @@ class TDSAPIService:
 class EInvoiceService:
     """E-Invoice API integration"""
     
-    def __init__(self):
+    def __init__(self, company=None):
+        self.company = company
         self.base_url = os.getenv('EINVOICE_API_BASE_URL', 'https://einvoice1.gst.gov.in')
         self.client_id = os.getenv('EINVOICE_CLIENT_ID', '')
         self.client_secret = os.getenv('EINVOICE_CLIENT_SECRET', '')
         self.gstin = os.getenv('COMPANY_GSTIN', '')
+        
+        # Load credentials from database if company is provided
+        if company:
+            self._load_company_credentials()
+    
+    def _load_company_credentials(self):
+        """Load E-Invoice credentials from company dashboard"""
+        try:
+            credential = CompanyGovernmentCredentials.objects.filter(
+                company=self.company,
+                api_type='einvoice',
+                is_active=True
+            ).first()
+            
+            if credential:
+                self.client_id = credential.get_client_id()
+                self.client_secret = credential.get_client_secret()
+                self.gstin = credential.get_gstin()
+                if credential.base_url:
+                    self.base_url = credential.base_url
+                logger.info(f"Loaded E-Invoice credentials for company: {self.company.name}")
+            else:
+                logger.warning(f"No active E-Invoice credentials found for company: {self.company.name}")
+        except Exception as e:
+            logger.error(f"Error loading E-Invoice credentials: {str(e)}")
+            # Fall back to environment variables
     
     def generate_irn(self, invoice_data):
         """Generate IRN for e-invoice"""
@@ -406,7 +527,16 @@ class EInvoiceService:
                 
         return token
 
-# Service instances
+# Service instances - will be initialized with company context when needed
 gst_service = GSTAPIService()
 tds_service = TDSAPIService()
 einvoice_service = EInvoiceService()
+
+# Helper function to get company-specific services
+def get_company_services(company):
+    """Get government API services configured for specific company"""
+    return {
+        'gst': GSTAPIService(company=company),
+        'tds': TDSAPIService(company=company),
+        'einvoice': EInvoiceService(company=company)
+    }

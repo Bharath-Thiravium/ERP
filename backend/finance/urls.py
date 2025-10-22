@@ -50,6 +50,7 @@ urlpatterns = [
     path('customer-ledger/', views.customer_ledger, name='customer_ledger'),
 
     # PDF Generation endpoints
+    path('quotations/<int:quotation_id>/pdf/', views.generate_quotation_pdf, name='generate_quotation_pdf'),
     path('invoices/<int:invoice_id>/pdf/', views.generate_invoice_pdf, name='generate_invoice_pdf'),
     path('proforma-invoices/<int:proforma_id>/pdf/', views.generate_proforma_pdf, name='generate_proforma_pdf'),
 
@@ -111,6 +112,21 @@ urlpatterns = [
     path('export/gstr1-csv/', analytics_views.export_gstr1_csv, name='export_gstr1_csv'),
     path('export/tds-csv/', analytics_views.export_tds_csv, name='export_tds_csv'),
     path('bulk/tds-certificates/', analytics_views.bulk_generate_tds_certificates, name='bulk_generate_tds_certificates'),
+    
+    # Financial Reports endpoints
+    path('reports/profit-loss/', analytics_views.generate_profit_loss_report, name='generate_profit_loss_report'),
+    path('reports/balance-sheet/', analytics_views.generate_balance_sheet, name='generate_balance_sheet'),
+    path('reports/cash-flow/', analytics_views.generate_cash_flow_statement, name='generate_cash_flow_statement'),
+    
+    # AI Features endpoints
+    path('ai/predict-payment/', analytics_views.predict_payment_likelihood, name='predict_payment_likelihood'),
+    path('ai/payment-insights/', analytics_views.generate_payment_insights, name='generate_payment_insights'),
+    path('ai/fraud-detection/', analytics_views.detect_fraud_anomalies, name='detect_fraud_anomalies'),
+    
+    # Advanced Compliance endpoints
+    path('compliance/gstr3b-complete/', analytics_views.generate_complete_gstr3b_report, name='generate_complete_gstr3b_report'),
+    path('compliance/eway-bill/<int:invoice_id>/', analytics_views.generate_eway_bill_data, name='generate_eway_bill_data'),
+    path('compliance/checklist/', analytics_views.generate_compliance_checklist, name='generate_compliance_checklist'),
     
 
     

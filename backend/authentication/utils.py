@@ -169,3 +169,19 @@ def get_safe_scripts_path():
     scripts_dir.mkdir(exist_ok=True)
     
     return str(scripts_dir)
+
+
+def get_client_ip(request):
+    """Get the real client IP address from request, handling nginx proxy"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        # Get the first IP in the chain (client IP)
+        ip = x_forwarded_for.split(',')[0].strip()
+        return ip
+    
+    x_real_ip = request.META.get('HTTP_X_REAL_IP')
+    if x_real_ip:
+        return x_real_ip
+    
+    # Fallback to REMOTE_ADDR
+    return request.META.get('REMOTE_ADDR')

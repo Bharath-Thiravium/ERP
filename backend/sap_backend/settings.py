@@ -49,6 +49,11 @@ CSRF_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Strict'
 CSRF_COOKIE_SAMESITE = 'Strict'
 
+# Proxy Settings for IP Detection
+USE_X_FORWARDED_HOST = config('USE_X_FORWARDED_HOST', default=IS_PRODUCTION, cast=bool)
+USE_X_FORWARDED_PORT = config('USE_X_FORWARDED_PORT', default=IS_PRODUCTION, cast=bool)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if IS_PRODUCTION else None
+
 
 # Application definition
 

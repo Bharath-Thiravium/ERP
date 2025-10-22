@@ -18,8 +18,12 @@ export const SimpleGovernmentIntegration: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [gstinInput, setGstinInput] = useState('')
   const [panInput, setPanInput] = useState('')
-  const [validationResult, setValidationResult] = useState<string>('')
-  const [loading, setLoading] = useState(false)
+  const [gstinValidationResult, setGstinValidationResult] = useState<string>('')
+  const [panValidationResult, setPanValidationResult] = useState<string>('')
+  const [gstinLoading, setGstinLoading] = useState(false)
+  const [panLoading, setPanLoading] = useState(false)
+  const [gstr1Loading, setGstr1Loading] = useState(false)
+  const [tdsLoading, setTdsLoading] = useState(false)
 
   useEffect(() => {
     fetchCustomers()
@@ -38,48 +42,75 @@ export const SimpleGovernmentIntegration: React.FC = () => {
     setSelectedCustomer(customer)
     setGstinInput(customer.gstin || '')
     setPanInput(customer.pan_number || '')
-    setValidationResult('')
+    setGstinValidationResult('')
+    setPanValidationResult('')
   }
 
   const validateGSTIN = async () => {
     if (!gstinInput || gstinInput.length !== 15) {
-      setValidationResult('Invalid GSTIN format')
+      setGstinValidationResult('Invalid GSTIN format')
       return
     }
     
-    setLoading(true)
+    setGstinLoading(true)
     try {
-      await apiClient.post('/api/finance/gov-api/validate-gstin/', {
+      const response = await apiClient.post('/api/finance/gov-api/validate-gstin/', {
         gstin: gstinInput
       })
-      setValidationResult('GSTIN validation successful')
-      toast.success('GSTIN validated successfully')
-    } catch (error) {
-      setValidationResult('GSTIN validation failed')
-      toast.error('Failed to validate GSTIN')
+      
+      const result = response.data
+      if (result.valid) {
+        if (result.mock) {
+          setGstinValidationResult(`Format Valid - ${result.error || 'Government API credentials not configured'}`)
+          toast('GSTIN format valid, but government API validation unavailable', { icon: '⚠️' })
+        } else {
+          setGstinValidationResult(`GSTIN Valid - ${result.business_name || 'Business verified'}`)
+          toast.success('GSTIN validated with government database')
+        }
+      } else {
+        setGstinValidationResult(`GSTIN Invalid - ${result.error || 'Validation failed'}`)
+        toast.error('GSTIN validation failed')
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || 'Failed to validate GSTIN'
+      setGstinValidationResult(`Error - ${errorMsg}`)
+      toast.error(errorMsg)
     } finally {
-      setLoading(false)
+      setGstinLoading(false)
     }
   }
 
   const validatePAN = async () => {
     if (!panInput || panInput.length !== 10) {
-      setValidationResult('Invalid PAN format')
+      setPanValidationResult('Invalid PAN format')
       return
     }
     
-    setLoading(true)
+    setPanLoading(true)
     try {
-      await apiClient.post('/api/finance/gov-api/validate-pan/', {
+      const response = await apiClient.post('/api/finance/gov-api/validate-pan/', {
         pan: panInput
       })
-      setValidationResult('PAN validation successful')
-      toast.success('PAN validated successfully')
-    } catch (error) {
-      setValidationResult('PAN validation failed')
-      toast.error('Failed to validate PAN')
+      
+      const result = response.data
+      if (result.valid) {
+        if (result.mock) {
+          setPanValidationResult(`Format Valid - ${result.error || 'TDS API credentials not configured'}`)
+          toast('PAN format valid, but government API validation unavailable', { icon: '⚠️' })
+        } else {
+          setPanValidationResult(`PAN Valid - ${result.name || 'PAN verified'}`)
+          toast.success('PAN validated with income tax database')
+        }
+      } else {
+        setPanValidationResult(`PAN Invalid - ${result.error || 'Validation failed'}`)
+        toast.error('PAN validation failed')
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || 'Failed to validate PAN'
+      setPanValidationResult(`Error - ${errorMsg}`)
+      toast.error(errorMsg)
     } finally {
-      setLoading(false)
+      setPanLoading(false)
     }
   }
 
@@ -92,7 +123,7 @@ export const SimpleGovernmentIntegration: React.FC = () => {
     const currentDate = new Date()
     const returnPeriod = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`
     
-    setLoading(true)
+    setGstr1Loading(true)
     try {
       await apiClient.post('/api/finance/gov-api/file-gstr1/', {
         gstin: gstinInput,
@@ -102,7 +133,7 @@ export const SimpleGovernmentIntegration: React.FC = () => {
     } catch (error) {
       toast.error('Failed to file GSTR-1')
     } finally {
-      setLoading(false)
+      setGstr1Loading(false)
     }
   }
 
@@ -116,7 +147,7 @@ export const SimpleGovernmentIntegration: React.FC = () => {
     const quarter = `Q${Math.ceil((currentDate.getMonth() + 1) / 3)}`
     const financialYear = `${currentDate.getFullYear()}-${currentDate.getFullYear() + 1}`
     
-    setLoading(true)
+    setTdsLoading(true)
     try {
       await apiClient.post('/api/finance/gov-api/file-tds-return/', {
         quarter,
@@ -127,7 +158,7 @@ export const SimpleGovernmentIntegration: React.FC = () => {
     } catch (error) {
       toast.error('Failed to file TDS return')
     } finally {
-      setLoading(false)
+      setTdsLoading(false)
     }
   }
 
@@ -192,8 +223,8 @@ export const SimpleGovernmentIntegration: React.FC = () => {
                 value={gstinInput}
                 readOnly
               />
-              <Button onClick={validateGSTIN} disabled={loading || !gstinInput}>
-                {loading ? 'Validating...' : 'Validate'}
+              <Button onClick={validateGSTIN} disabled={gstinLoading || !gstinInput}>
+                {gstinLoading ? 'Validating...' : 'Validate'}
               </Button>
             </div>
           </div>
@@ -207,24 +238,42 @@ export const SimpleGovernmentIntegration: React.FC = () => {
                 value={panInput}
                 readOnly
               />
-              <Button onClick={validatePAN} disabled={loading || !panInput}>
-                {loading ? 'Validating...' : 'Validate'}
+              <Button onClick={validatePAN} disabled={panLoading || !panInput}>
+                {panLoading ? 'Validating...' : 'Validate'}
               </Button>
             </div>
           </div>
 
-          {validationResult && (
+          {/* GSTIN Validation Result */}
+          {gstinValidationResult && (
             <div className={`rounded-lg border p-3 ${
-              validationResult.includes('successful') 
+              gstinValidationResult.includes('Valid') 
                 ? 'bg-green-50 border-green-200' 
                 : 'bg-red-50 border-red-200'
             }`}>
-              <p className={`text-sm ${
-                validationResult.includes('successful') 
+              <p className={`text-sm font-medium ${
+                gstinValidationResult.includes('Valid') 
                   ? 'text-green-800' 
                   : 'text-red-800'
               }`}>
-                {validationResult}
+                GSTIN: {gstinValidationResult}
+              </p>
+            </div>
+          )}
+
+          {/* PAN Validation Result */}
+          {panValidationResult && (
+            <div className={`rounded-lg border p-3 ${
+              panValidationResult.includes('Valid') 
+                ? 'bg-green-50 border-green-200' 
+                : 'bg-red-50 border-red-200'
+            }`}>
+              <p className={`text-sm font-medium ${
+                panValidationResult.includes('Valid') 
+                  ? 'text-green-800' 
+                  : 'text-red-800'
+              }`}>
+                PAN: {panValidationResult}
               </p>
             </div>
           )}
@@ -246,8 +295,8 @@ export const SimpleGovernmentIntegration: React.FC = () => {
               <p className="text-sm text-gray-600 mb-3">
                 File monthly GSTR-1 return for selected customer
               </p>
-              <Button className="w-full" onClick={fileGSTR1} disabled={loading || !selectedCustomer || !gstinInput}>
-                {loading ? 'Filing...' : 'File GSTR-1'}
+              <Button className="w-full" onClick={fileGSTR1} disabled={gstr1Loading || !selectedCustomer || !gstinInput}>
+                {gstr1Loading ? 'Filing...' : 'File GSTR-1'}
               </Button>
             </div>
             
@@ -256,8 +305,8 @@ export const SimpleGovernmentIntegration: React.FC = () => {
               <p className="text-sm text-gray-600 mb-3">
                 File quarterly TDS return for selected customer
               </p>
-              <Button className="w-full" onClick={fileTDSReturn} disabled={loading || !selectedCustomer || !panInput}>
-                {loading ? 'Filing...' : 'File TDS Return'}
+              <Button className="w-full" onClick={fileTDSReturn} disabled={tdsLoading || !selectedCustomer || !panInput}>
+                {tdsLoading ? 'Filing...' : 'File TDS Return'}
               </Button>
             </div>
           </div>

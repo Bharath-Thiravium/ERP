@@ -10,7 +10,8 @@ import {
   TrendingUp,
   Download,
   RefreshCw,
-  Shield
+  Shield,
+  Brain
 } from 'lucide-react'
 import GSTCalculator from '../components/GSTCalculator'
 import TDSCalculator from '../components/TDSCalculator'
@@ -18,6 +19,7 @@ import Phase2Summary from '../components/Phase2Summary'
 import { SimpleGovernmentIntegration } from '../components/SimpleGovernmentIntegration'
 import { AdvancedAnalyticsDashboard } from '../components/AdvancedAnalyticsDashboard'
 import { ReportsManager } from '../components/ReportsManager'
+import { AIFeaturesManager } from '../components/AIFeaturesManager'
 
 interface ComplianceData {
   period: string
@@ -340,7 +342,7 @@ interface CalculatorTabsProps {
 }
 
 const CalculatorTabs: React.FC<CalculatorTabsProps> = ({ sessionKey }) => {
-  const [activeTab, setActiveTab] = useState<'summary' | 'gst' | 'tds' | 'government' | 'analytics' | 'reports'>('summary')
+  const [activeTab, setActiveTab] = useState<'summary' | 'gst' | 'tds' | 'government' | 'analytics' | 'reports' | 'ai-features'>('summary')
 
   return (
     <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6">
@@ -408,6 +410,17 @@ const CalculatorTabs: React.FC<CalculatorTabsProps> = ({ sessionKey }) => {
           <FileText className="h-4 w-4 mr-1 inline" />
           Reports
         </button>
+        <button 
+          onClick={() => setActiveTab('ai-features')}
+          className={`px-4 py-2 text-sm font-medium ml-4 transition-colors ${
+            activeTab === 'ai-features' 
+              ? 'text-purple-600 border-b-2 border-purple-600' 
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+          }`}
+        >
+          <Brain className="h-4 w-4 mr-1 inline" />
+          AI Features
+        </button>
 
       </div>
       
@@ -417,6 +430,7 @@ const CalculatorTabs: React.FC<CalculatorTabsProps> = ({ sessionKey }) => {
       {activeTab === 'government' && <SimpleGovernmentIntegration />}
       {activeTab === 'analytics' && <AdvancedAnalyticsDashboard sessionKey={sessionKey} />}
       {activeTab === 'reports' && <ReportsManager sessionKey={sessionKey} />}
+      {activeTab === 'ai-features' && <AIFeaturesManager sessionKey={sessionKey} />}
     </div>
   )
 }

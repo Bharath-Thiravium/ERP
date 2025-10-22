@@ -17,18 +17,18 @@ interface ReportsManagerProps {
   sessionKey: string
 }
 
-export const ReportsManager: React.FC<ReportsManagerProps> = () => {
-  const [activeReport, setActiveReport] = useState<'gstr1' | 'gstr3b' | 'tds' | 'certificates'>('gstr1')
+export const ReportsManager: React.FC<ReportsManagerProps> = ({ sessionKey }) => {
+  const [activeReport, setActiveReport] = useState<'gstr1' | 'gstr3b' | 'tds' | 'certificates' | 'financial'>('gstr1')
 
-  const handleTabChange = (tabId: 'gstr1' | 'gstr3b' | 'tds' | 'certificates') => {
+  const handleTabChange = (tabId: 'gstr1' | 'gstr3b' | 'tds' | 'certificates' | 'financial') => {
     setActiveReport(tabId)
     setReportData(null) // Clear previous report data when switching tabs
   }
   const [loading, setLoading] = useState(false)
   const [reportData, setReportData] = useState<any>(null)
   const [dateRange, setDateRange] = useState({
-    startDate: analyticsApiService.getCurrentMonthRange().startDate,
-    endDate: analyticsApiService.getCurrentMonthRange().endDate
+    startDate: new Date().toISOString().slice(0, 7) + '-01', // First day of current month
+    endDate: new Date().toISOString().slice(0, 10) // Today
   })
   const [quarter, setQuarter] = useState(analyticsApiService.getCurrentQuarter())
   const [financialYear, setFinancialYear] = useState(analyticsApiService.getCurrentFinancialYear())
@@ -48,7 +48,8 @@ export const ReportsManager: React.FC<ReportsManagerProps> = () => {
   const generateGSTR3BReport = async () => {
     setLoading(true)
     try {
-      const data = await analyticsApiService.generateGSTR3BReport(dateRange.startDate, dateRange.endDate)
+      const response = await fetch(`/api/finance/compliance/gstr3b-complete/?session_key=${sessionKey}&start_date=${dateRange.startDate}&end_date=${dateRange.endDate}`)
+      const data = await response.json()
       setReportData(data)
     } catch (error) {
       console.error('Failed to generate GSTR-3B report:', error)
@@ -81,6 +82,28 @@ export const ReportsManager: React.FC<ReportsManagerProps> = () => {
     }
   }
 
+  const generateFinancialReports = async () => {
+    setLoading(true)
+    try {
+      // Generate all three financial reports
+      const [plData, bsData, cfData] = await Promise.all([
+        fetch(`/api/finance/reports/profit-loss/?session_key=${sessionKey}&start_date=${dateRange.startDate}&end_date=${dateRange.endDate}`).then(r => r.json()),
+        fetch(`/api/finance/reports/balance-sheet/?session_key=${sessionKey}&as_of_date=${dateRange.endDate}`).then(r => r.json()),
+        fetch(`/api/finance/reports/cash-flow/?session_key=${sessionKey}&start_date=${dateRange.startDate}&end_date=${dateRange.endDate}`).then(r => r.json())
+      ])
+      
+      setReportData({
+        profitLoss: plData,
+        balanceSheet: bsData,
+        cashFlow: cfData
+      })
+    } catch (error) {
+      console.error('Failed to generate financial reports:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const exportCurrentReport = async () => {
     try {
       if (activeReport === 'gstr1') {
@@ -108,6 +131,9 @@ export const ReportsManager: React.FC<ReportsManagerProps> = () => {
         break
       case 'certificates':
         generateTDSCertificates()
+        break
+      case 'financial':
+        generateFinancialReports()
         break
     }
   }
@@ -276,6 +302,233 @@ export const ReportsManager: React.FC<ReportsManagerProps> = () => {
     )
   }
 
+  const renderFinancialReports = (data: any) => (
+    <div className="space-y-6">
+      {/* Profit & Loss Statement */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Profit & Loss Statement</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-4">
+              <h4 className="font-semibold text-green-600">Revenue</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Product Revenue:</span>
+                  <span className="font-medium">{analyticsApiService.formatCurrency(data.profitLoss.revenue.product_revenue)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Service Revenue:</span>
+                  <span className="font-medium">{analyticsApiService.formatCurrency(data.profitLoss.revenue.service_revenue)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2">
+                  <span className="font-semibold">Total Revenue:</span>
+                  <span className="font-bold text-green-600">{analyticsApiService.formatCurrency(data.profitLoss.revenue.total_revenue)}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <h4 className="font-semibold text-red-600">Costs & Expenses</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Cost of Goods Sold:</span>
+                  <span className="font-medium">{analyticsApiService.formatCurrency(data.profitLoss.costs.cost_of_goods_sold)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Operating Expenses:</span>
+                  <span className="font-medium">{analyticsApiService.formatCurrency(data.profitLoss.expenses.operating_expenses)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Tax Expenses:</span>
+                  <span className="font-medium">{analyticsApiService.formatCurrency(data.profitLoss.expenses.tax_expenses)}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <h4 className="font-semibold text-blue-600">Profitability</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Gross Profit:</span>
+                  <span className="font-medium">{analyticsApiService.formatCurrency(data.profitLoss.costs.gross_profit)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>EBITDA:</span>
+                  <span className="font-medium">{analyticsApiService.formatCurrency(data.profitLoss.profitability.ebitda)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2">
+                  <span className="font-semibold">Net Income:</span>
+                  <span className="font-bold text-blue-600">{analyticsApiService.formatCurrency(data.profitLoss.profitability.net_income)}</span>
+                </div>
+                <div className="text-sm text-gray-600">
+                  Net Margin: {data.profitLoss.profitability.net_margin.toFixed(1)}%
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Balance Sheet */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Balance Sheet</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+              <h4 className="font-semibold text-blue-600 mb-4">Assets</h4>
+              <div className="space-y-3">
+                <div>
+                  <h5 className="font-medium mb-2">Current Assets</h5>
+                  <div className="space-y-1 text-sm ml-4">
+                    <div className="flex justify-between">
+                      <span>Cash & Equivalents:</span>
+                      <span>{analyticsApiService.formatCurrency(data.balanceSheet.assets.current_assets.cash_and_equivalents)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Accounts Receivable:</span>
+                      <span>{analyticsApiService.formatCurrency(data.balanceSheet.assets.current_assets.accounts_receivable)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Inventory:</span>
+                      <span>{analyticsApiService.formatCurrency(data.balanceSheet.assets.current_assets.inventory)}</span>
+                    </div>
+                    <div className="flex justify-between font-medium border-t pt-1">
+                      <span>Total Current Assets:</span>
+                      <span>{analyticsApiService.formatCurrency(data.balanceSheet.assets.current_assets.total_current_assets)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h5 className="font-medium mb-2">Fixed Assets</h5>
+                  <div className="space-y-1 text-sm ml-4">
+                    <div className="flex justify-between">
+                      <span>Property, Plant & Equipment:</span>
+                      <span>{analyticsApiService.formatCurrency(data.balanceSheet.assets.fixed_assets.property_plant_equipment)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-between font-bold text-blue-600 border-t pt-2">
+                  <span>Total Assets:</span>
+                  <span>{analyticsApiService.formatCurrency(data.balanceSheet.assets.total_assets)}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold text-red-600 mb-4">Liabilities & Equity</h4>
+              <div className="space-y-3">
+                <div>
+                  <h5 className="font-medium mb-2">Current Liabilities</h5>
+                  <div className="space-y-1 text-sm ml-4">
+                    <div className="flex justify-between">
+                      <span>Accounts Payable:</span>
+                      <span>{analyticsApiService.formatCurrency(data.balanceSheet.liabilities.current_liabilities.accounts_payable)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Tax Payable:</span>
+                      <span>{analyticsApiService.formatCurrency(data.balanceSheet.liabilities.current_liabilities.tax_payable)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h5 className="font-medium mb-2">Long-term Liabilities</h5>
+                  <div className="space-y-1 text-sm ml-4">
+                    <div className="flex justify-between">
+                      <span>Long-term Debt:</span>
+                      <span>{analyticsApiService.formatCurrency(data.balanceSheet.liabilities.long_term_liabilities.long_term_debt)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-between font-medium border-t pt-2">
+                  <span>Total Liabilities:</span>
+                  <span>{analyticsApiService.formatCurrency(data.balanceSheet.liabilities.total_liabilities)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-green-600">
+                  <span>Total Equity:</span>
+                  <span>{analyticsApiService.formatCurrency(data.balanceSheet.equity.total_equity)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Cash Flow Statement */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Cash Flow Statement</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <h4 className="font-semibold text-green-600 mb-3">Operating Activities</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Cash from Customers:</span>
+                  <span className="text-green-600">{analyticsApiService.formatCurrency(data.cashFlow.operating_activities.cash_received_from_customers)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Cash to Suppliers:</span>
+                  <span className="text-red-600">{analyticsApiService.formatCurrency(data.cashFlow.operating_activities.cash_paid_to_suppliers)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Operating Expenses:</span>
+                  <span className="text-red-600">{analyticsApiService.formatCurrency(data.cashFlow.operating_activities.cash_paid_for_expenses)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 font-medium">
+                  <span>Net Operating Cash:</span>
+                  <span className={data.cashFlow.operating_activities.net_cash_from_operations >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    {analyticsApiService.formatCurrency(data.cashFlow.operating_activities.net_cash_from_operations)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold text-blue-600 mb-3">Investing Activities</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Capital Expenditure:</span>
+                  <span className="text-red-600">{analyticsApiService.formatCurrency(data.cashFlow.investing_activities.capital_expenditure)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 font-medium">
+                  <span>Net Investing Cash:</span>
+                  <span className={data.cashFlow.investing_activities.net_cash_from_investing >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    {analyticsApiService.formatCurrency(data.cashFlow.investing_activities.net_cash_from_investing)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold text-purple-600 mb-3">Summary</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Beginning Cash:</span>
+                  <span>{analyticsApiService.formatCurrency(data.cashFlow.summary.beginning_cash_balance)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Net Change:</span>
+                  <span className={data.cashFlow.summary.net_change_in_cash >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    {analyticsApiService.formatCurrency(data.cashFlow.summary.net_change_in_cash)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t pt-2 font-bold">
+                  <span>Ending Cash:</span>
+                  <span className="text-purple-600">{analyticsApiService.formatCurrency(data.cashFlow.summary.ending_cash_balance)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -307,7 +560,8 @@ export const ReportsManager: React.FC<ReportsManagerProps> = () => {
             { id: 'gstr1', label: 'GSTR-1', description: 'Monthly GST return' },
             { id: 'gstr3b', label: 'GSTR-3B', description: 'Monthly GST summary' },
             { id: 'tds', label: 'TDS Report', description: 'Quarterly TDS return' },
-            { id: 'certificates', label: 'TDS Certificates', description: 'Form 16A certificates' }
+            { id: 'certificates', label: 'TDS Certificates', description: 'Form 16A certificates' },
+            { id: 'financial', label: 'Financial Reports', description: 'P&L, Balance Sheet, Cash Flow' }
           ].map(tab => (
             <button
               key={tab.id}
@@ -408,43 +662,218 @@ export const ReportsManager: React.FC<ReportsManagerProps> = () => {
           {activeReport === 'gstr1' && renderGSTR1Report(reportData)}
           {activeReport === 'tds' && renderTDSReport(reportData)}
           {activeReport === 'certificates' && renderTDSReport(reportData)}
-          {activeReport === 'gstr3b' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>GSTR-3B Report</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="text-center p-6 border rounded-lg">
-                    <p className="text-2xl font-bold text-blue-600">
-                      {analyticsApiService.formatCurrency(reportData.outward_supplies.taxable_value)}
-                    </p>
-                    <p className="text-sm text-gray-600">Taxable Value</p>
+          {activeReport === 'gstr3b' && reportData && (
+            <div className="space-y-6">
+              {/* Summary */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>GSTR-3B Summary - {reportData.period.month}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="text-center p-4 border rounded-lg">
+                      <p className="text-2xl font-bold text-blue-600">
+                        {analyticsApiService.formatCurrency(reportData.summary.total_turnover)}
+                      </p>
+                      <p className="text-sm text-gray-600">Total Turnover</p>
+                    </div>
+                    <div className="text-center p-4 border rounded-lg">
+                      <p className="text-2xl font-bold text-green-600">
+                        {analyticsApiService.formatCurrency(reportData.summary.total_tax_liability)}
+                      </p>
+                      <p className="text-sm text-gray-600">Tax Liability</p>
+                    </div>
+                    <div className="text-center p-4 border rounded-lg">
+                      <p className="text-2xl font-bold text-purple-600">
+                        {analyticsApiService.formatCurrency(reportData.summary.total_itc_available)}
+                      </p>
+                      <p className="text-sm text-gray-600">ITC Available</p>
+                    </div>
+                    <div className="text-center p-4 border rounded-lg">
+                      <p className="text-2xl font-bold text-orange-600">
+                        {analyticsApiService.formatCurrency(reportData.summary.net_tax_payable)}
+                      </p>
+                      <p className="text-sm text-gray-600">Net Tax Payable</p>
+                    </div>
                   </div>
-                  <div className="text-center p-6 border rounded-lg">
-                    <p className="text-2xl font-bold text-green-600">
-                      {analyticsApiService.formatCurrency(
-                        reportData.outward_supplies.igst + 
-                        reportData.outward_supplies.cgst + 
-                        reportData.outward_supplies.sgst
-                      )}
-                    </p>
-                    <p className="text-sm text-gray-600">Total Tax</p>
+                </CardContent>
+              </Card>
+
+              {/* Section 3.1 - Outward Supplies */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Section 3.1 - Outward Taxable Supplies</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="p-4 border rounded-lg">
+                        <h4 className="font-semibold mb-2">B2B Supplies</h4>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span>Taxable Value:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2b_supplies.taxable_value)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>IGST:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2b_supplies.igst)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>CGST:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2b_supplies.cgst)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>SGST:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2b_supplies.sgst)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 border rounded-lg">
+                        <h4 className="font-semibold mb-2">B2C Large ({'>'}2.5L)</h4>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span>Taxable Value:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2c_large_supplies.taxable_value)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>IGST:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2c_large_supplies.igst)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>CGST:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2c_large_supplies.cgst)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>SGST:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2c_large_supplies.sgst)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 border rounded-lg">
+                        <h4 className="font-semibold mb-2">B2C Other (≤2.5L)</h4>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span>Taxable Value:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2c_other_supplies.taxable_value)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>IGST:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2c_other_supplies.igst)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>CGST:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2c_other_supplies.cgst)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>SGST:</span>
+                            <span>{analyticsApiService.formatCurrency(reportData.section_3_1_outward_supplies.b2c_other_supplies.sgst)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-center p-6 border rounded-lg">
-                    <p className="text-2xl font-bold text-purple-600">
-                      {analyticsApiService.formatCurrency(
-                        reportData.tax_payable.igst + 
-                        reportData.tax_payable.cgst + 
-                        reportData.tax_payable.sgst
-                      )}
-                    </p>
-                    <p className="text-sm text-gray-600">Tax Payable</p>
+                </CardContent>
+              </Card>
+
+              {/* Section 4 - Eligible ITC */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Section 4 - Eligible Input Tax Credit</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 border rounded-lg">
+                      <h4 className="font-semibold mb-2">ITC on Inputs</h4>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span>IGST:</span>
+                          <span>{analyticsApiService.formatCurrency(reportData.section_4_eligible_itc.itc_on_inputs.igst)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>CGST:</span>
+                          <span>{analyticsApiService.formatCurrency(reportData.section_4_eligible_itc.itc_on_inputs.cgst)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>SGST:</span>
+                          <span>{analyticsApiService.formatCurrency(reportData.section_4_eligible_itc.itc_on_inputs.sgst)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="p-4 border rounded-lg">
+                      <h4 className="font-semibold mb-2">ITC on Input Services</h4>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span>IGST:</span>
+                          <span>{analyticsApiService.formatCurrency(reportData.section_4_eligible_itc.itc_on_input_services.igst)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>CGST:</span>
+                          <span>{analyticsApiService.formatCurrency(reportData.section_4_eligible_itc.itc_on_input_services.cgst)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>SGST:</span>
+                          <span>{analyticsApiService.formatCurrency(reportData.section_4_eligible_itc.itc_on_input_services.sgst)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="p-4 border rounded-lg">
+                      <h4 className="font-semibold mb-2">ITC on Capital Goods</h4>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span>IGST:</span>
+                          <span>{analyticsApiService.formatCurrency(reportData.section_4_eligible_itc.itc_on_capital_goods.igst)}</span>
+                        </div>
+                        <div className="flex justify-between font-medium border-t pt-1">
+                          <span>Total ITC:</span>
+                          <span>{analyticsApiService.formatCurrency(reportData.section_4_eligible_itc.total_itc)}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              {/* Section 7 - Tax Payable */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Section 7 - Tax Payable (Net of ITC)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="text-center p-4 border rounded-lg">
+                      <p className="text-xl font-bold text-blue-600">
+                        {analyticsApiService.formatCurrency(reportData.section_7_tax_payable.igst_payable)}
+                      </p>
+                      <p className="text-sm text-gray-600">IGST Payable</p>
+                    </div>
+                    <div className="text-center p-4 border rounded-lg">
+                      <p className="text-xl font-bold text-green-600">
+                        {analyticsApiService.formatCurrency(reportData.section_7_tax_payable.cgst_payable)}
+                      </p>
+                      <p className="text-sm text-gray-600">CGST Payable</p>
+                    </div>
+                    <div className="text-center p-4 border rounded-lg">
+                      <p className="text-xl font-bold text-purple-600">
+                        {analyticsApiService.formatCurrency(reportData.section_7_tax_payable.sgst_payable)}
+                      </p>
+                      <p className="text-sm text-gray-600">SGST Payable</p>
+                    </div>
+                    <div className="text-center p-4 border rounded-lg">
+                      <p className="text-xl font-bold text-orange-600">
+                        {analyticsApiService.formatCurrency(reportData.section_7_tax_payable.total_tax_payable)}
+                      </p>
+                      <p className="text-sm text-gray-600">Total Tax Payable</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           )}
+          {activeReport === 'financial' && reportData && renderFinancialReports(reportData)}
         </div>
       )}
 

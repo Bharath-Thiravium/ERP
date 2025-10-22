@@ -61,6 +61,7 @@ import IpAccessControl from '../../components/company/security/IpAccessControl'
 import SessionManagement from '../../components/company/security/SessionManagement'
 import SecurityAuditLogs from '../../components/company/security/SecurityAuditLogs'
 import AdvancedSecurity from '../../components/company/security/AdvancedSecurity'
+import GovernmentAPICredentials from '../../components/company/government/GovernmentAPICredentials'
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -395,6 +396,7 @@ Website: https://athenas.co.in
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'activity', label: 'Activity', icon: Activity },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'government-api', label: 'Government API', icon: Globe },
     { id: 'settings', label: 'Settings', icon: Shield }
   ]
 
@@ -737,6 +739,10 @@ Website: https://athenas.co.in
               }
             }}
           />
+        )}
+
+        {activeTab === 'government-api' && (
+          <GovernmentAPICredentials />
         )}
 
         {activeTab === 'settings' && (

@@ -81,8 +81,7 @@ def create_service(request):
                 request.user,
                 'SERVICE_CREATED',
                 request.META.get('REMOTE_ADDR', ''),
-                f'Created service: {service.name}',
-                request.META.get('HTTP_USER_AGENT', '')
+                f'Created service: {service.name}'
             )
         
         serializer = ServiceSerializer(service)
@@ -130,8 +129,7 @@ def update_service(request, service_id):
                 request.user,
                 'SERVICE_UPDATED',
                 request.META.get('REMOTE_ADDR', ''),
-                f'Updated service: {service.name}',
-                request.META.get('HTTP_USER_AGENT', '')
+                f'Updated service: {service.name}'
             )
         
         serializer = ServiceSerializer(service)
@@ -166,8 +164,7 @@ def delete_service(request, service_id):
                 request.user,
                 'SERVICE_DELETED',
                 request.META.get('REMOTE_ADDR', ''),
-                f'Deleted service: {service.name}',
-                request.META.get('HTTP_USER_AGENT', '')
+                f'Deleted service: {service.name}'
             )
         
         return Response({
@@ -201,8 +198,7 @@ def toggle_service_status(request, service_id):
                 request.user,
                 'SERVICE_STATUS_CHANGED',
                 request.META.get('REMOTE_ADDR', ''),
-                f'Service {status_text}: {service.name}',
-                request.META.get('HTTP_USER_AGENT', '')
+                f'Service {status_text}: {service.name}'
             )
         
         serializer = ServiceSerializer(service)

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, ToggleLeft, ToggleRight, Save, X, DollarSign, List } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { apiClient } from '../../lib/api';
 
 interface Service {
@@ -73,10 +74,13 @@ const ServicesManagement: React.FC = () => {
       if (response.data.success) {
         await fetchServices();
         resetForm();
+        // Show success toast message
+        const message = editingService ? 'Service updated successfully!' : 'Service created successfully!';
+        toast.success(message);
       }
     } catch (error: any) {
       console.error('Error saving service:', error);
-      alert(error.response?.data?.error || 'Error saving service');
+      toast.error(error.response?.data?.error || 'Error saving service');
     }
   };
 
@@ -100,9 +104,11 @@ const ServicesManagement: React.FC = () => {
       const response = await apiClient.deleteService(serviceId);
       if (response.data.success) {
         await fetchServices();
+        toast.success('Service deleted successfully!');
       }
     } catch (error) {
       console.error('Error deleting service:', error);
+      toast.error('Error deleting service');
     }
   };
 
@@ -111,9 +117,11 @@ const ServicesManagement: React.FC = () => {
       const response = await apiClient.toggleServiceStatus(serviceId);
       if (response.data.success) {
         await fetchServices();
+        toast.success(response.data.message || 'Service status updated successfully!');
       }
     } catch (error) {
       console.error('Error toggling service status:', error);
+      toast.error('Error updating service status');
     }
   };
 
@@ -159,7 +167,7 @@ const ServicesManagement: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Services Management</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Services Management</h1>
         <button
           onClick={() => setShowForm(true)}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
@@ -172,39 +180,39 @@ const ServicesManagement: React.FC = () => {
       {/* Service Form Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                 {editingService ? 'Edit Service' : 'Add New Service'}
               </h2>
-              <button onClick={resetForm} className="text-gray-500 hover:text-gray-700">
+              <button onClick={resetForm} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                 <X className="h-6 w-6" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Service Name
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Service Type
                 </label>
                 <input
                   type="text"
                   value={formData.service_type}
                   onChange={(e) => setFormData(prev => ({ ...prev, service_type: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g., finance, hr, inventory"
                   required
                   disabled={!!editingService}
@@ -212,20 +220,20 @@ const ServicesManagement: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Description
                 </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Base Price ($)
                 </label>
                 <input
@@ -233,13 +241,13 @@ const ServicesManagement: React.FC = () => {
                   step="0.01"
                   value={formData.base_price}
                   onChange={(e) => setFormData(prev => ({ ...prev, base_price: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Features
                 </label>
                 <div className="flex gap-2 mb-2">
@@ -247,7 +255,7 @@ const ServicesManagement: React.FC = () => {
                     type="text"
                     value={newFeature}
                     onChange={(e) => setNewFeature(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Add a feature"
                     onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addFeature())}
                   />
@@ -261,12 +269,12 @@ const ServicesManagement: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                   {formData.features.map((feature, index) => (
-                    <div key={index} className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded">
-                      <span>{feature}</span>
+                    <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-600 px-3 py-2 rounded">
+                      <span className="text-gray-900 dark:text-white">{feature}</span>
                       <button
                         type="button"
                         onClick={() => removeFeature(index)}
-                        className="text-red-600 hover:text-red-800"
+                        className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -283,7 +291,7 @@ const ServicesManagement: React.FC = () => {
                   onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
                   className="mr-2"
                 />
-                <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+                <label htmlFor="is_active" className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   Active Service
                 </label>
               </div>
@@ -299,7 +307,7 @@ const ServicesManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+                  className="bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500"
                 >
                   Cancel
                 </button>
@@ -312,11 +320,11 @@ const ServicesManagement: React.FC = () => {
       {/* Services List */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {services.map((service) => (
-          <div key={service.id} className="bg-white rounded-lg shadow-md p-6 border">
+          <div key={service.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">{service.name}</h3>
-                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{service.name}</h3>
+                <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
                   {service.service_type}
                 </span>
               </div>
@@ -331,7 +339,7 @@ const ServicesManagement: React.FC = () => {
               </div>
             </div>
 
-            <p className="text-gray-600 text-sm mb-4">{service.description}</p>
+            <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">{service.description}</p>
 
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="h-4 w-4 text-green-600" />
@@ -340,42 +348,42 @@ const ServicesManagement: React.FC = () => {
 
             <div className="mb-4">
               <div className="flex items-center gap-2 mb-2">
-                <List className="h-4 w-4 text-gray-500" />
-                <span className="text-sm font-medium text-gray-700">Features ({service.features.length})</span>
+                <List className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Features ({service.features.length})</span>
               </div>
               <div className="space-y-1 max-h-24 overflow-y-auto">
                 {service.features.slice(0, 3).map((feature, index) => (
-                  <div key={index} className="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
+                  <div key={index} className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 px-2 py-1 rounded">
                     {feature}
                   </div>
                 ))}
                 {service.features.length > 3 && (
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
                     +{service.features.length - 3} more features
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="flex justify-between items-center pt-4 border-t">
+            <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-600">
               <span className={`text-xs px-2 py-1 rounded ${
                 service.is_active 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-red-100 text-red-800'
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' 
+                  : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
               }`}>
                 {service.is_active ? 'Active' : 'Inactive'}
               </span>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleEdit(service)}
-                  className="text-blue-600 hover:text-blue-800 p-1"
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-1"
                   title="Edit Service"
                 >
                   <Edit className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => handleDelete(service.id)}
-                  className="text-red-600 hover:text-red-800 p-1"
+                  className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-1"
                   title="Delete Service"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -388,7 +396,7 @@ const ServicesManagement: React.FC = () => {
 
       {services.length === 0 && (
         <div className="text-center py-12">
-          <div className="text-gray-500 mb-4">No services found</div>
+          <div className="text-gray-500 dark:text-gray-400 mb-4">No services found</div>
           <button
             onClick={() => setShowForm(true)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"

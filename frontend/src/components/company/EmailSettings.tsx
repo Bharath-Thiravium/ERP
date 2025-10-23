@@ -170,33 +170,33 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <Mail className="h-5 w-5 text-blue-600" />
+              <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               <span>Email Usage</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-blue-600">{usage.emails_sent_today}</p>
-                <p className="text-sm text-gray-600">Sent Today</p>
+                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{usage.emails_sent_today}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Sent Today</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-green-600">{usage.remaining_today}</p>
-                <p className="text-sm text-gray-600">Remaining</p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">{usage.remaining_today}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Remaining</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-purple-600">{usage.daily_limit}</p>
-                <p className="text-sm text-gray-600">Daily Limit</p>
+                <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{usage.daily_limit}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Daily Limit</p>
               </div>
               <div className="text-center">
                 <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                   formData.is_active
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                    : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                 }`}>
                   {formData.is_active ? 'Active' : 'Inactive'}
                 </div>
-                <p className="text-sm text-gray-600 mt-1">Status</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Status</p>
               </div>
             </div>
           </CardContent>
@@ -215,27 +215,27 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
           {/* Basic Settings */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 From Email *
               </label>
               <input
                 type="email"
                 value={formData.from_email}
                 onChange={(e) => setFormData({ ...formData, from_email: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="company@example.com"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 From Name *
               </label>
               <input
                 type="text"
                 value={formData.from_name}
                 onChange={(e) => setFormData({ ...formData, from_name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Your Company Name"
                 required
               />
@@ -243,27 +243,27 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Reply-To Email (Optional)
             </label>
             <input
               type="email"
               value={formData.reply_to_email}
               onChange={(e) => setFormData({ ...formData, reply_to_email: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="support@example.com"
             />
           </div>
 
           {/* Email Provider */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Email Provider *
             </label>
             <select
               value={formData.email_provider}
               onChange={(e) => handleProviderChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               {Object.entries(providers).map(([key, provider]: [string, any]) => (
                 <option key={key} value={key}>
@@ -282,21 +282,21 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
               onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
             />
-            <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+            <label htmlFor="is_active" className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Enable email sending
             </label>
           </div>
 
           {/* Daily Limit */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Daily Email Limit
             </label>
             <input
               type="number"
               value={formData.daily_limit}
               onChange={(e) => setFormData({ ...formData, daily_limit: parseInt(e.target.value) || 500 })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               min="1"
               max="10000"
             />
@@ -305,50 +305,50 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
           {/* Provider Configuration */}
           {!isApiProvider ? (
             <div className="space-y-4">
-              <h4 className="text-lg font-medium text-gray-900">SMTP Configuration</h4>
+              <h4 className="text-lg font-medium text-gray-900 dark:text-white">SMTP Configuration</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     SMTP Host *
                   </label>
                   <input
                     type="text"
                     value={formData.smtp_host}
                     onChange={(e) => setFormData({ ...formData, smtp_host: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="smtp.gmail.com"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     SMTP Port *
                   </label>
                   <input
                     type="number"
                     value={formData.smtp_port}
                     onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) || 587 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="587"
                     required
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Username/Email *
                 </label>
                 <input
                   type="text"
                   value={formData.smtp_username}
                   onChange={(e) => setFormData({ ...formData, smtp_username: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="your-email@gmail.com"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Password/App Password *
                 </label>
                 <div className="relative">
@@ -356,7 +356,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                     type={showPasswordField ? 'text' : 'password'}
                     value={formData.smtp_password}
                     onChange={(e) => setFormData({ ...formData, smtp_password: e.target.value })}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Your app password"
                     required
                   />
@@ -381,7 +381,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                     onChange={(e) => setFormData({ ...formData, use_tls: e.target.checked })}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
-                  <span className="ml-2 text-sm text-gray-700">Use TLS</span>
+                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">Use TLS</span>
                 </label>
                 <label className="flex items-center">
                   <input
@@ -390,15 +390,15 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                     onChange={(e) => setFormData({ ...formData, use_ssl: e.target.checked })}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
-                  <span className="ml-2 text-sm text-gray-700">Use SSL</span>
+                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">Use SSL</span>
                 </label>
               </div>
             </div>
           ) : (
             <div className="space-y-4">
-              <h4 className="text-lg font-medium text-gray-900">API Configuration</h4>
+              <h4 className="text-lg font-medium text-gray-900 dark:text-white">API Configuration</h4>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   API Key *
                 </label>
                 <div className="relative">
@@ -406,7 +406,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                     type={showPasswordField ? 'text' : 'password'}
                     value={formData.api_key}
                     onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Your API key"
                     required
                   />
@@ -425,7 +425,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
               </div>
               {selectedProvider?.requires_secret && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     API Secret *
                   </label>
                   <div className="relative">
@@ -433,7 +433,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
                       type={showPasswords ? 'text' : 'password'}
                       value={formData.api_secret}
                       onChange={(e) => setFormData({ ...formData, api_secret: e.target.value })}
-                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Your API secret"
                       required
                     />
@@ -485,10 +485,10 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
           </div>
 
           {/* Help Text */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
             <div className="flex items-start space-x-2">
-              <Info className="h-5 w-5 text-blue-600 mt-0.5" />
-              <div className="text-sm text-blue-800">
+              <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+              <div className="text-sm text-blue-800 dark:text-blue-300">
                 <p className="font-medium mb-1">Configuration Tips:</p>
                 <ul className="list-disc list-inside space-y-1">
                   <li>For Gmail, use an App Password instead of your regular password</li>
@@ -502,10 +502,10 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ onSettingsUpdate }) => {
           
           {/* Test Requirements */}
           {!formData.is_active && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
               <div className="flex items-start space-x-2">
-                <Info className="h-5 w-5 text-yellow-600 mt-0.5" />
-                <div className="text-sm text-yellow-800">
+                <Info className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                <div className="text-sm text-yellow-800 dark:text-yellow-300">
                   <p className="font-medium mb-1">Test Email Requirements:</p>
                   <p>Please save your settings and enable email sending before testing the configuration.</p>
                 </div>

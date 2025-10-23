@@ -18,6 +18,9 @@ interface ReportsManagerProps {
 }
 
 export const ReportsManager: React.FC<ReportsManagerProps> = ({ sessionKey }) => {
+  // Note: sessionKey is automatically handled by apiClient interceptor for /api/finance/ endpoints
+  // but we keep it in props for consistency and potential future use
+  void sessionKey // Suppress TypeScript unused variable warning
   const [activeReport, setActiveReport] = useState<'gstr1' | 'gstr3b' | 'tds' | 'certificates' | 'financial'>('gstr1')
 
   const handleTabChange = (tabId: 'gstr1' | 'gstr3b' | 'tds' | 'certificates' | 'financial') => {

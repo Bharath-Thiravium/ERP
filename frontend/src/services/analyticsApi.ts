@@ -455,6 +455,46 @@ class AnalyticsApiService {
       endDate: endDate.toISOString().split('T')[0]
     }
   }
+
+  /**
+   * Generate Profit & Loss Report
+   */
+  async generateProfitLossReport(startDate: string, endDate: string): Promise<any> {
+    const response = await apiClient.get('/api/finance/reports/profit-loss/', {
+      params: { start_date: startDate, end_date: endDate }
+    })
+    return response.data
+  }
+
+  /**
+   * Generate Balance Sheet
+   */
+  async generateBalanceSheet(asOfDate: string): Promise<any> {
+    const response = await apiClient.get('/api/finance/reports/balance-sheet/', {
+      params: { as_of_date: asOfDate }
+    })
+    return response.data
+  }
+
+  /**
+   * Generate Cash Flow Statement
+   */
+  async generateCashFlowStatement(startDate: string, endDate: string): Promise<any> {
+    const response = await apiClient.get('/api/finance/reports/cash-flow/', {
+      params: { start_date: startDate, end_date: endDate }
+    })
+    return response.data
+  }
+
+  /**
+   * Generate Complete GSTR-3B Report
+   */
+  async generateCompleteGSTR3BReport(startDate: string, endDate: string): Promise<any> {
+    const response = await apiClient.get('/api/finance/compliance/gstr3b-complete/', {
+      params: { start_date: startDate, end_date: endDate }
+    })
+    return response.data
+  }
 }
 
 export const analyticsApiService = new AnalyticsApiService()

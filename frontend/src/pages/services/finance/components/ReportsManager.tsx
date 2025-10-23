@@ -48,8 +48,7 @@ export const ReportsManager: React.FC<ReportsManagerProps> = ({ sessionKey }) =>
   const generateGSTR3BReport = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`/api/finance/compliance/gstr3b-complete/?session_key=${sessionKey}&start_date=${dateRange.startDate}&end_date=${dateRange.endDate}`)
-      const data = await response.json()
+      const data = await analyticsApiService.generateCompleteGSTR3BReport(dateRange.startDate, dateRange.endDate)
       setReportData(data)
     } catch (error) {
       console.error('Failed to generate GSTR-3B report:', error)
@@ -87,9 +86,9 @@ export const ReportsManager: React.FC<ReportsManagerProps> = ({ sessionKey }) =>
     try {
       // Generate all three financial reports
       const [plData, bsData, cfData] = await Promise.all([
-        fetch(`/api/finance/reports/profit-loss/?session_key=${sessionKey}&start_date=${dateRange.startDate}&end_date=${dateRange.endDate}`).then(r => r.json()),
-        fetch(`/api/finance/reports/balance-sheet/?session_key=${sessionKey}&as_of_date=${dateRange.endDate}`).then(r => r.json()),
-        fetch(`/api/finance/reports/cash-flow/?session_key=${sessionKey}&start_date=${dateRange.startDate}&end_date=${dateRange.endDate}`).then(r => r.json())
+        analyticsApiService.generateProfitLossReport(dateRange.startDate, dateRange.endDate),
+        analyticsApiService.generateBalanceSheet(dateRange.endDate),
+        analyticsApiService.generateCashFlowStatement(dateRange.startDate, dateRange.endDate)
       ])
       
       setReportData({
@@ -590,7 +589,7 @@ export const ReportsManager: React.FC<ReportsManagerProps> = ({ sessionKey }) =>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {(activeReport === 'gstr1' || activeReport === 'gstr3b') && (
+          {(activeReport === 'gstr1' || activeReport === 'gstr3b' || activeReport === 'financial') && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Start Date</label>

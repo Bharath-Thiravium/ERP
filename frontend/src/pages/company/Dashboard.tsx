@@ -76,7 +76,7 @@ const CompanyDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview')
   const [showCreateUserModal, setShowCreateUserModal] = useState(false)
   const [selectedService, setSelectedService] = useState<any>(null)
-  const [showCredentials, setShowCredentials] = useState<{[key: string]: boolean}>({})
+
   
   // New state for enhanced features
   const [dashboardOverview, setDashboardOverview] = useState<any>(null)
@@ -301,12 +301,7 @@ Website: https://athenas.co.in
     })
   }
 
-  const toggleCredentialVisibility = (userId: string) => {
-    setShowCredentials(prev => ({
-      ...prev,
-      [userId]: !prev[userId]
-    }))
-  }
+
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -701,9 +696,7 @@ Website: https://athenas.co.in
           <ServiceUserManagement
             serviceUsersData={serviceUsersData}
             usersLoading={usersLoading}
-            showCredentials={showCredentials}
             onCreateUser={() => setShowCreateUserModal(true)}
-            onToggleCredentials={toggleCredentialVisibility}
             onCopyToClipboard={copyToClipboard}
             onDeleteUser={(userId) => deleteServiceUserMutation.mutate(userId)}
           />

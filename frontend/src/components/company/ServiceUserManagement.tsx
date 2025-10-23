@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Users, Eye, EyeOff, Copy, Trash2, User, AlertTriangle } from 'lucide-react'
+import { Plus, Users, Copy, Trash2, User, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { LoadingSpinner } from '../ui/LoadingSpinner'
@@ -7,9 +7,7 @@ import { LoadingSpinner } from '../ui/LoadingSpinner'
 interface ServiceUserManagementProps {
   serviceUsersData: any[]
   usersLoading: boolean
-  showCredentials: {[key: string]: boolean}
   onCreateUser: () => void
-  onToggleCredentials: (userId: string) => void
   onCopyToClipboard: (text: string) => void
   onDeleteUser: (userId: number) => void
 }
@@ -17,9 +15,7 @@ interface ServiceUserManagementProps {
 const ServiceUserManagement: React.FC<ServiceUserManagementProps> = ({
   serviceUsersData,
   usersLoading,
-  showCredentials,
   onCreateUser,
-  onToggleCredentials,
   onCopyToClipboard,
   onDeleteUser
 }) => {
@@ -158,11 +154,7 @@ const ServiceUserManagement: React.FC<ServiceUserManagementProps> = ({
                         </div>
                       </div>
 
-                      {showCredentials[user.id] && user.password && (
-                        <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm">
-                          <strong>Password:</strong> {user.password}
-                        </div>
-                      )}
+
                     </div>
                   </CardContent>
                 </Card>

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   ArrowLeft, Users, Target, Building, Phone, Calendar, Megaphone, Settings,
-  LogOut, Sun, Moon, Shield, Search, Filter, ChevronRight,
-  BarChart3, PlusCircle, Brain, Headphones, TrendingUp, Mail, FileText,
-  Plug, Bell, HelpCircle, Menu, X
+  LogOut, Sun, Moon, Shield, ChevronRight,
+  BarChart3, Brain, Headphones, TrendingUp, Mail, FileText,
+  Plug, Bell, Menu, X
 } from 'lucide-react'
 import { useThemeStore } from '../../../store/themeStore'
 import { useServiceUserStore } from '../../../store/serviceUserStore'
@@ -24,6 +24,8 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, currentPage = 'overview
   const [activeTab, setActiveTab] = useState(currentPage)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [companyData, setCompanyData] = useState<any>(null)
+  const [notificationOpen, setNotificationOpen] = useState(false)
+  const notificationRef = useRef<HTMLDivElement>(null)
 
   // Fetch company data including logo
   const fetchCompanyData = async () => {
@@ -75,6 +77,16 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, currentPage = 'overview
       }
     }
   }, [serviceUser?.company_id, sessionKey])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setNotificationOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // CRM sidebar menu items with better organization
   const sidebarSections = [
@@ -275,29 +287,33 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, currentPage = 'overview
                 </button>
                 <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 hidden lg:block"></div>
                 <h1 className="text-xl lg:text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-                  CRM Dashboard
+                  CRM Module
                 </h1>
               </div>
 
               <div className="flex items-center space-x-3">
-                <div className="hidden md:flex items-center space-x-2">
-                  <button className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-                    <Search className="h-5 w-5" />
-                  </button>
-                  <button className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-                    <Filter className="h-5 w-5" />
-                  </button>
-                  <button className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                <div className="relative" ref={notificationRef}>
+                  <button 
+                    onClick={() => setNotificationOpen(!notificationOpen)}
+                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  >
                     <Bell className="h-5 w-5" />
                   </button>
-                  <button className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-                    <HelpCircle className="h-5 w-5" />
-                  </button>
+                  {notificationOpen && (
+                    <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h3>
+                      </div>
+                      <div className="p-4">
+                        <div className="text-center py-8">
+                          <Bell className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                          <p className="text-sm text-gray-500 dark:text-gray-400">No notifications</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">You're all caught up!</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <button className="px-4 py-2 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white rounded-lg font-medium transition-all duration-200 shadow-lg shadow-orange-500/25">
-                  <PlusCircle className="h-4 w-4 mr-2 inline" />
-                  Add Lead
-                </button>
               </div>
             </div>
           </div>

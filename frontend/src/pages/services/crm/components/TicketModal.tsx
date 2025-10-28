@@ -57,16 +57,58 @@ export const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, ticke
 
   const fetchData = async () => {
     try {
-      const [contactsRes, accountsRes, categoriesRes] = await Promise.all([
+      const [contactsRes, accountsRes] = await Promise.all([
         crmApi.getContacts(sessionKey!),
-        crmApi.getAccounts(sessionKey!),
-        crmApi.getTicketCategories(sessionKey!)
+        crmApi.getAccounts(sessionKey!)
       ])
       setContacts(contactsRes.data.results || contactsRes.data || [])
       setAccounts(accountsRes.data.results || accountsRes.data || [])
-      setCategories(categoriesRes.data.results || categoriesRes.data || [])
+      
+      // Fetch categories from API
+      try {
+        const categoriesRes = await crmApi.getTicketCategories(sessionKey!)
+        const apiCategories = categoriesRes.data.results || categoriesRes.data || []
+        setCategories(apiCategories)
+        
+        // If no categories exist, create default ones
+        if (apiCategories.length === 0) {
+          await createDefaultCategories()
+        }
+      } catch (categoryError) {
+        console.error('Error fetching categories:', categoryError)
+        // Try to create default categories
+        await createDefaultCategories()
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
+    }
+  }
+
+  const createDefaultCategories = async () => {
+    const defaultCategories = [
+      { name: 'Technical Support', description: 'Technical issues and support requests', color: '#3B82F6', is_active: true },
+      { name: 'Billing & Payment', description: 'Billing and payment related inquiries', color: '#10B981', is_active: true },
+      { name: 'General Inquiry', description: 'General questions and information requests', color: '#8B5CF6', is_active: true },
+      { name: 'Feature Request', description: 'New feature requests and suggestions', color: '#F59E0B', is_active: true },
+      { name: 'Bug Report', description: 'Bug reports and technical issues', color: '#EF4444', is_active: true },
+      { name: 'Account Issues', description: 'Account access and management issues', color: '#6B7280', is_active: true }
+    ]
+
+    try {
+      const createdCategories = []
+      for (const category of defaultCategories) {
+        try {
+          const response = await crmApi.createTicketCategory(sessionKey!, category)
+          createdCategories.push(response.data)
+        } catch (error) {
+          console.error('Error creating category:', category.name, error)
+        }
+      }
+      if (createdCategories.length > 0) {
+        setCategories(createdCategories)
+      }
+    } catch (error) {
+      console.error('Error creating default categories:', error)
     }
   }
 
@@ -79,11 +121,31 @@ export const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, ticke
 
     setLoading(true)
     try {
+      // Prepare form data with proper type conversion
+      const submitData: any = {
+        subject: formData.subject,
+        description: formData.description,
+        priority: formData.priority,
+        source: formData.source,
+        contact: parseInt(formData.contact),
+        account: formData.account ? parseInt(formData.account) : null
+      }
+      
+      // Handle category field - only include if selected
+      if (formData.category) {
+        submitData.category = parseInt(formData.category)
+      }
+      
+      // Remove null/empty fields
+      if (!submitData.account) {
+        delete submitData.account
+      }
+
       if (ticket) {
-        await crmApi.updateTicket(sessionKey!, ticket.id, formData)
+        await crmApi.updateTicket(sessionKey!, ticket.id, submitData)
         toast.success('Ticket updated successfully')
       } else {
-        await crmApi.createTicket(sessionKey!, formData)
+        await crmApi.createTicket(sessionKey!, submitData)
         toast.success('Ticket created successfully')
       }
       onSave()

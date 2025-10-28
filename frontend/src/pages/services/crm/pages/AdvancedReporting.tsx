@@ -5,7 +5,7 @@ import {
   TrendingUp, 
   AlertTriangle, 
   Eye, 
-  Download,
+  
   Plus,
   Calendar,
   Brain,
@@ -13,16 +13,19 @@ import {
 } from 'lucide-react'
 import { crmApi } from '../utils/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
+import { ReportTemplateModal } from '../components/ReportTemplateModal'
+import toast from 'react-hot-toast'
 
 export const AdvancedReporting: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
   const [reports, setReports] = useState<any[]>([])
   const [dashboards, setDashboards] = useState<any[]>([])
   const [insights, setInsights] = useState<any[]>([])
-  // const [, setSelectedReport] = useState<any>(null)
   const [reportData, setReportData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('reports')
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [selectedReport, setSelectedReport] = useState<any>(null)
 
   useEffect(() => {
     loadData()
@@ -52,18 +55,73 @@ export const AdvancedReporting: React.FC = () => {
     try {
       const response = await crmApi.generateReport(sessionKey!, reportId)
       setReportData(response.data)
+      toast.success('Report generated successfully!')
     } catch (error) {
       console.error('Error generating report:', error)
+      toast.error('Failed to generate report')
+    }
+  }
+
+  const handleExportReport = async (reportId: number, format: string = 'csv') => {
+    try {
+      const response = await crmApi.exportReport(sessionKey!, reportId, format)
+      if (response.data.export_url) {
+        // Create download link
+        const link = document.createElement('a')
+        link.href = response.data.export_url
+        link.download = `report_${reportId}.${format}`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        toast.success(`Report exported as ${format.toUpperCase()}`)
+      }
+    } catch (error) {
+      console.error('Error exporting report:', error)
+      toast.error('Failed to export report')
     }
   }
 
   const handleGenerateInsights = async () => {
     try {
-      await crmApi.generateBusinessInsights(sessionKey!)
+      const response = await crmApi.generateBusinessInsights(sessionKey!)
+      toast.success(response.data.message || 'Insights generated successfully!')
       loadData()
     } catch (error) {
       console.error('Error generating insights:', error)
+      toast.error('Failed to generate insights')
     }
+  }
+
+  const handleCreateReport = () => {
+    setSelectedReport(null)
+    setShowReportModal(true)
+  }
+
+  const handleEditReport = (report: any) => {
+    setSelectedReport(report)
+    setShowReportModal(true)
+  }
+
+  const handleDeleteReport = async (reportId: number) => {
+    if (!confirm('Are you sure you want to delete this report template?')) return
+    
+    try {
+      await crmApi.deleteReportTemplate(sessionKey!, reportId)
+      toast.success('Report template deleted successfully')
+      loadData()
+    } catch (error) {
+      toast.error('Failed to delete report template')
+    }
+  }
+
+  const handleModalSuccess = () => {
+    loadData()
+    setSelectedReport(null)
+  }
+
+  const handleCloseReportModal = () => {
+    setShowReportModal(false)
+    setSelectedReport(null)
   }
 
   const handleAcknowledgeInsight = async (insightId: number) => {
@@ -119,7 +177,10 @@ export const AdvancedReporting: React.FC = () => {
             <Brain className="h-4 w-4 mr-2" />
             Generate Insights
           </button>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center">
+          <button 
+            onClick={handleCreateReport}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+          >
             <Plus className="h-4 w-4 mr-2" />
             New Report
           </button>
@@ -215,47 +276,60 @@ export const AdvancedReporting: React.FC = () => {
 
         {activeTab === 'reports' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Report Templates */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Report Templates</h3>
-                <div className="space-y-3">
-                  {reports.map((report) => (
-                    <div key={report.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-shadow">
-                      <div className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <h4 className="font-medium">{report.name}</h4>
-                            <p className="text-sm text-gray-600">{report.report_type_display}</p>
-                            <div className="flex items-center gap-2 mt-2">
-                              <span className="inline-flex items-center px-2 py-1 text-xs rounded-full border border-gray-300 text-gray-700">
-                                {report.chart_type_display}
-                              </span>
-                              {report.is_active && (
-                                <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
-                                  Active
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Report Templates</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {reports.map((report) => (
+                  <div key={report.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                    <div className="p-4">
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="font-medium text-sm">{report.name}</h4>
+                          <p className="text-xs text-gray-600">{report.report_type_display}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <span className="inline-flex items-center px-2 py-1 text-xs rounded-full border border-gray-300 text-gray-700">
+                            {report.chart_type_display}
+                          </span>
+                          {report.is_active && (
+                            <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <button 
+                            onClick={() => handleGenerateReport(report.id)}
+                            className="w-full px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 flex items-center justify-center"
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            Generate
+                          </button>
+                          <div className="flex gap-1">
                             <button 
-                              onClick={() => handleGenerateReport(report.id)}
-                              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 flex items-center"
+                              onClick={() => handleExportReport(report.id, 'csv')}
+                              className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
                             >
-                              <Eye className="h-4 w-4 mr-1" />
-                              Generate
-                            </button>
-                            <button className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 flex items-center">
-                              <Download className="h-4 w-4 mr-1" />
                               Export
+                            </button>
+                            <button 
+                              onClick={() => handleEditReport(report)}
+                              className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                              Edit
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteReport(report.id)}
+                              className="flex-1 px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50"
+                            >
+                              Delete
                             </button>
                           </div>
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
 
               {/* Report Preview */}
@@ -311,15 +385,15 @@ export const AdvancedReporting: React.FC = () => {
 
         {activeTab === 'dashboards' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {dashboards.map((dashboard) => (
                 <div key={dashboard.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                  <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{dashboard.name}</h3>
-                    <p className="text-sm text-gray-600">{dashboard.description}</p>
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{dashboard.name}</h3>
+                    <p className="text-xs text-gray-600 mt-1">{dashboard.description}</p>
                   </div>
-                  <div className="p-6 space-y-4">
-                    <div className="flex items-center gap-2">
+                  <div className="p-4 space-y-3">
+                    <div className="flex flex-wrap gap-1">
                       {dashboard.is_public && (
                         <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
                           Public
@@ -330,12 +404,12 @@ export const AdvancedReporting: React.FC = () => {
                       </span>
                     </div>
                     
-                    <div className="flex gap-2">
-                      <button className="flex-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center">
-                        <Eye className="h-4 w-4 mr-1" />
+                    <div className="flex gap-1">
+                      <button className="flex-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center">
+                        <Eye className="h-3 w-3 mr-1" />
                         View
                       </button>
-                      <button className="flex-1 px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 flex items-center justify-center">
+                      <button className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50">
                         Edit
                       </button>
                     </div>
@@ -352,56 +426,57 @@ export const AdvancedReporting: React.FC = () => {
 
         {activeTab === 'insights' && (
           <div className="space-y-4">
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {insights.map((insight) => (
-                <div key={insight.id} className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm ${insight.is_acknowledged ? 'opacity-60' : ''}`}>
+                <div key={insight.id} className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow ${insight.is_acknowledged ? 'opacity-60' : ''}`}>
                   <div className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className={`p-2 rounded-lg ${getPriorityColor(insight.priority)} text-white`}>
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-2">
+                        <div className={`p-1.5 rounded-lg ${getPriorityColor(insight.priority)} text-white flex-shrink-0`}>
                           {getInsightIcon(insight.insight_type)}
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-medium">{insight.title}</h4>
-                            <span className={`inline-flex items-center px-2 py-1 text-xs rounded-full ${getPriorityColor(insight.priority)} text-white`}>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-sm truncate">{insight.title}</h4>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 text-xs rounded-full ${getPriorityColor(insight.priority)} text-white`}>
                               {insight.priority}
                             </span>
-                            <span className="inline-flex items-center px-2 py-1 text-xs rounded-full border border-gray-300 text-gray-700">
+                            <span className="inline-flex items-center px-1.5 py-0.5 text-xs rounded-full border border-gray-300 text-gray-700">
                               {insight.insight_type_display}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-600 mb-3">{insight.description}</p>
-                          
-                          {insight.recommended_actions && insight.recommended_actions.length > 0 && (
-                            <div className="space-y-1">
-                              <p className="text-xs font-medium text-gray-700">Recommended Actions:</p>
-                              <ul className="text-xs text-gray-600 space-y-1">
-                                {insight.recommended_actions.map((action: string, index: number) => (
-                                  <li key={index} className="flex items-center gap-1">
-                                    <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
-                                    {action}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
                         </div>
                       </div>
                       
-                      <div className="flex flex-col items-end gap-2">
+                      <p className="text-xs text-gray-600 line-clamp-3">{insight.description}</p>
+                      
+                      {insight.recommended_actions && insight.recommended_actions.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-gray-700">Actions:</p>
+                          <ul className="text-xs text-gray-600 space-y-0.5">
+                            {insight.recommended_actions.slice(0, 2).map((action: string, index: number) => (
+                              <li key={index} className="flex items-start gap-1">
+                                <span className="w-1 h-1 bg-gray-400 rounded-full mt-1.5 flex-shrink-0"></span>
+                                <span className="line-clamp-2">{action}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      <div className="flex flex-col gap-2">
                         {!insight.is_acknowledged && (
                           <button 
                             onClick={() => handleAcknowledgeInsight(insight.id)}
-                            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50"
+                            className="w-full px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
                           >
                             Acknowledge
                           </button>
                         )}
-                        <div className="text-xs text-gray-500 text-right">
+                        <div className="text-xs text-gray-500">
                           {new Date(insight.created_at).toLocaleDateString()}
                           {insight.is_acknowledged && (
-                            <div className="text-green-600">
+                            <div className="text-green-600 mt-1">
                               ✓ Acknowledged
                             </div>
                           )}
@@ -432,18 +507,28 @@ export const AdvancedReporting: React.FC = () => {
 
         {activeTab === 'schedules' && (
           <div className="space-y-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-              <div className="p-8 text-center">
-                <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">Scheduled reports feature coming soon</p>
-                <p className="text-sm text-gray-500 mt-2">
-                  Set up automated report generation and delivery
-                </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+                <div className="p-6 text-center">
+                  <Calendar className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+                  <p className="text-sm text-gray-600">Scheduled reports</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Coming soon
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Modals */}
+      <ReportTemplateModal
+        isOpen={showReportModal}
+        onClose={handleCloseReportModal}
+        onSuccess={handleModalSuccess}
+        report={selectedReport}
+      />
     </div>
   )
 }

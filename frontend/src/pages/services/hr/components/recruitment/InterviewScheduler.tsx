@@ -85,7 +85,7 @@ const InterviewScheduler: React.FC<InterviewSchedulerProps> = ({
       // Schedule interview
       const interviewerValue = formData.interviewer === 'service_user' ? null : parseInt(formData.interviewer)
       
-      await api.post('/api/hr/interviews/', {
+      const response = await api.post('/api/hr/interviews/', {
         application_id: application.id,
         interviewer_id: interviewerValue,
         interview_date: formData.interview_date,
@@ -108,7 +108,16 @@ const InterviewScheduler: React.FC<InterviewSchedulerProps> = ({
         session_key: sessionKey
       })
 
-      toast.success('Interview scheduled successfully')
+      // Check email status
+      if (response.data.email_success) {
+        toast.success('Interview scheduled and invitation email sent successfully')
+      } else if (response.data.email_warning) {
+        toast.success('Interview scheduled successfully')
+        toast.error(`Email issue: ${response.data.email_warning}`, { duration: 6000 })
+      } else {
+        toast.success('Interview scheduled successfully')
+      }
+      
       onSuccess()
       onClose()
       resetForm()

@@ -87,10 +87,18 @@ export const LeadsPage: React.FC = () => {
     try {
       await crmApi.convertLeadToOpportunity(sessionKey!, leadId)
       toast.success('Lead converted to opportunity successfully!')
-      fetchLeads()
-    } catch (error) {
+      // Update the lead status in local state
+      setLeads(prevLeads => 
+        prevLeads.map(lead => 
+          lead.id === leadId 
+            ? { ...lead, status: 'won' }
+            : lead
+        )
+      )
+    } catch (error: any) {
       console.error('Error converting lead:', error)
-      toast.error('Failed to convert lead')
+      const errorMessage = error.response?.data?.error || 'Failed to convert lead'
+      toast.error(errorMessage)
     }
   }
 
@@ -201,7 +209,11 @@ export const LeadsPage: React.FC = () => {
                     variant="ghost" 
                     size="sm" 
                     className="h-8 w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                    onClick={() => alert(`Viewing lead: ${lead.first_name} ${lead.last_name}`)}
+                    onClick={() => {
+                      setSelectedLead(lead)
+                      // You can add a view modal here or navigate to details page
+                      alert(`Lead Details:\n\nName: ${lead.first_name} ${lead.last_name}\nEmail: ${lead.email}\nPhone: ${lead.phone || 'N/A'}\nCompany: ${lead.company_name || 'N/A'}\nStatus: ${lead.status}\nPriority: ${lead.priority}\nSource: ${lead.source}\nEstimated Value: ₹${lead.estimated_value?.toLocaleString() || 0}\nExpected Close: ${lead.expected_close_date || 'N/A'}`)
+                    }}
                     title="View Lead Details"
                   >
                     <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
@@ -268,17 +280,45 @@ export const LeadsPage: React.FC = () => {
 
               {/* Actions */}
               <div className="flex space-x-2 mt-4">
-                <Button 
-                  size="sm" 
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => convertToOpportunity(lead.id)}
-                >
-                  Convert
-                </Button>
+                {lead.status !== 'won' ? (
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => convertToOpportunity(lead.id)}
+                  >
+                    Convert
+                  </Button>
+                ) : (
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="flex-1 bg-green-50 text-green-600 border-green-200 cursor-not-allowed"
+                    disabled
+                  >
+                    Converted
+                  </Button>
+                )}
                 <Button 
                   size="sm" 
                   className="flex-1 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700"
+                  onClick={() => {
+                    if (lead.email) {
+                      // Use Gmail web interface for better Linux compatibility
+                      const subject = encodeURIComponent('Follow up on your inquiry')
+                      const body = encodeURIComponent(`Hi ${lead.first_name},\n\nI wanted to follow up on your recent inquiry. Please let me know if you have any questions.\n\nBest regards`)
+                      window.open(`https://mail.google.com/mail/?view=cm&to=${lead.email}&su=${subject}&body=${body}`, '_blank')
+                    } else if (lead.phone) {
+                      // Copy phone number to clipboard and show notification
+                      navigator.clipboard.writeText(lead.phone).then(() => {
+                        alert(`Phone number copied to clipboard: ${lead.phone}`)
+                      }).catch(() => {
+                        alert(`Call: ${lead.phone}`)
+                      })
+                    } else {
+                      alert('No contact information available for this lead')
+                    }
+                  }}
                 >
                   Contact
                 </Button>

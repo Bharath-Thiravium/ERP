@@ -95,7 +95,7 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
                 <select 
                   value={formData.interaction_type} 
                   onChange={(e) => setFormData(prev => ({ ...prev, interaction_type: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="call">Phone Call</option>
                   <option value="email">Email</option>
@@ -115,7 +115,7 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
                 <select 
                   value={formData.account} 
                   onChange={(e) => setFormData(prev => ({ ...prev, account: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">Select account</option>
                   {accounts.map((account) => (
@@ -130,7 +130,7 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
                 <select 
                   value={formData.contact} 
                   onChange={(e) => setFormData(prev => ({ ...prev, contact: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">Select contact</option>
                   {contacts.map((contact) => (
@@ -148,7 +148,7 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
                 <select 
                   value={formData.deal} 
                   onChange={(e) => setFormData(prev => ({ ...prev, deal: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">Select deal</option>
                   {deals.map((deal) => (
@@ -184,7 +184,7 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="Interaction details"
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               />
             </div>
 
@@ -195,7 +195,7 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
                 onChange={(e) => setFormData(prev => ({ ...prev, outcome: e.target.value }))}
                 placeholder="What was the result?"
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               />
             </div>
 

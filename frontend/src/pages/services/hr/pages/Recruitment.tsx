@@ -12,6 +12,7 @@ import ApplicationsList from '../components/recruitment/ApplicationsList'
 import CandidatePipeline from '../components/recruitment/CandidatePipeline'
 import RecruitmentAnalytics from '../components/recruitment/RecruitmentAnalytics'
 import InterviewsList from '../components/recruitment/InterviewsList'
+import ShareAnalyticsDashboard from '../components/recruitment/ShareAnalyticsDashboard'
 
 const Recruitment: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
@@ -459,7 +460,10 @@ const Recruitment: React.FC = () => {
         <InterviewsList />
       )}
       {activeView === 'analytics' && (
-        <RecruitmentAnalytics />
+        <div className="space-y-6">
+          <ShareAnalyticsDashboard />
+          <RecruitmentAnalytics />
+        </div>
       )}
 
       {/* Job Posting Form Modal */}

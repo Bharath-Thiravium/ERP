@@ -93,7 +93,7 @@ export const CRMDashboard: React.FC = () => {
     <div className="space-y-6">
       {/* Welcome Message */}
       <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-6 text-white">
-        <h1 className="text-2xl font-bold mb-2">Welcome to CRM Dashboard</h1>
+        <h1 className="text-2xl font-bold mb-2">Welcome to CRM Module</h1>
         <p className="text-orange-100">Track your sales performance and manage customer relationships effectively</p>
       </div>
 

@@ -435,11 +435,11 @@ Best regards,
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Email Type</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Email Type</label>
               <select
                 value={formData.email_type}
                 onChange={(e) => handleEmailTypeChange(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 {emailTypes.map(type => (
                   <option key={type.value} value={type.value}>{type.label}</option>
@@ -447,12 +447,12 @@ Best regards,
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Title</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Title</label>
               <input
                 type="text"
                 value={formData.title}
                 onChange={(e) => setFormData({...formData, title: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="e.g., Monthly GST Filing Reminder"
               />
             </div>
@@ -518,22 +518,22 @@ Best regards,
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Subject Template</label>
+            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Subject Template</label>
             <input
               type="text"
               value={formData.subject_template}
               onChange={(e) => setFormData({...formData, subject_template: e.target.value})}
-              className="w-full p-2 border border-gray-300 rounded-lg"
+              className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               placeholder="Use variables like {company_name}, {due_date}, etc."
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Body Template</label>
+            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Body Template</label>
             <textarea
               value={formData.body_template}
               onChange={(e) => setFormData({...formData, body_template: e.target.value})}
-              className="w-full p-2 border border-gray-300 rounded-lg h-32"
+              className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg h-32 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               placeholder="Use variables like {company_name}, {due_date}, {days_remaining}, etc."
             />
           </div>

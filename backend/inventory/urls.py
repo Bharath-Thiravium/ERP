@@ -31,16 +31,19 @@ urlpatterns = [
     
     # Purchase Orders
     path('purchase-orders/', views.PurchaseOrderListCreateView.as_view(), name='purchase-order-list-create'),
+    path('purchase-orders/<int:pk>/', views.PurchaseOrderDetailView.as_view(), name='purchase-order-detail'),
     
     # Inventory Audits
     path('audits/', views.InventoryAuditListCreateView.as_view(), name='inventory-audit-list-create'),
     
     # Product Bundles
     path('bundles/', views.ProductBundleListCreateView.as_view(), name='product-bundle-list-create'),
+    path('bundles/<int:pk>/', views.ProductBundleDetailView.as_view(), name='product-bundle-detail'),
     
     # Cycle Counts
     path('cycle-counts/', views.CycleCountListCreateView.as_view(), name='cycle-count-list-create'),
     path('cycle-counts/<int:count_id>/start/', views.start_cycle_count, name='start-cycle-count'),
+    path('cycle-counts/<int:count_id>/pause/', views.pause_cycle_count, name='pause-cycle-count'),
     
     # Dropdown APIs
     path('api/categories/', views.get_categories, name='get-categories'),

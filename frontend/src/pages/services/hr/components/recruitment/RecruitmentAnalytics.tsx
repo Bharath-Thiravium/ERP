@@ -10,10 +10,10 @@ const RecruitmentAnalytics: React.FC = () => {
     totalApplications: 0,
     averageTimeToHire: 0,
     conversionRate: 0,
-    topPerformingJobs: [],
-    applicationsByStatus: {},
-    monthlyTrends: [],
-    sourceAnalysis: []
+    topPerformingJobs: [] as any[],
+    applicationsByStatus: {} as Record<string, number>,
+    monthlyTrends: [] as any[],
+    sourceAnalysis: [] as Array<{source: string, count: unknown}>
   })
   const [loading, setLoading] = useState(false)
 
@@ -71,6 +71,13 @@ const RecruitmentAnalytics: React.FC = () => {
         }
       }).sort((a: any, b: any) => b.conversionRate - a.conversionRate).slice(0, 5)
       
+      // Source analysis
+      const sourceAnalysis = applications.reduce((acc: any, app: any) => {
+        const source = app.application_source || 'direct'
+        acc[source] = (acc[source] || 0) + 1
+        return acc
+      }, {})
+      
       setAnalytics({
         totalApplications,
         averageTimeToHire,
@@ -78,7 +85,7 @@ const RecruitmentAnalytics: React.FC = () => {
         topPerformingJobs: jobPerformance,
         applicationsByStatus,
         monthlyTrends: [], // Would need more complex calculation
-        sourceAnalysis: [] // Would need source tracking
+        sourceAnalysis: Object.entries(sourceAnalysis).map(([source, count]) => ({ source, count }))
       })
     } catch (error) {
       console.error('Error fetching analytics:', error)
@@ -175,6 +182,40 @@ const RecruitmentAnalytics: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Application Source Analysis */}
+      <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Users className="h-5 w-5 text-purple-500" />
+            <span>Application Sources</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {analytics.sourceAnalysis.map((source: any) => (
+              <div key={source.source} className="text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">{source.count}</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400 capitalize">
+                  {source.source === 'direct' ? '🌐 Direct' : 
+                   source.source === 'whatsapp' ? '💬 WhatsApp' :
+                   source.source === 'linkedin' ? '💼 LinkedIn' :
+                   source.source === 'gmail' ? '📧 Gmail' :
+                   source.source === 'facebook' ? '📘 Facebook' :
+                   source.source === 'twitter' ? '🐦 Twitter' :
+                   source.source === 'instagram' ? '📷 Instagram' :
+                   `📱 ${source.source}`}
+                </div>
+              </div>
+            ))}
+            {analytics.sourceAnalysis.length === 0 && (
+              <div className="col-span-full text-center py-8 text-gray-500 dark:text-gray-400">
+                No source data available
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

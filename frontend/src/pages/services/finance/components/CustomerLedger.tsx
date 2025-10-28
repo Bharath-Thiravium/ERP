@@ -149,27 +149,27 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
       </div>
 
       {/* Customer Selection and Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Customer Search and Selection */}
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Select Customer
             </label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-4 h-4" />
               <input
                 type="text"
                 placeholder="Search customers..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-athenas-blue focus:border-transparent mb-2"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 mb-2"
               />
             </div>
             <select
               value={selectedCustomer}
               onChange={(e) => setSelectedCustomer(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-athenas-blue focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="">Select a customer</option>
               {filteredCustomers.map((customer) => (
@@ -182,31 +182,31 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
 
           {/* Date Range */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               From Date
             </label>
             <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-4 h-4" />
               <input
                 type="date"
                 value={dateRange.start_date}
                 onChange={(e) => setDateRange(prev => ({ ...prev, start_date: e.target.value }))}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-athenas-blue focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               To Date
             </label>
             <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-4 h-4" />
               <input
                 type="date"
                 value={dateRange.end_date}
                 onChange={(e) => setDateRange(prev => ({ ...prev, end_date: e.target.value }))}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-athenas-blue focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
             </div>
           </div>
@@ -303,24 +303,24 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
 
       {/* Customer Information */}
       {ledgerData && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-6">
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-700 rounded-xl border border-blue-200 dark:border-gray-600 p-6">
           <div className="flex items-center mb-4">
-            <User className="w-5 h-5 text-athenas-blue mr-2" />
-            <h3 className="text-lg font-semibold text-gray-900">Customer Information</h3>
+            <User className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Customer Information</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <p className="text-sm text-gray-600">Customer Name</p>
-              <p className="font-medium text-gray-900">{ledgerData.customer.name}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Customer Name</p>
+              <p className="font-medium text-gray-900 dark:text-white">{ledgerData.customer.name}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Customer Code</p>
-              <p className="font-medium text-gray-900">{ledgerData.customer.customer_code}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Customer Code</p>
+              <p className="font-medium text-gray-900 dark:text-white">{ledgerData.customer.customer_code}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Contact</p>
-              <p className="font-medium text-gray-900">{ledgerData.customer.email}</p>
-              <p className="text-sm text-gray-600">{ledgerData.customer.phone}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Contact</p>
+              <p className="font-medium text-gray-900 dark:text-white">{ledgerData.customer.email}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{ledgerData.customer.phone}</p>
             </div>
           </div>
         </div>
@@ -332,36 +332,36 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-athenas-blue"></div>
         </div>
       ) : ledgerData ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">Transaction History</h3>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Transaction History</h3>
           </div>
           
           {ledgerData.entries.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions found</h3>
-              <p className="text-gray-600">No transactions found for the selected period</p>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No transactions found</h3>
+              <p className="text-gray-600 dark:text-gray-400">No transactions found for the selected period</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Document</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Debit</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Credit</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Document</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Description</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Debit</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Credit</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Balance</th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {ledgerData.entries.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
+                        <div className="text-sm text-gray-900 dark:text-white">
                           {new Date(entry.date).toLocaleDateString()}
                         </div>
                       </td>
@@ -369,13 +369,13 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
                         <div className="flex items-center">
                           {getDocumentIcon(entry.document_type)}
                           <div className="ml-2">
-                            <div className="text-sm font-medium text-gray-900">{entry.document_number}</div>
-                            <div className="text-sm text-gray-500">{entry.document_type}</div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">{entry.document_number}</div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400">{entry.document_type}</div>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900">{entry.description}</div>
+                        <div className="text-sm text-gray-900 dark:text-white">{entry.description}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="text-sm font-medium text-red-600">
@@ -411,8 +411,8 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
       ) : (
         <div className="text-center py-12">
           <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Customer</h3>
-          <p className="text-gray-600">Choose a customer to view their ledger and transaction history</p>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Select a Customer</h3>
+          <p className="text-gray-600 dark:text-gray-400">Choose a customer to view their ledger and transaction history</p>
         </div>
       )}
     </div>

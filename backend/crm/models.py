@@ -78,6 +78,25 @@ class Lead(models.Model):
     def __str__(self):
         return f"{self.first_name} {self.last_name} - {self.company_name}"
 
+    def save(self, *args, **kwargs):
+        # Auto-generate lead_id if not provided
+        if not self.lead_id:
+            try:
+                from authentication.utils import generate_auto_code
+                self.lead_id = generate_auto_code(self.company.id, 'lead')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                last_lead = Lead.objects.filter(
+                    company=self.company,
+                    lead_id__startswith='LEAD-'
+                ).order_by('-id').first()
+                if last_lead:
+                    last_number = int(last_lead.lead_id.split('-')[-1])
+                    self.lead_id = f"LEAD-{last_number + 1:06d}"
+                else:
+                    self.lead_id = "LEAD-000001"
+        super().save(*args, **kwargs)
+
 
 class Contact(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='contacts')
@@ -117,6 +136,25 @@ class Contact(models.Model):
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
+
+    def save(self, *args, **kwargs):
+        # Auto-generate contact_id if not provided
+        if not self.contact_id:
+            try:
+                from authentication.utils import generate_auto_code
+                self.contact_id = generate_auto_code(self.company.id, 'contact')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                last_contact = Contact.objects.filter(
+                    company=self.company,
+                    contact_id__startswith='CONT-'
+                ).order_by('-id').first()
+                if last_contact:
+                    last_number = int(last_contact.contact_id.split('-')[-1])
+                    self.contact_id = f"CONT-{last_number + 1:06d}"
+                else:
+                    self.contact_id = "CONT-000001"
+        super().save(*args, **kwargs)
 
 
 class Account(models.Model):
@@ -177,6 +215,25 @@ class Account(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        # Auto-generate account_id if not provided
+        if not self.account_id:
+            try:
+                from authentication.utils import generate_auto_code
+                self.account_id = generate_auto_code(self.company.id, 'account')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                last_account = Account.objects.filter(
+                    company=self.company,
+                    account_id__startswith='ACC-'
+                ).order_by('-id').first()
+                if last_account:
+                    last_number = int(last_account.account_id.split('-')[-1])
+                    self.account_id = f"ACC-{last_number + 1:06d}"
+                else:
+                    self.account_id = "ACC-000001"
+        super().save(*args, **kwargs)
+
 
 class Opportunity(models.Model):
     STAGE_CHOICES = [
@@ -233,9 +290,29 @@ class Opportunity(models.Model):
     def __str__(self):
         return f"{self.name} - {self.account.name}"
 
+    def save(self, *args, **kwargs):
+        # Auto-generate opportunity_id if not provided
+        if not self.opportunity_id:
+            try:
+                from authentication.utils import generate_auto_code
+                self.opportunity_id = generate_auto_code(self.company.id, 'opportunity')
+            except Exception as e:
+                # Fallback to old system if auto-code fails
+                last_opportunity = Opportunity.objects.filter(
+                    company=self.company,
+                    opportunity_id__startswith='OPP-'
+                ).order_by('-id').first()
+                if last_opportunity:
+                    last_number = int(last_opportunity.opportunity_id.split('-')[-1])
+                    self.opportunity_id = f"OPP-{last_number + 1:06d}"
+                else:
+                    self.opportunity_id = "OPP-000001"
+        super().save(*args, **kwargs)
+
     @property
     def weighted_amount(self):
-        return self.amount * (self.probability / 100)
+        from decimal import Decimal
+        return self.amount * (Decimal(str(self.probability)) / Decimal('100'))
 
 
 class Activity(models.Model):
@@ -703,7 +780,8 @@ class Deal(models.Model):
 
     @property
     def weighted_value(self):
-        return self.value * (self.probability / 100)
+        from decimal import Decimal
+        return self.value * (Decimal(str(self.probability)) / Decimal('100'))
 
     @property
     def days_in_stage(self):

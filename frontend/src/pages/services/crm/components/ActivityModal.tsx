@@ -17,8 +17,6 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
   const [loading, setLoading] = useState(false)
   const [leads, setLeads] = useState([])
   const [contacts, setContacts] = useState([])
-  const [, setAccounts] = useState([])
-  const [, setOpportunities] = useState([])
   const [formData, setFormData] = useState({
     subject: '',
     activity_type: 'call',
@@ -27,6 +25,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
     contact: '',
     account: '',
     opportunity: '',
+    assigned_to: '',
     due_date: '',
     duration_minutes: 30,
     description: ''
@@ -57,17 +56,18 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
 
   const fetchRelatedData = async () => {
     try {
-      const [leadsRes, contactsRes, accountsRes, opportunitiesRes] = await Promise.all([
+      const [leadsRes, contactsRes] = await Promise.all([
         crmApi.getLeads(sessionKey!),
-        crmApi.getContacts(sessionKey!),
-        crmApi.getAccounts(sessionKey!),
-        crmApi.getOpportunities(sessionKey!)
+        crmApi.getContacts(sessionKey!)
       ])
       
       setLeads(leadsRes.data.results || leadsRes.data)
       setContacts(contactsRes.data.results || contactsRes.data)
-      setAccounts(accountsRes.data.results || accountsRes.data)
-      setOpportunities(opportunitiesRes.data.results || opportunitiesRes.data)
+      
+      // Set current user as default assigned_to
+      if (!activity && leads.length > 0) {
+        setFormData(prev => ({ ...prev, assigned_to: 'auto' }))
+      }
     } catch (error) {
       console.error('Error fetching related data:', error)
     }
@@ -84,6 +84,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
         contact: activity.contact?.id || '',
         account: activity.account?.id || '',
         opportunity: activity.opportunity?.id || '',
+        assigned_to: activity.assigned_to || activity.created_by || 'auto',
         due_date: dueDate,
         duration_minutes: activity.duration_minutes || 30,
         description: activity.description || ''
@@ -97,6 +98,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
         contact: '',
         account: '',
         opportunity: '',
+        assigned_to: 'auto',
         due_date: '',
         duration_minutes: 30,
         description: ''
@@ -116,6 +118,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
         contact: formData.contact ? parseInt(formData.contact) : null,
         account: formData.account ? parseInt(formData.account) : null,
         opportunity: formData.opportunity ? parseInt(formData.opportunity) : null,
+        assigned_to: activity?.assigned_to || activity?.created_by || (activity ? activity.assigned_to : null),
         due_date: new Date(formData.due_date).toISOString()
       }
 
@@ -236,6 +239,19 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
                     {contact.first_name} {contact.last_name}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Assigned To *
+              </label>
+              <select
+                value={formData.assigned_to}
+                onChange={(e) => setFormData(prev => ({ ...prev, assigned_to: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                required
+              >
+                <option value="auto">Auto Assign (Current User)</option>
               </select>
             </div>
           </div>

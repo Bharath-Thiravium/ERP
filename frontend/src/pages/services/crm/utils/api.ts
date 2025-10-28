@@ -451,8 +451,32 @@ export const crmApi = {
     return apiClient.get('/api/crm/reports/', { params: { session_key: sessionKey!, ...params } })
   },
 
+  createReportTemplate: async (sessionKey: string, data: any) => {
+    return apiClient.post('/api/crm/reports/', { session_key: sessionKey!, ...data })
+  },
+
+  updateReportTemplate: async (sessionKey: string, id: number, data: any) => {
+    return apiClient.put(`/api/crm/reports/${id}/`, { session_key: sessionKey!, ...data })
+  },
+
+  deleteReportTemplate: async (sessionKey: string, id: number) => {
+    return apiClient.delete(`/api/crm/reports/${id}/`, { data: { session_key: sessionKey } })
+  },
+
   getDashboards: async (sessionKey: string, params?: any) => {
     return apiClient.get('/api/crm/dashboards/', { params: { session_key: sessionKey!, ...params } })
+  },
+
+  createDashboard: async (sessionKey: string, data: any) => {
+    return apiClient.post('/api/crm/dashboards/', { session_key: sessionKey!, ...data })
+  },
+
+  updateDashboard: async (sessionKey: string, id: number, data: any) => {
+    return apiClient.put(`/api/crm/dashboards/${id}/`, { session_key: sessionKey!, ...data })
+  },
+
+  deleteDashboard: async (sessionKey: string, id: number) => {
+    return apiClient.delete(`/api/crm/dashboards/${id}/`, { data: { session_key: sessionKey } })
   },
 
   getBusinessInsights: async (sessionKey: string, params?: any) => {
@@ -460,11 +484,15 @@ export const crmApi = {
   },
 
   generateReport: async (sessionKey: string, reportId: number) => {
-    return apiClient.post(`/api/crm/reports/${reportId}/generate/`, { session_key: sessionKey })
+    return apiClient.get(`/api/crm/reports/${reportId}/generate/`, { params: { session_key: sessionKey } })
+  },
+
+  exportReport: async (sessionKey: string, reportId: number, format: string = 'pdf') => {
+    return apiClient.post(`/api/crm/reports/${reportId}/export/`, { session_key: sessionKey, format })
   },
 
   generateBusinessInsights: async (sessionKey: string) => {
-    return apiClient.post('/api/crm/business-insights/generate/', { session_key: sessionKey })
+    return apiClient.post('/api/crm/business-insights/generate_insights/', { session_key: sessionKey })
   },
 
   acknowledgeInsight: async (sessionKey: string, insightId: number) => {
@@ -476,8 +504,32 @@ export const crmApi = {
     return apiClient.get('/api/crm/email-templates/', { params: { session_key: sessionKey!, ...params } })
   },
 
+  createEmailTemplate: async (sessionKey: string, data: any) => {
+    return apiClient.post('/api/crm/email-templates/', { session_key: sessionKey!, ...data })
+  },
+
+  updateEmailTemplate: async (sessionKey: string, id: number, data: any) => {
+    return apiClient.put(`/api/crm/email-templates/${id}/`, { session_key: sessionKey!, ...data })
+  },
+
+  deleteEmailTemplate: async (sessionKey: string, id: number) => {
+    return apiClient.delete(`/api/crm/email-templates/${id}/`, { data: { session_key: sessionKey } })
+  },
+
   getMarketingCampaigns: async (sessionKey: string, params?: any) => {
     return apiClient.get('/api/crm/marketing-campaigns/', { params: { session_key: sessionKey!, ...params } })
+  },
+
+  createMarketingCampaign: async (sessionKey: string, data: any) => {
+    return apiClient.post('/api/crm/marketing-campaigns/', { session_key: sessionKey!, ...data })
+  },
+
+  updateMarketingCampaign: async (sessionKey: string, id: number, data: any) => {
+    return apiClient.put(`/api/crm/marketing-campaigns/${id}/`, { session_key: sessionKey!, ...data })
+  },
+
+  deleteMarketingCampaign: async (sessionKey: string, id: number) => {
+    return apiClient.delete(`/api/crm/marketing-campaigns/${id}/`, { data: { session_key: sessionKey } })
   },
 
   launchMarketingCampaign: async (sessionKey: string, campaignId: number) => {
@@ -490,6 +542,18 @@ export const crmApi = {
 
   getAutomationWorkflows: async (sessionKey: string, params?: any) => {
     return apiClient.get('/api/crm/automation-workflows/', { params: { session_key: sessionKey!, ...params } })
+  },
+
+  createAutomationWorkflow: async (sessionKey: string, data: any) => {
+    return apiClient.post('/api/crm/automation-workflows/', { session_key: sessionKey!, ...data })
+  },
+
+  updateAutomationWorkflow: async (sessionKey: string, id: number, data: any) => {
+    return apiClient.put(`/api/crm/automation-workflows/${id}/`, { session_key: sessionKey!, ...data })
+  },
+
+  deleteAutomationWorkflow: async (sessionKey: string, id: number) => {
+    return apiClient.delete(`/api/crm/automation-workflows/${id}/`, { data: { session_key: sessionKey } })
   },
 
   // Security & Compliance APIs
@@ -513,8 +577,8 @@ export const crmApi = {
     return apiClient.post(`/api/crm/security-alerts/${alertId}/resolve/`, { session_key: sessionKey })
   },
 
-  resolveComplianceViolation: async (sessionKey: string, violationId: number) => {
-    return apiClient.post(`/api/crm/compliance-violations/${violationId}/resolve/`, { session_key: sessionKey })
+  resolveComplianceViolation: async (sessionKey: string, violationId: number, data?: any) => {
+    return apiClient.post(`/api/crm/compliance-violations/${violationId}/resolve/`, { session_key: sessionKey, ...data })
   },
 
   // Integration Management APIs
@@ -540,5 +604,47 @@ export const crmApi = {
 
   blockMobileDevice: async (sessionKey: string, deviceId: number) => {
     return apiClient.post(`/api/crm/mobile-devices/${deviceId}/block_device/`, { session_key: sessionKey })
+  },
+
+  // Integration CRUD operations
+  createIntegration: async (sessionKey: string, data: any) => {
+    return apiClient.post('/api/crm/integrations/', { session_key: sessionKey, ...data })
+  },
+
+  updateIntegration: async (sessionKey: string, id: number, data: any) => {
+    return apiClient.put(`/api/crm/integrations/${id}/`, { session_key: sessionKey, ...data })
+  },
+
+  deleteIntegration: async (sessionKey: string, id: number) => {
+    return apiClient.delete(`/api/crm/integrations/${id}/`, { data: { session_key: sessionKey } })
+  },
+
+  // Compliance Rules APIs
+  getComplianceRules: async (sessionKey: string, params?: any) => {
+    return apiClient.get('/api/crm/compliance-rules/', { params: { session_key: sessionKey!, ...params } })
+  },
+
+  createComplianceRule: async (sessionKey: string, data: any) => {
+    return apiClient.post('/api/crm/compliance-rules/', { session_key: sessionKey!, ...data })
+  },
+
+  updateComplianceRule: async (sessionKey: string, id: number, data: any) => {
+    return apiClient.put(`/api/crm/compliance-rules/${id}/`, { session_key: sessionKey!, ...data })
+  },
+
+  deleteComplianceRule: async (sessionKey: string, id: number) => {
+    return apiClient.delete(`/api/crm/compliance-rules/${id}/`, { data: { session_key: sessionKey } })
+  },
+
+  activateComplianceRule: async (sessionKey: string, id: number) => {
+    return apiClient.post(`/api/crm/compliance-rules/${id}/activate/`, { session_key: sessionKey })
+  },
+
+  deactivateComplianceRule: async (sessionKey: string, id: number) => {
+    return apiClient.post(`/api/crm/compliance-rules/${id}/deactivate/`, { session_key: sessionKey })
+  },
+
+  checkRuleViolations: async (sessionKey: string, id: number) => {
+    return apiClient.post(`/api/crm/compliance-rules/${id}/check_violations/`, { session_key: sessionKey })
   }
 }

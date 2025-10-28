@@ -91,20 +91,26 @@ class JobPostingSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     designation_title = serializers.CharField(source='designation.title', read_only=True)
     company_name = serializers.CharField(source='company.name', read_only=True)
+    company_logo = serializers.SerializerMethodField()
     applications_count = serializers.SerializerMethodField()
     
     class Meta:
         model = JobPosting
         fields = [
             'id', 'title', 'department', 'department_name', 'designation', 'designation_title',
-            'company_name', 'description', 'requirements', 'responsibilities', 'employment_type', 'work_mode',
+            'company_name', 'company_logo', 'description', 'requirements', 'responsibilities', 'employment_type', 'work_mode',
             'min_salary', 'max_salary', 'required_skills', 'ai_screening_enabled', 'status',
             'posted_date', 'application_deadline', 'applications_count', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'applications_count']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'applications_count', 'company_logo']
     
     def get_applications_count(self, obj):
         return obj.applications.count()
+    
+    def get_company_logo(self, obj):
+        if obj.company.logo:
+            return obj.company.logo.url
+        return None
 
 
 class JobApplicationSerializer(serializers.ModelSerializer):
@@ -114,9 +120,12 @@ class JobApplicationSerializer(serializers.ModelSerializer):
         model = JobApplication
         fields = [
             'id', 'job_posting', 'job_title', 'first_name', 'last_name', 'full_name',
-            'email', 'phone', 'resume', 'cover_letter', 'ai_score', 'skill_match_percentage',
-            'ai_screening_notes', 'status', 'interview_date', 'interview_notes',
-            'interviewer', 'created_at', 'updated_at'
+            'email', 'phone', 'current_position', 'current_company', 'total_experience',
+            'relevant_experience', 'current_salary', 'expected_salary', 'notice_period',
+            'current_location', 'willing_to_relocate', 'linkedin_profile', 'portfolio_url',
+            'education_details', 'skills', 'certifications', 'languages', 'resume', 'cover_letter',
+            'application_source', 'share_id', 'ai_score', 'skill_match_percentage', 'ai_screening_notes', 'status', 
+            'interview_date', 'interview_notes', 'interviewer', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'full_name', 'ai_score', 'skill_match_percentage', 'ai_screening_notes', 'created_at', 'updated_at']
 

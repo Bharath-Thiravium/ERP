@@ -70,7 +70,7 @@ export const DataTable: React.FC<DataTableProps> = ({
     <div className="overflow-x-auto">
       <table className="w-full border-collapse">
         <thead>
-          <tr className="border-b border-gray-200">
+          <tr className="border-b border-gray-200 dark:border-gray-700">
             {selectable && (
               <th className="text-left p-3">
                 <input
@@ -82,7 +82,7 @@ export const DataTable: React.FC<DataTableProps> = ({
               </th>
             )}
             {columns.map((column) => (
-              <th key={column.key} className="text-left p-3 font-semibold text-gray-900">
+              <th key={column.key} className="text-left p-3 font-semibold text-gray-900 dark:text-white">
                 {column.header}
               </th>
             ))}
@@ -90,7 +90,7 @@ export const DataTable: React.FC<DataTableProps> = ({
         </thead>
         <tbody>
           {data.map((item, index) => (
-            <tr key={item.id || index} className="border-b border-gray-100 hover:bg-gray-50">
+            <tr key={item.id || index} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
               {selectable && (
                 <td className="p-3">
                   <input

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity,
@@ -27,9 +27,20 @@ import { inventoryApi } from '../../utils/inventoryApi';
 import type { StockMovement } from '../../types/inventoryTypes';
 import { Card } from '../../../../../components/ui/Card';
 import { Button } from '../../../../../components/ui/Button';
-import { Input } from '../../../../../components/ui/Input';
 import { LoadingSpinner } from '../../../../../components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
+
+// Debounce utility function
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
 
 interface MovementCardProps {
   movement: StockMovement;
@@ -88,17 +99,17 @@ const MovementCard: React.FC<MovementCardProps> = ({ movement, index }) => {
       whileHover={{ scale: 1.02, y: -2 }}
       className="group"
     >
-      <Card className="p-6 hover:shadow-lg transition-all duration-300 border-0 bg-white/80 backdrop-blur-sm">
+      <Card className="p-6 hover:shadow-lg transition-all duration-300 border-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center space-x-4">
             <div className={`p-3 rounded-xl bg-gradient-to-r ${getMovementColor(movement.movement_type)}`}>
               {getMovementIcon(movement.movement_type)}
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900 text-lg group-hover:text-blue-600 transition-colors">
+              <h3 className="font-semibold text-gray-900 dark:text-white text-lg group-hover:text-blue-600 transition-colors">
                 {movement.product_name}
               </h3>
-              <p className="text-gray-500 text-sm">{movement.warehouse_name}</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">{movement.warehouse_name}</p>
             </div>
           </div>
           
@@ -110,7 +121,7 @@ const MovementCard: React.FC<MovementCardProps> = ({ movement, index }) => {
             }`}>
               {getQuantityDisplay(movement.movement_type, movement.quantity)}
             </div>
-            <p className="text-gray-500 text-sm capitalize">
+            <p className="text-gray-500 dark:text-gray-400 text-sm capitalize">
               {movement.movement_type.replace('_', ' ')}
             </p>
           </div>
@@ -118,13 +129,13 @@ const MovementCard: React.FC<MovementCardProps> = ({ movement, index }) => {
 
         {/* Movement Details */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="bg-gray-50 rounded-lg p-3">
-            <p className="text-gray-600 text-xs mb-1">Before</p>
-            <p className="font-semibold text-gray-900">{movement.quantity_before}</p>
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+            <p className="text-gray-600 dark:text-gray-400 text-xs mb-1">Before</p>
+            <p className="font-semibold text-gray-900 dark:text-white">{movement.quantity_before}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-3">
-            <p className="text-gray-600 text-xs mb-1">After</p>
-            <p className="font-semibold text-gray-900">{movement.quantity_after}</p>
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+            <p className="text-gray-600 dark:text-gray-400 text-xs mb-1">After</p>
+            <p className="font-semibold text-gray-900 dark:text-white">{movement.quantity_after}</p>
           </div>
         </div>
 
@@ -132,33 +143,33 @@ const MovementCard: React.FC<MovementCardProps> = ({ movement, index }) => {
         <div className="space-y-2 mb-4 text-sm">
           {movement.reference_number && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Reference:</span>
-              <span className="font-medium text-gray-900">{movement.reference_number}</span>
+              <span className="text-gray-600 dark:text-gray-400">Reference:</span>
+              <span className="font-medium text-gray-900 dark:text-white">{movement.reference_number}</span>
             </div>
           )}
           <div className="flex justify-between">
-            <span className="text-gray-600">Unit Cost:</span>
-            <span className="font-medium text-gray-900">₹{movement.unit_cost}</span>
+            <span className="text-gray-600 dark:text-gray-400">Unit Cost:</span>
+            <span className="font-medium text-gray-900 dark:text-white">₹{movement.unit_cost}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Total Value:</span>
-            <span className="font-medium text-gray-900">₹{(movement.quantity * movement.unit_cost).toFixed(2)}</span>
+            <span className="text-gray-600 dark:text-gray-400">Total Value:</span>
+            <span className="font-medium text-gray-900 dark:text-white">₹{(movement.quantity * movement.unit_cost).toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">By:</span>
-            <span className="font-medium text-gray-900">{movement.created_by_name}</span>
+            <span className="text-gray-600 dark:text-gray-400">By:</span>
+            <span className="font-medium text-gray-900 dark:text-white">{movement.created_by_name}</span>
           </div>
         </div>
 
         {/* Timestamp */}
-        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-          <div className="flex items-center space-x-2 text-gray-500 text-sm">
+        <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
+          <div className="flex items-center space-x-2 text-gray-500 dark:text-gray-400 text-sm">
             <Calendar className="w-4 h-4" />
             <span>{new Date(movement.created_at).toLocaleString()}</span>
           </div>
           
           {movement.batch_number && (
-            <div className="flex items-center space-x-2 text-gray-500 text-sm">
+            <div className="flex items-center space-x-2 text-gray-500 dark:text-gray-400 text-sm">
               <Package className="w-4 h-4" />
               <span>Batch: {movement.batch_number}</span>
             </div>
@@ -202,20 +213,34 @@ const StockMovementTracker: React.FC = () => {
     notes: ''
   });
 
-  useEffect(() => {
-    loadMovements();
-  }, [searchQuery, selectedType, selectedWarehouse, dateRange]);
+  // Debounced search function
+  const debouncedLoadMovements = useCallback(
+    debounce((query: string, type: string, warehouse: string, range: string) => {
+      loadMovementsWithParams(query, type, warehouse, range);
+    }, 300),
+    []
+  );
 
-  const loadMovements = async () => {
+  useEffect(() => {
+    loadMovementsWithParams('', '', '', '7'); // Initial load
+  }, []);
+
+  useEffect(() => {
+    if (searchQuery || selectedType || selectedWarehouse || dateRange !== '7') {
+      debouncedLoadMovements(searchQuery, selectedType, selectedWarehouse, dateRange);
+    }
+  }, [searchQuery, selectedType, selectedWarehouse, dateRange, debouncedLoadMovements]);
+
+  const loadMovementsWithParams = async (query: string, type: string, warehouse: string, range: string) => {
     try {
       setLoading(true);
       const params: any = {};
-      if (searchQuery) params.search = searchQuery;
-      if (selectedType) params.movement_type = selectedType;
-      if (selectedWarehouse) params.warehouse = selectedWarehouse;
-      if (dateRange) {
+      if (query.trim()) params.search = query.trim();
+      if (type) params.movement_type = type;
+      if (warehouse) params.warehouse = warehouse;
+      if (range) {
         const date = new Date();
-        date.setDate(date.getDate() - parseInt(dateRange));
+        date.setDate(date.getDate() - parseInt(range));
         params.created_at__gte = date.toISOString().split('T')[0];
       }
 
@@ -226,6 +251,10 @@ const StockMovementTracker: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadMovements = () => {
+    loadMovementsWithParams(searchQuery, selectedType, selectedWarehouse, dateRange);
   };
 
   const handleCreateMovement = async () => {
@@ -329,11 +358,11 @@ const StockMovementTracker: React.FC = () => {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center space-x-3">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center space-x-3">
             <Activity className="w-8 h-8 text-blue-500" />
             <span>Stock Movement Tracker</span>
           </h1>
-          <p className="text-gray-600 mt-1">Real-time inventory movement monitoring</p>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">Real-time inventory movement monitoring</p>
         </div>
         
         <div className="flex items-center space-x-3">
@@ -435,24 +464,34 @@ const StockMovementTracker: React.FC = () => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-gray-200"
+        className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm rounded-xl p-6 border border-gray-200/50 dark:border-gray-700/50"
       >
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <Input
+            <input
               type="text"
               placeholder="Search movements..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              onChange={(e) => {
+                e.preventDefault();
+                setSearchQuery(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                }
+              }}
+
+              autoFocus
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
           </div>
           
           <select
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           >
             <option value="">All Movement Types</option>
             <option value="in">Stock In</option>
@@ -468,7 +507,7 @@ const StockMovementTracker: React.FC = () => {
           <select
             value={selectedWarehouse}
             onChange={(e) => setSelectedWarehouse(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           >
             <option value="">All Warehouses</option>
             {/* Warehouses will be loaded dynamically */}
@@ -477,7 +516,7 @@ const StockMovementTracker: React.FC = () => {
           <select
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           >
             <option value="1">Last 24 Hours</option>
             <option value="7">Last 7 Days</option>
@@ -512,8 +551,8 @@ const StockMovementTracker: React.FC = () => {
             className="text-center py-12"
           >
             <Activity className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No movements found</h3>
-            <p className="text-gray-600 mb-6">No stock movements match your current filters</p>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No movements found</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">No stock movements match your current filters</p>
             <Button 
               className="bg-gradient-to-r from-blue-500 to-purple-600"
               onClick={handleCreateMovement}
@@ -542,21 +581,21 @@ const StockMovementTracker: React.FC = () => {
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden"
+                className="relative w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden"
               >
-                <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
+                <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20">
                   <div className="flex items-center space-x-3">
                     <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
                       <Activity className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold text-gray-900">Record Stock Movement</h2>
-                      <p className="text-sm text-gray-500">Add or remove inventory</p>
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">Record Stock Movement</h2>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Add or remove inventory</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setShowCreateModal(false)}
-                    className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                    className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   >
                     <X className="h-6 w-6" />
                   </button>
@@ -566,11 +605,11 @@ const StockMovementTracker: React.FC = () => {
                   <div className="space-y-6">
                     {/* Movement Type Selection */}
                     <div className="mb-6">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Movement Type *</label>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Movement Type *</label>
                       <select
                         value={formData.movement_type}
                         onChange={(e) => handleInputChange('movement_type', e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
                         <option value="in">Stock In - Initial inventory entry</option>
                         <option value="out">Stock Out - General removal</option>
@@ -587,11 +626,11 @@ const StockMovementTracker: React.FC = () => {
                     {/* Basic Fields - Always Required */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Product *</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Product *</label>
                         <select
                           value={formData.product}
                           onChange={(e) => handleInputChange('product', e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           required
                         >
                           <option value="">Select Product</option>
@@ -607,11 +646,11 @@ const StockMovementTracker: React.FC = () => {
                       {formData.movement_type === 'transfer' ? (
                         <>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">From Warehouse *</label>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">From Warehouse *</label>
                             <select
                               value={formData.warehouse}
                               onChange={(e) => handleInputChange('warehouse', e.target.value)}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               required
                             >
                               <option value="">Select Source Warehouse</option>
@@ -623,11 +662,11 @@ const StockMovementTracker: React.FC = () => {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">To Warehouse *</label>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">To Warehouse *</label>
                             <select
                               value={formData.destination_warehouse}
                               onChange={(e) => handleInputChange('destination_warehouse', e.target.value)}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               required
                             >
                               <option value="">Select Destination Warehouse</option>
@@ -641,11 +680,11 @@ const StockMovementTracker: React.FC = () => {
                         </>
                       ) : (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Warehouse *</label>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Warehouse *</label>
                           <select
                             value={formData.warehouse}
                             onChange={(e) => handleInputChange('warehouse', e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             required
                           >
                             <option value="">Select Warehouse</option>
@@ -660,7 +699,7 @@ const StockMovementTracker: React.FC = () => {
 
                       {/* Quantity - Label changes for adjustment */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                           {formData.movement_type === 'adjustment' ? 'Quantity Difference *' : 'Quantity *'}
                         </label>
                         <input
@@ -668,7 +707,7 @@ const StockMovementTracker: React.FC = () => {
                           step="0.01"
                           value={formData.quantity}
                           onChange={(e) => handleInputChange('quantity', e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder={formData.movement_type === 'adjustment' ? '+/- quantity' : 'Enter quantity'}
                           required
                         />
@@ -677,15 +716,15 @@ const StockMovementTracker: React.FC = () => {
                       {/* Unit Cost - Not required for adjustments */}
                       {formData.movement_type !== 'adjustment' && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Unit Cost *</label>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Unit Cost *</label>
                           <div className="relative">
-                            <span className="absolute left-3 top-3 text-gray-500">₹</span>
+                            <span className="absolute left-3 top-3 text-gray-500 dark:text-gray-400">₹</span>
                             <input
                               type="number"
                               step="0.01"
                               value={formData.unit_cost}
                               onChange={(e) => handleInputChange('unit_cost', e.target.value)}
-                              className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              className="w-full pl-8 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               placeholder="0.00"
                               required
                             />
@@ -699,12 +738,12 @@ const StockMovementTracker: React.FC = () => {
                       {/* Purchase - PO Number */}
                       {formData.movement_type === 'purchase' && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">PO Number</label>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">PO Number</label>
                           <input
                             type="text"
                             value={formData.reference_number}
                             onChange={(e) => handleInputChange('reference_number', e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             placeholder="Purchase order number"
                           />
                         </div>
@@ -797,12 +836,12 @@ const StockMovementTracker: React.FC = () => {
                       {/* Batch Number - Only for incoming stock */}
                       {['purchase', 'in', 'return', 'production'].includes(formData.movement_type) && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Batch Number</label>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Batch Number</label>
                           <input
                             type="text"
                             value={formData.batch_number}
                             onChange={(e) => handleInputChange('batch_number', e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             placeholder="Batch/Lot number"
                           />
                         </div>
@@ -811,30 +850,30 @@ const StockMovementTracker: React.FC = () => {
                       {/* Expiry Date - Only for incoming stock */}
                       {['purchase', 'in', 'return', 'production'].includes(formData.movement_type) && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Expiry Date</label>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Expiry Date</label>
                           <input
                             type="date"
                             value={formData.expiry_date}
                             onChange={(e) => handleInputChange('expiry_date', e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
                         </div>
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes</label>
                       <textarea
                         value={formData.notes}
                         onChange={(e) => handleInputChange('notes', e.target.value)}
                         rows={3}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Additional notes or comments"
                       />
                     </div>
                   </div>
 
-                  <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-gray-200">
+                  <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
                     <Button
                       type="button"
                       variant="outline"

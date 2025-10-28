@@ -36,6 +36,30 @@ class ReportTemplateViewSet(CRMBaseViewSet):
         report_data = self._generate_report_data(template, company)
         return Response(report_data)
 
+    @action(detail=True, methods=['post'])
+    def export(self, request, pk=None):
+        template = self.get_object()
+        session_key = self.get_session_key()
+        format_type = request.data.get('format', 'pdf')
+        
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Generate report data
+        report_data = self._generate_report_data(template, company)
+        
+        # Return export URL or data based on format
+        export_url = f"/api/crm/reports/{template.id}/download/?format={format_type}&session_key={session_key}"
+        
+        return Response({
+            'message': f'Report exported successfully as {format_type.upper()}',
+            'export_url': export_url,
+            'format': format_type
+        })
+
     def _generate_report_data(self, template, company):
         if template.report_type == 'sales_performance':
             return self._generate_sales_performance(company)
@@ -97,6 +121,50 @@ class ReportTemplateViewSet(CRMBaseViewSet):
             }
         }
 
+    @action(detail=True)
+    def download(self, request, pk=None):
+        template = self.get_object()
+        session_key = request.GET.get('session_key')
+        format_type = request.GET.get('format', 'pdf')
+        
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Generate report data
+        report_data = self._generate_report_data(template, company)
+        
+        # Create downloadable content
+        if format_type == 'csv':
+            import csv
+            from django.http import HttpResponse
+            
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="{template.name}.csv"'
+            
+            writer = csv.writer(response)
+            writer.writerow(['Report', template.name])
+            writer.writerow(['Generated', timezone.now().strftime('%Y-%m-%d %H:%M:%S')])
+            writer.writerow([])
+            
+            if 'summary' in report_data:
+                writer.writerow(['Summary'])
+                for key, value in report_data['summary'].items():
+                    writer.writerow([key.replace('_', ' ').title(), value])
+                writer.writerow([])
+            
+            return response
+        
+        # Default to JSON for other formats
+        from django.http import JsonResponse
+        return JsonResponse({
+            'report_name': template.name,
+            'generated_at': timezone.now().isoformat(),
+            'data': report_data
+        })
+
 
 class DashboardViewSet(CRMBaseViewSet):
     queryset = Dashboard.objects.all()
@@ -148,7 +216,7 @@ class BusinessIntelligenceViewSet(CRMBaseViewSet):
     filterset_fields = ['insight_type', 'priority', 'is_active', 'is_acknowledged']
     ordering = ['-created_at']
 
-    @action(detail=False)
+    @action(detail=False, methods=['post'])
     def generate_insights(self, request):
         session_key = self.get_session_key()
         

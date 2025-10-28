@@ -116,16 +116,16 @@ def generate_pf_challan(request):
         session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
         company = session.service_user.company
         
-        month = request.data.get('month')
-        year = request.data.get('year')
+        month = request.data.get('month', date.today().month)
+        year = request.data.get('year', date.today().year)
         
         generator = ChallanGenerator(company)
         pdf_buffer = generator.generate_pf_challan(month, year)
         
-        return Response({
-            'message': 'PF challan generated successfully',
-            'period': f"{month:02d}/{year}"
-        })
+        from django.http import HttpResponse
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="PF_Challan_{month:02d}_{year}.pdf"'
+        return response
         
     except ServiceUserSession.DoesNotExist:
         return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -144,16 +144,16 @@ def generate_esi_challan(request):
         session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
         company = session.service_user.company
         
-        month = request.data.get('month')
-        year = request.data.get('year')
+        month = request.data.get('month', date.today().month)
+        year = request.data.get('year', date.today().year)
         
         generator = ChallanGenerator(company)
         pdf_buffer = generator.generate_esi_challan(month, year)
         
-        return Response({
-            'message': 'ESI challan generated successfully',
-            'period': f"{month:02d}/{year}"
-        })
+        from django.http import HttpResponse
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="ESI_Challan_{month:02d}_{year}.pdf"'
+        return response
         
     except ServiceUserSession.DoesNotExist:
         return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)

@@ -452,11 +452,11 @@ const ERPConnectorsTab: React.FC = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">ERP Type</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">ERP Type</label>
               <select
                 value={formData.erp_type}
                 onChange={(e) => setFormData({...formData, erp_type: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 disabled={showEditModal}
               >
                 <option value="tally">Tally</option>
@@ -466,12 +466,12 @@ const ERPConnectorsTab: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Connector Name</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Connector Name</label>
               <input
                 type="text"
                 value={formData.erp_name}
                 onChange={(e) => setFormData({...formData, erp_name: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="e.g., Tally Production Server"
               />
             </div>
@@ -479,22 +479,22 @@ const ERPConnectorsTab: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Server URL</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Server URL</label>
               <input
                 type="text"
                 value={formData.server_url}
                 onChange={(e) => setFormData({...formData, server_url: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="http://server:port"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Database/Company</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Database/Company</label>
               <input
                 type="text"
                 value={formData.database_name}
                 onChange={(e) => setFormData({...formData, database_name: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="Database or Company name"
               />
             </div>
@@ -502,21 +502,21 @@ const ERPConnectorsTab: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Username</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Username</label>
               <input
                 type="text"
                 value={formData.username}
                 onChange={(e) => setFormData({...formData, username: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Password</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Password</label>
               <input
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder={showEditModal ? "Leave blank to keep current" : ""}
               />
             </div>

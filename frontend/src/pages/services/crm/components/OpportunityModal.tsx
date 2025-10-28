@@ -15,8 +15,9 @@ interface OpportunityModalProps {
 export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onClose, onSuccess, opportunity }) => {
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
-  const [accounts, setAccounts] = useState([])
-  const [contacts, setContacts] = useState([])
+  const [accounts, setAccounts] = useState<any[]>([])
+  const [contacts, setContacts] = useState<any[]>([])
+  const [users, setUsers] = useState<any[]>([])
   const [formData, setFormData] = useState({
     name: '',
     account: '',
@@ -26,7 +27,8 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
     probability: 25,
     expected_close_date: '',
     description: '',
-    next_step: ''
+    next_step: '',
+    owner: ''
   })
 
   const stages = [
@@ -45,6 +47,7 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
     if (isOpen && sessionKey!) {
       fetchAccounts()
       fetchContacts()
+      fetchUsers()
     }
   }, [isOpen, sessionKey])
 
@@ -66,18 +69,57 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
     }
   }
 
+  const fetchUsers = async () => {
+    try {
+      const { serviceUser } = useServiceUserStore.getState()
+      
+      // Since backend will handle the owner assignment automatically,
+      // we just need to show a placeholder user for the UI
+      const currentUser = {
+        id: 'auto', // Special value that backend will replace
+        first_name: serviceUser?.full_name?.split(' ')[0] || 'Current',
+        last_name: serviceUser?.full_name?.split(' ').slice(1).join(' ') || 'User',
+        username: 'user',
+        display_name: serviceUser?.full_name || 'Current User'
+      }
+      
+      setUsers([currentUser])
+      
+      // Set default owner for new opportunities
+      if (!opportunity) {
+        setFormData(prev => ({ ...prev, owner: 'auto' }))
+      }
+      
+    } catch (error) {
+      console.error('Error setting up users:', error)
+      // Fallback user
+      const fallbackUser = {
+        id: 'auto',
+        first_name: 'Current',
+        last_name: 'User',
+        username: 'user',
+        display_name: 'Current User'
+      }
+      setUsers([fallbackUser])
+      if (!opportunity) {
+        setFormData(prev => ({ ...prev, owner: 'auto' }))
+      }
+    }
+  }
+
   React.useEffect(() => {
     if (opportunity) {
       setFormData({
         name: opportunity.name || '',
-        account: opportunity.account?.id || '',
-        contact: opportunity.contact?.id || '',
+        account: opportunity.account?.id || opportunity.account || '',
+        contact: opportunity.contact?.id || opportunity.contact || '',
         stage: opportunity.stage || 'prospecting',
         amount: opportunity.amount?.toString() || '',
         probability: opportunity.probability || 25,
         expected_close_date: opportunity.expected_close_date || '',
         description: opportunity.description || '',
-        next_step: opportunity.next_step || ''
+        next_step: opportunity.next_step || '',
+        owner: opportunity.owner?.id || opportunity.owner || ''
       })
     } else {
       setFormData({
@@ -89,7 +131,8 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
         probability: 25,
         expected_close_date: '',
         description: '',
-        next_step: ''
+        next_step: '',
+        owner: ''
       })
     }
   }, [opportunity, isOpen])
@@ -104,7 +147,8 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
         ...formData,
         amount: parseFloat(formData.amount),
         account: parseInt(formData.account),
-        contact: formData.contact ? parseInt(formData.contact) : null
+        contact: formData.contact ? parseInt(formData.contact) : null,
+        owner: 'auto' // Send 'auto' and let backend replace with correct user ID
       }
 
       if (opportunity) {
@@ -225,7 +269,25 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
                 ))}
               </select>
             </div>
-            <div className="md:col-span-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Owner *
+              </label>
+              <select
+                required
+                value={formData.owner}
+                onChange={(e) => setFormData(prev => ({ ...prev, owner: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                <option value="">Select Owner</option>
+                {users.map((user: any) => (
+                  <option key={user.id} value={user.id}>
+                    {user.display_name} ({user.username})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Expected Close Date *
               </label>

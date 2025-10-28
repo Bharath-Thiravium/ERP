@@ -34,6 +34,8 @@ class InterviewSerializer:
             'cultural_fit_rating': interview.cultural_fit_rating,
             'overall_rating': interview.overall_rating,
             'recommendation': interview.recommendation,
+            'email_sent': interview.email_sent,
+            'email_sent_at': interview.email_sent_at.isoformat() if interview.email_sent_at else None,
             'created_at': interview.created_at.isoformat(),
             'updated_at': interview.updated_at.isoformat(),
         }
@@ -106,8 +108,25 @@ class InterviewListCreateView(ListCreateAPIView):
                 meeting_link=request.data.get('meeting_link', ''),
                 notes=request.data.get('notes', '')
             )
+            
+            # Ensure interview is saved before sending email
+            interview.refresh_from_db()
+            
+            # Send interview invitation email
+            email_result = interview.send_interview_invitation()
+            
+            response_data = InterviewSerializer.serialize(interview)
+            if isinstance(email_result, dict):
+                if email_result['success']:
+                    response_data['email_success'] = email_result['message']
+                else:
+                    response_data['email_warning'] = email_result['error']
+            else:
+                # Backward compatibility for boolean return
+                if not email_result:
+                    response_data['email_warning'] = 'Interview scheduled but invitation email not sent. Please check company email settings.'
 
-            return Response(InterviewSerializer.serialize(interview), status=status.HTTP_201_CREATED)
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -153,6 +172,23 @@ class InterviewDetailView(RetrieveUpdateDestroyAPIView):
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             interview = self.get_object()
             
+            # Check if resend invitation is requested
+            if request.data.get('resend_invitation'):
+                email_result = interview.send_interview_invitation()
+                response_data = InterviewSerializer.serialize(interview)
+                if isinstance(email_result, dict):
+                    if email_result['success']:
+                        response_data['email_success'] = email_result['message']
+                    else:
+                        response_data['email_warning'] = email_result['error']
+                else:
+                    # Backward compatibility
+                    if not email_result:
+                        response_data['email_warning'] = 'Failed to resend invitation email. Please check company email settings.'
+                    else:
+                        response_data['email_success'] = 'Interview invitation resent successfully.'
+                return Response(response_data)
+            
             # Update fields
             for field in ['interview_date', 'interview_time', 'interview_type', 'location', 
                          'meeting_link', 'notes', 'feedback', 'technical_rating', 
@@ -163,6 +199,26 @@ class InterviewDetailView(RetrieveUpdateDestroyAPIView):
             
             interview.save()
             return Response(InterviewSerializer.serialize(interview))
+
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    def test_email(self, request, pk=None):
+        """Test interview email functionality"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            interview = self.get_object()
+            
+            email_sent = interview.send_interview_invitation()
+            
+            return Response({
+                'success': email_sent,
+                'message': 'Test email sent!' if email_sent else 'Email failed. Check settings.'
+            })
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)

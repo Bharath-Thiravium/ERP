@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Warehouse,
@@ -22,9 +22,20 @@ import { inventoryApi } from '../../utils/inventoryApi';
 import type { Warehouse as WarehouseType } from '../../types/inventoryTypes';
 import { Card } from '../../../../../components/ui/Card';
 import { Button } from '../../../../../components/ui/Button';
-import { Input } from '../../../../../components/ui/Input';
 import { LoadingSpinner } from '../../../../../components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
+
+// Debounce utility function
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
 
 // Ensure toast.info is available
 
@@ -52,15 +63,29 @@ const WarehouseManager: React.FC = () => {
     is_active: true
   });
 
-  useEffect(() => {
-    loadWarehouses();
-  }, [searchQuery]);
+  // Debounced search function
+  const debouncedLoadWarehouses = useCallback(
+    debounce((query: string) => {
+      loadWarehousesWithParams(query);
+    }, 300),
+    []
+  );
 
-  const loadWarehouses = async () => {
+  useEffect(() => {
+    loadWarehousesWithParams(''); // Initial load
+  }, []);
+
+  useEffect(() => {
+    if (searchQuery) {
+      debouncedLoadWarehouses(searchQuery);
+    }
+  }, [searchQuery, debouncedLoadWarehouses]);
+
+  const loadWarehousesWithParams = async (query: string) => {
     try {
       setLoading(true);
       const params: any = {};
-      if (searchQuery) params.search = searchQuery;
+      if (query.trim()) params.search = query.trim();
 
       const response = await inventoryApi.getWarehouses(params);
       setWarehouses(response.results || response);
@@ -70,6 +95,10 @@ const WarehouseManager: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadWarehouses = () => {
+    loadWarehousesWithParams(searchQuery);
   };
 
   const validateForm = () => {
@@ -235,11 +264,11 @@ const WarehouseManager: React.FC = () => {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center space-x-3">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center space-x-3">
             <Warehouse className="w-8 h-8 text-indigo-500" />
             <span>Warehouse Management</span>
           </h1>
-          <p className="text-gray-600 mt-1">Manage your storage facilities and locations</p>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">Manage your storage facilities and locations</p>
         </div>
         
         <Button 
@@ -255,16 +284,26 @@ const WarehouseManager: React.FC = () => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-gray-200"
+        className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm rounded-xl p-6 border border-gray-200/50 dark:border-gray-700/50"
       >
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <Input
+          <input
             type="text"
             placeholder="Search warehouses..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            onChange={(e) => {
+              e.preventDefault();
+              setSearchQuery(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+              }
+            }}
+
+            autoFocus
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           />
         </div>
       </motion.div>
@@ -286,7 +325,7 @@ const WarehouseManager: React.FC = () => {
                 whileHover={{ y: -5, scale: 1.02 }}
                 className="group"
               >
-                <Card className="p-6 hover:shadow-xl transition-all duration-300 border-0 bg-white/80 backdrop-blur-sm">
+                <Card className="p-6 hover:shadow-xl transition-all duration-300 border-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
                   {/* Header */}
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center space-x-3">
@@ -294,10 +333,10 @@ const WarehouseManager: React.FC = () => {
                         <Building className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900 text-lg group-hover:text-indigo-600 transition-colors">
+                        <h3 className="font-semibold text-gray-900 dark:text-white text-lg group-hover:text-indigo-600 transition-colors">
                           {warehouse.name}
                         </h3>
-                        <p className="text-gray-500 text-sm">{warehouse.code}</p>
+                        <p className="text-gray-500 dark:text-gray-400 text-sm">{warehouse.code}</p>
                       </div>
                     </div>
                     
@@ -313,7 +352,7 @@ const WarehouseManager: React.FC = () => {
                   <div className="space-y-2 mb-4 text-sm">
                     <div className="flex items-start space-x-2">
                       <MapPin className="h-4 w-4 text-gray-400 mt-0.5" />
-                      <div className="text-gray-600">
+                      <div className="text-gray-600 dark:text-gray-300">
                         <p>{warehouse.address}</p>
                         <p>{warehouse.city}, {warehouse.state} - {warehouse.pincode}</p>
                       </div>
@@ -321,7 +360,7 @@ const WarehouseManager: React.FC = () => {
                     {warehouse.manager_name && (
                       <div className="flex items-center space-x-2">
                         <User className="h-4 w-4 text-gray-400" />
-                        <span className="text-gray-600">Manager: {warehouse.manager_name}</span>
+                        <span className="text-gray-600 dark:text-gray-300">Manager: {warehouse.manager_name}</span>
                       </div>
                     )}
                   </div>
@@ -329,8 +368,8 @@ const WarehouseManager: React.FC = () => {
                   {/* Capacity Metrics */}
                   <div className="mb-4">
                     <div className="flex justify-between text-sm mb-2">
-                      <span className="text-gray-600">Capacity Utilization</span>
-                      <span className="font-medium text-gray-900">{Number(warehouse.capacity_utilization || 0).toFixed(1)}%</span>
+                      <span className="text-gray-600 dark:text-gray-400">Capacity Utilization</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{Number(warehouse.capacity_utilization || 0).toFixed(1)}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <motion.div
@@ -417,8 +456,8 @@ const WarehouseManager: React.FC = () => {
             className="text-center py-12"
           >
             <Warehouse className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No warehouses found</h3>
-            <p className="text-gray-600 mb-6">Add your first warehouse to start managing inventory locations</p>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No warehouses found</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">Add your first warehouse to start managing inventory locations</p>
             <Button 
               className="bg-gradient-to-r from-indigo-500 to-purple-600"
               onClick={() => setShowAddModal(true)}

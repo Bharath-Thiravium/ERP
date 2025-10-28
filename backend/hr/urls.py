@@ -12,6 +12,7 @@ from . import government_views
 from . import leave_views
 from . import interview_views
 from . import offer_views
+from . import share_analytics_views
 
 router = DefaultRouter()
 router.register(r'dashboard', views.HRDashboardViewSet, basename='hr-dashboard')
@@ -32,6 +33,10 @@ router.register(r'advanced-reports', advanced_views.AdvancedReportsViewSet, base
 router.register(r'automation', advanced_views.AutomationViewSet, basename='automation')
 router.register(r'integration', advanced_views.IntegrationViewSet, basename='integration')
 
+# Share Analytics Routes (Phase 3)
+router.register(r'share-analytics', share_analytics_views.ShareAnalyticsViewSet, basename='share-analytics')
+router.register(r'message-templates', share_analytics_views.MessageTemplateViewSet, basename='message-templates')
+
 urlpatterns = [
     path('', include(router.urls)),
     
@@ -41,6 +46,7 @@ urlpatterns = [
     
     # Department Management
     path('departments/', views.DepartmentListCreateView.as_view(), name='department-list-create'),
+    path('departments/<int:pk>/', views.DepartmentDetailView.as_view(), name='department-detail'),
     
     # Designation Management
     path('designations/', views.DesignationListCreateView.as_view(), name='designation-list-create'),
@@ -122,9 +128,16 @@ urlpatterns = [
     path('forms/esi-challan/', form_views.generate_esi_challan, name='generate-esi-challan'),
     
     # Leave Management APIs
+    path('leave-types/', leave_views.LeaveTypeViewSet.as_view({'get': 'list', 'post': 'create'}), name='leave-types'),
+    path('leave-types/<int:pk>/', leave_views.LeaveTypeViewSet.as_view({'delete': 'destroy'}), name='leave-type-detail'),
     path('leave-balances/', leave_views.LeaveBalanceViewSet.as_view({'get': 'list', 'post': 'create'}), name='leave-balances'),
     path('leave-applications/', leave_views.LeaveApplicationViewSet.as_view({'get': 'list', 'post': 'create'}), name='leave-applications'),
     path('leave-applications/<int:pk>/approve/', leave_views.LeaveApplicationViewSet.as_view({'post': 'approve'}), name='approve-leave'),
     path('leave-applications/<int:pk>/reject/', leave_views.LeaveApplicationViewSet.as_view({'post': 'reject'}), name='reject-leave'),
     path('holidays/', leave_views.HolidayViewSet.as_view({'get': 'list', 'post': 'create'}), name='holidays'),
+    
+    # Share Analytics APIs
+    path('share-analytics/track-share/', share_analytics_views.ShareAnalyticsViewSet.as_view({'post': 'track_share'}), name='track-share'),
+    path('share-analytics/track-click/', share_analytics_views.track_click, name='track-click'),
+    path('share-analytics/track-application/', share_analytics_views.track_application_from_share, name='track-application'),
 ]

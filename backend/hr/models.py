@@ -10,7 +10,7 @@ class Department(models.Model):
     """Department model for organizing employees"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='departments')
     name = models.CharField(max_length=100)
-    code = models.CharField(max_length=20, unique=True)
+    code = models.CharField(max_length=30)  # Removed unique=True, increased length for prefix
     description = models.TextField(blank=True)
     manager = models.ForeignKey('Employee', on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_departments')
     is_active = models.BooleanField(default=True)
@@ -20,17 +20,40 @@ class Department(models.Model):
     class Meta:
         unique_together = ['company', 'code']
         ordering = ['name']
+        indexes = [
+            models.Index(fields=['company', 'is_active']),
+            models.Index(fields=['company', 'code']),
+        ]
 
     def __str__(self):
         from .security_fixes import sanitize_department_name
         return escape(f"{self.code} - {sanitize_department_name(self.name)}")
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            # Auto-generate code with company prefix
+            try:
+                from authentication.utils import generate_auto_code
+                self.code = generate_auto_code(self.company.id, 'department')
+            except Exception:
+                # Fallback if auto-code fails
+                last_dept = Department.objects.filter(
+                    company=self.company,
+                    code__startswith=f'{self.company.company_prefix}-DEPT-'
+                ).order_by('-id').first()
+                if last_dept:
+                    last_number = int(last_dept.code.split('-')[-1])
+                    self.code = f"{self.company.company_prefix}-DEPT-{last_number + 1:03d}"
+                else:
+                    self.code = f"{self.company.company_prefix}-DEPT-001"
+        super().save(*args, **kwargs)
 
 
 class Designation(models.Model):
     """Job designation/position model"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='designations')
     title = models.CharField(max_length=100)
-    code = models.CharField(max_length=20, unique=True)
+    code = models.CharField(max_length=30)  # Removed unique=True, increased length for prefix
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='designations')
     level = models.CharField(max_length=20, choices=[
         ('entry', 'Entry Level'),
@@ -51,10 +74,34 @@ class Designation(models.Model):
     class Meta:
         unique_together = ['company', 'code']
         ordering = ['title']
+        indexes = [
+            models.Index(fields=['company', 'is_active']),
+            models.Index(fields=['company', 'code']),
+            models.Index(fields=['department', 'is_active']),
+        ]
 
     def __str__(self):
         from .security_fixes import sanitize_designation_title, sanitize_department_name
         return escape(f"{sanitize_designation_title(self.title)} - {sanitize_department_name(self.department.name)}")
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            # Auto-generate code with company prefix
+            try:
+                from authentication.utils import generate_auto_code
+                self.code = generate_auto_code(self.company.id, 'designation')
+            except Exception:
+                # Fallback if auto-code fails
+                last_desig = Designation.objects.filter(
+                    company=self.company,
+                    code__startswith=f'{self.company.company_prefix}-DESIG-'
+                ).order_by('-id').first()
+                if last_desig:
+                    last_number = int(last_desig.code.split('-')[-1])
+                    self.code = f"{self.company.company_prefix}-DESIG-{last_number + 1:03d}"
+                else:
+                    self.code = f"{self.company.company_prefix}-DESIG-001"
+        super().save(*args, **kwargs)
 
 
 class Employee(models.Model):
@@ -268,9 +315,46 @@ class JobApplication(models.Model):
     email = models.EmailField()
     phone = models.CharField(max_length=15)
     
+    # Professional Details
+    current_position = models.CharField(max_length=100, blank=True)
+    current_company = models.CharField(max_length=100, blank=True)
+    total_experience = models.DecimalField(max_digits=4, decimal_places=1, default=0)
+    relevant_experience = models.DecimalField(max_digits=4, decimal_places=1, default=0)
+    current_salary = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    expected_salary = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    notice_period = models.CharField(max_length=50, blank=True)
+    
+    # Contact & Location
+    current_location = models.CharField(max_length=100, blank=True)
+    willing_to_relocate = models.BooleanField(default=False)
+    linkedin_profile = models.URLField(blank=True)
+    portfolio_url = models.URLField(blank=True)
+    
+    # Education & Skills
+    education_details = models.JSONField(default=list, blank=True)
+    skills = models.JSONField(default=list, blank=True)
+    certifications = models.JSONField(default=list, blank=True)
+    languages = models.JSONField(default=list, blank=True)
+    
     # Application Materials
-    resume = models.FileField(upload_to='resumes/', help_text="Upload resume/CV")
+    resume = models.FileField(upload_to='resumes/', blank=True, help_text="Upload resume/CV")
     cover_letter = models.TextField(blank=True)
+    
+    # Source Tracking
+    application_source = models.CharField(max_length=50, default='direct', choices=[
+        ('direct', 'Direct Application'),
+        ('whatsapp', 'WhatsApp Share'),
+        ('linkedin', 'LinkedIn Share'),
+        ('gmail', 'Gmail Share'),
+        ('outlook', 'Outlook Share'),
+        ('facebook', 'Facebook Share'),
+        ('twitter', 'Twitter Share'),
+        ('instagram', 'Instagram Share'),
+        ('telegram', 'Telegram Share'),
+        ('other_email', 'Other Email Share'),
+        ('copy_link', 'Copy Link Share')
+    ], help_text="Source platform from which application was submitted")
+    share_id = models.CharField(max_length=100, blank=True, help_text="Share tracking ID if from social media")
     
     # AI Screening Results
     ai_score = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="AI-calculated candidate score")

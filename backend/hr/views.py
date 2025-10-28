@@ -496,6 +496,32 @@ class DepartmentListCreateView(ListCreateAPIView):
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
+class DepartmentDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete departments"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = DepartmentSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Department.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return Department.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return Department.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
+        return session_key
+
+
 class DesignationListCreateView(ListCreateAPIView):
     """List and create designations"""
     authentication_classes = []
@@ -720,6 +746,27 @@ class PublicJobApplicationView(CreateAPIView):
         
         data = request.data.copy()
         data['job_posting'] = job_posting.id
+        
+        # Determine application source from URL parameters
+        utm_source = request.query_params.get('utm_source', 'direct')
+        share_id = request.query_params.get('share_id', '')
+        
+        # Map UTM sources to application sources
+        source_mapping = {
+            'whatsapp': 'whatsapp',
+            'linkedin': 'linkedin', 
+            'gmail': 'gmail',
+            'outlook': 'outlook',
+            'facebook': 'facebook',
+            'twitter': 'twitter',
+            'instagram': 'instagram',
+            'telegram': 'telegram',
+            'other_email': 'other_email',
+            'copy_link': 'copy_link'
+        }
+        
+        data['application_source'] = source_mapping.get(utm_source, 'direct')
+        data['share_id'] = share_id
         
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)

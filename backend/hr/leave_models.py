@@ -21,6 +21,7 @@ class LeaveType(models.Model):
     code = models.CharField(max_length=20)
     category = models.CharField(max_length=20, choices=LEAVE_CATEGORIES)
     days_per_year = models.DecimalField(max_digits=5, decimal_places=2, validators=[MinValueValidator(0)])
+    carry_forward = models.BooleanField(default=False)
     max_carry_forward = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     is_paid = models.BooleanField(default=True)
     requires_approval = models.BooleanField(default=True)

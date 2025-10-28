@@ -11,17 +11,37 @@ const CandidatePipeline: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
   const [applications, setApplications] = useState<JobApplication[]>([])
   const [loading, setLoading] = useState(false)
+  const [jobPostings, setJobPostings] = useState<any[]>([])
+  const [selectedJobId, setSelectedJobId] = useState<number | null>(null)
+  const [filteredApplications, setFilteredApplications] = useState<JobApplication[]>([])
 
   const fetchApplications = async () => {
     if (!sessionKey) return
     
     setLoading(true)
     try {
-      const response = await api.get('/api/hr/job-applications/', {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
-      })
-      setApplications(response.data.results || [])
+      const [appsResponse, jobsResponse] = await Promise.all([
+        api.get('/api/hr/job-applications/', {
+          headers: { Authorization: `Bearer ${sessionKey}` },
+          params: { session_key: sessionKey }
+        }),
+        api.get('/api/hr/job-postings/', {
+          headers: { Authorization: `Bearer ${sessionKey}` },
+          params: { session_key: sessionKey }
+        })
+      ])
+      
+      const allApplications = appsResponse.data.results || []
+      setApplications(allApplications)
+      setJobPostings(jobsResponse.data.results || [])
+      
+      // Filter applications based on selected job
+      if (selectedJobId) {
+        const filtered = allApplications.filter((app: JobApplication) => app.job_posting === selectedJobId)
+        setFilteredApplications(filtered)
+      } else {
+        setFilteredApplications(allApplications)
+      }
     } catch (error) {
       console.error('Error fetching applications:', error)
       toast.error('Failed to load applications')
@@ -32,7 +52,17 @@ const CandidatePipeline: React.FC = () => {
 
   useEffect(() => {
     fetchApplications()
-  }, [sessionKey])
+  }, [sessionKey, selectedJobId])
+
+  // Filter applications when job selection changes
+  useEffect(() => {
+    if (selectedJobId) {
+      const filtered = applications.filter(app => app.job_posting === selectedJobId)
+      setFilteredApplications(filtered)
+    } else {
+      setFilteredApplications(applications)
+    }
+  }, [selectedJobId, applications])
 
   const updateApplicationStatus = async (applicationId: number, newStatus: string) => {
     if (!sessionKey) return
@@ -73,7 +103,7 @@ const CandidatePipeline: React.FC = () => {
   ]
 
   const getApplicationsByStatus = (status: string) => {
-    return applications.filter(app => app.status === status)
+    return filteredApplications.filter(app => app.status === status)
   }
 
   if (loading) {
@@ -86,10 +116,36 @@ const CandidatePipeline: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Candidate Pipeline</h2>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
-          {applications.length} total candidates
+      {/* Job Selection Header */}
+      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Candidate Pipeline</h2>
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            {selectedJobId ? `${filteredApplications.length} candidates for selected job` : `${applications.length} total candidates`}
+          </div>
+        </div>
+        <div className="flex items-center space-x-4">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Select Job Posting:</label>
+          <select
+            value={selectedJobId || ''}
+            onChange={(e) => setSelectedJobId(e.target.value ? parseInt(e.target.value) : null)}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+          >
+            <option value="">All Job Postings</option>
+            {jobPostings.map((job) => (
+              <option key={job.id} value={job.id}>
+                {job.title} ({job.applications_count || 0} applications)
+              </option>
+            ))}
+          </select>
+          {selectedJobId && (
+            <button
+              onClick={() => setSelectedJobId(null)}
+              className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
+            >
+              Clear Filter
+            </button>
+          )}
         </div>
       </div>
 

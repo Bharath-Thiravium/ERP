@@ -5,7 +5,7 @@ import { JobPosting } from '../../types/hrTypes'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
 import toast from 'react-hot-toast'
-import DepartmentDesignationManager from '../employees/DepartmentDesignationManager'
+
 
 interface JobPostingFormProps {
   isOpen: boolean
@@ -19,7 +19,7 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
   const [loading, setLoading] = useState(false)
   const [departments, setDepartments] = useState<any[]>([])
   const [designations, setDesignations] = useState<any[]>([])
-  const [showDeptManager, setShowDeptManager] = useState(false)
+
   
   const [formData, setFormData] = useState({
     title: '',
@@ -202,22 +202,10 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
           <div className="space-y-6">
             {/* Basic Information */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center space-x-2">
-                  <FileText className="h-5 w-5 text-blue-500" />
-                  <span>Basic Information</span>
-                </h3>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowDeptManager(true)}
-                  className="text-blue-600 border-blue-300 hover:bg-blue-50"
-                >
-                  <Users className="h-4 w-4 mr-1" />
-                  Manage Dept/Desig
-                </Button>
-              </div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center space-x-2">
+                <FileText className="h-5 w-5 text-blue-500" />
+                <span>Basic Information</span>
+              </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -440,12 +428,7 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
           </div>
         </form>
 
-        {/* Department/Designation Manager */}
-        <DepartmentDesignationManager
-          isOpen={showDeptManager}
-          onClose={() => setShowDeptManager(false)}
-          onUpdate={fetchDepartments}
-        />
+
       </div>
     </div>
   )

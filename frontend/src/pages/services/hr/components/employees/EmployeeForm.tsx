@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Save, User, Building, Phone, MapPin, CreditCard, Camera, Upload, Eye, Plus } from 'lucide-react'
+import { X, Save, User, Building, Phone, MapPin, CreditCard, Camera, Upload, Eye } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { Employee, Department, Designation, EmployeeFormData } from '../../types/hrTypes'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
 import toast from 'react-hot-toast'
-import DepartmentDesignationManager from './DepartmentDesignationManager'
+
 // import { z } from 'zod'
 
 // Unused schema - validation is done manually
@@ -86,7 +86,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
   }, [employee])
   const [showCamera, setShowCamera] = useState(false)
   const [loadingDropdowns, setLoadingDropdowns] = useState(false)
-  const [showDeptManager, setShowDeptManager] = useState(false)
+
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -656,22 +656,10 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
           {/* Employment Details */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center space-x-2">
-                  <Building className="h-5 w-5 text-green-500" />
-                  <span>Employment Details</span>
-                </CardTitle>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowDeptManager(true)}
-                  className="text-blue-600 border-blue-300 hover:bg-blue-50"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Manage Dept/Desig
-                </Button>
-              </div>
+              <CardTitle className="flex items-center space-x-2">
+                <Building className="h-5 w-5 text-green-500" />
+                <span>Employment Details</span>
+              </CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -1170,17 +1158,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
           </div>
         </form>
 
-        {/* Department/Designation Manager */}
-        <DepartmentDesignationManager
-          isOpen={showDeptManager}
-          onClose={() => setShowDeptManager(false)}
-          onUpdate={() => {
-            fetchDropdownData()
-            if (formData.department) {
-              fetchDesignations(formData.department)
-            }
-          }}
-        />
+
       </div>
     </div>
   )

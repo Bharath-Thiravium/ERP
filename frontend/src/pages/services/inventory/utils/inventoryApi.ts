@@ -286,7 +286,18 @@ export const inventoryApi = {
   },
 
   startCycleCount: async (id: number) => {
-    const response = await apiClient.post(`/api/inventory/cycle-counts/${id}/start/`, {});
+    const sessionKey = sessionStorage.getItem('service_session_key');
+    const response = await apiClient.post(`/api/inventory/cycle-counts/${id}/start/`, {
+      session_key: sessionKey
+    });
+    return response.data;
+  },
+
+  pauseCycleCount: async (id: number) => {
+    const sessionKey = sessionStorage.getItem('service_session_key');
+    const response = await apiClient.post(`/api/inventory/cycle-counts/${id}/pause/`, {
+      session_key: sessionKey
+    });
     return response.data;
   },
 
@@ -311,6 +322,11 @@ export const inventoryApi = {
     return response.data;
   },
 
+  deletePurchaseOrder: async (id: number) => {
+    const response = await apiClient.delete(`/api/inventory/purchase-orders/${id}/`);
+    return response.data;
+  },
+
   // Inventory Audits
   getInventoryAudits: async (params?: any) => {
     const response = await apiClient.get('/api/inventory/audits/', params);
@@ -329,6 +345,11 @@ export const inventoryApi = {
 
   updateInventoryAudit: async (id: number, data: any) => {
     const response = await apiClient.put(`/api/inventory/audits/${id}/`, data);
+    return response.data;
+  },
+
+  deleteInventoryAudit: async (id: number) => {
+    const response = await apiClient.delete(`/api/inventory/audits/${id}/`);
     return response.data;
   },
 

@@ -1,8 +1,39 @@
 import React, { useState, useEffect } from 'react'
 import { Button } from '../../../../components/ui/Button'
-import { Input } from '../../../../components/ui/Input'
 import { crmApi } from '../utils/api'
-import { Deal, Account, Contact, PipelineStage } from '../types'
+import toast from 'react-hot-toast'
+
+// Define interfaces locally since types file might not exist
+interface Deal {
+  id: number
+  name: string
+  account: number
+  contact?: number
+  current_stage: number
+  value: number
+  probability: number
+  expected_close_date: string
+  description?: string
+  next_action?: string
+}
+
+interface Account {
+  id: number
+  name: string
+  primary_contact?: number
+}
+
+interface Contact {
+  id: number
+  first_name: string
+  last_name: string
+  full_name?: string
+}
+
+interface PipelineStage {
+  id: number
+  name: string
+}
 
 interface DealModalProps {
   isOpen: boolean
@@ -80,6 +111,7 @@ export const DealModal: React.FC<DealModalProps> = ({
       setStages(stagesRes.data.results || stagesRes.data)
     } catch (error) {
       console.error('Error loading data:', error)
+      toast.error('Failed to load data')
     }
   }
 
@@ -146,11 +178,9 @@ export const DealModal: React.FC<DealModalProps> = ({
     }
   }
 
-  const filteredContacts = formData.account 
-    ? contacts.filter(contact => 
-        accounts.find(acc => acc.id.toString() === formData.account)?.primary_contact === contact.id
-      )
-    : contacts
+  // Show all contacts since there's no direct account-contact relationship
+  // Only filter to primary contact if specifically needed
+  const filteredContacts = contacts
 
   if (!isOpen) return null
 
@@ -165,11 +195,13 @@ export const DealModal: React.FC<DealModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Deal Name *</label>
-              <Input
+              <input
                 id="name"
+                type="text"
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder="Enter deal name"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
               {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
             </div>
@@ -180,7 +212,7 @@ export const DealModal: React.FC<DealModalProps> = ({
                 id="account"
                 value={formData.account} 
                 onChange={(e) => handleInputChange('account', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               >
                 <option value="">Select account</option>
                 {accounts.map((account) => (
@@ -198,7 +230,7 @@ export const DealModal: React.FC<DealModalProps> = ({
                 id="contact"
                 value={formData.contact} 
                 onChange={(e) => handleInputChange('contact', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               >
                 <option value="">Select contact</option>
                 {filteredContacts.map((contact) => (
@@ -215,7 +247,7 @@ export const DealModal: React.FC<DealModalProps> = ({
                 id="current_stage"
                 value={formData.current_stage} 
                 onChange={(e) => handleInputChange('current_stage', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               >
                 <option value="">Select stage</option>
                 {stages.map((stage) => (
@@ -229,13 +261,14 @@ export const DealModal: React.FC<DealModalProps> = ({
 
             <div className="space-y-2">
               <label htmlFor="value" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Deal Value *</label>
-              <Input
+              <input
                 id="value"
                 type="number"
                 step="0.01"
                 value={formData.value}
                 onChange={(e) => handleInputChange('value', e.target.value)}
                 placeholder="0.00"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
               {errors.value && <p className="text-sm text-red-500">{errors.value}</p>}
             </div>
@@ -246,7 +279,7 @@ export const DealModal: React.FC<DealModalProps> = ({
                 id="probability"
                 value={formData.probability} 
                 onChange={(e) => handleInputChange('probability', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               >
                 <option value="10">10%</option>
                 <option value="25">25%</option>
@@ -259,22 +292,25 @@ export const DealModal: React.FC<DealModalProps> = ({
 
             <div className="space-y-2 md:col-span-2">
               <label htmlFor="expected_close_date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Expected Close Date *</label>
-              <Input
+              <input
                 id="expected_close_date"
                 type="date"
                 value={formData.expected_close_date}
                 onChange={(e) => handleInputChange('expected_close_date', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
               {errors.expected_close_date && <p className="text-sm text-red-500">{errors.expected_close_date}</p>}
             </div>
 
             <div className="space-y-2 md:col-span-2">
               <label htmlFor="next_action" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Next Action</label>
-              <Input
+              <input
                 id="next_action"
+                type="text"
                 value={formData.next_action}
                 onChange={(e) => handleInputChange('next_action', e.target.value)}
                 placeholder="What's the next step?"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
             </div>
 
@@ -286,7 +322,7 @@ export const DealModal: React.FC<DealModalProps> = ({
                 onChange={(e) => handleInputChange('description', e.target.value)}
                 placeholder="Deal description and notes"
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
             </div>
           </div>

@@ -1112,7 +1112,7 @@ const handlePOCreated = () => {
                 </Button>
                 <div className="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                  Finance Dashboard
+                  Finance Module
                 </h1>
               </div>
 

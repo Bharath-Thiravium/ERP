@@ -3,6 +3,7 @@ import { Award, Star, TrendingUp, Users, Target, Plus } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
+import { PerformanceReviewModal } from '../components/performance/PerformanceReviewModal'
 import api from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
@@ -44,6 +45,8 @@ const Performance: React.FC = () => {
   const [dashboardData, setDashboardData] = useState<PerformanceDashboard | null>(null)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [showReviewModal, setShowReviewModal] = useState(false)
+  const [selectedReview, setSelectedReview] = useState<any>(null)
 
   useEffect(() => {
     fetchDashboardData()
@@ -81,6 +84,22 @@ const Performance: React.FC = () => {
     if (rating >= 3.5) return 'text-blue-600 dark:text-blue-400'
     if (rating >= 2.5) return 'text-yellow-600 dark:text-yellow-400'
     return 'text-red-600 dark:text-red-400'
+  }
+
+  const handleNewReview = () => {
+    setSelectedReview(null)
+    setShowReviewModal(true)
+  }
+
+
+  const handleReviewModalSuccess = () => {
+    fetchDashboardData()
+    setSelectedReview(null)
+  }
+
+  const handleCloseReviewModal = () => {
+    setShowReviewModal(false)
+    setSelectedReview(null)
   }
 
   const renderStars = (rating: number) => {
@@ -130,7 +149,10 @@ const Performance: React.FC = () => {
               </p>
             </div>
           </div>
-          <Button className="bg-gradient-to-r from-purple-500 to-violet-600">
+          <Button 
+            onClick={handleNewReview}
+            className="bg-gradient-to-r from-purple-500 to-violet-600"
+          >
             <Plus className="h-4 w-4 mr-2" />
             New Review
           </Button>
@@ -399,7 +421,10 @@ const Performance: React.FC = () => {
                     <Award className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Review Management</h3>
                     <p className="text-gray-500 dark:text-gray-400 mb-4">Create and manage performance reviews for your team</p>
-                    <Button className="bg-gradient-to-r from-purple-500 to-violet-600">
+                    <Button 
+                      onClick={handleNewReview}
+                      className="bg-gradient-to-r from-purple-500 to-violet-600"
+                    >
                       <Plus className="h-4 w-4 mr-2" />
                       Create New Review
                     </Button>
@@ -428,6 +453,14 @@ const Performance: React.FC = () => {
           )}
         </>
       )}
+
+      {/* Performance Review Modal */}
+      <PerformanceReviewModal
+        isOpen={showReviewModal}
+        onClose={handleCloseReviewModal}
+        onSuccess={handleReviewModalSuccess}
+        review={selectedReview}
+      />
     </div>
   )
 }

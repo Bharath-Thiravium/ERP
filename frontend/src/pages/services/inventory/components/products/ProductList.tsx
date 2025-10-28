@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package,
@@ -26,13 +26,24 @@ import { inventoryApi } from '../../utils/inventoryApi';
 import type { Product, Category, Supplier } from '../../types/inventoryTypes';
 import { Card } from '../../../../../components/ui/Card';
 import { Button } from '../../../../../components/ui/Button';
-import { Input } from '../../../../../components/ui/Input';
 import { LoadingSpinner } from '../../../../../components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 
 // Ensure toast.info is available
 // Toast info method extension
 const toastInfo = (message: string) => toast(message, { icon: 'ℹ️' });
+
+// Debounce utility function
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
 
 interface ProductCardProps {
   product: Product;
@@ -262,10 +273,24 @@ const ProductList: React.FC = () => {
     is_active: true
   });
 
+  // Debounced search function
+  const debouncedLoadProducts = useCallback(
+    debounce((query: string, category: string, type: string, lowStock: boolean) => {
+      loadProductsWithParams(query, category, type, lowStock);
+    }, 300),
+    []
+  );
+
   useEffect(() => {
-    loadProducts();
     loadCategories();
-  }, [searchQuery, selectedCategory, selectedType, showLowStock]);
+    loadProductsWithParams('', '', '', false); // Initial load
+  }, []);
+
+  useEffect(() => {
+    if (searchQuery || selectedCategory || selectedType || showLowStock) {
+      debouncedLoadProducts(searchQuery, selectedCategory, selectedType, showLowStock);
+    }
+  }, [searchQuery, selectedCategory, selectedType, showLowStock, debouncedLoadProducts]);
 
   useEffect(() => {
     if (showAddModal) {
@@ -273,14 +298,14 @@ const ProductList: React.FC = () => {
     }
   }, [showAddModal]);
 
-  const loadProducts = async () => {
+  const loadProductsWithParams = async (query: string, category: string, type: string, lowStock: boolean) => {
     try {
       setLoading(true);
       const params: any = {};
-      if (searchQuery) params.search = searchQuery;
-      if (selectedCategory) params.category = selectedCategory;
-      if (selectedType) params.product_type = selectedType;
-      if (showLowStock) params.low_stock = 'true';
+      if (query.trim()) params.search = query.trim();
+      if (category) params.category = category;
+      if (type) params.product_type = type;
+      if (lowStock) params.low_stock = 'true';
 
       const response = await inventoryApi.getProducts(params);
       setProducts(response.results || response);
@@ -290,6 +315,10 @@ const ProductList: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadProducts = () => {
+    loadProductsWithParams(searchQuery, selectedCategory, selectedType, showLowStock);
   };
 
   const loadCategories = async () => {
@@ -609,12 +638,22 @@ const ProductList: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <Input
+            <input
               type="text"
               placeholder="Search products..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
+              onChange={(e) => {
+                e.preventDefault();
+                setSearchQuery(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                }
+              }}
+
+              autoFocus
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
           </div>
           

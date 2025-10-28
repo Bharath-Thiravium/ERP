@@ -23,6 +23,7 @@ const NotFoundPage = React.lazy(() => import('../pages/NotFoundPage'))
 const EmployeeApp = React.lazy(() => import('../pages/EmployeeApp'))
 const JobPortal = React.lazy(() => import('../pages/public/JobPortal'))
 const JobApplication = React.lazy(() => import('../pages/public/JobApplication'))
+const PublicJobDetail = React.lazy(() => import('../pages/public/PublicJobDetail'))
 
 
 // Protected Route Component
@@ -290,10 +291,28 @@ export const AppRouter: React.FC = () => {
       />
       
       <Route
+        path="/jobs/:jobId"
+        element={
+          <SuspenseWrapper>
+            <PublicJobDetail />
+          </SuspenseWrapper>
+        }
+      />
+      
+      <Route
         path="/jobs/:jobId/apply"
         element={
           <SuspenseWrapper>
             <JobApplication />
+          </SuspenseWrapper>
+        }
+      />
+      
+      <Route
+        path="/public/jobs/:jobId"
+        element={
+          <SuspenseWrapper>
+            <PublicJobDetail />
           </SuspenseWrapper>
         }
       />

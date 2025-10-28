@@ -19,6 +19,46 @@ class EmailTemplateViewSet(CRMBaseViewSet):
     search_fields = ['name', 'subject']
     ordering = ['-created_at']
 
+    def create(self, request, *args, **kwargs):
+        """Override create to ensure proper user assignment"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            service_user = session.service_user
+            
+            data = request.data.copy()
+            data['company'] = service_user.company.id
+            
+            # Get user for created_by field
+            user_id = None
+            if hasattr(service_user, 'created_by') and service_user.created_by:
+                user_id = service_user.created_by.id
+            else:
+                from django.contrib.auth.models import User
+                admin_user = User.objects.filter(is_superuser=True).first()
+                if admin_user:
+                    user_id = admin_user.id
+                else:
+                    return Response({'error': 'No valid user found'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            data['created_by'] = user_id
+            
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            
+            from django.contrib.auth.models import User
+            created_by_user = User.objects.get(id=user_id)
+            instance = serializer.save(created_by=created_by_user)
+            
+            return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            return Response({'error': f'Creation failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class MarketingCampaignViewSet(CRMBaseViewSet):
     queryset = MarketingCampaign.objects.all()
@@ -26,6 +66,46 @@ class MarketingCampaignViewSet(CRMBaseViewSet):
     filterset_fields = ['campaign_type', 'status']
     search_fields = ['name', 'description']
     ordering = ['-created_at']
+
+    def create(self, request, *args, **kwargs):
+        """Override create to ensure proper user assignment"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            service_user = session.service_user
+            
+            data = request.data.copy()
+            data['company'] = service_user.company.id
+            
+            # Get user for created_by field
+            user_id = None
+            if hasattr(service_user, 'created_by') and service_user.created_by:
+                user_id = service_user.created_by.id
+            else:
+                from django.contrib.auth.models import User
+                admin_user = User.objects.filter(is_superuser=True).first()
+                if admin_user:
+                    user_id = admin_user.id
+                else:
+                    return Response({'error': 'No valid user found'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            data['created_by'] = user_id
+            
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            
+            from django.contrib.auth.models import User
+            created_by_user = User.objects.get(id=user_id)
+            instance = serializer.save(created_by=created_by_user)
+            
+            return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            return Response({'error': f'Creation failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def launch(self, request, pk=None):
@@ -70,6 +150,46 @@ class AutomationWorkflowViewSet(CRMBaseViewSet):
     filterset_fields = ['trigger_type', 'status']
     search_fields = ['name', 'description']
     ordering = ['-created_at']
+
+    def create(self, request, *args, **kwargs):
+        """Override create to ensure proper user assignment"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            service_user = session.service_user
+            
+            data = request.data.copy()
+            data['company'] = service_user.company.id
+            
+            # Get user for created_by field
+            user_id = None
+            if hasattr(service_user, 'created_by') and service_user.created_by:
+                user_id = service_user.created_by.id
+            else:
+                from django.contrib.auth.models import User
+                admin_user = User.objects.filter(is_superuser=True).first()
+                if admin_user:
+                    user_id = admin_user.id
+                else:
+                    return Response({'error': 'No valid user found'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            data['created_by'] = user_id
+            
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            
+            from django.contrib.auth.models import User
+            created_by_user = User.objects.get(id=user_id)
+            instance = serializer.save(created_by=created_by_user)
+            
+            return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            return Response({'error': f'Creation failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def activate(self, request, pk=None):

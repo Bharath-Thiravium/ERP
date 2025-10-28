@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 
 import {
   Package,
-  Plus,
-  Search,
-  Filter,
+  
+  
+  
 
 
   BarChart3,
@@ -25,7 +25,7 @@ import {
   Sun,
   Moon,
   Shield,
-  Calendar,
+  
   RefreshCw,
   ChevronRight,
   Building,
@@ -490,14 +490,14 @@ const Dashboard: React.FC = () => {
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Stock Movements</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">Latest inventory activities</p>
             </div>
-            <Button 
-              size="sm" 
-              className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700"
+            <button
+              type="button"
               onClick={() => setActiveTab('movements')}
+              className="px-3 py-2 text-sm bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded cursor-pointer"
             >
-              <Activity className="h-4 w-4 mr-2" />
+              <Activity className="h-4 w-4 mr-2 inline" />
               View All
-            </Button>
+            </button>
           </div>
           <div className="space-y-3">
             {recent_movements.slice(0, 5).map((movement: any) => (
@@ -566,7 +566,7 @@ const Dashboard: React.FC = () => {
       case 'aging-analysis':
         return <AgingAnalysis />;
       case 'analytics':
-        return <InventoryAnalytics />;
+        return <InventoryAnalytics onNavigate={setActiveTab} />;
       case 'settings':
         return renderSettings();
       default:
@@ -676,27 +676,11 @@ const Dashboard: React.FC = () => {
                 </Button>
                 <div className="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                  Inventory Dashboard
+                  Inventory Module
                 </h1>
               </div>
 
               <div className="flex items-center space-x-3">
-                <Button variant="outline" size="sm">
-                  <Search className="h-4 w-4 mr-2" />
-                  Search
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Filter
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Period
-                </Button>
-                <Button size="sm" className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Product
-                </Button>
                 <Button
                   variant="ghost"
                   size="sm"

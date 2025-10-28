@@ -3,16 +3,20 @@ import {
   Shield, 
   AlertTriangle, 
   FileText, 
-  Eye, 
-
+  Eye,
   CheckCircle,
   XCircle,
   Clock,
   Plus,
-
+  Edit,
+  Trash2,
+  Play,
+  Pause,
+  Search
 } from 'lucide-react';
 import { useServiceUserStore } from '../../../../store/serviceUserStore';
 import { crmApi } from '../utils/api';
+import { ComplianceRuleModal } from '../components/ComplianceRuleModal';
 import toast from 'react-hot-toast';
 
 interface SecurityAlert {
@@ -34,6 +38,16 @@ interface ComplianceViolation {
   detected_at: string;
 }
 
+interface ComplianceRule {
+  id: number;
+  name: string;
+  rule_type: string;
+  description: string;
+  status: string;
+  created_at: string;
+  created_by_name?: string;
+}
+
 interface AuditLog {
   id: number;
   action: string;
@@ -47,10 +61,13 @@ const SecurityCompliance: React.FC = () => {
   const { sessionKey } = useServiceUserStore();
   const [securityAlerts, setSecurityAlerts] = useState<SecurityAlert[]>([]);
   const [violations, setViolations] = useState<ComplianceViolation[]>([]);
+  const [complianceRules, setComplianceRules] = useState<ComplianceRule[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [dashboardData, setDashboardData] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('alerts');
+  const [showRuleModal, setShowRuleModal] = useState(false);
+  const [selectedRule, setSelectedRule] = useState<ComplianceRule | null>(null);
 
   useEffect(() => {
     if (sessionKey!) {
@@ -65,15 +82,17 @@ const SecurityCompliance: React.FC = () => {
       setLoading(true);
       
       // Use centralized API with proper session key authentication
-      const [alertsRes, violationsRes, auditRes, dashboardRes] = await Promise.all([
+      const [alertsRes, violationsRes, rulesRes, auditRes, dashboardRes] = await Promise.all([
         crmApi.getSecurityAlerts(sessionKey!).catch(() => ({ data: { results: [] } })),
         crmApi.getComplianceViolations(sessionKey!).catch(() => ({ data: { results: [] } })),
+        crmApi.getComplianceRules(sessionKey!).catch(() => ({ data: { results: [] } })),
         crmApi.getAuditLogs(sessionKey!).catch(() => ({ data: { results: [] } })),
         crmApi.getSecurityDashboard(sessionKey!).catch(() => ({ data: { open_alerts: 0, critical_alerts: 0, open_violations: 0, today_logs: 0 } }))
       ]);
       
       setSecurityAlerts(alertsRes.data.results || alertsRes.data || []);
       setViolations(violationsRes.data.results || violationsRes.data || []);
+      setComplianceRules(rulesRes.data.results || rulesRes.data || []);
       setAuditLogs(auditRes.data.results || auditRes.data || []);
       setDashboardData(dashboardRes.data || { open_alerts: 0, critical_alerts: 0, open_violations: 0, today_logs: 0 });
     } catch (error) {
@@ -82,6 +101,7 @@ const SecurityCompliance: React.FC = () => {
       // Fallback to empty data
       setSecurityAlerts([]);
       setViolations([]);
+      setComplianceRules([]);
       setAuditLogs([]);
       setDashboardData({ open_alerts: 0, critical_alerts: 0, open_violations: 0, today_logs: 0 });
     } finally {
@@ -113,6 +133,63 @@ const SecurityCompliance: React.FC = () => {
       console.error('Error resolving violation:', error);
       toast.error('Failed to resolve violation');
     }
+  };
+
+  const handleAddRule = () => {
+    setSelectedRule(null);
+    setShowRuleModal(true);
+  };
+
+  const handleEditRule = (rule: ComplianceRule) => {
+    setSelectedRule(rule);
+    setShowRuleModal(true);
+  };
+
+  const handleDeleteRule = async (ruleId: number) => {
+    if (!confirm('Are you sure you want to delete this compliance rule?')) return;
+    
+    try {
+      await crmApi.deleteComplianceRule(sessionKey!, ruleId);
+      toast.success('Compliance rule deleted successfully!');
+      loadData();
+    } catch (error) {
+      toast.error('Failed to delete compliance rule');
+    }
+  };
+
+  const handleToggleRuleStatus = async (rule: ComplianceRule) => {
+    try {
+      if (rule.status === 'active') {
+        await crmApi.deactivateComplianceRule(sessionKey!, rule.id);
+        toast.success('Rule deactivated successfully');
+      } else {
+        await crmApi.activateComplianceRule(sessionKey!, rule.id);
+        toast.success('Rule activated successfully');
+      }
+      loadData();
+    } catch (error) {
+      toast.error('Failed to update rule status');
+    }
+  };
+
+  const handleCheckViolations = async (ruleId: number) => {
+    try {
+      const response = await crmApi.checkRuleViolations(sessionKey!, ruleId);
+      toast.success(response.data.message);
+      loadData();
+    } catch (error) {
+      toast.error('Failed to check violations');
+    }
+  };
+
+  const handleRuleModalSuccess = () => {
+    loadData();
+    setSelectedRule(null);
+  };
+
+  const handleCloseRuleModal = () => {
+    setShowRuleModal(false);
+    setSelectedRule(null);
   };
 
   const getSeverityBadge = (severity: string) => {
@@ -163,7 +240,10 @@ const SecurityCompliance: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-900">Security & Compliance</h1>
-        <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center">
+        <button 
+          onClick={handleAddRule}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+        >
           <Plus className="w-4 h-4 mr-2" />
           Add Rule
         </button>
@@ -233,6 +313,16 @@ const SecurityCompliance: React.FC = () => {
             }`}
           >
             Compliance Violations
+          </button>
+          <button 
+            onClick={() => setActiveTab('rules')}
+            className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeTab === 'rules' 
+                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' 
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            Compliance Rules
           </button>
           <button 
             onClick={() => setActiveTab('audit')}
@@ -350,6 +440,77 @@ const SecurityCompliance: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'rules' && (
+          <div className="space-y-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Compliance Rules</h3>
+              </div>
+              <div className="p-6">
+                <div className="space-y-4">
+                  {complianceRules.map((rule) => (
+                    <div key={rule.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                          <Shield className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-900">{rule.name}</h3>
+                          <p className="text-sm text-gray-500">
+                            {rule.rule_type.toUpperCase()} • by {rule.created_by_name || 'System'}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {new Date(rule.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        {getStatusBadge(rule.status)}
+                        <button
+                          onClick={() => handleToggleRuleStatus(rule)}
+                          className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+                        >
+                          {rule.status === 'active' ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => handleCheckViolations(rule.id)}
+                          className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+                        >
+                          <Search className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => handleEditRule(rule)}
+                          className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+                        >
+                          <Edit className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRule(rule.id)}
+                          className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {complianceRules.length === 0 && (
+                    <div className="text-center py-8">
+                      <Shield className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-500">No compliance rules configured</p>
+                      <button 
+                        onClick={handleAddRule}
+                        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                      >
+                        Create First Rule
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'audit' && (
           <div className="space-y-4">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
@@ -395,6 +556,14 @@ const SecurityCompliance: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Compliance Rule Modal */}
+      <ComplianceRuleModal
+        isOpen={showRuleModal}
+        onClose={handleCloseRuleModal}
+        onSuccess={handleRuleModalSuccess}
+        rule={selectedRule}
+      />
     </div>
   );
 };

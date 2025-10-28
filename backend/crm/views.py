@@ -79,28 +79,47 @@ class CRMBaseViewSet(viewsets.ModelViewSet):
                 else:
                     return Response({'error': 'No valid user found for created_by field'}, status=status.HTTP_400_BAD_REQUEST)
             
-            # Always set created_by - this is required for all CRM models
-            data['created_by'] = user_id
-            
             # Set model-specific required fields
             model_class = self.get_serializer().Meta.model
+            
+            # Set created_by only for models that have this field
+            if hasattr(model_class, 'created_by'):
+                data['created_by'] = user_id
             
             # For Activity model, also set assigned_to if not provided
             if hasattr(model_class, 'assigned_to') and ('assigned_to' not in data or not data['assigned_to']):
                 data['assigned_to'] = user_id
                 
-            # For Opportunity model, also set owner if not provided
-            if hasattr(model_class, 'owner') and ('owner' not in data or not data['owner']):
-                data['owner'] = user_id
+            # For models with owner field (Opportunity, Deal), handle owner field
+            if hasattr(model_class, 'owner'):
+                if 'owner' not in data or not data['owner'] or data['owner'] == 'auto':
+                    data['owner'] = user_id
+                else:
+                    # If a specific owner is provided, validate it exists
+                    try:
+                        from django.contrib.auth.models import User
+                        User.objects.get(id=int(data['owner']))
+                    except (User.DoesNotExist, ValueError):
+                        # If invalid owner, use current user
+                        data['owner'] = user_id
                 
             # For Lead model, set assigned_to if not provided
             if hasattr(model_class, 'assigned_to') and model_class.__name__ == 'Lead' and ('assigned_to' not in data or not data['assigned_to']):
                 data['assigned_to'] = user_id
             
+            # For Deal model, ensure both created_by and owner are set
+            if model_class.__name__ == 'Deal':
+                data['created_by'] = user_id
+                if 'owner' not in data or not data['owner']:
+                    data['owner'] = user_id
+            
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
             
-            instance = serializer.save()
+            # Explicitly pass created_by to save method
+            from django.contrib.auth.models import User
+            created_by_user = User.objects.get(id=user_id)
+            instance = serializer.save(created_by=created_by_user)
             
             return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
         except ServiceUserSession.DoesNotExist:
@@ -131,6 +150,38 @@ class CRMBaseViewSet(viewsets.ModelViewSet):
 
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            service_user = session.service_user
+            
+            # Add company to request data for update
+            data = request.data.copy()
+            data['company'] = service_user.company.id
+            
+            # Ensure created_by is set for update
+            user_id = None
+            if hasattr(service_user, 'created_by') and service_user.created_by:
+                user_id = service_user.created_by.id
+            else:
+                from django.contrib.auth.models import User
+                admin_user = User.objects.filter(is_superuser=True).first()
+                if admin_user:
+                    user_id = admin_user.id
+            
+            if user_id:
+                data['created_by'] = user_id
+                # For Opportunity updates, handle owner field
+                if 'owner' in data and (not data['owner'] or data['owner'] == 'auto'):
+                    data['owner'] = user_id
+                elif 'owner' in data:
+                    # Validate provided owner ID
+                    try:
+                        from django.contrib.auth.models import User
+                        User.objects.get(id=int(data['owner']))
+                    except (User.DoesNotExist, ValueError):
+                        data['owner'] = user_id
+            
+            # Update request data
+            request._full_data = data
+            
             return super().update(request, *args, **kwargs)
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -170,10 +221,22 @@ class LeadViewSet(CRMBaseViewSet):
         
         lead = self.get_object()
         
+        # Check if lead is already converted
+        if lead.status == 'won':
+            return Response({'error': 'Lead has already been converted to opportunity'}, status=status.HTTP_400_BAD_REQUEST)
+        
         # Get or create a default user for this service user
-        # Since CompanyServiceUser doesn't have a direct User relationship,
-        # we'll use the created_by user as a fallback
-        default_user = service_user.created_by
+        default_user = None
+        if hasattr(service_user, 'created_by') and service_user.created_by:
+            default_user = service_user.created_by
+        else:
+            # Fallback to company admin user or superuser
+            from django.contrib.auth.models import User
+            admin_user = User.objects.filter(is_superuser=True).first()
+            if admin_user:
+                default_user = admin_user
+            else:
+                return Response({'error': 'No valid user found for conversion'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Create account using serializer
         account_data = {
@@ -185,9 +248,9 @@ class LeadViewSet(CRMBaseViewSet):
         }
         account_serializer = AccountSerializer(data=account_data)
         if account_serializer.is_valid():
-            account = account_serializer.save()
+            account = account_serializer.save(created_by=default_user)
         else:
-            return Response({'error': 'Failed to create account'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': f'Failed to create account: {account_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Create contact using serializer
         contact_data = {
@@ -201,9 +264,9 @@ class LeadViewSet(CRMBaseViewSet):
         }
         contact_serializer = ContactSerializer(data=contact_data)
         if contact_serializer.is_valid():
-            contact = contact_serializer.save()
+            contact = contact_serializer.save(created_by=default_user)
         else:
-            return Response({'error': 'Failed to create contact'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': f'Failed to create contact: {contact_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Create opportunity using serializer
         opportunity_data = {
@@ -219,11 +282,11 @@ class LeadViewSet(CRMBaseViewSet):
         }
         opportunity_serializer = OpportunitySerializer(data=opportunity_data)
         if opportunity_serializer.is_valid():
-            opportunity = opportunity_serializer.save()
+            opportunity = opportunity_serializer.save(created_by=default_user, owner_id=lead.assigned_to.id if lead.assigned_to else default_user.id)
         else:
-            return Response({'error': 'Failed to create opportunity'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': f'Failed to create opportunity: {opportunity_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Update lead status
+        # Update lead status to converted
         lead.status = 'won'
         lead.save()
         
@@ -231,7 +294,8 @@ class LeadViewSet(CRMBaseViewSet):
             'message': 'Lead converted successfully',
             'opportunity_id': opportunity.opportunity_id,
             'account_id': account.account_id,
-            'contact_id': contact.contact_id
+            'contact_id': contact.contact_id,
+            'lead_status': 'won'
         })
 
     @action(detail=False)

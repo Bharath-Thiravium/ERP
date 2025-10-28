@@ -8,29 +8,28 @@ import {
   Sun,
   Moon,
   Shield,
-  Search,
-  Filter,
+  
+  
   Calendar,
-  RefreshCw,
+  
   ChevronRight,
   Building,
-  User,
+  
   BarChart3,
   UserPlus,
   Clock,
-  // CheckCircle,
+  CheckCircle,
   FileText,
   Briefcase
 } from 'lucide-react'
 // import { useAuthStore } from '../../../../store/authStore'
 import { useThemeStore } from '../../../../store/themeStore'
-import api, { apiClient } from '../../../../lib/api'
+import api from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { Button } from '../../../../components/ui/Button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useSessionValidation } from '../../../../hooks/useSessionValidation'
-import toast from 'react-hot-toast'
+// toast import removed as it's not used
 
 const HRDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -51,12 +50,8 @@ const HRDashboard: React.FC = () => {
   }, [])
   const [isLoading, setIsLoading] = useState(true)
   const [companyData, setCompanyData] = useState<any>(null)
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
-  })
-  const [isChangingPassword, setIsChangingPassword] = useState(false)
+  // Password data state removed as it's not used
+  // Removed unused isChangingPassword state
 
   // HR Data state
   const [hrData] = useState({
@@ -113,6 +108,7 @@ const HRDashboard: React.FC = () => {
     { id: 'statutory', label: 'Statutory', icon: FileText },
     { id: 'government-portal', label: 'Government Portal', icon: Shield },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'system-status', label: 'System Status', icon: CheckCircle },
     { id: 'settings', label: 'Settings', icon: Settings }
   ]
 
@@ -312,182 +308,17 @@ const HRDashboard: React.FC = () => {
     </div>
   )
 
-  // Handle password change
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error('New passwords do not match')
-      return
-    }
-
-    if (passwordData.newPassword.length < 8) {
-      toast.error('Password must be at least 8 characters long')
-      return
-    }
-
-    setIsChangingPassword(true)
-    try {
-      if (!sessionKey) {
-        toast.error('Session expired. Please login again.')
-        return
-      }
-
-      await apiClient.changeServiceUserPassword({
-        session_key: sessionKey,
-        current_password: passwordData.currentPassword,
-        new_password: passwordData.newPassword,
-        confirm_password: passwordData.confirmPassword
-      })
-
-      toast.success('Password changed successfully')
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      })
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to change password')
-    } finally {
-      setIsChangingPassword(false)
-    }
-  }
+  // Password change functionality removed as it's not used in the current implementation
 
   // Render Settings Page
-  const renderSettings = () => (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-          HR Settings
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Manage your HR service preferences and security settings
-        </p>
-      </div>
-
-      {/* Password Change Section */}
-      <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Shield className="h-5 w-5 text-blue-500" />
-            <span>Change Password</span>
-          </CardTitle>
-          <CardDescription>
-            Update your password to keep your account secure
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handlePasswordChange} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Current Password
-              </label>
-              <input
-                type="password"
-                value={passwordData.currentPassword}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                New Password
-              </label>
-              <input
-                type="password"
-                value={passwordData.newPassword}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                minLength={8}
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Confirm New Password
-              </label>
-              <input
-                type="password"
-                value={passwordData.confirmPassword}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                minLength={8}
-                required
-              />
-            </div>
-            <Button
-              type="submit"
-              disabled={isChangingPassword}
-              className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
-            >
-              {isChangingPassword ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Changing Password...
-                </>
-              ) : (
-                <>
-                  <Shield className="h-4 w-4 mr-2" />
-                  Change Password
-                </>
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Account Information */}
-      <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <User className="h-5 w-5 text-green-500" />
-            <span>Account Information</span>
-          </CardTitle>
-          <CardDescription>
-            Your service user account details
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Username
-              </label>
-              <p className="text-gray-900 dark:text-white font-medium">
-                {serviceUser?.unique_service_id || 'N/A'}
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Company
-              </label>
-              <p className="text-gray-900 dark:text-white font-medium">
-                {companyData?.name || serviceUser?.company_name || 'N/A'}
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Service
-              </label>
-              <p className="text-gray-900 dark:text-white font-medium">
-                HR Management
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Role
-              </label>
-              <p className="text-gray-900 dark:text-white font-medium">
-                HR User
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
+  const renderSettings = () => {
+    const HRSettings = React.lazy(() => import('../components/settings/HRSettings'))
+    return (
+      <React.Suspense fallback={<LoadingSpinner size="lg" />}>
+        <HRSettings />
+      </React.Suspense>
+    )
+  }
 
   // Unused render function - commented out
   // const renderEmployees = () => (
@@ -599,6 +430,13 @@ const HRDashboard: React.FC = () => {
         )
       case 'analytics':
         return renderAnalytics()
+      case 'system-status':
+        const SystemStatus = React.lazy(() => import('../components/system/SystemStatus'))
+        return (
+          <React.Suspense fallback={<LoadingSpinner size="lg" />}>
+            <SystemStatus />
+          </React.Suspense>
+        )
       case 'settings':
         return renderSettings()
       default:
@@ -707,27 +545,11 @@ const HRDashboard: React.FC = () => {
                 </Button>
                 <div className="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                  HR Dashboard
+                  HR Module
                 </h1>
               </div>
 
               <div className="flex items-center space-x-3">
-                <Button variant="outline" size="sm">
-                  <Search className="h-4 w-4 mr-2" />
-                  Search
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Filter
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Period
-                </Button>
-                <Button size="sm" className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700">
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Add Employee
-                </Button>
                 <Button
                   variant="ghost"
                   size="sm"

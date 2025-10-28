@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
@@ -22,9 +22,20 @@ import { inventoryApi } from '../../utils/inventoryApi';
 import type { Supplier } from '../../types/inventoryTypes';
 import { Card } from '../../../../../components/ui/Card';
 import { Button } from '../../../../../components/ui/Button';
-import { Input } from '../../../../../components/ui/Input';
 import { LoadingSpinner } from '../../../../../components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
+
+// Debounce utility function
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
 
 // Ensure toast.info is available
 
@@ -53,15 +64,29 @@ const SupplierManager: React.FC = () => {
     is_active: true
   });
 
-  useEffect(() => {
-    loadSuppliers();
-  }, [searchQuery]);
+  // Debounced search function
+  const debouncedLoadSuppliers = useCallback(
+    debounce((query: string) => {
+      loadSuppliersWithParams(query);
+    }, 300),
+    []
+  );
 
-  const loadSuppliers = async () => {
+  useEffect(() => {
+    loadSuppliersWithParams(''); // Initial load
+  }, []);
+
+  useEffect(() => {
+    if (searchQuery) {
+      debouncedLoadSuppliers(searchQuery);
+    }
+  }, [searchQuery, debouncedLoadSuppliers]);
+
+  const loadSuppliersWithParams = async (query: string) => {
     try {
       setLoading(true);
       const params: any = {};
-      if (searchQuery) params.search = searchQuery;
+      if (query.trim()) params.search = query.trim();
 
       const response = await inventoryApi.getSuppliers(params);
       setSuppliers(response.results || response);
@@ -71,6 +96,10 @@ const SupplierManager: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadSuppliers = () => {
+    loadSuppliersWithParams(searchQuery);
   };
 
   const validateForm = () => {
@@ -216,11 +245,11 @@ const SupplierManager: React.FC = () => {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center space-x-3">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center space-x-3">
             <Users className="w-8 h-8 text-blue-500" />
             <span>Supplier Management</span>
           </h1>
-          <p className="text-gray-600 mt-1">Manage your supplier network and relationships</p>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">Manage your supplier network and relationships</p>
         </div>
         
         <Button 
@@ -236,16 +265,26 @@ const SupplierManager: React.FC = () => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-gray-200"
+        className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm rounded-xl p-6 border border-gray-200/50 dark:border-gray-700/50"
       >
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <Input
+          <input
             type="text"
             placeholder="Search suppliers..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            onChange={(e) => {
+              e.preventDefault();
+              setSearchQuery(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+              }
+            }}
+
+            autoFocus
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           />
         </div>
       </motion.div>
@@ -267,7 +306,7 @@ const SupplierManager: React.FC = () => {
                 whileHover={{ y: -5, scale: 1.02 }}
                 className="group"
               >
-                <Card className="p-6 hover:shadow-xl transition-all duration-300 border-0 bg-white/80 backdrop-blur-sm">
+                <Card className="p-6 hover:shadow-xl transition-all duration-300 border-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
                   {/* Header */}
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center space-x-3">
@@ -275,10 +314,10 @@ const SupplierManager: React.FC = () => {
                         <Building className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900 text-lg group-hover:text-blue-600 transition-colors">
+                        <h3 className="font-semibold text-gray-900 dark:text-white text-lg group-hover:text-blue-600 transition-colors">
                           {supplier.name}
                         </h3>
-                        <p className="text-gray-500 text-sm">{supplier.supplier_code}</p>
+                        <p className="text-gray-500 dark:text-gray-400 text-sm">{supplier.supplier_code}</p>
                       </div>
                     </div>
                     
@@ -295,16 +334,16 @@ const SupplierManager: React.FC = () => {
                     {supplier.contact_person && (
                       <div className="flex items-center space-x-2">
                         <Users className="h-4 w-4 text-gray-400" />
-                        <span className="text-gray-600">{supplier.contact_person}</span>
+                        <span className="text-gray-600 dark:text-gray-300">{supplier.contact_person}</span>
                       </div>
                     )}
                     <div className="flex items-center space-x-2">
                       <Mail className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">{supplier.email}</span>
+                      <span className="text-gray-600 dark:text-gray-300">{supplier.email}</span>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Phone className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">{supplier.phone}</span>
+                      <span className="text-gray-600 dark:text-gray-300">{supplier.phone}</span>
                     </div>
                   </div>
 
@@ -325,14 +364,14 @@ const SupplierManager: React.FC = () => {
                   </div>
 
                   {/* Payment Terms */}
-                  <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 mb-4">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Payment Terms:</span>
-                      <span className="font-medium text-gray-900">{supplier.payment_terms}</span>
+                      <span className="text-gray-600 dark:text-gray-400">Payment Terms:</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{supplier.payment_terms}</span>
                     </div>
                     <div className="flex justify-between text-sm mt-1">
-                      <span className="text-gray-600">Credit Limit:</span>
-                      <span className="font-medium text-gray-900">₹{supplier.credit_limit.toLocaleString()}</span>
+                      <span className="text-gray-600 dark:text-gray-400">Credit Limit:</span>
+                      <span className="font-medium text-gray-900 dark:text-white">₹{supplier.credit_limit.toLocaleString()}</span>
                     </div>
                   </div>
 
@@ -391,8 +430,8 @@ const SupplierManager: React.FC = () => {
             className="text-center py-12"
           >
             <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No suppliers found</h3>
-            <p className="text-gray-600 mb-6">Add your first supplier to start managing your supply chain</p>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No suppliers found</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">Add your first supplier to start managing your supply chain</p>
             <Button 
               className="bg-gradient-to-r from-blue-500 to-cyan-600"
               onClick={() => setShowAddModal(true)}

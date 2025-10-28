@@ -40,6 +40,45 @@ class HolidaySerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class LeaveTypeViewSet(viewsets.ModelViewSet):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = LeaveTypeSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return LeaveType.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return LeaveType.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return LeaveType.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['POST', 'PUT', 'PATCH']:
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(company=session.service_user.company)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
 class LeaveBalanceViewSet(viewsets.ModelViewSet):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -65,6 +104,57 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
         if not session_key and self.request.method in ['POST', 'PUT', 'PATCH']:
             session_key = self.request.data.get('session_key')
         return session_key
+    
+    def list(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            queryset = self.get_queryset()
+            
+            # Apply filters
+            year = request.query_params.get('year')
+            employee = request.query_params.get('employee')
+            
+            if year:
+                queryset = queryset.filter(year=year)
+            if employee and employee != 'all':
+                queryset = queryset.filter(employee_id=employee)
+            
+            # Handle export
+            export_format = request.query_params.get('export')
+            if export_format == 'csv':
+                return self.export_csv(queryset)
+            
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({'results': serializer.data})
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    def export_csv(self, queryset):
+        import csv
+        from django.http import HttpResponse
+        
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="leave_balances.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow(['Employee', 'Leave Type', 'Year', 'Opening Balance', 'Credited', 'Used', 'Closing Balance'])
+        
+        for balance in queryset:
+            writer.writerow([
+                balance.employee.full_name,
+                balance.leave_type.name,
+                balance.year,
+                balance.opening_balance,
+                balance.credited,
+                balance.used,
+                balance.closing_balance
+            ])
+        
+        return response
 
 
 class LeaveApplicationViewSet(viewsets.ModelViewSet):
@@ -137,6 +227,133 @@ class LeaveApplicationViewSet(viewsets.ModelViewSet):
             return Response({'message': 'Leave rejected successfully'})
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    def list(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            queryset = self.get_queryset()
+            
+            # Handle stats request
+            if request.query_params.get('stats'):
+                return self.get_statistics(queryset)
+            
+            # Apply filters
+            year = request.query_params.get('year')
+            month = request.query_params.get('month')
+            status_filter = request.query_params.get('status')
+            employee = request.query_params.get('employee')
+            
+            if year:
+                queryset = queryset.filter(from_date__year=year)
+            if month:
+                queryset = queryset.filter(from_date__month=month)
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+            if employee:
+                queryset = queryset.filter(employee_id=employee)
+            
+            # Handle export
+            export_format = request.query_params.get('export')
+            if export_format in ['pdf', 'excel', 'csv']:
+                return self.export_data(queryset, export_format)
+            
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({'results': serializer.data})
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    def get_statistics(self, queryset):
+        from django.db.models import Count, Sum
+        
+        stats = {
+            'total_applications': queryset.count(),
+            'approved_applications': queryset.filter(status='approved').count(),
+            'pending_applications': queryset.filter(status='pending').count(),
+            'rejected_applications': queryset.filter(status='rejected').count(),
+            'total_leave_days': queryset.aggregate(Sum('total_days'))['total_days__sum'] or 0,
+        }
+        
+        # Most used leave type
+        most_used = queryset.values('leave_type__name').annotate(
+            count=Count('id')
+        ).order_by('-count').first()
+        stats['most_used_leave_type'] = most_used['leave_type__name'] if most_used else 'N/A'
+        
+        # Department wise stats
+        dept_stats = queryset.values('employee__department__name').annotate(
+            applications=Count('id'),
+            total_days=Sum('total_days')
+        ).order_by('-total_days')
+        stats['department_wise_stats'] = [
+            {
+                'department': item['employee__department__name'] or 'No Department',
+                'applications': item['applications'],
+                'total_days': item['total_days'] or 0
+            }
+            for item in dept_stats
+        ]
+        
+        # Monthly trends
+        monthly_stats = queryset.extra(
+            select={'month': "DATE_FORMAT(from_date, '%%Y-%%m')"},
+        ).values('month').annotate(
+            applications=Count('id'),
+            days=Sum('total_days')
+        ).order_by('month')
+        stats['monthly_trends'] = [
+            {
+                'month': item['month'],
+                'applications': item['applications'],
+                'days': item['days'] or 0
+            }
+            for item in monthly_stats
+        ]
+        
+        return Response(stats)
+    
+    def export_data(self, queryset, format_type):
+        import csv
+        from django.http import HttpResponse
+        
+        if format_type == 'csv':
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = 'attachment; filename="leave_applications.csv"'
+            
+            writer = csv.writer(response)
+            writer.writerow(['Employee', 'Leave Type', 'From Date', 'To Date', 'Days', 'Status', 'Reason'])
+            
+            for app in queryset:
+                writer.writerow([
+                    app.employee.full_name,
+                    app.leave_type.name,
+                    app.from_date,
+                    app.to_date,
+                    app.total_days,
+                    app.status,
+                    app.reason
+                ])
+            
+            return response
+        
+        return Response({'error': 'Export format not supported'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class HolidayViewSet(viewsets.ModelViewSet):
@@ -162,3 +379,36 @@ class HolidayViewSet(viewsets.ModelViewSet):
         if not session_key and self.request.method in ['POST', 'PUT', 'PATCH']:
             session_key = self.request.data.get('session_key')
         return session_key
+    
+    def list(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            queryset = self.get_queryset()
+            
+            # Apply filters
+            year = request.query_params.get('year')
+            if year:
+                queryset = queryset.filter(date__year=year)
+            
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({'results': serializer.data})
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(company=session.service_user.company)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)

@@ -477,11 +477,11 @@ const PaymentGatewayTab: React.FC = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Gateway Type</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Gateway Type</label>
               <select
                 value={formData.gateway_type}
                 onChange={(e) => setFormData({...formData, gateway_type: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 disabled={showEditModal}
               >
                 <option value="razorpay">Razorpay</option>
@@ -492,12 +492,12 @@ const PaymentGatewayTab: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Gateway Name</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Gateway Name</label>
               <input
                 type="text"
                 value={formData.gateway_name}
                 onChange={(e) => setFormData({...formData, gateway_name: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 placeholder="e.g., Razorpay Production"
               />
             </div>
@@ -505,21 +505,21 @@ const PaymentGatewayTab: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Merchant ID</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Merchant ID</label>
               <input
                 type="text"
                 value={formData.merchant_id}
                 onChange={(e) => setFormData({...formData, merchant_id: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Webhook URL</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Webhook URL</label>
               <input
                 type="url"
                 value={formData.webhook_url}
                 onChange={(e) => setFormData({...formData, webhook_url: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               />
             </div>
           </div>
@@ -528,7 +528,7 @@ const PaymentGatewayTab: React.FC = () => {
           {formData.gateway_type === 'razorpay' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Key ID</label>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Key ID</label>
                 <input
                   type="text"
                   value={formData.credentials.key_id}
@@ -536,11 +536,11 @@ const PaymentGatewayTab: React.FC = () => {
                     ...formData, 
                     credentials: {...formData.credentials, key_id: e.target.value}
                   })}
-                  className="w-full p-2 border border-gray-300 rounded-lg"
+                  className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Key Secret</label>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Key Secret</label>
                 <input
                   type="password"
                   value={formData.credentials.key_secret}
@@ -548,7 +548,7 @@ const PaymentGatewayTab: React.FC = () => {
                     ...formData, 
                     credentials: {...formData.credentials, key_secret: e.target.value}
                   })}
-                  className="w-full p-2 border border-gray-300 rounded-lg"
+                  className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 />
               </div>
             </div>
@@ -585,23 +585,23 @@ const PaymentGatewayTab: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Payment Threshold (₹)</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Payment Threshold (₹)</label>
               <input
                 type="number"
                 value={formData.payment_threshold}
                 onChange={(e) => setFormData({...formData, payment_threshold: parseFloat(e.target.value) || 0})}
-                className="w-full p-2 border border-gray-300 rounded-lg"
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               />
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            <label className="flex items-center">
+            <label className="flex items-center text-gray-700 dark:text-gray-300">
               <input
                 type="checkbox"
                 checked={formData.auto_gst_payment}
                 onChange={(e) => setFormData({...formData, auto_gst_payment: e.target.checked})}
-                className="mr-2"
+                className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
               />
               Auto GST Payment
             </label>

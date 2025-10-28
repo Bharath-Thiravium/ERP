@@ -6,6 +6,9 @@ import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
 import toast from 'react-hot-toast'
 import OfferManagement from './OfferManagement'
+import { getButtonState } from '../../utils/interviewUtils'
+import { useInterval } from '../../hooks/useInterval'
+import InterviewCountdown from './InterviewCountdown'
 
 const InterviewsList: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
@@ -14,6 +17,11 @@ const InterviewsList: React.FC = () => {
   const [selectedApplication, setSelectedApplication] = useState<any>(null)
   const [showOfferModal, setShowOfferModal] = useState(false)
   const [loading, setLoading] = useState(false)
+  // Removed unused currentTime state
+
+  // Update current time every minute for real-time countdown
+  useInterval(() => {
+  }, 60000) // Update every minute
 
   const fetchInterviews = async () => {
     if (!sessionKey) return
@@ -176,6 +184,14 @@ const InterviewsList: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Countdown Timer */}
+                    <div className="mb-4">
+                      <InterviewCountdown 
+                        interviewDate={interview.interview_date}
+                        interviewTime={interview.interview_time}
+                      />
+                    </div>
+
                     <div className="mb-4">
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Position: {interview.job_title}
@@ -198,18 +214,30 @@ const InterviewsList: React.FC = () => {
                     </div>
                   </div>
                   
-                  {interview.status === 'scheduled' && (
-                    <div className="flex items-center space-x-2 mt-4">
-                      <Button 
-                        size="sm"
-                        className="bg-blue-500 hover:bg-blue-600 text-white"
-                        onClick={() => markInterviewCompleted(interview.id)}
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1" />
-                        Mark Completed
-                      </Button>
-                    </div>
-                  )}
+                  {interview.status === 'scheduled' && (() => {
+                    const buttonState = getButtonState(interview.interview_date, interview.interview_time)
+                    return (
+                      <div className="flex items-center space-x-2 mt-4">
+                        <Button 
+                          size="sm"
+                          className={`${buttonState.disabled 
+                            ? 'bg-gray-400 cursor-not-allowed' 
+                            : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+                          onClick={() => !buttonState.disabled && markInterviewCompleted(interview.id)}
+                          disabled={buttonState.disabled}
+                          title={buttonState.tooltip}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          {buttonState.text}
+                        </Button>
+                        {buttonState.disabled && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {buttonState.tooltip}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
                   
                   {interview.status === 'completed' && !interview.recommendation && (
                     <div className="flex items-center space-x-2 mt-4">

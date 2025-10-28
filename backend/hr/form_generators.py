@@ -370,19 +370,19 @@ class ChallanGenerator:
             payroll_cycle__start_date__year=year
         )
         
-        total_employee_pf = sum(p.pf_employee for p in payslips)
-        total_employer_pf = sum(p.pf_employer for p in payslips)
+        total_employee_pf = sum(p.pf_employee or 0 for p in payslips)
+        total_employer_pf = sum(p.pf_employer or 0 for p in payslips)
         total_pf = total_employee_pf + total_employer_pf
         
         # Challan details
         challan_data = [
-            ['Establishment Code', self.statutory_settings.pf_establishment_code if self.statutory_settings else ''],
-            ['Establishment Name', self.company.name],
+            ['Establishment Code', self.statutory_settings.pf_establishment_code if self.statutory_settings and self.statutory_settings.pf_establishment_code else 'N/A'],
+            ['Establishment Name', self.company.name or 'N/A'],
             ['Wage Month', f"{month:02d}/{year}"],
             ['Total Employees', str(len(payslips))],
-            ['Employee Contribution', f"₹{total_employee_pf:,.2f}"],
-            ['Employer Contribution', f"₹{total_employer_pf:,.2f}"],
-            ['Total Amount', f"₹{total_pf:,.2f}"],
+            ['Employee Contribution', f"₹{total_employee_pf or 0:,.2f}"],
+            ['Employer Contribution', f"₹{total_employer_pf or 0:,.2f}"],
+            ['Total Amount', f"₹{total_pf or 0:,.2f}"],
         ]
         
         table = Table(challan_data, colWidths=[3*inch, 3*inch])
@@ -427,19 +427,19 @@ class ChallanGenerator:
             esi_employee__gt=0
         )
         
-        total_employee_esi = sum(p.esi_employee for p in payslips)
-        total_employer_esi = sum(p.esi_employer for p in payslips)
+        total_employee_esi = sum(p.esi_employee or 0 for p in payslips)
+        total_employer_esi = sum(p.esi_employer or 0 for p in payslips)
         total_esi = total_employee_esi + total_employer_esi
         
         # Challan details
         challan_data = [
-            ['Employer Code', self.statutory_settings.esi_employer_code if self.statutory_settings else ''],
-            ['Employer Name', self.company.name],
+            ['Employer Code', self.statutory_settings.esi_employer_code if self.statutory_settings and self.statutory_settings.esi_employer_code else 'N/A'],
+            ['Employer Name', self.company.name or 'N/A'],
             ['Contribution Period', f"{month:02d}/{year}"],
             ['Total Employees', str(len(payslips))],
-            ['Employee Contribution (0.75%)', f"₹{total_employee_esi:,.2f}"],
-            ['Employer Contribution (3.25%)', f"₹{total_employer_esi:,.2f}"],
-            ['Total Amount', f"₹{total_esi:,.2f}"],
+            ['Employee Contribution (0.75%)', f"₹{total_employee_esi or 0:,.2f}"],
+            ['Employer Contribution (3.25%)', f"₹{total_employer_esi or 0:,.2f}"],
+            ['Total Amount', f"₹{total_esi or 0:,.2f}"],
         ]
         
         table = Table(challan_data, colWidths=[3*inch, 3*inch])

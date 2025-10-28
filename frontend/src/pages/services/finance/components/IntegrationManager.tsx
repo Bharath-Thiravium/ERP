@@ -58,7 +58,7 @@ const IntegrationManager: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Integration & Automation</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Integration & Automation</h2>
       </div>
 
       <Tabs defaultValue="dashboard">
@@ -76,41 +76,41 @@ const IntegrationManager: React.FC = () => {
             {dashboardData && (
               <>
                 <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-2">Bank Integration</h3>
+                  <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Bank Integration</h3>
                   <div className="text-3xl font-bold text-blue-600">
                     {dashboardData.bank_integration?.verified_customers || 0}
                   </div>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     {dashboardData.bank_integration?.total_customers || 0} Total Customers
                   </p>
                 </Card>
 
                 <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-2">ERP Connectors</h3>
+                  <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">ERP Connectors</h3>
                   <div className="text-3xl font-bold text-green-600">
                     {dashboardData.erp_integration?.connected_integrations || 0}
                   </div>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     {dashboardData.erp_integration?.total_integrations || 0} Total Connectors
                   </p>
                 </Card>
 
                 <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-2">Payment Gateway</h3>
+                  <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Payment Gateway</h3>
                   <div className="text-3xl font-bold text-purple-600">
                     {dashboardData.payment_gateway?.verified_gateways || 0}
                   </div>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     {dashboardData.payment_gateway?.total_gateways || 0} Total Gateways
                   </p>
                 </Card>
 
                 <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-2">Email Automation</h3>
+                  <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Email Automation</h3>
                   <div className="text-3xl font-bold text-orange-600">
                     {dashboardData.email_automation?.active_automations || 0}
                   </div>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     {dashboardData.email_automation?.emails_sent_today || 0} Sent Today
                   </p>
                 </Card>
@@ -137,12 +137,12 @@ const IntegrationManager: React.FC = () => {
 
         <TabsContent value="mobile">
           <div className="space-y-4">
-            <h3 className="text-xl font-semibold">Mobile App Configuration</h3>
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Mobile App Configuration</h3>
             
             {mobileConfig && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card className="p-6">
-                  <h4 className="text-lg font-semibold mb-4">Notifications</h4>
+                  <h4 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Notifications</h4>
                   <div className="space-y-3">
                     <Checkbox
                       checked={mobileConfig.push_notifications_enabled}
@@ -163,7 +163,7 @@ const IntegrationManager: React.FC = () => {
                 </Card>
 
                 <Card className="p-6">
-                  <h4 className="text-lg font-semibold mb-4">Features</h4>
+                  <h4 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Features</h4>
                   <div className="space-y-3">
                     <Checkbox
                       checked={mobileConfig.offline_mode_enabled}

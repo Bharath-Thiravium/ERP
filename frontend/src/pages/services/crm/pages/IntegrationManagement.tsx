@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { Plug, Settings, CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react'
+import { Plug, Settings, CheckCircle, XCircle, AlertCircle, RefreshCw, Edit, Trash2 } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
+import { IntegrationModal } from '../components/IntegrationModal'
 import toast from 'react-hot-toast'
 
 interface Integration {
@@ -21,6 +22,8 @@ const IntegrationManagement: React.FC = () => {
   const [integrations, setIntegrations] = useState<Integration[]>([])
   const [loading, setLoading] = useState(true)
   const [dashboardData, setDashboardData] = useState<any>(null)
+  const [showModal, setShowModal] = useState(false)
+  const [selectedIntegration, setSelectedIntegration] = useState<Integration | null>(null)
 
   const statusColors = {
     active: 'bg-green-100 text-green-800',
@@ -89,6 +92,43 @@ const IntegrationManagement: React.FC = () => {
     }
   }
 
+  // Handle add integration
+  const handleAddIntegration = () => {
+    setSelectedIntegration(null)
+    setShowModal(true)
+  }
+
+  // Handle edit integration
+  const handleEditIntegration = (integration: Integration) => {
+    setSelectedIntegration(integration)
+    setShowModal(true)
+  }
+
+  // Handle delete integration
+  const handleDeleteIntegration = async (integrationId: number) => {
+    if (!confirm('Are you sure you want to delete this integration?')) return
+    
+    try {
+      await crmApi.deleteIntegration(sessionKey!, integrationId)
+      toast.success('Integration deleted successfully!')
+      fetchIntegrations()
+    } catch (error) {
+      toast.error('Failed to delete integration')
+    }
+  }
+
+  // Handle modal success
+  const handleModalSuccess = () => {
+    fetchIntegrations()
+    setSelectedIntegration(null)
+  }
+
+  // Handle close modal
+  const handleCloseModal = () => {
+    setShowModal(false)
+    setSelectedIntegration(null)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -111,7 +151,7 @@ const IntegrationManagement: React.FC = () => {
             </p>
           </div>
           <Button 
-            onClick={() => toast('Add Integration feature coming soon!')}
+            onClick={handleAddIntegration}
             className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700"
           >
             <Plug className="h-4 w-4 mr-2" />
@@ -177,7 +217,7 @@ const IntegrationManagement: React.FC = () => {
               Get started by adding your first integration
             </p>
             <Button 
-              onClick={() => toast('Add Integration feature coming soon!')}
+              onClick={handleAddIntegration}
               className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700"
             >
               <Plug className="h-4 w-4 mr-2" />
@@ -228,6 +268,21 @@ const IntegrationManagement: React.FC = () => {
                       >
                         Sync
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEditIntegration(integration)}
+                      >
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDeleteIntegration(integration.id)}
+                        className="text-red-600 border-red-300 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -236,6 +291,14 @@ const IntegrationManagement: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Integration Modal */}
+      <IntegrationModal
+        isOpen={showModal}
+        onClose={handleCloseModal}
+        onSuccess={handleModalSuccess}
+        integration={selectedIntegration}
+      />
     </div>
   )
 }

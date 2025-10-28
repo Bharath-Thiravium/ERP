@@ -34,35 +34,46 @@ class LeadScoringEngine:
         for activity in activities:
             score += activity_scores.get(activity.activity_type, 3)
         
+        # Base score for having an email (everyone should get some points)
+        if lead.email:
+            score += 10  # Base engagement score
+        
         # Simulate website visits, email opens (in real implementation, this would come from tracking)
-        # For demo purposes, we'll use random values based on lead characteristics
+        # For demo purposes, we'll use deterministic values based on lead characteristics
         if lead.source in ['website', 'social_media']:
-            score += random.randint(10, 25)  # High web engagement
+            score += 20  # High web engagement
         elif lead.source in ['referral', 'email_campaign']:
-            score += random.randint(5, 15)   # Medium engagement
+            score += 15   # Medium engagement
+        elif lead.source in ['cold_call', 'trade_show']:
+            score += 10   # Lower engagement
+        else:
+            score += 5    # Minimal engagement
         
         # Email engagement simulation
         if '@' in lead.email:
             domain = lead.email.split('@')[1]
-            if domain in ['gmail.com', 'yahoo.com', 'hotmail.com']:
-                score += random.randint(3, 8)   # Personal email
+            if domain in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com']:
+                score += 5   # Personal email
             else:
-                score += random.randint(8, 15)  # Business email
+                score += 12  # Business email (better)
         
         return min(100, score)
     
     def calculate_demographic_score(self, lead):
         """Calculate demographic score based on company fit"""
-        score = 0
+        score = 10  # Base score for having a lead
         
         # Company size indicators
         if lead.company_name:
             score += 15  # Has company
             
             # Simulate company size scoring (in real implementation, use external APIs)
-            company_indicators = ['ltd', 'inc', 'corp', 'llc', 'pvt', 'limited']
+            company_indicators = ['ltd', 'inc', 'corp', 'llc', 'pvt', 'limited', 'llp', 'plc']
             if any(indicator in lead.company_name.lower() for indicator in company_indicators):
                 score += 10  # Established company
+        else:
+            # Even without company name, give some points
+            score += 5
         
         # Job title scoring
         if lead.job_title:
@@ -77,7 +88,9 @@ class LeadScoringEngine:
             elif 'manager' in title_lower or 'lead' in title_lower:
                 score += 15  # Management role
             else:
-                score += 5   # Other roles
+                score += 8   # Other roles
+        else:
+            score += 5  # Base score even without job title
         
         # Industry fit (simulate based on email domain or company name)
         if lead.email:
@@ -92,20 +105,34 @@ class LeadScoringEngine:
         
         # Location scoring (simulate based on phone or other indicators)
         if lead.phone:
-            score += 5  # Has phone number
+            score += 8  # Has phone number
         
         return min(100, score)
     
     def calculate_engagement_score(self, lead):
         """Calculate engagement score based on interaction quality"""
-        score = 0
+        score = 5  # Base engagement score
         
-        # Response time scoring (simulate based on lead characteristics)
-        if lead.status in ['contacted', 'qualified']:
-            score += 20  # Responded to outreach
+        # Status-based scoring
+        status_scores = {
+            'new': 10,
+            'contacted': 25,
+            'qualified': 40,
+            'proposal': 60,
+            'negotiation': 75,
+            'won': 90,
+            'lost': 0
+        }
+        score += status_scores.get(lead.status, 10)
         
-        if lead.status in ['qualified', 'proposal', 'negotiation']:
-            score += 25  # High engagement
+        # Priority-based engagement
+        priority_scores = {
+            'urgent': 20,
+            'high': 15,
+            'medium': 10,
+            'low': 5
+        }
+        score += priority_scores.get(lead.priority, 5)
         
         # Meeting acceptance (simulate)
         meetings = Activity.objects.filter(
@@ -113,7 +140,7 @@ class LeadScoringEngine:
             activity_type='meeting',
             status='completed'
         ).count()
-        score += min(30, meetings * 10)  # Up to 30 points for meetings
+        score += min(25, meetings * 8)  # Up to 25 points for meetings
         
         # Email response rate (simulate)
         emails = Activity.objects.filter(
@@ -123,7 +150,7 @@ class LeadScoringEngine:
         if emails > 0:
             # Simulate response rate
             response_rate = min(1.0, (meetings + 1) / (emails + 1))
-            score += int(response_rate * 20)
+            score += int(response_rate * 15)
         
         # Time since last contact
         if lead.last_contacted:
@@ -134,6 +161,9 @@ class LeadScoringEngine:
                 score += 10  # Moderate recency
             else:
                 score += 5   # Older contact
+        else:
+            # New lead, give some engagement points
+            score += 8
         
         return min(100, score)
     
@@ -293,7 +323,8 @@ class LeadScoringEngine:
         if lead_ids:
             leads = Lead.objects.filter(id__in=lead_ids, company=self.company)
         else:
-            leads = Lead.objects.filter(company=self.company, status__in=['new', 'contacted', 'qualified'])
+            # Score ALL leads, not just specific statuses
+            leads = Lead.objects.filter(company=self.company).exclude(status='lost')
         
         results = []
         for lead in leads:
@@ -301,8 +332,14 @@ class LeadScoringEngine:
                 score = self.calculate_lead_score(lead)
                 results.append({
                     'lead_id': lead.id,
+                    'lead_name': f"{lead.first_name} {lead.last_name}",
                     'total_score': score.total_score,
                     'grade': score.grade,
+                    'behavioral_score': score.behavioral_score,
+                    'demographic_score': score.demographic_score,
+                    'engagement_score': score.engagement_score,
+                    'predictive_score': score.predictive_score,
+                    'conversion_probability': score.conversion_probability,
                     'success': True
                 })
             except Exception as e:

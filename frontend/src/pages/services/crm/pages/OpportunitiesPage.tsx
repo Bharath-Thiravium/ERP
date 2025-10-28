@@ -136,69 +136,85 @@ export const OpportunitiesPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredOpportunities.map((opportunity) => (
           <div key={opportunity.id} className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-lg transition-all duration-200">
+            {/* Header with Avatar and Actions */}
             <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center space-x-3">
-                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
+              <div className="flex items-center space-x-3 flex-1 min-w-0">
+                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center flex-shrink-0">
                   <Target className="h-5 w-5 text-white" />
                 </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white">
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-gray-900 dark:text-white truncate">
                     {opportunity.name}
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{opportunity.account_name}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{opportunity.account_name || 'No Account'}</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <span className={`px-2 py-1 text-xs rounded-full ${getStageColor(opportunity.stage)}`}>
-                  {opportunity.stage.replace('_', ' ')}
-                </span>
-                <div className="flex space-x-1">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 w-8 p-0"
-                    onClick={() => handleEditOpportunity(opportunity)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 w-8 p-0 text-red-600"
-                    onClick={() => handleDeleteOpportunity(opportunity.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+              <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-8 w-8 p-0 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  onClick={() => handleEditOpportunity(opportunity)}
+                  title="Edit Opportunity"
+                >
+                  <Edit className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-8 w-8 p-0 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  onClick={() => handleDeleteOpportunity(opportunity.id)}
+                  title="Delete Opportunity"
+                >
+                  <Trash2 className="h-4 w-4 text-red-600 hover:text-red-700" />
+                </Button>
               </div>
             </div>
 
+            {/* Stage Badge */}
+            <div className="mb-4">
+              <span className={`inline-flex px-3 py-1 text-xs font-medium rounded-full ${getStageColor(opportunity.stage)}`}>
+                {opportunity.stage.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </span>
+            </div>
+
+            {/* Opportunity Details */}
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
-                <DollarSign className="h-4 w-4 text-gray-400" />
-                <span className="text-sm text-gray-600 dark:text-gray-300">
-                  ₹{opportunity.amount.toLocaleString()}
-                </span>
-                <span className="text-xs text-gray-500">
-                  ({opportunity.probability}% probability)
-                </span>
+                <DollarSign className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                <div className="flex items-center space-x-2 min-w-0 flex-1">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    ₹{opportunity.amount.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                    {opportunity.probability}% probability
+                  </span>
+                </div>
               </div>
               <div className="flex items-center space-x-2">
-                <Calendar className="h-4 w-4 text-gray-400" />
+                <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
                 <span className="text-sm text-gray-600 dark:text-gray-300">
-                  {new Date(opportunity.expected_close_date).toLocaleDateString()}
+                  Expected: {new Date(opportunity.expected_close_date).toLocaleDateString()}
                 </span>
               </div>
             </div>
 
+            {/* Footer */}
             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-green-600">
-                  Weighted: ₹{opportunity.weighted_amount?.toLocaleString() || '0'}
-                </span>
-                <span className="text-xs text-gray-500">
-                  {new Date(opportunity.created_at).toLocaleDateString()}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-green-600">
+                    Weighted: ₹{opportunity.weighted_amount?.toLocaleString() || '0'}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    Created: {new Date(opportunity.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs text-gray-400">
+                    ID: {opportunity.opportunity_id}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

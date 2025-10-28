@@ -31,7 +31,8 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({ isOpen, onClose, onSave,
         month: formData.period === 'monthly' ? parseInt(formData.month) : null,
         quarter: formData.period === 'quarterly' ? parseInt(formData.quarter) : null,
         quota_amount: parseFloat(formData.quota_amount),
-        deals_target: parseInt(formData.deals_target)
+        deals_target: parseInt(formData.deals_target),
+        user: 'auto' // Let backend assign current user
       }
       await crmApi.createSalesQuota(sessionKey!, quotaData)
       onSave()

@@ -121,15 +121,49 @@ export interface JobApplication {
   full_name: string;
   email: string;
   phone: string;
+  
+  // Professional Details
+  current_position?: string;
+  current_company?: string;
+  total_experience: number;
+  relevant_experience: number;
+  current_salary?: number;
+  expected_salary?: number;
+  notice_period?: string;
+  
+  // Contact & Location
+  current_location?: string;
+  willing_to_relocate: boolean;
+  linkedin_profile?: string;
+  portfolio_url?: string;
+  
+  // Education & Skills
+  education_details: any[];
+  skills: string[];
+  certifications: string[];
+  languages: string[];
+  
+  // Application Materials
   resume: string;
   cover_letter?: string;
+  
+  // Source Tracking
+  application_source: 'direct' | 'whatsapp' | 'linkedin' | 'gmail' | 'outlook' | 'facebook' | 'twitter' | 'instagram' | 'telegram' | 'other_email' | 'copy_link';
+  share_id?: string;
+  
+  // AI Analysis
   ai_score: number;
   skill_match_percentage: number;
   ai_screening_notes?: string;
+  
+  // Application Status
   status: 'submitted' | 'screening' | 'shortlisted' | 'interview_scheduled' | 'interviewed' | 'offer_sent' | 'offer_accepted' | 'offer_rejected' | 'selected' | 'rejected' | 'withdrawn';
+  
+  // Interview Details
   interview_date?: string;
   interview_notes?: string;
   interviewer?: number;
+  
   created_at: string;
   updated_at: string;
 }

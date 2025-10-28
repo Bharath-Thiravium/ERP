@@ -24,10 +24,7 @@ class LeadSerializer(serializers.ModelSerializer):
         read_only_fields = ['lead_id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
-        company = validated_data['company']
-        # Generate lead ID
-        lead_count = Lead.objects.filter(company=company).count() + 1
-        validated_data['lead_id'] = f"{company.company_prefix}LEAD{lead_count:04d}"
+        # The lead_id will be auto-generated in the model's save method
         return super().create(validated_data)
 
 
@@ -38,13 +35,10 @@ class ContactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contact
         fields = '__all__'
-        read_only_fields = ['contact_id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['contact_id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
-        company = validated_data['company']
-        # Generate contact ID
-        contact_count = Contact.objects.filter(company=company).count() + 1
-        validated_data['contact_id'] = f"{company.company_prefix}CON{contact_count:04d}"
+        # The contact_id will be auto-generated in the model's save method
         return super().create(validated_data)
 
 
@@ -57,13 +51,10 @@ class AccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
         fields = '__all__'
-        read_only_fields = ['account_id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['account_id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
-        company = validated_data['company']
-        # Generate account ID
-        account_count = Account.objects.filter(company=company).count() + 1
-        validated_data['account_id'] = f"{company.company_prefix}ACC{account_count:04d}"
+        # The account_id will be auto-generated in the model's save method
         return super().create(validated_data)
 
 
@@ -78,13 +69,10 @@ class OpportunitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Opportunity
         fields = '__all__'
-        read_only_fields = ['opportunity_id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['opportunity_id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
-        company = validated_data['company']
-        # Generate opportunity ID
-        opp_count = Opportunity.objects.filter(company=company).count() + 1
-        validated_data['opportunity_id'] = f"{company.company_prefix}OPP{opp_count:04d}"
+        # The opportunity_id will be auto-generated in the model's save method
         return super().create(validated_data)
 
 
@@ -101,13 +89,10 @@ class ActivitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Activity
         fields = '__all__'
-        read_only_fields = ['activity_id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['activity_id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
-        company = validated_data['company']
-        # Generate activity ID
-        activity_count = Activity.objects.filter(company=company).count() + 1
-        validated_data['activity_id'] = f"{company.company_prefix}ACT{activity_count:04d}"
+        # The activity_id will be auto-generated in the model's save method
         return super().create(validated_data)
 
 
@@ -120,13 +105,10 @@ class CampaignSerializer(serializers.ModelSerializer):
     class Meta:
         model = Campaign
         fields = '__all__'
-        read_only_fields = ['campaign_id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['campaign_id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
-        company = validated_data['company']
-        # Generate campaign ID
-        campaign_count = Campaign.objects.filter(company=company).count() + 1
-        validated_data['campaign_id'] = f"{company.company_prefix}CAM{campaign_count:04d}"
+        # The campaign_id will be auto-generated in the model's save method
         return super().create(validated_data)
 
 
@@ -156,11 +138,12 @@ class SalesTargetSerializer(serializers.ModelSerializer):
 class TicketCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = TicketCategory
-        fields = '__all__'
+        fields = ['id', 'company', 'name', 'description', 'color', 'is_active', 'created_at']
         read_only_fields = ['created_at']
 
     def create(self, validated_data):
-        company = validated_data['company']
+        # Remove any created_by field if it exists
+        validated_data.pop('created_by', None)
         return super().create(validated_data)
 
 
@@ -254,7 +237,7 @@ class DealSerializer(serializers.ModelSerializer):
     class Meta:
         model = Deal
         fields = '__all__'
-        read_only_fields = ['deal_id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['deal_id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         company = validated_data['company']

@@ -33,11 +33,19 @@ class TicketViewSet(CRMBaseViewSet):
             data = request.data.copy()
             data['company'] = service_user.company.id
             
-            # Set created_by
-            from django.contrib.auth.models import User
-            admin_user = User.objects.filter(is_superuser=True).first()
-            if admin_user:
-                data['created_by'] = admin_user.id
+            # Set created_by - get valid user
+            user_id = None
+            if hasattr(service_user, 'created_by') and service_user.created_by:
+                user_id = service_user.created_by.id
+            else:
+                from django.contrib.auth.models import User
+                admin_user = User.objects.filter(is_superuser=True).first()
+                if admin_user:
+                    user_id = admin_user.id
+                else:
+                    return Response({'error': 'No valid user found for created_by field'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            data['created_by'] = user_id
             
             # Auto-assign SLA based on priority
             priority = data.get('priority', 'medium')
@@ -54,11 +62,17 @@ class TicketViewSet(CRMBaseViewSet):
             
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
-            instance = serializer.save()
+            
+            # Explicitly pass created_by to save method
+            from django.contrib.auth.models import User
+            created_by_user = User.objects.get(id=user_id)
+            instance = serializer.save(created_by=created_by_user)
             
             return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            return Response({'error': f'Ticket creation failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):

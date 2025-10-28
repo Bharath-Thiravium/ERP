@@ -82,6 +82,82 @@ class LeadScoreViewSet(CRMBaseViewSet):
             'results': results
         })
 
+    @action(detail=False, methods=['post'])
+    def calculate_all(self, request):
+        """Calculate AI scores for all leads"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Debug: Check leads first
+        total_leads = Lead.objects.filter(company=company).count()
+        print(f"DEBUG: Found {total_leads} leads for company {company.name}")
+        
+        if total_leads == 0:
+            return Response({
+                'success': False,
+                'message': 'No leads found for this company',
+                'total_processed': 0,
+                'successful': 0,
+                'failed': 0,
+                'results': []
+            })
+
+        engine = LeadScoringEngine(company)
+        results = engine.bulk_score_leads()
+        
+        print(f"DEBUG: Processed {len(results)} leads, Results: {results}")
+        
+        return Response({
+            'success': True,
+            'message': f'Successfully calculated AI scores for {len(results)} leads',
+            'total_processed': len(results),
+            'successful': len([r for r in results if r.get('success')]),
+            'failed': len([r for r in results if not r.get('success')]),
+            'results': results
+        })
+
+    @action(detail=False)
+    def debug_leads(self, request):
+        """Debug endpoint to check lead data"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        leads = Lead.objects.filter(company=company)
+        lead_data = []
+        
+        for lead in leads:
+            lead_data.append({
+                'id': lead.id,
+                'name': f"{lead.first_name} {lead.last_name}",
+                'email': lead.email,
+                'company_name': lead.company_name,
+                'status': lead.status,
+                'priority': lead.priority,
+                'source': lead.source,
+                'job_title': lead.job_title,
+                'estimated_value': str(lead.estimated_value) if lead.estimated_value else None,
+                'has_score': hasattr(lead, 'score')
+            })
+        
+        return Response({
+            'total_leads': leads.count(),
+            'leads': lead_data
+        })
+
     @action(detail=False)
     def analytics(self, request):
         """Lead scoring analytics"""
@@ -328,3 +404,29 @@ class LeadScoringDashboardViewSet(viewsets.ViewSet):
                 })
         
         return Response(insights)
+
+    @action(detail=False, methods=['post'])
+    def calculate_all(self, request):
+        """Calculate AI scores for all leads from dashboard"""
+        session_key = self.get_session_key(request)
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        from .lead_scoring import LeadScoringEngine
+        engine = LeadScoringEngine(company)
+        results = engine.bulk_score_leads()
+        
+        return Response({
+            'success': True,
+            'message': f'Successfully calculated AI scores for {len(results)} leads',
+            'total_processed': len(results),
+            'successful': len([r for r in results if r.get('success')]),
+            'failed': len([r for r in results if not r.get('success')]),
+            'results': results
+        })

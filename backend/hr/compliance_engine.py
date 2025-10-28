@@ -49,24 +49,22 @@ class ComplianceEngine:
             if not hasattr(emp, 'statutory_details') or not emp.statutory_details.uan_number:
                 alerts.append({
                     'company': self.company,
-                    'alert_type': 'PF_UAN_MISSING',
-                    'severity': 'HIGH',
+                    'alert_type': 'compliance_violation',
+                    'priority': 'high',
                     'title': f'UAN Missing for {emp.first_name} {emp.last_name}',
-                    'description': 'Employee UAN number is not mapped',
-                    'employee': emp,
-                    'due_date': timezone.now() + timedelta(days=7)
+                    'message': 'Employee UAN number is not mapped',
+                    'due_date': timezone.now().date() + timedelta(days=7)
                 })
             
             # Check PF eligibility vs enrollment
-            if emp.basic_salary >= 15000 and not emp.statutory_details.pf_applicable:
+            if emp.basic_salary >= 15000:
                 alerts.append({
                     'company': self.company,
-                    'alert_type': 'PF_ENROLLMENT_REQUIRED',
-                    'severity': 'HIGH',
+                    'alert_type': 'compliance_violation',
+                    'priority': 'high',
                     'title': f'PF Enrollment Required for {emp.first_name} {emp.last_name}',
-                    'description': 'Employee eligible for PF but not enrolled',
-                    'employee': emp,
-                    'due_date': timezone.now() + timedelta(days=3)
+                    'message': 'Employee eligible for PF but not enrolled',
+                    'due_date': timezone.now().date() + timedelta(days=3)
                 })
         
         return alerts
@@ -77,15 +75,14 @@ class ComplianceEngine:
         employees = Employee.objects.filter(company=self.company, status='active')
         
         for emp in employees:
-            if emp.gross_salary <= 21000 and not emp.statutory_details.esi_applicable:
+            if emp.gross_salary <= 21000:
                 alerts.append({
                     'company': self.company,
-                    'alert_type': 'ESI_ENROLLMENT_REQUIRED',
-                    'severity': 'MEDIUM',
+                    'alert_type': 'compliance_violation',
+                    'priority': 'medium',
                     'title': f'ESI Enrollment Required for {emp.first_name} {emp.last_name}',
-                    'description': 'Employee eligible for ESI but not enrolled',
-                    'employee': emp,
-                    'due_date': timezone.now() + timedelta(days=5)
+                    'message': 'Employee eligible for ESI but not enrolled',
+                    'due_date': timezone.now().date() + timedelta(days=5)
                 })
         
         return alerts
@@ -99,11 +96,11 @@ class ComplianceEngine:
         if today.day >= 15:  # PT return due by 15th
             alerts.append({
                 'company': self.company,
-                'alert_type': 'PT_RETURN_DUE',
-                'severity': 'HIGH',
+                'alert_type': 'filing_due',
+                'priority': 'high',
                 'title': 'Professional Tax Return Due',
-                'description': f'PT return for {today.strftime("%B %Y")} is due',
-                'due_date': timezone.now() + timedelta(days=1)
+                'message': f'PT return for {today.strftime("%B %Y")} is due',
+                'due_date': today + timedelta(days=1)
             })
         
         return alerts
@@ -119,11 +116,11 @@ class ComplianceEngine:
         if today.month in quarter_end_months and today.day >= 25:
             alerts.append({
                 'company': self.company,
-                'alert_type': 'TDS_RETURN_DUE',
-                'severity': 'CRITICAL',
+                'alert_type': 'filing_due',
+                'priority': 'critical',
                 'title': 'Quarterly TDS Return Due',
-                'description': f'TDS return for Q{(today.month-1)//3 + 1} is due',
-                'due_date': timezone.now() + timedelta(days=5)
+                'message': f'TDS return for Q{(today.month-1)//3 + 1} is due',
+                'due_date': today + timedelta(days=5)
             })
         
         return alerts
@@ -140,12 +137,11 @@ class ComplianceEngine:
             if emp.basic_salary < min_wage:
                 alerts.append({
                     'company': self.company,
-                    'alert_type': 'MIN_WAGE_VIOLATION',
-                    'severity': 'CRITICAL',
+                    'alert_type': 'wage_violation',
+                    'priority': 'critical',
                     'title': f'Minimum Wage Violation - {emp.first_name} {emp.last_name}',
-                    'description': f'Employee salary below minimum wage of ₹{min_wage}',
-                    'employee': emp,
-                    'due_date': timezone.now() + timedelta(days=1)
+                    'message': f'Employee salary below minimum wage of ₹{min_wage}',
+                    'due_date': timezone.now().date() + timedelta(days=1)
                 })
         
         return alerts

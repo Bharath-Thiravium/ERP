@@ -13,6 +13,7 @@ from django.core.exceptions import ValidationError
 from authentication.models import ServiceUserSession
 from django.contrib.auth.hashers import make_password
 from .security_validators import InventorySecurityValidator
+from decimal import Decimal
 import logging
 import os
 from django.conf import settings
@@ -1175,6 +1176,78 @@ def abc_analysis_report(request):
         return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
+class PurchaseOrderDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete purchase order"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    
+    def get_serializer_class(self):
+        from .serializers import PurchaseOrderSerializer
+        return PurchaseOrderSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return PurchaseOrder.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return PurchaseOrder.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return PurchaseOrder.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
+        return session_key
+
+    def update(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            
+            with transaction.atomic():
+                instance = self.get_object()
+                serializer = self.get_serializer(instance, data=request.data, partial=True)
+                serializer.is_valid(raise_exception=True)
+                
+                purchase_order = serializer.save()
+                
+                items_data = request.data.get('items', [])
+                if items_data:
+                    purchase_order.items.all().delete()
+                    
+                    for item_data in items_data:
+                        PurchaseOrderItem.objects.create(
+                            purchase_order=purchase_order,
+                            product_id=item_data['product'],
+                            quantity_ordered=item_data['quantity_ordered'],
+                            unit_price=item_data['unit_price'],
+                            notes=item_data.get('notes', '')
+                        )
+                    
+                    items = purchase_order.items.all()
+                    subtotal = sum(item.total_price for item in items)
+                    tax_amount = subtotal * Decimal('0.18')
+                    total_amount = subtotal + tax_amount
+                    
+                    purchase_order.subtotal = subtotal
+                    purchase_order.tax_amount = tax_amount
+                    purchase_order.total_amount = total_amount
+                    purchase_order.save()
+                
+                return Response(serializer.data)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
 class PurchaseOrderListCreateView(ListCreateAPIView):
     """List and create purchase orders"""
     authentication_classes = []
@@ -1320,6 +1393,35 @@ class InventoryAuditListCreateView(ListCreateAPIView):
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class ProductBundleDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete product bundle"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    
+    def get_serializer_class(self):
+        from .serializers import ProductBundleSerializer
+        return ProductBundleSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return ProductBundle.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return ProductBundle.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return ProductBundle.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
+        return session_key
 
 
 class ProductBundleListCreateView(ListCreateAPIView):
@@ -1491,6 +1593,41 @@ def start_cycle_count(request, count_id):
         return Response({
             'success': True,
             'message': 'Cycle count started successfully'
+        })
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except CycleCount.DoesNotExist:
+        return Response({'error': 'Cycle count not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def pause_cycle_count(request, count_id):
+    """Pause a cycle count"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.data.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+        
+        cycle_count = CycleCount.objects.get(
+            id=count_id,
+            company=service_user.company
+        )
+        
+        cycle_count.status = 'paused'
+        cycle_count.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Cycle count paused successfully'
         })
         
     except ServiceUserSession.DoesNotExist:

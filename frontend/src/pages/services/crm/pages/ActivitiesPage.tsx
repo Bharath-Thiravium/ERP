@@ -141,64 +141,62 @@ export const ActivitiesPage: React.FC = () => {
       </div>
 
       {/* Activities Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filteredActivities.map((activity) => (
-          <div key={activity.id} className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-lg transition-all duration-200">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center space-x-3">
-                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 flex items-center justify-center">
-                  <Calendar className="h-5 w-5 text-white" />
+          <div key={activity.id} className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-4 hover:shadow-lg transition-all duration-200 flex flex-col">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center space-x-2 min-w-0 flex-1">
+                <div className="h-8 w-8 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 flex items-center justify-center flex-shrink-0">
+                  <Calendar className="h-4 w-4 text-white" />
                 </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white">
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm truncate">
                     {activity.subject}
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{activity.assigned_to_name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{activity.assigned_to_name}</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(activity.status)}`}>
-                  {activity.status.replace('_', ' ')}
-                </span>
-                <div className="flex space-x-1">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 w-8 p-0"
-                    onClick={() => handleEditActivity(activity)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 w-8 p-0 text-red-600"
-                    onClick={() => handleDeleteActivity(activity.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+              <div className="flex items-center space-x-1 flex-shrink-0">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 w-6 p-0"
+                  onClick={() => handleEditActivity(activity)}
+                >
+                  <Edit className="h-3 w-3" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 w-6 p-0 text-red-600"
+                  onClick={() => handleDeleteActivity(activity.id)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2 flex-1">
               <div className="flex items-center justify-between">
                 <span className={`px-2 py-1 text-xs rounded-full ${getActivityTypeColor(activity.activity_type)}`}>
                   {activity.activity_type}
                 </span>
+                <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(activity.status)}`}>
+                  {activity.status.replace('_', ' ')}
+                </span>
               </div>
-              <div className="flex items-center space-x-2">
-                <Clock className="h-4 w-4 text-gray-400" />
-                <span className="text-sm text-gray-600 dark:text-gray-300">
-                  {new Date(activity.due_date).toLocaleString()}
+              <div className="flex items-center space-x-1">
+                <Clock className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                <span className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                  {new Date(activity.due_date).toLocaleDateString()}
                 </span>
               </div>
             </div>
 
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between">
                 {activity.status === 'completed' && (
-                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <CheckCircle className="h-3 w-3 text-green-500" />
                 )}
                 <span className="text-xs text-gray-500">
                   {new Date(activity.created_at).toLocaleDateString()}

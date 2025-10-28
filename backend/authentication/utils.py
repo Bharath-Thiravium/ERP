@@ -99,7 +99,15 @@ def initialize_company_auto_codes(company_id):
             'audit',
             'asset',
             'proforma_invoice',
-            'payment'
+            'payment',
+            'department',
+            'designation',
+            'lead',
+            'contact',
+            'account',
+            'opportunity',
+            'activity',
+            'campaign'
         ]
         
         for code_type in default_code_types:

@@ -130,6 +130,17 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
     gst_registration_date: ''
   })
 
+  // Currency symbol mapping
+  const getCurrencySymbol = (currency: string) => {
+    const symbols: Record<string, string> = {
+      'INR': '₹',
+      'USD': '$',
+      'EUR': '€',
+      'GBP': '£'
+    }
+    return symbols[currency] || currency
+  }
+
   useEffect(() => {
     if (customer) {
       if (customer.id) {
@@ -650,7 +661,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
       </label>
       <div className="relative">
         {icon && (
-          <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+          <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500">
             {icon}
           </div>
         )}
@@ -738,7 +749,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Customer Type <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -769,14 +780,14 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   {formData.customer_type === 'business' && (
                     <>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                           Business Type
                         </label>
                         <select
                           value={formData.business_type}
                           onChange={(e) => handleInputChange('business_type', e.target.value)}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                            errors.business_type ? 'border-red-500' : 'border-gray-300'
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${
+                            errors.business_type ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                           }`}
                         >
                           <option value="">Select Business Type</option>
@@ -807,7 +818,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
               <div className="space-y-8">
                 {/* Billing Address */}
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                     <MapPin className="w-5 h-5" />
                     Billing Address
                   </h3>
@@ -848,7 +859,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                 {/* Shipping Address Options */}
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
                       <Building2 className="w-5 h-5" />
                       Shipping Addresses
                     </h3>
@@ -889,9 +900,9 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   {shippingAddresses.length > 0 && !formData.shipping_same_as_billing && (
                     <div className="space-y-6">
                       {shippingAddresses.map((address, index) => (
-                        <div key={address.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                        <div key={address.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
                           <div className="flex items-center justify-between mb-4">
-                            <h4 className="font-medium text-gray-900">
+                            <h4 className="font-medium text-gray-900 dark:text-white">
                               Shipping Address {index + 1}
                             </h4>
                             <button
@@ -905,70 +916,70 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="md:col-span-2">
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Address Label
                               </label>
                               <input
                                 type="text"
                                 value={address.label}
                                 onChange={(e) => updateShippingAddress(address.id, 'label', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                                 placeholder="e.g., Warehouse, Branch Office"
                               />
                             </div>
 
                             <div className="md:col-span-2">
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Address Line 1
                               </label>
                               <input
                                 type="text"
                                 value={address.address_line1}
                                 onChange={(e) => updateShippingAddress(address.id, 'address_line1', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                                 placeholder="Street address, building name"
                               />
                             </div>
 
                             <div className="md:col-span-2">
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Address Line 2
                               </label>
                               <input
                                 type="text"
                                 value={address.address_line2}
                                 onChange={(e) => updateShippingAddress(address.id, 'address_line2', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                                 placeholder="Apartment, suite, floor (optional)"
                               />
                             </div>
 
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 City
                               </label>
                               <input
                                 type="text"
                                 value={address.city}
                                 onChange={(e) => updateShippingAddress(address.id, 'city', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                               />
                             </div>
 
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 State
                               </label>
                               <input
                                 type="text"
                                 value={address.state}
                                 onChange={(e) => updateShippingAddress(address.id, 'state', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                               />
                             </div>
 
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 PIN Code
                               </label>
                               <input
@@ -978,21 +989,21 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                                   const value = e.target.value.replace(/\D/g, '').slice(0, 6)
                                   updateShippingAddress(address.id, 'pincode', value)
                                 }}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                                 placeholder="123456"
                                 maxLength={6}
                               />
                             </div>
 
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Country
                               </label>
                               <input
                                 type="text"
                                 value={address.country}
                                 onChange={(e) => updateShippingAddress(address.id, 'country', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                               />
                             </div>
                           </div>
@@ -1026,14 +1037,14 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Indian Compliance Section */}
                   <div className="md:col-span-2">
-                    <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                       <FileText className="w-5 h-5" />
                       Indian Compliance
                     </h3>
                   </div>
                   
                   <div className="relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       State Code
                     </label>
                     <div className="relative">
@@ -1045,11 +1056,11 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                           setShowStateDropdown(true)
                         }}
                         onFocus={() => setShowStateDropdown(true)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                         placeholder="Type to search states..."
                       />
                       {showStateDropdown && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                           {getFilteredStates().map((state) => (
                             <div
                               key={state.code}
@@ -1058,13 +1069,13 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                                 setStateSearchTerm(state.name)
                                 setShowStateDropdown(false)
                               }}
-                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                              className="px-3 py-2 hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-100 dark:border-gray-600 last:border-b-0 text-gray-900 dark:text-white"
                             >
                               {state.code} - {state.name}
                             </div>
                           ))}
                           {getFilteredStates().length === 0 && (
-                            <div className="px-3 py-2 text-gray-500 text-center">
+                            <div className="px-3 py-2 text-gray-500 dark:text-gray-400 text-center">
                               No states found
                             </div>
                           )}
@@ -1081,25 +1092,25 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                         onChange={(e) => handleInputChange('is_gst_registered', e.target.checked)}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
-                      <span className="text-sm font-medium text-gray-700">GST Registered</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">GST Registered</span>
                     </label>
                     {formData.is_gst_registered && (
                       <div className="mt-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                           GST Registration Date
                         </label>
                         <input
                           type="date"
                           value={formData.gst_registration_date || ''}
                           onChange={(e) => handleInputChange('gst_registration_date', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         />
                       </div>
                     )}
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       GSTIN <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -1120,8 +1131,8 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                           handleInputChange('is_gst_registered', true)
                         }
                       }}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.gstin ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 ${
+                        errors.gstin ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                       }`}
                       placeholder="15-digit GST number"
                       maxLength={15}
@@ -1129,19 +1140,19 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                     {errors.gstin && (
                       <p className="text-red-500 text-sm mt-1">{errors.gstin}</p>
                     )}
-                    <p className="text-xs text-gray-500 mt-1">Format: 22AAAAA0000A1Z5</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Format: 22AAAAA0000A1Z5</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       PAN Number <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.pan_number}
                       onChange={(e) => handleInputChange('pan_number', e.target.value.toUpperCase())}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.pan_number ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 ${
+                        errors.pan_number ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                       }`}
                       placeholder="10-character PAN"
                       maxLength={10}
@@ -1149,23 +1160,23 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                     {errors.pan_number && (
                       <p className="text-red-500 text-sm mt-1">{errors.pan_number}</p>
                     )}
-                    <p className="text-xs text-gray-500 mt-1">Format: ABCDE1234F</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Format: ABCDE1234F</p>
                   </div>
 
                   {formData.customer_type === 'individual' && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Aadhar Number
                       </label>
                       <input
                         type="text"
                         value={formData.aadhar_number}
                         onChange={(e) => handleInputChange('aadhar_number', e.target.value.replace(/\D/g, ''))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                         placeholder="12-digit Aadhar number"
                         maxLength={12}
                       />
-                      <p className="text-xs text-gray-500 mt-1">12-digit number only</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">12-digit number only</p>
                     </div>
                   )}
                 </div>
@@ -1177,15 +1188,15 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Bank Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.bank_name}
                       onChange={(e) => handleInputChange('bank_name', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.bank_name ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 ${
+                        errors.bank_name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                       }`}
                       placeholder="e.g., State Bank of India"
                     />
@@ -1195,15 +1206,15 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Account Number <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.bank_account_number}
                       onChange={(e) => handleInputChange('bank_account_number', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.bank_account_number ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 ${
+                        errors.bank_account_number ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                       }`}
                     />
                     {errors.bank_account_number && (
@@ -1212,15 +1223,15 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       IFSC Code <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.bank_ifsc_code}
                       onChange={(e) => handleInputChange('bank_ifsc_code', e.target.value.toUpperCase())}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.bank_ifsc_code ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 ${
+                        errors.bank_ifsc_code ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                       }`}
                       placeholder="e.g., SBIN0001234"
                       maxLength={11}
@@ -1231,27 +1242,27 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Branch
                     </label>
                     <input
                       type="text"
                       value={formData.bank_branch}
                       onChange={(e) => handleInputChange('bank_branch', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Account Holder Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.account_holder_name}
                       onChange={(e) => handleInputChange('account_holder_name', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.account_holder_name ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 ${
+                        errors.account_holder_name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                       }`}
                       placeholder="Name as per bank records"
                     />
@@ -1268,9 +1279,9 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                         onChange={(e) => handleInputChange('statement_import_enabled', e.target.checked)}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
-                      <span className="text-sm font-medium text-gray-700">Enable Bank Statement Import</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Bank Statement Import</span>
                     </label>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       Allow importing bank statements for payment reconciliation
                     </p>
                   </div>
@@ -1283,40 +1294,40 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Credit Limit (₹)
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Credit Limit ({getCurrencySymbol(formData.currency)})
                     </label>
                     <input
                       type="number"
                       value={formData.credit_limit}
                       onChange={(e) => handleInputChange('credit_limit', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                       min="0"
                       step="0.01"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Payment Terms
                     </label>
                     <input
                       type="text"
                       value={formData.payment_terms}
                       onChange={(e) => handleInputChange('payment_terms', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                       placeholder="e.g., Net 30, COD, Advance"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Currency
                     </label>
                     <select
                       value={formData.currency}
                       onChange={(e) => handleInputChange('currency', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
                       <option value="INR">INR - Indian Rupee</option>
                       <option value="USD">USD - US Dollar</option>
@@ -1326,45 +1337,45 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Opening Balance (₹)
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Opening Balance ({getCurrencySymbol(formData.currency)})
                     </label>
                     <input
                       type="number"
                       value={formData.opening_balance || 0}
                       onChange={(e) => handleInputChange('opening_balance', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                       step="0.01"
                       placeholder="0.00"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       Initial balance for this customer (positive for receivable, negative for payable)
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Opening Balance Date
                     </label>
                     <input
                       type="date"
                       value={formData.opening_balance_date || ''}
                       onChange={(e) => handleInputChange('opening_balance_date', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       Date when the opening balance was set
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Status
                     </label>
                     <select
                       value={formData.is_active ? 'true' : 'false'}
                       onChange={(e) => handleInputChange('is_active', e.target.value === 'true')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
                       <option value="true">Active</option>
                       <option value="false">Inactive</option>
@@ -1372,7 +1383,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       <MapPin className="w-4 h-4 inline mr-1" />
                       Project Area / Address Label
                     </label>
@@ -1380,23 +1391,23 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                       type="text"
                       value={formData.project_area}
                       onChange={(e) => handleInputChange('project_area', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                       placeholder="e.g., Downtown Office, Warehouse A, Main Branch..."
                     />
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       This label helps identify the customer's location and can be used to search quotations
                     </p>
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Notes
                     </label>
                     <textarea
                       value={formData.notes}
                       onChange={(e) => handleInputChange('notes', e.target.value)}
                       rows={4}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                       placeholder="Internal notes about the customer..."
                     />
                   </div>

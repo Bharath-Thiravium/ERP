@@ -7,7 +7,7 @@ from . import government_api_views
 from . import analytics_views
 
 from . import integration_views
-
+from . import purchase_views
 
 
 # Create router for ViewSets
@@ -135,5 +135,29 @@ urlpatterns = [
     # Integration & Automation endpoints (Phase 7)
     path('integration/', include('finance.integration_urls')),
     
+    # ============================================================================
+    # PURCHASE & EXPENSE MANAGEMENT ENDPOINTS - NEW FUNCTIONALITY
+    # ============================================================================
+    
+    # Vendor Management endpoints
+    path('vendors/', purchase_views.VendorListCreateView.as_view(), name='vendor_list_create'),
+    path('vendors/<int:pk>/', purchase_views.VendorDetailView.as_view(), name='vendor_detail'),
+    path('vendors/dropdown/', purchase_views.get_vendors, name='get_vendors'),
+    
+    # Purchase Request endpoints
+    path('purchase-requests/', purchase_views.PurchaseRequestListCreateView.as_view(), name='purchase_request_list_create'),
+    path('purchase-requests/<int:pk>/', purchase_views.PurchaseRequestDetailView.as_view(), name='purchase_request_detail'),
+    
+    # Vendor Invoice endpoints
+    path('vendor-invoices/', purchase_views.VendorInvoiceListCreateView.as_view(), name='vendor_invoice_list_create'),
+    path('vendor-invoices/<int:pk>/', purchase_views.VendorInvoiceDetailView.as_view(), name='vendor_invoice_detail'),
+    
+    # Purchase Payment endpoints
+    path('purchase-payments/', purchase_views.PurchasePaymentListCreateView.as_view(), name='purchase_payment_list_create'),
+    path('purchase-payments/<int:pk>/', purchase_views.PurchasePaymentDetailView.as_view(), name='purchase_payment_detail'),
+    
+    # Purchase & Expense Reports
+    path('vendor-ledger/', purchase_views.vendor_ledger, name='vendor_ledger'),
+    path('purchase-expense-stats/', purchase_views.purchase_expense_stats, name='purchase_expense_stats'),
 
 ]

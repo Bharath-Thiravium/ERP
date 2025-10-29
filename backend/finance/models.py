@@ -2135,4 +2135,504 @@ class InvoiceItem(models.Model):
             self.invoice.calculate_totals()
 
 
+# ============================================================================
+# PURCHASE & EXPENSE MANAGEMENT MODELS - NEW FUNCTIONALITY
+# ============================================================================
+
+class Vendor(models.Model):
+    """Vendor/Supplier model for purchase management"""
+    VENDOR_TYPE_CHOICES = [
+        ('individual', 'Individual'),
+        ('business', 'Business'),
+        ('government', 'Government'),
+        ('ngo', 'NGO/Non-Profit'),
+    ]
+
+    # Basic Information
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='vendors')
+    vendor_code = models.CharField(max_length=20, unique=True, blank=True)
+    name = models.CharField(max_length=255)
+    vendor_type = models.CharField(max_length=20, choices=VENDOR_TYPE_CHOICES, default='business')
+    
+    # Contact Information
+    contact_person = models.CharField(max_length=100, blank=True)
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=15, blank=True)
+    mobile = models.CharField(max_length=15, blank=True)
+    website = models.URLField(blank=True)
+    
+    # Address Information
+    address_line1 = models.CharField(max_length=255, blank=True)
+    address_line2 = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(max_length=100, blank=True)
+    pincode = models.CharField(max_length=10, blank=True)
+    country = models.CharField(max_length=100, default='India')
+    
+    # Tax Information
+    gstin = models.CharField(max_length=15, blank=True)
+    pan_number = models.CharField(max_length=10, blank=True)
+    
+    # Banking Information
+    bank_name = models.CharField(max_length=100, blank=True)
+    bank_account_number = models.CharField(max_length=20, blank=True)
+    bank_ifsc_code = models.CharField(max_length=11, blank=True)
+    account_holder_name = models.CharField(max_length=200, blank=True)
+    
+    # Payment Terms
+    payment_terms = models.CharField(max_length=100, default='Net 30')
+    credit_limit = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    
+    # Additional Information
+    notes = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    
+    # Audit fields
+    created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_vendors')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_vendors'
+        ordering = ['-created_at']
+        unique_together = ['company', 'vendor_code']
+
+    def __str__(self):
+        return escape(f"{self.vendor_code} - {self.name}")
+
+    def save(self, *args, **kwargs):
+        if not self.vendor_code:
+            try:
+                from authentication.utils import generate_auto_code
+                self.vendor_code = generate_auto_code(self.company.id, 'vendor')
+            except Exception:
+                last_vendor = Vendor.objects.filter(
+                    company=self.company,
+                    vendor_code__startswith='VEN-'
+                ).order_by('-id').first()
+                if last_vendor:
+                    last_number = int(last_vendor.vendor_code.split('-')[-1])
+                    self.vendor_code = f"VEN-{last_number + 1:06d}"
+                else:
+                    self.vendor_code = "VEN-000001"
+        super().save(*args, **kwargs)
+
+
+class PurchaseRequest(models.Model):
+    """Purchase Request - We send to vendors"""
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('sent', 'Sent to Vendor'),
+        ('approved', 'Approved by Vendor'),
+        ('rejected', 'Rejected'),
+        ('converted', 'Converted to Invoice'),
+    ]
+
+    GST_TYPE_CHOICES = [
+        ('igst', 'IGST (Inter-State)'),
+        ('cgst_sgst', 'CGST + SGST (Intra-State)'),
+        ('exempt', 'GST Exempt'),
+    ]
+    
+    # Basic Information
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='purchase_requests')
+    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='purchase_requests')
+    request_number = models.CharField(max_length=50, unique=True, db_index=True)
+    
+    # Request Details
+    request_date = models.DateField()
+    required_by_date = models.DateField(null=True, blank=True)
+    reference = models.CharField(max_length=100, blank=True)
+    
+    # GST Information
+    gst_type = models.CharField(max_length=20, choices=GST_TYPE_CHOICES, default='igst')
+    vendor_gstin = models.CharField(max_length=15, blank=True)
+    company_gstin = models.CharField(max_length=15, blank=True)
+    
+    # Financial Totals
+    subtotal = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    total_tax = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    total_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    
+    # Tax Breakdown
+    cgst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    sgst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    igst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    
+    # Additional Charges
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    discount_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    shipping_charges = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    other_charges = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    
+    # Status and Notes
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    notes = models.TextField(blank=True)
+    terms_and_conditions = models.TextField(blank=True)
+    
+    # Audit fields
+    created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_purchase_requests')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_purchase_requests'
+        ordering = ['-created_at']
+        unique_together = ['company', 'request_number']
+
+    def __str__(self):
+        return escape(f"{self.request_number} - {self.vendor.name}")
+
+    def save(self, *args, **kwargs):
+        if not self.request_number:
+            try:
+                from authentication.utils import generate_auto_code
+                self.request_number = generate_auto_code(self.company.id, 'purchase_request')
+            except Exception:
+                from datetime import datetime
+                year = datetime.now().year
+                last_request = PurchaseRequest.objects.filter(
+                    company=self.company,
+                    request_number__startswith=f"PR-{year}"
+                ).order_by('-id').first()
+                if last_request:
+                    last_number = int(last_request.request_number.split('-')[-1])
+                    self.request_number = f"PR-{year}-{last_number + 1:06d}"
+                else:
+                    self.request_number = f"PR-{year}-000001"
+        super().save(*args, **kwargs)
+
+
+class PurchaseRequestItem(models.Model):
+    """Individual items in a Purchase Request"""
+    purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='request_items')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    
+    # Item details
+    product_name = models.CharField(max_length=255)
+    product_code = models.CharField(max_length=50)
+    description = models.TextField(blank=True)
+    hsn_sac_code = models.CharField(max_length=20, blank=True)
+    
+    # Pricing and quantity
+    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    unit = models.CharField(max_length=10)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    line_total = models.DecimalField(max_digits=15, decimal_places=2)
+    
+    # Tax information
+    gst_rate = models.DecimalField(max_digits=5, decimal_places=2)
+    
+    # Line item order
+    line_number = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = 'finance_purchase_request_items'
+        ordering = ['line_number']
+        unique_together = ['purchase_request', 'line_number']
+
+    def __str__(self):
+        return escape(f"{self.purchase_request.request_number} - {self.product_name}")
+
+    def save(self, *args, **kwargs):
+        if self.product:
+            self.product_name = self.product.name
+            self.product_code = self.product.product_code
+            self.description = self.product.description
+            self.unit = self.product.unit
+            self.gst_rate = self.product.gst_rate
+            
+            if self.product.hsn_code:
+                self.hsn_sac_code = self.product.hsn_code.code
+            elif self.product.sac_code:
+                self.hsn_sac_code = self.product.sac_code.code
+        
+        self.line_total = self.quantity * self.unit_price
+        super().save(*args, **kwargs)
+
+
+class VendorInvoice(models.Model):
+    """Vendor Invoice - We receive from vendors"""
+    PAYMENT_STATUS_CHOICES = [
+        ('unpaid', 'Unpaid'),
+        ('partially_paid', 'Partially Paid'),
+        ('paid', 'Paid'),
+        ('overdue', 'Overdue'),
+    ]
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('received', 'Received'),
+        ('verified', 'Verified'),
+        ('approved', 'Approved for Payment'),
+        ('paid', 'Paid'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    # Basic Information
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='vendor_invoices')
+    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='invoices')
+    purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendor_invoices')
+    
+    # Invoice details from vendor
+    vendor_invoice_number = models.CharField(max_length=100)
+    vendor_invoice_date = models.DateField()
+    our_reference_number = models.CharField(max_length=50, unique=True, db_index=True)
+    
+    # Due date
+    due_date = models.DateField()
+    
+    # GST Information
+    gst_type = models.CharField(max_length=10, choices=[
+        ('igst', 'IGST'),
+        ('cgst_sgst', 'CGST + SGST'),
+        ('exempt', 'GST Exempt')
+    ], default='igst')
+    
+    # Financial Information
+    subtotal = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    total_tax = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    total_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    
+    # Tax Breakdown
+    cgst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    sgst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    igst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    
+    # Payment tracking
+    paid_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    outstanding_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='unpaid')
+    last_payment_date = models.DateField(null=True, blank=True)
+    
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    
+    # File attachment
+    invoice_file = models.FileField(upload_to='vendor_invoices/', null=True, blank=True)
+    
+    # Notes
+    notes = models.TextField(blank=True)
+    
+    # Audit fields
+    created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_vendor_invoices')
+    verified_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_vendor_invoices')
+    approved_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_vendor_invoices')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_vendor_invoices'
+        ordering = ['-created_at']
+        unique_together = ['company', 'our_reference_number']
+
+    def __str__(self):
+        return escape(f"{self.our_reference_number} - {self.vendor.name}")
+
+    def save(self, *args, **kwargs):
+        if not self.our_reference_number:
+            try:
+                from authentication.utils import generate_auto_code
+                self.our_reference_number = generate_auto_code(self.company.id, 'vendor_invoice')
+            except Exception:
+                from datetime import datetime
+                year = datetime.now().year
+                last_invoice = VendorInvoice.objects.filter(
+                    company=self.company,
+                    our_reference_number__startswith=f"VI-{year}"
+                ).order_by('-id').first()
+                if last_invoice:
+                    last_number = int(last_invoice.our_reference_number.split('-')[-1])
+                    self.our_reference_number = f"VI-{year}-{last_number + 1:06d}"
+                else:
+                    self.our_reference_number = f"VI-{year}-000001"
+        
+        # Calculate outstanding amount
+        from decimal import Decimal
+        total_amount = Decimal(str(self.total_amount)) if self.total_amount else Decimal('0')
+        paid_amount = Decimal(str(self.paid_amount)) if self.paid_amount else Decimal('0')
+        self.outstanding_amount = total_amount - paid_amount
+        
+        # Update payment status
+        if self.paid_amount == 0:
+            self.payment_status = 'unpaid'
+        elif self.paid_amount >= self.total_amount:
+            self.payment_status = 'paid'
+        else:
+            self.payment_status = 'partially_paid'
+        
+        # Check if overdue
+        if self.payment_status != 'paid' and self.due_date < timezone.now().date():
+            self.payment_status = 'overdue'
+        
+        super().save(*args, **kwargs)
+
+
+class VendorInvoiceItem(models.Model):
+    """Individual items in a Vendor Invoice"""
+    vendor_invoice = models.ForeignKey(VendorInvoice, on_delete=models.CASCADE, related_name='invoice_items')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    
+    # Item details
+    product_name = models.CharField(max_length=255)
+    product_code = models.CharField(max_length=50)
+    description = models.TextField(blank=True)
+    hsn_sac_code = models.CharField(max_length=20, blank=True)
+    
+    # Pricing and quantity
+    quantity = models.DecimalField(max_digits=12, decimal_places=2)
+    unit = models.CharField(max_length=10)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    line_total = models.DecimalField(max_digits=15, decimal_places=2)
+    
+    # Tax information
+    gst_rate = models.DecimalField(max_digits=5, decimal_places=2)
+    
+    # Line item order
+    line_number = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = 'finance_vendor_invoice_items'
+        ordering = ['line_number']
+        unique_together = ['vendor_invoice', 'line_number']
+
+    def __str__(self):
+        return escape(f"{self.vendor_invoice.our_reference_number} - {self.product_name}")
+
+    def save(self, *args, **kwargs):
+        if self.product:
+            self.product_name = self.product.name
+            self.product_code = self.product.product_code
+            self.description = self.product.description
+            self.unit = self.product.unit
+            self.gst_rate = self.product.gst_rate
+            
+            if self.product.hsn_code:
+                self.hsn_sac_code = self.product.hsn_code.code
+            elif self.product.sac_code:
+                self.hsn_sac_code = self.product.sac_code.code
+        
+        self.line_total = self.quantity * self.unit_price
+        super().save(*args, **kwargs)
+
+
+class PurchasePayment(models.Model):
+    """Payments made to vendors"""
+    PAYMENT_METHOD_CHOICES = [
+        ('bank_transfer', 'Bank Transfer'),
+        ('cheque', 'Cheque'),
+        ('cash', 'Cash'),
+        ('upi', 'UPI'),
+        ('rtgs', 'RTGS'),
+        ('neft', 'NEFT'),
+        ('imps', 'IMPS'),
+        ('other', 'Other'),
+    ]
+
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    # Basic Information
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='purchase_payments')
+    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='payments')
+    vendor_invoice = models.ForeignKey(VendorInvoice, on_delete=models.CASCADE, related_name='payments')
+    
+    # Payment Details
+    payment_number = models.CharField(max_length=50, unique=True, db_index=True)
+    payment_date = models.DateField()
+    amount = models.DecimalField(max_digits=15, decimal_places=2)
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
+    
+    # TDS (Tax Deducted at Source)
+    tds_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    tds_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    tds_section = models.CharField(max_length=20, blank=True)
+    net_amount_paid = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    
+    # Payment Reference
+    reference_number = models.CharField(max_length=100, blank=True)
+    transaction_id = models.CharField(max_length=100, blank=True)
+    bank_name = models.CharField(max_length=100, blank=True)
+    
+    # Status and Notes
+    status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='completed')
+    notes = models.TextField(blank=True)
+    
+    # Audit fields
+    created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_purchase_payments')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_purchase_payments'
+        ordering = ['-payment_date', '-created_at']
+        unique_together = ['company', 'payment_number']
+
+    def __str__(self):
+        return escape(f"{self.payment_number} - ₹{self.amount} - {self.vendor.name}")
+
+    def save(self, *args, **kwargs):
+        if not self.payment_number:
+            try:
+                from authentication.utils import generate_auto_code
+                self.payment_number = generate_auto_code(self.company.id, 'purchase_payment')
+            except Exception:
+                from datetime import datetime
+                year = datetime.now().year
+                last_payment = PurchasePayment.objects.filter(
+                    company=self.company,
+                    payment_number__startswith=f"PP-{year}"
+                ).order_by('-id').first()
+                if last_payment:
+                    last_number = int(last_payment.payment_number.split('-')[-1])
+                    self.payment_number = f"PP-{year}-{last_number + 1:06d}"
+                else:
+                    self.payment_number = f"PP-{year}-000001"
+        
+        # TDS Calculation
+        from decimal import Decimal
+        amount = Decimal(str(self.amount)) if self.amount else Decimal('0')
+        tds_percentage = Decimal(str(self.tds_percentage)) if self.tds_percentage else Decimal('0')
+        
+        if tds_percentage > 0:
+            self.tds_amount = (amount * tds_percentage) / Decimal('100')
+            self.net_amount_paid = amount - self.tds_amount
+        else:
+            self.net_amount_paid = amount
+        
+        super().save(*args, **kwargs)
+        
+        # Update vendor invoice payment status
+        self.update_vendor_invoice_payment_status()
+
+    def update_vendor_invoice_payment_status(self):
+        """Update vendor invoice payment status"""
+        from decimal import Decimal
+        
+        # Calculate total payments for this vendor invoice
+        total_payments = self.vendor_invoice.payments.filter(status='completed').aggregate(
+            total=models.Sum('amount')
+        )['total'] or Decimal('0')
+        
+        self.vendor_invoice.paid_amount = total_payments
+        invoice_total = Decimal(str(self.vendor_invoice.total_amount)) if self.vendor_invoice.total_amount else Decimal('0')
+        self.vendor_invoice.outstanding_amount = invoice_total - total_payments
+        
+        # Update payment status
+        if self.vendor_invoice.outstanding_amount <= 0:
+            self.vendor_invoice.payment_status = 'paid'
+            self.vendor_invoice.status = 'paid'
+        elif total_payments > 0:
+            self.vendor_invoice.payment_status = 'partially_paid'
+        else:
+            self.vendor_invoice.payment_status = 'unpaid'
+        
+        self.vendor_invoice.last_payment_date = self.payment_date
+        self.vendor_invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'status', 'last_payment_date'])
+
+
 

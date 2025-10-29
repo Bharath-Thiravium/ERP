@@ -44,6 +44,13 @@ import Payments from './Payments'
 import CustomerLedger from '../components/CustomerLedger'
 import ComplianceDashboard from './ComplianceDashboard'
 
+// Purchase & Expense Management Pages
+import Vendors from './Vendors'
+import PurchaseRequests from './PurchaseRequests'
+import VendorInvoices from './VendorInvoices'
+import PurchasePayments from './PurchasePayments'
+import VendorLedger from './VendorLedger'
+
 import { EInvoiceManager } from '../components/EInvoiceManager'
 
 import Integration from './Integration'
@@ -91,6 +98,20 @@ const FinanceDashboard: React.FC = () => {
     draftInvoices: 0,
     paidInvoices: 0,
     recentActivity: [] as any[]
+  })
+
+  // Purchase & Expense data state
+  const [purchaseExpenseData, setPurchaseExpenseData] = useState({
+    totalVendors: 0,
+    activeVendors: 0,
+    totalPurchaseRequests: 0,
+    pendingRequests: 0,
+    totalVendorInvoices: 0,
+    vendorInvoiceValue: 0,
+    outstandingVendorAmount: 0,
+    totalPurchasePayments: 0,
+    totalPaid: 0,
+    totalTDS: 0
   })
   const [isChangingPassword, setIsChangingPassword] = useState(false)
 
@@ -201,9 +222,11 @@ const handlePOCreated = () => {
     }
   }
 
-  // Simplified sidebar menu items - Overview, Customers, Products, Quotations, PO/WO, Proforma Invoices, Invoices, Compliance, and Settings
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['purchase-expense'])
+
+  // Complete sidebar menu items with hierarchical structure
   const sidebarItems = [
-    { id: 'overview', label: 'Overview', icon: BarChart3, active: true },
+    { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'products', label: 'Products', icon: Building },
     { id: 'quotations', label: 'Quotations', icon: CreditCard },
@@ -212,13 +235,71 @@ const handlePOCreated = () => {
     { id: 'invoices', label: 'Invoices', icon: FileText },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'customer-ledger', label: 'Customer Ledger', icon: User },
+    {
+      id: 'purchase-expense',
+      label: 'Purchase & Expense',
+      icon: ShoppingCart,
+      isParent: true,
+      children: [
+        { id: 'vendors', label: 'Vendors', icon: Users },
+        { id: 'purchase-requests', label: 'Purchase Requests', icon: FileText },
+        { id: 'vendor-invoices', label: 'Vendor Invoices', icon: FileText },
+        { id: 'purchase-payments', label: 'Purchase Payments', icon: CreditCard },
+        { id: 'vendor-ledger', label: 'Vendor Ledger', icon: User }
+      ]
+    },
     { id: 'compliance', label: 'Indian Compliance', icon: Shield },
-
     { id: 'einvoice', label: 'E-Invoice', icon: Zap },
-
     { id: 'integration', label: 'Integration', icon: Zap },
     { id: 'settings', label: 'Settings', icon: Settings }
   ]
+
+  const toggleMenu = (menuId: string) => {
+    setExpandedMenus(prev => 
+      prev.includes(menuId) 
+        ? prev.filter(id => id !== menuId)
+        : [...prev, menuId]
+    )
+  }
+
+  // Fetch purchase and expense data
+  const fetchPurchaseExpenseData = async () => {
+    if (!sessionKey) return
+
+    try {
+      const [vendorsRes, purchaseRequestsRes, vendorInvoicesRes, purchasePaymentsRes] = await Promise.all([
+        api.get('/api/finance/vendors/', { headers: { Authorization: `Bearer ${sessionKey}` } }),
+        api.get('/api/finance/purchase-requests/', { headers: { Authorization: `Bearer ${sessionKey}` } }),
+        api.get('/api/finance/vendor-invoices/', { headers: { Authorization: `Bearer ${sessionKey}` } }),
+        api.get('/api/finance/purchase-payments/', { headers: { Authorization: `Bearer ${sessionKey}` } })
+      ])
+
+      const vendors = vendorsRes.data.results || []
+      const purchaseRequests = purchaseRequestsRes.data.results || []
+      const vendorInvoices = vendorInvoicesRes.data.results || []
+      const purchasePayments = purchasePaymentsRes.data.results || []
+
+      const vendorInvoiceValue = vendorInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.total_amount || 0), 0)
+      const outstandingVendorAmount = vendorInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.outstanding_amount || 0), 0)
+      const totalPaid = purchasePayments.reduce((sum: number, pay: any) => sum + parseFloat(pay.amount || 0), 0)
+      const totalTDS = purchasePayments.reduce((sum: number, pay: any) => sum + parseFloat(pay.tds_amount || 0), 0)
+
+      setPurchaseExpenseData({
+        totalVendors: vendors.length,
+        activeVendors: vendors.filter((v: any) => v.is_active).length,
+        totalPurchaseRequests: purchaseRequests.length,
+        pendingRequests: purchaseRequests.filter((pr: any) => pr.status === 'draft').length,
+        totalVendorInvoices: vendorInvoices.length,
+        vendorInvoiceValue,
+        outstandingVendorAmount,
+        totalPurchasePayments: purchasePayments.length,
+        totalPaid,
+        totalTDS
+      })
+    } catch (error) {
+      console.error('Error fetching purchase expense data:', error)
+    }
+  }
 
   // Fetch real financial data from APIs
   const fetchFinancialData = async () => {
@@ -321,6 +402,7 @@ const handlePOCreated = () => {
   useEffect(() => {
     if (sessionKey) {
       fetchFinancialData()
+      fetchPurchaseExpenseData()
     }
   }, [sessionKey])
 
@@ -328,6 +410,7 @@ const handlePOCreated = () => {
   useEffect(() => {
     if (quotationRefreshKey > 0 && sessionKey) {
       fetchFinancialData()
+      fetchPurchaseExpenseData()
     }
   }, [quotationRefreshKey, sessionKey])
 
@@ -361,6 +444,7 @@ const handlePOCreated = () => {
   // Handle transaction actions
   const handleRefreshTransactions = () => {
     fetchFinancialData()
+    fetchPurchaseExpenseData()
     toast.success('Transactions refreshed')
   }
 
@@ -396,15 +480,54 @@ const handlePOCreated = () => {
     toast('Payment status export not implemented')
   }
 
+  // Handle password change
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault()
 
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error('New passwords do not match')
+      return
+    }
 
+    if (passwordData.newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters long')
+      return
+    }
 
+    setIsChangingPassword(true)
+    try {
+      if (!sessionKey) {
+        toast.error('Session expired. Please login again.')
+        return
+      }
+
+      await apiClient.changeServiceUserPassword({
+        session_key: sessionKey,
+        current_password: passwordData.currentPassword,
+        new_password: passwordData.newPassword,
+        confirm_password: passwordData.confirmPassword
+      })
+
+      toast.success('Password changed successfully')
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      })
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to change password')
+    } finally {
+      setIsChangingPassword(false)
+    }
+  }
 
   const renderOverview = () => (
     <div className="space-y-8">
-      {/* Enhanced Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Quotations Card */}
+      {/* Enhanced Key Metrics - Sales & Purchase Management */}
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Sales Management</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Total Quotations Card */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 p-6 text-white shadow-xl shadow-blue-500/25">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
           <div className="relative">
@@ -503,8 +626,94 @@ const handlePOCreated = () => {
             </div>
           </div>
         </div>
+        </div>
       </div>
 
+      {/* Purchase & Expense Management Section */}
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Purchase & Expense Management</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Vendors Card */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 p-6 text-white shadow-xl shadow-purple-500/25">
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <Building className="h-6 w-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs opacity-80">Total Vendors</div>
+                  <div className="text-2xl font-bold">{purchaseExpenseData.totalVendors}</div>
+                </div>
+              </div>
+              <div className="flex items-center text-sm">
+                <span className="font-medium">{purchaseExpenseData.activeVendors} active vendors</span>
+                <span className="ml-2 opacity-70">• Ready to use</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Purchase Requests Card */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 p-6 text-white shadow-xl shadow-green-500/25">
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <FileText className="h-6 w-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs opacity-80">Purchase Requests</div>
+                  <div className="text-2xl font-bold">{purchaseExpenseData.totalPurchaseRequests}</div>
+                </div>
+              </div>
+              <div className="flex items-center text-sm">
+                <span className="font-medium">{purchaseExpenseData.totalPurchaseRequests} requests sent</span>
+                <span className="ml-2 opacity-70">• {purchaseExpenseData.pendingRequests} pending</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Vendor Invoices Card */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 p-6 text-white shadow-xl shadow-indigo-500/25">
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <FileText className="h-6 w-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs opacity-80">Vendor Invoices</div>
+                  <div className="text-2xl font-bold">₹{purchaseExpenseData.vendorInvoiceValue.toLocaleString()}</div>
+                </div>
+              </div>
+              <div className="flex items-center text-sm">
+                <span className="font-medium">{purchaseExpenseData.totalVendorInvoices} invoices</span>
+                <span className="ml-2 opacity-70">• ₹{purchaseExpenseData.outstandingVendorAmount.toLocaleString()} outstanding</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Purchase Payments Card */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 p-6 text-white shadow-xl shadow-teal-500/25">
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <CreditCard className="h-6 w-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs opacity-80">Payments Made</div>
+                  <div className="text-2xl font-bold">₹{purchaseExpenseData.totalPaid.toLocaleString()}</div>
+                </div>
+              </div>
+              <div className="flex items-center text-sm">
+                <span className="font-medium">{purchaseExpenseData.totalPurchasePayments} payments</span>
+                <span className="ml-2 opacity-70">• ₹{purchaseExpenseData.totalTDS.toLocaleString()} TDS</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Modern Charts and Analytics Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -797,49 +1006,6 @@ const handlePOCreated = () => {
     </div>
   )
 
-
-
-  // Handle password change
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error('New passwords do not match')
-      return
-    }
-
-    if (passwordData.newPassword.length < 8) {
-      toast.error('Password must be at least 8 characters long')
-      return
-    }
-
-    setIsChangingPassword(true)
-    try {
-      if (!sessionKey) {
-        toast.error('Session expired. Please login again.')
-        return
-      }
-
-      await apiClient.changeServiceUserPassword({
-        session_key: sessionKey,
-        current_password: passwordData.currentPassword,
-        new_password: passwordData.newPassword,
-        confirm_password: passwordData.confirmPassword
-      })
-
-      toast.success('Password changed successfully')
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      })
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to change password')
-    } finally {
-      setIsChangingPassword(false)
-    }
-  }
-
   // Render Settings Page
   const renderSettings = () => (
     <div className="space-y-6">
@@ -996,12 +1162,20 @@ const handlePOCreated = () => {
         return <Payments sessionKey={sessionKey || ''} />
       case 'customer-ledger':
         return <CustomerLedger sessionKey={sessionKey || ''} />
+      case 'vendors':
+        return <Vendors />
+      case 'purchase-requests':
+        return <PurchaseRequests sessionKey={sessionKey || ''} />
+      case 'vendor-invoices':
+        return <VendorInvoices sessionKey={sessionKey || ''} />
+      case 'purchase-payments':
+        return <PurchasePayments />
+      case 'vendor-ledger':
+        return <VendorLedger />
       case 'compliance':
         return <ComplianceDashboard sessionKey={sessionKey || ''} />
-
       case 'einvoice':
         return <EInvoiceManager />
-
       case 'integration':
         return <Integration />
       case 'settings':
@@ -1044,9 +1218,53 @@ const handlePOCreated = () => {
         {/* Navigation Menu */}
         <nav className="mt-6 px-3">
           <div className="space-y-1">
-            {sidebarItems.map((item) => {
+            {sidebarItems.map((item: any) => {
               const Icon = item.icon
               const isActive = activeTab === item.id
+              const isExpanded = expandedMenus.includes(item.id)
+              const hasActiveChild = item.children?.some((child: any) => activeTab === child.id)
+              
+              if (item.isParent) {
+                return (
+                  <div key={item.id}>
+                    <button
+                      onClick={() => toggleMenu(item.id)}
+                      className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ${
+                        hasActiveChild
+                          ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/25'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Icon className={`h-5 w-5 mr-3 ${hasActiveChild ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
+                      {item.label}
+                      <ChevronRight className={`h-4 w-4 ml-auto transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                    </button>
+                    {isExpanded && (
+                      <div className="ml-6 mt-1 space-y-1">
+                        {item.children.map((child: any) => {
+                          const ChildIcon = child.icon
+                          const isChildActive = activeTab === child.id
+                          return (
+                            <button
+                              key={child.id}
+                              onClick={() => setActiveTab(child.id)}
+                              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                                isChildActive
+                                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/25'
+                                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
+                              }`}
+                            >
+                              <ChildIcon className={`h-4 w-4 mr-3 ${isChildActive ? 'text-white' : 'text-gray-400 dark:text-gray-500'}`} />
+                              {child.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+              
               return (
                 <button
                   key={item.id}
@@ -1104,7 +1322,12 @@ const handlePOCreated = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => navigate('/company/services')}
+                  onClick={() => {
+                    // Clear service user session and redirect to company services
+                    sessionStorage.removeItem('service_session_key')
+                    serviceUserLogout()
+                    navigate('/company/services')
+                  }}
                   className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                 >
                   <ArrowLeft className="h-4 w-4 mr-2" />

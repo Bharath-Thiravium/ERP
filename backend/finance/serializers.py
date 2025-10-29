@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.utils._os import safe_join
-from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
+from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment, Vendor, PurchaseRequest, PurchaseRequestItem, VendorInvoice, VendorInvoiceItem, PurchasePayment
 from .indian_compliance import calculate_gst_for_invoice, calculate_tds_for_payment, get_indian_states
 from .security_validators import FinanceSecurityValidator
 
@@ -1803,3 +1803,461 @@ class WorldClassPaymentListSerializer(serializers.ModelSerializer):
         elif obj.proforma_invoice:
             return obj.proforma_invoice.outstanding_amount
         return 0
+
+
+# ============================================================================
+# PURCHASE & EXPENSE MANAGEMENT SERIALIZERS - NEW FUNCTIONALITY
+# ============================================================================
+
+# Vendor Serializers
+class VendorListSerializer(serializers.ModelSerializer):
+    """Serializer for listing vendors"""
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+
+    class Meta:
+        model = Vendor
+        fields = [
+            'id', 'vendor_code', 'name', 'vendor_type', 'contact_person',
+            'email', 'phone', 'mobile', 'city', 'state', 'gstin', 'pan_number',
+            'payment_terms', 'credit_limit', 'is_active', 'created_at', 'created_by_name'
+        ]
+
+
+class VendorDetailSerializer(serializers.ModelSerializer):
+    """Serializer for vendor details"""
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+
+    class Meta:
+        model = Vendor
+        fields = '__all__'
+        read_only_fields = ['id', 'vendor_code', 'company', 'created_by', 'created_at', 'updated_at']
+
+
+class VendorCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating vendors"""
+
+    class Meta:
+        model = Vendor
+        fields = [
+            'name', 'vendor_type', 'contact_person', 'email', 'phone', 'mobile', 'website',
+            'address_line1', 'address_line2', 'city', 'state', 'pincode', 'country',
+            'gstin', 'pan_number', 'bank_name', 'bank_account_number', 'bank_ifsc_code',
+            'account_holder_name', 'payment_terms', 'credit_limit', 'notes', 'is_active'
+        ]
+
+    def validate_gstin(self, value):
+        if value and len(value) != 15:
+            raise serializers.ValidationError("GSTIN must be exactly 15 characters long")
+        return value
+
+    def validate_pan_number(self, value):
+        if value and len(value) != 10:
+            raise serializers.ValidationError("PAN number must be exactly 10 characters long")
+        return value
+
+
+class VendorUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating vendors"""
+
+    class Meta:
+        model = Vendor
+        fields = [
+            'name', 'vendor_type', 'contact_person', 'email', 'phone', 'mobile', 'website',
+            'address_line1', 'address_line2', 'city', 'state', 'pincode', 'country',
+            'gstin', 'pan_number', 'bank_name', 'bank_account_number', 'bank_ifsc_code',
+            'account_holder_name', 'payment_terms', 'credit_limit', 'notes', 'is_active'
+        ]
+        read_only_fields = ['vendor_code', 'company', 'created_by', 'created_at']
+
+
+# Purchase Request Serializers
+class PurchaseRequestItemSerializer(serializers.ModelSerializer):
+    """Serializer for purchase request items"""
+
+    class Meta:
+        model = PurchaseRequestItem
+        fields = [
+            'id', 'product', 'product_name', 'product_code', 'description',
+            'hsn_sac_code', 'quantity', 'unit', 'unit_price', 'line_total',
+            'gst_rate', 'line_number'
+        ]
+        read_only_fields = ['id', 'product_name', 'product_code', 'description', 'hsn_sac_code', 'unit', 'gst_rate', 'line_total']
+
+
+class PurchaseRequestListSerializer(serializers.ModelSerializer):
+    """Serializer for listing purchase requests"""
+    vendor_name = serializers.CharField(source='vendor.name', read_only=True)
+    vendor_code = serializers.CharField(source='vendor.vendor_code', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    item_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PurchaseRequest
+        fields = [
+            'id', 'request_number', 'vendor_name', 'vendor_code', 'request_date',
+            'required_by_date', 'status', 'gst_type', 'subtotal', 'total_tax',
+            'total_amount', 'item_count', 'created_at', 'created_by_name'
+        ]
+
+    def get_item_count(self, obj):
+        return obj.request_items.count()
+
+
+class PurchaseRequestDetailSerializer(serializers.ModelSerializer):
+    """Serializer for purchase request details"""
+    vendor_details = VendorDetailSerializer(source='vendor', read_only=True)
+    request_items = PurchaseRequestItemSerializer(many=True, read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+
+    class Meta:
+        model = PurchaseRequest
+        fields = '__all__'
+        read_only_fields = [
+            'id', 'request_number', 'company', 'created_by', 'created_at', 'updated_at',
+            'subtotal', 'total_tax', 'total_amount', 'cgst_amount', 'sgst_amount', 'igst_amount',
+            'gst_type', 'vendor_gstin', 'company_gstin'
+        ]
+
+
+class PurchaseRequestCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating purchase requests"""
+    request_items = serializers.ListField(
+        child=serializers.DictField(),
+        write_only=True,
+        required=True
+    )
+
+    class Meta:
+        model = PurchaseRequest
+        fields = [
+            'vendor', 'request_date', 'required_by_date', 'reference',
+            'discount_percentage', 'discount_amount', 'shipping_charges',
+            'other_charges', 'notes', 'terms_and_conditions', 'request_items'
+        ]
+
+    def create(self, validated_data):
+        from decimal import Decimal
+        
+        request_items_data = validated_data.pop('request_items')
+        vendor = validated_data['vendor']
+        company = self.context['company']
+        
+        # Set GST information
+        if vendor.gstin and hasattr(company, 'gst_number') and company.gst_number:
+            vendor_state_code = vendor.gstin[:2]
+            company_state_code = company.gst_number[:2]
+            validated_data['gst_type'] = 'cgst_sgst' if vendor_state_code == company_state_code else 'igst'
+        else:
+            validated_data['gst_type'] = 'exempt'
+        
+        validated_data['vendor_gstin'] = vendor.gstin or ''
+        validated_data['company_gstin'] = getattr(company, 'gst_number', '') or ''
+        
+        # Create purchase request
+        purchase_request = PurchaseRequest.objects.create(**validated_data)
+        
+        # Create items
+        items_to_create = []
+        for i, item_data in enumerate(request_items_data, 1):
+            product_id = item_data.pop('product')
+            product = Product.objects.get(id=product_id)
+            
+            quantity = Decimal(str(item_data.get('quantity', 1)))
+            unit_price = Decimal(str(item_data.get('unit_price', 0)))
+            
+            items_to_create.append(PurchaseRequestItem(
+                purchase_request=purchase_request,
+                product=product,
+                product_name=product.name,
+                product_code=product.product_code,
+                description=product.description,
+                hsn_sac_code=product.hsn_code.code if product.hsn_code else (product.sac_code.code if product.sac_code else ''),
+                quantity=quantity,
+                unit=product.unit,
+                unit_price=unit_price,
+                line_total=quantity * unit_price,
+                gst_rate=product.gst_rate,
+                line_number=i
+            ))
+        
+        PurchaseRequestItem.objects.bulk_create(items_to_create)
+        
+        # Calculate totals
+        self._calculate_totals(purchase_request)
+        
+        return purchase_request
+    
+    def _calculate_totals(self, purchase_request):
+        from decimal import Decimal
+        
+        items = purchase_request.request_items.all()
+        subtotal = sum(item.line_total for item in items)
+        
+        # Apply discount
+        if purchase_request.discount_percentage > 0:
+            discount_amount = (subtotal * purchase_request.discount_percentage) / Decimal('100')
+        else:
+            discount_amount = purchase_request.discount_amount or Decimal('0')
+        
+        subtotal_after_discount = subtotal - discount_amount
+        
+        # Calculate tax
+        total_tax = Decimal('0')
+        cgst_amount = Decimal('0')
+        sgst_amount = Decimal('0')
+        igst_amount = Decimal('0')
+        
+        if purchase_request.gst_type == 'cgst_sgst':
+            for item in items:
+                item_tax = (item.line_total * item.gst_rate) / Decimal('100')
+                total_tax += item_tax
+                cgst_amount += item_tax / Decimal('2')
+                sgst_amount += item_tax / Decimal('2')
+        elif purchase_request.gst_type == 'igst':
+            for item in items:
+                item_tax = (item.line_total * item.gst_rate) / Decimal('100')
+                total_tax += item_tax
+                igst_amount += item_tax
+        
+        # Calculate final total
+        shipping_charges = purchase_request.shipping_charges or Decimal('0')
+        other_charges = purchase_request.other_charges or Decimal('0')
+        total_amount = subtotal_after_discount + total_tax + shipping_charges + other_charges
+        
+        # Update purchase request
+        purchase_request.subtotal = subtotal_after_discount
+        purchase_request.discount_amount = discount_amount
+        purchase_request.total_tax = total_tax
+        purchase_request.cgst_amount = cgst_amount
+        purchase_request.sgst_amount = sgst_amount
+        purchase_request.igst_amount = igst_amount
+        purchase_request.total_amount = total_amount
+        purchase_request.save()
+
+
+# Vendor Invoice Serializers
+class VendorInvoiceItemSerializer(serializers.ModelSerializer):
+    """Serializer for vendor invoice items"""
+
+    class Meta:
+        model = VendorInvoiceItem
+        fields = [
+            'id', 'product', 'product_name', 'product_code', 'description',
+            'hsn_sac_code', 'quantity', 'unit', 'unit_price', 'line_total',
+            'gst_rate', 'line_number'
+        ]
+        read_only_fields = ['id', 'product_name', 'product_code', 'description', 'hsn_sac_code', 'unit', 'gst_rate', 'line_total']
+
+
+class VendorInvoiceListSerializer(serializers.ModelSerializer):
+    """Serializer for listing vendor invoices"""
+    vendor_name = serializers.CharField(source='vendor.name', read_only=True)
+    vendor_code = serializers.CharField(source='vendor.vendor_code', read_only=True)
+    purchase_request_number = serializers.CharField(source='purchase_request.request_number', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    item_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VendorInvoice
+        fields = [
+            'id', 'our_reference_number', 'vendor_invoice_number', 'vendor_invoice_date',
+            'vendor_name', 'vendor_code', 'purchase_request_number', 'due_date',
+            'status', 'payment_status', 'gst_type', 'subtotal', 'total_tax',
+            'total_amount', 'paid_amount', 'outstanding_amount', 'item_count',
+            'created_at', 'created_by_name'
+        ]
+
+    def get_item_count(self, obj):
+        return obj.invoice_items.count()
+
+
+class VendorInvoiceDetailSerializer(serializers.ModelSerializer):
+    """Serializer for vendor invoice details"""
+    vendor_details = VendorDetailSerializer(source='vendor', read_only=True)
+    purchase_request_details = PurchaseRequestDetailSerializer(source='purchase_request', read_only=True)
+    invoice_items = VendorInvoiceItemSerializer(many=True, read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+
+    class Meta:
+        model = VendorInvoice
+        fields = '__all__'
+        read_only_fields = [
+            'id', 'our_reference_number', 'company', 'created_by', 'created_at', 'updated_at',
+            'paid_amount', 'outstanding_amount', 'payment_status', 'last_payment_date'
+        ]
+
+
+class VendorInvoiceCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating vendor invoices"""
+    invoice_items = serializers.ListField(
+        child=serializers.DictField(),
+        write_only=True,
+        required=True
+    )
+
+    class Meta:
+        model = VendorInvoice
+        fields = [
+            'vendor', 'purchase_request', 'vendor_invoice_number', 'vendor_invoice_date',
+            'due_date', 'subtotal', 'total_tax', 'total_amount', 'gst_type',
+            'notes', 'invoice_file', 'invoice_items'
+        ]
+
+    def create(self, validated_data):
+        from decimal import Decimal
+        
+        invoice_items_data = validated_data.pop('invoice_items')
+        vendor = validated_data['vendor']
+        company = self.context['company']
+        
+        # Set GST information
+        if vendor.gstin and hasattr(company, 'gst_number') and company.gst_number:
+            vendor_state_code = vendor.gstin[:2]
+            company_state_code = company.gst_number[:2]
+            validated_data['gst_type'] = 'cgst_sgst' if vendor_state_code == company_state_code else 'igst'
+        else:
+            validated_data['gst_type'] = 'exempt'
+        
+        # Create vendor invoice
+        vendor_invoice = VendorInvoice.objects.create(**validated_data)
+        
+        # Create items
+        items_to_create = []
+        for i, item_data in enumerate(invoice_items_data, 1):
+            product_id = item_data.get('product')
+            if not product_id:
+                continue  # Skip items without product
+            
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                continue  # Skip items with invalid product ID
+            
+            quantity = Decimal(str(item_data.get('quantity', 1)))
+            unit_price = Decimal(str(item_data.get('unit_price', 0)))
+            
+            items_to_create.append(VendorInvoiceItem(
+                vendor_invoice=vendor_invoice,
+                product=product,
+                product_name=product.name,
+                product_code=product.product_code,
+                description=product.description,
+                hsn_sac_code=product.hsn_code.code if product.hsn_code else (product.sac_code.code if product.sac_code else ''),
+                quantity=quantity,
+                unit=product.unit,
+                unit_price=unit_price,
+                line_total=quantity * unit_price,
+                gst_rate=product.gst_rate,
+                line_number=i
+            ))
+        
+        # Create items first
+        VendorInvoiceItem.objects.bulk_create(items_to_create)
+        
+        # Calculate totals after items are created
+        self._calculate_totals(vendor_invoice)
+        
+        return vendor_invoice
+    
+    def _calculate_totals(self, vendor_invoice):
+        from decimal import Decimal
+        
+        # Refresh items from database
+        vendor_invoice.refresh_from_db()
+        items = vendor_invoice.invoice_items.all()
+        
+        if not items.exists():
+            return
+        
+        subtotal = Decimal('0')
+        total_tax = Decimal('0')
+        cgst_amount = Decimal('0')
+        sgst_amount = Decimal('0')
+        igst_amount = Decimal('0')
+        
+        # Calculate subtotal and tax
+        for item in items:
+            subtotal += item.line_total
+            
+            if vendor_invoice.gst_type == 'cgst_sgst':
+                item_tax = (item.line_total * item.gst_rate) / Decimal('100')
+                total_tax += item_tax
+                cgst_amount += item_tax / Decimal('2')
+                sgst_amount += item_tax / Decimal('2')
+            elif vendor_invoice.gst_type == 'igst':
+                item_tax = (item.line_total * item.gst_rate) / Decimal('100')
+                total_tax += item_tax
+                igst_amount += item_tax
+        
+        # Calculate final total
+        total_amount = subtotal + total_tax
+        
+        # Update vendor invoice
+        vendor_invoice.subtotal = subtotal
+        vendor_invoice.total_tax = total_tax
+        vendor_invoice.cgst_amount = cgst_amount
+        vendor_invoice.sgst_amount = sgst_amount
+        vendor_invoice.igst_amount = igst_amount
+        vendor_invoice.total_amount = total_amount
+        vendor_invoice.outstanding_amount = total_amount
+        vendor_invoice.save()
+
+
+# Purchase Payment Serializers
+class PurchasePaymentListSerializer(serializers.ModelSerializer):
+    """Serializer for listing purchase payments"""
+    vendor_name = serializers.CharField(source='vendor.name', read_only=True)
+    vendor_code = serializers.CharField(source='vendor.vendor_code', read_only=True)
+    vendor_invoice_number = serializers.CharField(source='vendor_invoice.vendor_invoice_number', read_only=True)
+    our_reference_number = serializers.CharField(source='vendor_invoice.our_reference_number', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+
+    class Meta:
+        model = PurchasePayment
+        fields = [
+            'id', 'payment_number', 'payment_date', 'amount', 'payment_method',
+            'vendor_name', 'vendor_code', 'vendor_invoice_number', 'our_reference_number',
+            'tds_amount', 'tds_percentage', 'net_amount_paid', 'reference_number',
+            'bank_name', 'status', 'created_at', 'created_by_name'
+        ]
+
+
+class PurchasePaymentDetailSerializer(serializers.ModelSerializer):
+    """Serializer for purchase payment details"""
+    vendor_details = VendorDetailSerializer(source='vendor', read_only=True)
+    vendor_invoice_details = VendorInvoiceDetailSerializer(source='vendor_invoice', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+
+    class Meta:
+        model = PurchasePayment
+        fields = '__all__'
+        read_only_fields = ['id', 'payment_number', 'company', 'created_by', 'created_at', 'updated_at', 'net_amount_paid']
+
+
+class PurchasePaymentCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating purchase payments"""
+
+    class Meta:
+        model = PurchasePayment
+        fields = [
+            'vendor', 'vendor_invoice', 'payment_date', 'amount', 'payment_method',
+            'tds_amount', 'tds_percentage', 'tds_section', 'reference_number',
+            'transaction_id', 'bank_name', 'notes', 'status'
+        ]
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Payment amount must be greater than 0")
+        return value
+
+    def validate(self, attrs):
+        vendor_invoice = attrs.get('vendor_invoice')
+        amount = attrs.get('amount')
+        
+        if vendor_invoice and amount:
+            if amount > vendor_invoice.outstanding_amount:
+                raise serializers.ValidationError(
+                    f"Payment amount (₹{amount}) cannot exceed outstanding amount (₹{vendor_invoice.outstanding_amount})"
+                )
+        
+        return attrs

@@ -28,11 +28,14 @@ from .models import (
     CompanyUser, SecurityLog, CompanyServiceUser, ServiceUserSession
 )
 from .serializers import (
-    MasterAdminLoginSerializer, ServiceSerializer, CompanyCreateSerializer,
+    ServiceSerializer, CompanyCreateSerializer,
     CompanyListSerializer, CompanyDetailSerializer, CompanyDetailedInfoSerializer,
-    CompanyUserLoginSerializer, CompanyServiceSerializer,
+    CompanyServiceSerializer,
     ServicePasswordChangeSerializer, SecurityLogSerializer,
     MasterAdminPasswordChangeSerializer, MasterAdminProfileSerializer
+)
+from .optimized_serializers import (
+    FastMasterAdminLoginSerializer, FastCompanyUserLoginSerializer
 )
 from notifications.models import Notification
 from notifications.serializers import NotificationCreateSerializer
@@ -65,7 +68,7 @@ class MasterAdminLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        serializer = MasterAdminLoginSerializer(data=request.data)
+        serializer = FastMasterAdminLoginSerializer(data=request.data)
 
         if serializer.is_valid():
             user = serializer.validated_data['user']
@@ -105,26 +108,30 @@ class MasterAdminLoginView(APIView):
             master_admin.login_attempts = 0
             master_admin.save()
 
-            # Create/update device fingerprint
-            from .device_fingerprint_utils import create_or_update_device_fingerprint
-            device = create_or_update_device_fingerprint(master_admin, request)
-            
-            # Send login notification email
-            from .login_notification_service import send_login_notification
+            # Queue background security tasks (non-blocking) - optional if Redis unavailable
             try:
-                notification_sent = send_login_notification(master_admin, request)
-                if notification_sent:
-                    print(f'✅ Login notification sent successfully to {master_admin.user.email}')
-                else:
-                    print(f'❌ Failed to send login notification to {master_admin.user.email}')
+                from .async_security_tasks import (
+                    send_login_notification_async,
+                    update_device_fingerprint_async
+                )
+                
+                # Prepare request data for async tasks
+                request_data = {
+                    'META': dict(request.META),
+                    'ip_address': get_client_ip(request)
+                }
+                
+                # Queue async tasks (immediate return)
+                send_login_notification_async.delay(master_admin.id, request_data)
+                update_device_fingerprint_async.delay(
+                    master_admin.id, 'master_admin', request_data
+                )
             except Exception as e:
-                print(f'❌ Login notification error: {str(e)}')
-                # Don't fail login if notification fails
-                pass
+                # Fallback: continue without async tasks if Redis/Celery unavailable
+                print(f'⚠️ Async tasks unavailable: {e}')
             
             # Log successful login
-            device_info = f" (Device: {device.device_name})" if device else ""
-            log_security_event(user, 'LOGIN_SUCCESS', request, f'Master admin login{device_info}')
+            log_security_event(user, 'LOGIN_SUCCESS', request, 'Master admin login')
 
             return Response({
                 'access': str(access_token),
@@ -638,7 +645,7 @@ class CompanyUserLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        serializer = CompanyUserLoginSerializer(data=request.data)
+        serializer = FastCompanyUserLoginSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
             company_user = user.company_user
@@ -699,54 +706,40 @@ class CompanyUserLoginView(APIView):
                 expires_at=timezone.now() + timezone.timedelta(hours=24)
             )
             
-            # Send login email alert if enabled
+            # Queue background security tasks (non-blocking) - optional if Redis unavailable
             try:
-                from company_dashboard.email_alert_service import CompanyEmailAlertService
-                email_service = CompanyEmailAlertService(company_user.company)
+                from .async_security_tasks import (
+                    send_company_login_alert_async,
+                    update_device_fingerprint_async,
+                    run_threat_detection_async
+                )
                 
-                if email_service.can_send_emails():
-                    device_info = f"{user_agent.browser.family} on {user_agent.os.family}"
-                    location_info = f"{get_client_ip(request)}"
-                    email_service.send_login_alert(
-                        user_email=user.email,
-                        ip_address=get_client_ip(request),
-                        location=location_info,
-                        device_info=device_info,
-                        admin_email=email_service.email_settings.smtp_username
-                    )
-            except Exception as e:
-                print(f"Failed to send login alert: {e}")
-                # Don't fail login if notification fails
-                pass
-            
-            # Device Fingerprinting - Register/Update Device
-            try:
-                from company_dashboard.device_management_views import DeviceManagementView
-                device_view = DeviceManagementView()
-                
-                # Create fingerprint data from request
-                fingerprint_data = {
-                    'userAgent': user_agent_string,
-                    'screen': request.META.get('HTTP_SCREEN_RESOLUTION', ''),
-                    'timezone': request.META.get('HTTP_TIMEZONE', ''),
-                    'language': request.META.get('HTTP_ACCEPT_LANGUAGE', '').split(',')[0] if request.META.get('HTTP_ACCEPT_LANGUAGE') else '',
-                    'platform': user_agent.os.family if user_agent else ''
+                # Prepare request data for async tasks
+                request_data = {
+                    'META': dict(request.META),
+                    'ip_address': get_client_ip(request)
                 }
                 
-                # Register device
-                device_view._register_device_fingerprint(company_user, fingerprint_data, get_client_ip(request))
-                print(f'📱 Device fingerprint registered for {user.email}')
+                # Queue async tasks (immediate return)
+                device_info = f"{user_agent.browser.family} on {user_agent.os.family}"
+                send_company_login_alert_async.delay(
+                    company_user.company.id, user.email, get_client_ip(request), device_info
+                )
+                update_device_fingerprint_async.delay(
+                    company_user.id, 'company_user', request_data
+                )
+                run_threat_detection_async.delay(
+                    company_user.company.id, user.email, get_client_ip(request),
+                    request.META.get('HTTP_USER_AGENT', ''), True
+                )
             except Exception as e:
-                print(f'📱 Device fingerprinting error: {str(e)}')
-
-            # Create/update device fingerprint if user has master admin access
-            if hasattr(user, 'master_admin'):
-                from .device_fingerprint_utils import create_or_update_device_fingerprint
-                device = create_or_update_device_fingerprint(user.master_admin, request)
+                # Fallback: continue without async tasks if Redis/Celery unavailable
+                print(f'⚠️ Async tasks unavailable: {e}')
             
-            # Geolocation Security Check
+            # Only keep critical security checks (fast operations)
             from company_dashboard.geolocation_views import check_geolocation_access
             try:
+                # Quick geolocation check (cached results)
                 geo_result = check_geolocation_access(
                     company_user.company,
                     get_client_ip(request),
@@ -755,16 +748,14 @@ class CompanyUserLoginView(APIView):
                 
                 if not geo_result['allowed']:
                     return Response({
-                        'error': f'Access denied from {geo_result["location_info"]["country"]}. Contact administrator.',
-                        'location_blocked': True,
-                        'location': geo_result['location_info']
+                        'error': f'Access denied from location. Contact administrator.',
+                        'location_blocked': True
                     }, status=status.HTTP_403_FORBIDDEN)
                 
                 if geo_result['requires_2fa']:
-                    # Force 2FA for this location
                     return Response({
                         'requires_2fa': True,
-                        'message': f'2FA required for login from {geo_result["location_info"]["country"]}',
+                        'message': '2FA required for this location',
                         'user_id': user.id,
                         'geolocation_2fa': True
                     })
@@ -772,32 +763,16 @@ class CompanyUserLoginView(APIView):
             except Exception as e:
                 print(f'🌍 GEOLOCATION ERROR: {str(e)}')
             
-            # AI-Enhanced Threat Detection
-            from company_dashboard.threat_detection_engine import threat_monitor
+            # Quick security log (essential only)
             from company_dashboard.security_models import CompanySecurityLog
-            try:
-                threats = threat_monitor.monitor_login_attempt(
-                    company_user.company,
-                    user.email,
-                    get_client_ip(request),
-                    request.META.get('HTTP_USER_AGENT', ''),
-                    success=True
-                )
-                if threats:
-                    print(f'🔍 THREAT DETECTION: {len(threats)} threats detected for {user.email}')
-                
-                # Log successful login to Company Security Log
-                CompanySecurityLog.objects.create(
-                    company=company_user.company,
-                    user_email=user.email,
-                    action='login',
-                    ip_address=get_client_ip(request),
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                    success=True,
-                    details='Successful company user login'
-                )
-            except Exception as e:
-                print(f'🔍 THREAT DETECTION ERROR: {str(e)}')
+            CompanySecurityLog.objects.create(
+                company=company_user.company,
+                user_email=user.email,
+                action='login',
+                ip_address=get_client_ip(request),
+                success=True,
+                details='Login successful'
+            )
             
             # Log successful login
             log_security_event(user, 'LOGIN_SUCCESS', request, 'Company user login')

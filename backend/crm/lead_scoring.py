@@ -1,6 +1,7 @@
 from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import Lead, LeadScore, ScoringCriteria, Activity
+from django.db import models
 import random
 import math
 
@@ -255,34 +256,369 @@ class LeadScoringEngine:
         lead_score.conversion_probability = probability
         
         # Calculate total score
-        total = lead_score.calculate_total_score()
+        total_score = lead_score.calculate_total_score()
         
-        # Generate recommended actions
-        actions = self.generate_recommendations(lead, lead_score)
-        lead_score.recommended_actions = actions
-        
-        # Store score factors for transparency
-        lead_score.score_factors = {
-            'behavioral': {
-                'score': behavioral,
-                'factors': ['Website visits', 'Email engagement', 'Activity frequency']
-            },
-            'demographic': {
-                'score': demographic,
-                'factors': ['Company fit', 'Job title', 'Industry match']
-            },
-            'engagement': {
-                'score': engagement,
-                'factors': ['Response rate', 'Meeting acceptance', 'Interaction quality']
-            },
-            'predictive': {
-                'score': predictive,
-                'factors': ['Historical patterns', 'Lead source quality', 'Status progression']
-            }
-        }
+        # Generate AI recommendations
+        lead_score.recommended_actions = self.generate_ai_recommendations(lead, lead_score)
+        lead_score.score_factors = self.get_score_breakdown(behavioral, demographic, engagement, predictive)
         
         lead_score.save()
         return lead_score
+    
+    def generate_ai_recommendations(self, lead, lead_score):
+        """Generate AI-powered recommendations based on lead score"""
+        recommendations = []
+        
+        # High-value lead recommendations
+        if lead_score.total_score >= 75:
+            recommendations.append({
+                'action': 'immediate_contact',
+                'priority': 'high',
+                'message': 'High-value lead - Contact immediately for best conversion chance'
+            })
+            if lead.status == 'new':
+                recommendations.append({
+                    'action': 'schedule_demo',
+                    'priority': 'high', 
+                    'message': 'Schedule product demo within 24 hours'
+                })
+        
+        # Medium-value lead recommendations
+        elif lead_score.total_score >= 50:
+            recommendations.append({
+                'action': 'nurture_sequence',
+                'priority': 'medium',
+                'message': 'Add to nurture email sequence for gradual engagement'
+            })
+            if lead_score.engagement_score < 40:
+                recommendations.append({
+                    'action': 'increase_touchpoints',
+                    'priority': 'medium',
+                    'message': 'Increase engagement through multiple touchpoints'
+                })
+        
+        # Low-value lead recommendations
+        else:
+            recommendations.append({
+                'action': 'automated_nurture',
+                'priority': 'low',
+                'message': 'Add to automated nurture campaign'
+            })
+            if lead_score.demographic_score < 30:
+                recommendations.append({
+                    'action': 'qualify_further',
+                    'priority': 'low',
+                    'message': 'Gather more demographic information to improve scoring'
+                })
+        
+        # Behavioral-specific recommendations
+        if lead_score.behavioral_score < 25:
+            recommendations.append({
+                'action': 'content_engagement',
+                'priority': 'medium',
+                'message': 'Send valuable content to increase engagement'
+            })
+        
+        return recommendations
+    
+    def get_score_breakdown(self, behavioral, demographic, engagement, predictive):
+        """Get detailed score factor breakdown"""
+        return {
+            'behavioral': {
+                'score': behavioral,
+                'factors': ['Website visits', 'Email engagement', 'Content downloads']
+            },
+            'demographic': {
+                'score': demographic,
+                'factors': ['Company size', 'Job title', 'Industry fit']
+            },
+            'engagement': {
+                'score': engagement,
+                'factors': ['Response rate', 'Meeting acceptance', 'Call engagement']
+            },
+            'predictive': {
+                'score': predictive,
+                'factors': ['Historical patterns', 'Similar lead outcomes', 'Market trends']
+            }
+        }
+
+
+class AIAnalyticsEngine:
+    """Advanced AI Analytics for CRM insights"""
+    
+    def __init__(self, company):
+        self.company = company
+    
+    def analyze_sentiment(self, text):
+        """Analyze sentiment of text (emails, notes, etc.)"""
+        # Simplified sentiment analysis (in production, use proper NLP)
+        positive_words = ['great', 'excellent', 'good', 'interested', 'excited', 'love', 'perfect', 'amazing']
+        negative_words = ['bad', 'terrible', 'hate', 'disappointed', 'frustrated', 'angry', 'poor', 'awful']
+        
+        text_lower = text.lower()
+        positive_count = sum(1 for word in positive_words if word in text_lower)
+        negative_count = sum(1 for word in negative_words if word in text_lower)
+        
+        if positive_count > negative_count:
+            return 'positive', min(0.9, 0.5 + (positive_count - negative_count) * 0.1)
+        elif negative_count > positive_count:
+            return 'negative', max(0.1, 0.5 - (negative_count - positive_count) * 0.1)
+        else:
+            return 'neutral', 0.5
+    
+    def predict_churn_risk(self, account):
+        """Predict customer churn risk using AI"""
+        from .models import CustomerInteraction, Ticket
+        
+        risk_score = 0.0
+        factors = []
+        
+        # Check recent interactions
+        recent_interactions = CustomerInteraction.objects.filter(
+            account=account,
+            interaction_date__gte=timezone.now() - timezone.timedelta(days=30)
+        ).count()
+        
+        if recent_interactions == 0:
+            risk_score += 0.3
+            factors.append('No recent interactions')
+        elif recent_interactions < 3:
+            risk_score += 0.2
+            factors.append('Low interaction frequency')
+        
+        # Check support tickets
+        open_tickets = Ticket.objects.filter(
+            account=account,
+            status__in=['open', 'in_progress']
+        ).count()
+        
+        if open_tickets > 2:
+            risk_score += 0.25
+            factors.append('Multiple open support tickets')
+        
+        # Check satisfaction scores
+        recent_tickets = Ticket.objects.filter(
+            account=account,
+            satisfaction_rating__isnull=False,
+            created_at__gte=timezone.now() - timezone.timedelta(days=90)
+        )
+        
+        if recent_tickets.exists():
+            avg_satisfaction = recent_tickets.aggregate(
+                avg_rating=models.Avg('satisfaction_rating')
+            )['avg_rating']
+            
+            if avg_satisfaction < 3:
+                risk_score += 0.3
+                factors.append('Low satisfaction scores')
+            elif avg_satisfaction < 4:
+                risk_score += 0.15
+                factors.append('Below average satisfaction')
+        
+        # Payment/contract factors (simplified)
+        if hasattr(account, 'health_score'):
+            health = account.health_score
+            if health.financial_score < 40:
+                risk_score += 0.2
+                factors.append('Financial health concerns')
+        
+        return min(1.0, risk_score), factors
+    
+    def generate_sales_forecast(self, period_days=90):
+        """Generate AI-powered sales forecast"""
+        from .models import Deal, Opportunity
+        from decimal import Decimal
+        
+        # Get historical data
+        end_date = timezone.now().date()
+        start_date = end_date - timezone.timedelta(days=period_days * 2)  # Look back 2x period for trends
+        
+        # Analyze historical win rates by stage
+        historical_deals = Deal.objects.filter(
+            company=self.company,
+            created_at__date__gte=start_date,
+            status__in=['won', 'lost']
+        )
+        
+        # Calculate stage conversion rates
+        stage_conversions = {}
+        for deal in historical_deals:
+            stage_name = deal.current_stage.name
+            if stage_name not in stage_conversions:
+                stage_conversions[stage_name] = {'total': 0, 'won': 0}
+            
+            stage_conversions[stage_name]['total'] += 1
+            if deal.status == 'won':
+                stage_conversions[stage_name]['won'] += 1
+        
+        # Get current pipeline
+        current_pipeline = Deal.objects.filter(
+            company=self.company,
+            status='open',
+            expected_close_date__lte=end_date + timezone.timedelta(days=period_days)
+        )
+        
+        forecast = {
+            'period_days': period_days,
+            'total_pipeline_value': Decimal('0'),
+            'weighted_forecast': Decimal('0'),
+            'ai_adjusted_forecast': Decimal('0'),
+            'confidence_level': 0.0,
+            'deals_likely_to_close': 0,
+            'stage_breakdown': {}
+        }
+        
+        for deal in current_pipeline:
+            stage_name = deal.current_stage.name
+            deal_value = deal.value
+            
+            # Base probability from deal
+            base_probability = deal.probability / 100.0
+            
+            # AI adjustment based on historical data
+            if stage_name in stage_conversions and stage_conversions[stage_name]['total'] > 0:
+                historical_rate = stage_conversions[stage_name]['won'] / stage_conversions[stage_name]['total']
+                # Blend historical rate with current probability
+                ai_probability = (base_probability * 0.6) + (historical_rate * 0.4)
+            else:
+                ai_probability = base_probability
+            
+            # Time-based adjustment (deals closer to close date are more likely)
+            days_to_close = (deal.expected_close_date - end_date).days
+            if days_to_close <= 30:
+                time_multiplier = 1.1  # 10% boost for deals closing soon
+            elif days_to_close <= 60:
+                time_multiplier = 1.0
+            else:
+                time_multiplier = 0.9  # 10% reduction for distant deals
+            
+            ai_probability = min(1.0, ai_probability * time_multiplier)
+            
+            # Update forecast
+            forecast['total_pipeline_value'] += deal_value
+            forecast['weighted_forecast'] += deal_value * Decimal(str(base_probability))
+            forecast['ai_adjusted_forecast'] += deal_value * Decimal(str(ai_probability))
+            
+            if ai_probability > 0.7:
+                forecast['deals_likely_to_close'] += 1
+            
+            # Stage breakdown
+            if stage_name not in forecast['stage_breakdown']:
+                forecast['stage_breakdown'][stage_name] = {
+                    'count': 0,
+                    'value': Decimal('0'),
+                    'weighted_value': Decimal('0')
+                }
+            
+            forecast['stage_breakdown'][stage_name]['count'] += 1
+            forecast['stage_breakdown'][stage_name]['value'] += deal_value
+            forecast['stage_breakdown'][stage_name]['weighted_value'] += deal_value * Decimal(str(ai_probability))
+        
+        # Calculate confidence level
+        if forecast['total_pipeline_value'] > 0:
+            variance = abs(forecast['ai_adjusted_forecast'] - forecast['weighted_forecast']) / forecast['total_pipeline_value']
+            forecast['confidence_level'] = max(0.5, 1.0 - variance)
+        
+        return forecast
+    
+    def analyze_conversation_intelligence(self, activity):
+        """Analyze conversation for insights"""
+        if not activity.description and not activity.outcome:
+            return None
+        
+        text = f"{activity.description} {activity.outcome}".strip()
+        if not text:
+            return None
+        
+        # Sentiment analysis
+        sentiment, confidence = self.analyze_sentiment(text)
+        
+        # Extract key topics (simplified keyword extraction)
+        keywords = self.extract_keywords(text)
+        
+        # Detect buying signals
+        buying_signals = self.detect_buying_signals(text)
+        
+        # Risk indicators
+        risk_indicators = self.detect_risk_indicators(text)
+        
+        return {
+            'sentiment': sentiment,
+            'sentiment_confidence': confidence,
+            'keywords': keywords,
+            'buying_signals': buying_signals,
+            'risk_indicators': risk_indicators,
+            'next_action_suggestions': self.suggest_next_actions(sentiment, buying_signals, risk_indicators)
+        }
+    
+    def extract_keywords(self, text):
+        """Extract important keywords from conversation"""
+        # Simplified keyword extraction
+        important_terms = [
+            'budget', 'price', 'cost', 'timeline', 'decision', 'approval',
+            'competitor', 'alternative', 'feature', 'requirement', 'need',
+            'meeting', 'demo', 'proposal', 'contract', 'sign', 'purchase'
+        ]
+        
+        text_lower = text.lower()
+        found_keywords = [term for term in important_terms if term in text_lower]
+        return found_keywords
+    
+    def detect_buying_signals(self, text):
+        """Detect positive buying signals in conversation"""
+        buying_signals = [
+            'ready to move forward', 'when can we start', 'send proposal',
+            'budget approved', 'decision maker', 'timeline', 'implementation',
+            'next steps', 'contract', 'pricing', 'demo was great'
+        ]
+        
+        text_lower = text.lower()
+        detected = [signal for signal in buying_signals if signal in text_lower]
+        return detected
+    
+    def detect_risk_indicators(self, text):
+        """Detect risk indicators in conversation"""
+        risk_indicators = [
+            'budget concerns', 'too expensive', 'need to think', 'other options',
+            'competitor', 'not ready', 'delay', 'postpone', 'reconsider'
+        ]
+        
+        text_lower = text.lower()
+        detected = [risk for risk in risk_indicators if risk in text_lower]
+        return detected
+    
+    def suggest_next_actions(self, sentiment, buying_signals, risk_indicators):
+        """Suggest next actions based on conversation analysis"""
+        suggestions = []
+        
+        if buying_signals:
+            suggestions.append({
+                'action': 'accelerate_process',
+                'priority': 'high',
+                'message': 'Strong buying signals detected - accelerate the sales process'
+            })
+        
+        if risk_indicators:
+            suggestions.append({
+                'action': 'address_concerns',
+                'priority': 'high',
+                'message': 'Risk indicators found - schedule call to address concerns'
+            })
+        
+        if sentiment == 'positive':
+            suggestions.append({
+                'action': 'maintain_momentum',
+                'priority': 'medium',
+                'message': 'Positive sentiment - maintain engagement momentum'
+            })
+        elif sentiment == 'negative':
+            suggestions.append({
+                'action': 'damage_control',
+                'priority': 'high',
+                'message': 'Negative sentiment detected - immediate follow-up required'
+            })
+        
+        return suggestions
     
     def generate_recommendations(self, lead, lead_score):
         """Generate AI-powered recommendations"""

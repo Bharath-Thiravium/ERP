@@ -96,6 +96,11 @@ class Lead(models.Model):
                 else:
                     self.lead_id = "LEAD-000001"
         super().save(*args, **kwargs)
+        
+        # Create calendar event for follow-up if needed
+        if self.status == 'contacted' and hasattr(self, '_create_followup'):
+            from .calendar_integration import CalendarIntegrationManager
+            CalendarIntegrationManager.create_followup_event(self)
 
 
 class Contact(models.Model):
@@ -1060,3 +1065,79 @@ from .phase4_models import (
     DataAuditLog, ComplianceRule, ComplianceViolation, DataRetentionPolicy,
     SecurityAlert, APIUsageLog
 )
+
+# New integration models
+class EmailIntegration(models.Model):
+    """Email integration settings"""
+    PROVIDER_CHOICES = [
+        ('gmail', 'Gmail'),
+        ('outlook', 'Outlook'),
+        ('smtp', 'SMTP'),
+    ]
+    
+    company = models.ForeignKey('authentication.Company', on_delete=models.CASCADE, related_name='email_integrations')
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
+    credentials = models.JSONField(default=dict)  # Encrypted credentials
+    is_active = models.BooleanField(default=True)
+    last_sync = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ['company', 'provider']
+    
+    def __str__(self):
+        return f"{self.company.name} - {self.get_provider_display()}"
+
+class CalendarIntegration(models.Model):
+    """Calendar integration settings"""
+    PROVIDER_CHOICES = [
+        ('google', 'Google Calendar'),
+        ('outlook', 'Outlook Calendar'),
+    ]
+    
+    company = models.ForeignKey('authentication.Company', on_delete=models.CASCADE, related_name='calendar_integrations')
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
+    credentials = models.JSONField(default=dict)  # Encrypted credentials
+    calendar_id = models.CharField(max_length=255, default='primary')
+    is_active = models.BooleanField(default=True)
+    last_sync = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ['company', 'provider']
+    
+    def __str__(self):
+        return f"{self.company.name} - {self.get_provider_display()}"
+
+class EmailActivity(models.Model):
+    """Track email activities"""
+    ACTIVITY_TYPES = [
+        ('sent', 'Sent'),
+        ('delivered', 'Delivered'),
+        ('opened', 'Opened'),
+        ('clicked', 'Clicked'),
+        ('bounced', 'Bounced'),
+        ('unsubscribed', 'Unsubscribed'),
+    ]
+    
+    company = models.ForeignKey('authentication.Company', on_delete=models.CASCADE)
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES)
+    email_address = models.EmailField()
+    subject = models.CharField(max_length=255, blank=True)
+    tracking_id = models.CharField(max_length=100, blank=True)
+    
+    # Relationships
+    lead = models.ForeignKey(Lead, on_delete=models.SET_NULL, null=True, blank=True)
+    contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, null=True, blank=True)
+    opportunity = models.ForeignKey(Opportunity, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Metadata
+    metadata = models.JSONField(default=dict)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.get_activity_type_display()} - {self.email_address}"

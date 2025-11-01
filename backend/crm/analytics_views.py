@@ -49,7 +49,7 @@ class CustomerInteractionViewSet(CRMBaseViewSet):
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Get interaction statistics
+        # Get interaction statistics with secure queries
         interactions = CustomerInteraction.objects.filter(company=company)
         
         # Last 30 days
@@ -60,7 +60,7 @@ class CustomerInteractionViewSet(CRMBaseViewSet):
             'total_interactions': interactions.count(),
             'recent_interactions': recent_interactions.count(),
             'interactions_by_type': list(recent_interactions.values('interaction_type').annotate(count=Count('id'))),
-            'top_accounts': list(recent_interactions.values('account__name').annotate(count=Count('id')).order_by('-count')[:10]),
+            'top_accounts': list(recent_interactions.select_related('account').values('account__name').annotate(count=Count('id')).order_by('-count')[:10]),
             'avg_interactions_per_account': recent_interactions.values('account').distinct().count()
         }
         

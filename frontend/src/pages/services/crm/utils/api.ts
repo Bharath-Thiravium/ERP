@@ -646,5 +646,44 @@ export const crmApi = {
 
   checkRuleViolations: async (sessionKey: string, id: number) => {
     return apiClient.post(`/api/crm/compliance-rules/${id}/check_violations/`, { session_key: sessionKey })
+  },
+
+  // Phase 3: AI Analytics APIs
+  getAIInsights: async (sessionKey: string) => {
+    return apiClient.get('/api/crm/dashboard/ai_insights/', { params: { session_key: sessionKey } })
+  },
+
+  getLeadIntelligence: async (sessionKey: string) => {
+    return apiClient.get('/api/crm/dashboard/lead_intelligence/', { params: { session_key: sessionKey } })
+  },
+
+  getSalesForecast: async (sessionKey: string, periodDays = 90) => {
+    return apiClient.get('/api/crm/dashboard/sales_forecast/', { params: { session_key: sessionKey, period_days: periodDays } })
+  },
+
+  getCustomerHealth: async (sessionKey: string) => {
+    return apiClient.get('/api/crm/dashboard/customer_health/', { params: { session_key: sessionKey } })
+  },
+
+  getConversationIntelligence: async (sessionKey: string) => {
+    return apiClient.get('/api/crm/dashboard/conversation_intelligence/', { params: { session_key: sessionKey } })
+  },
+
+  getPerformanceAnalytics: async (sessionKey: string) => {
+    return apiClient.get('/api/crm/dashboard/performance_analytics/', { params: { session_key: sessionKey } })
+  },
+
+  getWeeklyReport: async (sessionKey: string) => {
+    return apiClient.get('/api/crm/dashboard/weekly_report/', { params: { session_key: sessionKey } })
+  },
+
+
+
+  getSmartLeadPrioritization: async (sessionKey: string) => {
+    return apiClient.get('/api/crm/leads/smart_prioritization/', { params: { session_key: sessionKey } })
+  },
+
+  analyzeConversation: async (sessionKey: string, activityId: string) => {
+    return apiClient.post(`/api/crm/activities/${activityId}/analyze_conversation/`, { session_key: sessionKey })
   }
 }

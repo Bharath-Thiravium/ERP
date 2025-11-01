@@ -13,6 +13,12 @@ from .serializers import (
     DashboardStatsSerializer, LeadsByStatusSerializer, OpportunitiesByStageSerializer
 )
 from authentication.models import Company, ServiceUserSession
+from .security_utils import CRMSecurityValidator, validate_request_data
+from .error_handlers import safe_execute, validate_session, CRMValidationError, ErrorHandlerMixin
+from .query_optimizations import CRMQueryOptimizer, CRMCacheManager
+from django.core.cache import cache
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
 
 
 class CRMBaseViewSet(viewsets.ModelViewSet):
@@ -62,8 +68,32 @@ class CRMBaseViewSet(viewsets.ModelViewSet):
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             service_user = session.service_user
             
-            # Add company and created_by to request data before serialization
+            # Validate and sanitize input data first
             data = request.data.copy()
+            
+            # Security validation
+            for key, value in data.items():
+                if isinstance(value, str):
+                    if not CRMSecurityValidator.validate_sql_injection(value):
+                        return Response({'error': f'Invalid characters in {key}'}, status=status.HTTP_400_BAD_REQUEST)
+                    if not CRMSecurityValidator.validate_xss(value):
+                        return Response({'error': f'Invalid content in {key}'}, status=status.HTTP_400_BAD_REQUEST)
+                    # Sanitize the input
+                    data[key] = CRMSecurityValidator.sanitize_input(value)
+            
+            # Email validation
+            if 'email' in data and data['email']:
+                if not CRMSecurityValidator.validate_email_format(data['email']):
+                    return Response({'error': 'Invalid email format'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Phone validation
+            phone_fields = ['phone', 'mobile', 'contact_phone']
+            for field in phone_fields:
+                if field in data and data[field]:
+                    if not CRMSecurityValidator.validate_phone_number(data[field]):
+                        return Response({'error': f'Invalid {field} format'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Add company after validation
             data['company'] = service_user.company.id
             
             # CRITICAL FIX: Ensure created_by is always set properly
@@ -206,6 +236,74 @@ class LeadViewSet(CRMBaseViewSet):
     search_fields = ['first_name', 'last_name', 'email', 'company_name']
     ordering_fields = ['created_at', 'updated_at', 'last_contacted', 'estimated_value']
     ordering = ['-created_at']
+
+    @action(detail=True, methods=['post'])
+    def calculate_score(self, request, pk=None):
+        """Calculate AI lead score for a specific lead"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        lead = self.get_object()
+        
+        from .lead_scoring import LeadScoringEngine
+        
+        scoring_engine = LeadScoringEngine(company)
+        lead_score = scoring_engine.calculate_lead_score(lead)
+        
+        return Response({
+            'lead_id': lead.lead_id,
+            'total_score': lead_score.total_score,
+            'grade': lead_score.grade,
+            'behavioral_score': lead_score.behavioral_score,
+            'demographic_score': lead_score.demographic_score,
+            'engagement_score': lead_score.engagement_score,
+            'predictive_score': lead_score.predictive_score,
+            'conversion_probability': lead_score.conversion_probability,
+            'recommended_actions': lead_score.recommended_actions,
+            'score_factors': lead_score.score_factors
+        })
+
+    @action(detail=False)
+    def smart_prioritization(self, request):
+        """Get AI-prioritized leads based on scores and conversion probability"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        # Get leads with scores, prioritized by AI
+        leads = self.get_queryset().select_related('score').filter(
+            status__in=['new', 'contacted', 'qualified']
+        ).order_by('-score__total_score', '-score__conversion_probability')
+        
+        prioritized_leads = []
+        for lead in leads[:20]:  # Top 20 leads
+            lead_data = self.get_serializer(lead).data
+            if hasattr(lead, 'score'):
+                lead_data['ai_score'] = {
+                    'total_score': lead.score.total_score,
+                    'grade': lead.score.grade,
+                    'conversion_probability': lead.score.conversion_probability,
+                    'recommended_actions': lead.score.recommended_actions[:3]  # Top 3 actions
+                }
+            prioritized_leads.append(lead_data)
+        
+        return Response({
+            'prioritized_leads': prioritized_leads,
+            'total_leads': leads.count()
+        })
 
     @action(detail=True, methods=['post'])
     def convert_to_opportunity(self, request, pk=None):
@@ -392,6 +490,36 @@ class ActivityViewSet(CRMBaseViewSet):
     ordering_fields = ['due_date', 'created_at']
     ordering = ['due_date']
 
+    @action(detail=True, methods=['post'])
+    def analyze_conversation(self, request, pk=None):
+        """Analyze conversation using AI for insights"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        activity = self.get_object()
+        
+        from .lead_scoring import AIAnalyticsEngine
+        
+        ai_engine = AIAnalyticsEngine(company)
+        analysis = ai_engine.analyze_conversation_intelligence(activity)
+        
+        if analysis:
+            return Response({
+                'activity_id': activity.id,
+                'conversation_analysis': analysis
+            })
+        else:
+            return Response({
+                'message': 'No conversation content to analyze'
+            })
+
     @action(detail=False)
     def today(self, request):
         today = timezone.now().date()
@@ -416,6 +544,15 @@ class ActivityViewSet(CRMBaseViewSet):
         activity.completed_at = timezone.now()
         activity.outcome = request.data.get('outcome', '')
         activity.save()
+        
+        # Analyze conversation if it has content
+        if activity.description or activity.outcome:
+            from .lead_scoring import AIAnalyticsEngine
+            ai_engine = AIAnalyticsEngine(activity.company)
+            analysis = ai_engine.analyze_conversation_intelligence(activity)
+            if analysis:
+                # Store analysis results in activity metadata if needed
+                pass
         
         serializer = self.get_serializer(activity)
         return Response(serializer.data)
@@ -548,32 +685,8 @@ class DashboardViewSet(viewsets.ViewSet):
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Get dashboard statistics
-        today = timezone.now().date()
-        
-        stats = {
-            'total_leads': Lead.objects.filter(company=company).count(),
-            'total_opportunities': Opportunity.objects.filter(company=company).count(),
-            'total_accounts': Account.objects.filter(company=company).count(),
-            'total_contacts': Contact.objects.filter(company=company).count(),
-            'pipeline_value': Opportunity.objects.filter(
-                company=company,
-                stage__in=['prospecting', 'qualification', 'needs_analysis', 'proposal', 'negotiation']
-            ).aggregate(Sum('amount'))['amount__sum'] or 0,
-            'won_opportunities': Opportunity.objects.filter(
-                company=company,
-                stage='closed_won'
-            ).count(),
-            'activities_today': Activity.objects.filter(
-                company=company,
-                due_date__date=today
-            ).count(),
-            'overdue_activities': Activity.objects.filter(
-                company=company,
-                due_date__lt=timezone.now(),
-                status__in=['planned', 'in_progress']
-            ).count(),
-        }
+        # Get optimized dashboard statistics with caching
+        stats = CRMQueryOptimizer.get_dashboard_stats_optimized(company)
         
         serializer = DashboardStatsSerializer(stats)
         return Response(serializer.data)
@@ -606,24 +719,150 @@ class DashboardViewSet(viewsets.ViewSet):
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         
-        funnel_data = []
-        
-        # Leads by status
-        lead_stats = Lead.objects.filter(company=company).values('status').annotate(count=Count('id'))
-        for stat in lead_stats:
-            funnel_data.append({
-                'stage': f"Leads - {stat['status'].title()}",
-                'count': stat['count'],
-                'type': 'lead'
-            })
-        
-        # Opportunities by stage
-        opp_stats = Opportunity.objects.filter(company=company).values('stage').annotate(count=Count('id'))
-        for stat in opp_stats:
-            funnel_data.append({
-                'stage': f"Opportunities - {stat['stage'].replace('_', ' ').title()}",
-                'count': stat['count'],
-                'type': 'opportunity'
-            })
-        
+        # Get optimized sales funnel data with caching
+        funnel_data = CRMQueryOptimizer.get_sales_funnel_optimized(company)
         return Response(funnel_data)
+
+    @action(detail=False)
+    def ai_insights(self, request):
+        """Get AI-powered insights dashboard"""
+        session_key = self.get_session_key(request)
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        from .ai_analytics import SmartInsightsGenerator
+        
+        insights_generator = SmartInsightsGenerator(company)
+        insights = insights_generator.generate_daily_insights()
+        
+        return Response({
+            'insights': insights,
+            'generated_at': timezone.now().isoformat()
+        })
+
+    @action(detail=False)
+    def lead_intelligence(self, request):
+        """Get AI-powered lead intelligence dashboard"""
+        session_key = self.get_session_key(request)
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        from .ai_analytics import AdvancedAnalytics
+        
+        analytics = AdvancedAnalytics(company)
+        lead_intelligence = analytics.get_lead_intelligence_dashboard()
+        
+        return Response(lead_intelligence)
+
+    @action(detail=False)
+    def sales_forecast(self, request):
+        """Get AI-powered sales forecast"""
+        session_key = self.get_session_key(request)
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        from .ai_analytics import AdvancedAnalytics
+        
+        period_days = int(request.query_params.get('period_days', 90))
+        analytics = AdvancedAnalytics(company)
+        forecast = analytics.get_sales_forecast_dashboard(period_days)
+        
+        return Response(forecast)
+
+    @action(detail=False)
+    def customer_health(self, request):
+        """Get customer health and churn risk insights"""
+        session_key = self.get_session_key(request)
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        from .ai_analytics import AdvancedAnalytics
+        
+        analytics = AdvancedAnalytics(company)
+        health_insights = analytics.get_customer_health_insights()
+        
+        return Response(health_insights)
+
+    @action(detail=False)
+    def conversation_intelligence(self, request):
+        """Get conversation intelligence insights"""
+        session_key = self.get_session_key(request)
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        from .ai_analytics import AdvancedAnalytics
+        
+        analytics = AdvancedAnalytics(company)
+        conversation_insights = analytics.get_conversation_intelligence_insights()
+        
+        return Response(conversation_insights)
+
+    @action(detail=False)
+    def performance_analytics(self, request):
+        """Get team and individual performance analytics"""
+        session_key = self.get_session_key(request)
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        from .ai_analytics import AdvancedAnalytics
+        
+        analytics = AdvancedAnalytics(company)
+        performance = analytics.get_performance_analytics()
+        
+        return Response(performance)
+
+    @action(detail=False)
+    def weekly_report(self, request):
+        """Generate comprehensive weekly AI report"""
+        session_key = self.get_session_key(request)
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        from .ai_analytics import SmartInsightsGenerator
+        
+        insights_generator = SmartInsightsGenerator(company)
+        weekly_report = insights_generator.generate_weekly_report()
+        
+        return Response(weekly_report)

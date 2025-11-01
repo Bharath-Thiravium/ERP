@@ -8,10 +8,12 @@ from django.utils import timezone
 
 class LeadModelTest(TestCase):
     def setUp(self):
+        import os
+        test_password = os.environ.get('TEST_USER_PASSWORD', f'secure_test_pass_{timezone.now().timestamp()}')
         self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',
-            password='testpass123'
+            password=test_password
         )
         self.company = Company.objects.create(
             name="Test Company",
@@ -36,10 +38,12 @@ class LeadModelTest(TestCase):
 
 class ContactModelTest(TestCase):
     def setUp(self):
+        import os
+        test_password = os.environ.get('TEST_USER_PASSWORD', f'secure_test_pass_{timezone.now().timestamp()}')
         self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',
-            password='testpass123'
+            password=test_password
         )
         self.company = Company.objects.create(
             name="Test Company",
@@ -64,10 +68,12 @@ class ContactModelTest(TestCase):
 
 class AccountModelTest(TestCase):
     def setUp(self):
+        import os
+        test_password = os.environ.get('TEST_USER_PASSWORD', f'secure_test_pass_{timezone.now().timestamp()}')
         self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',
-            password='testpass123'
+            password=test_password
         )
         self.company = Company.objects.create(
             name="Test Company",

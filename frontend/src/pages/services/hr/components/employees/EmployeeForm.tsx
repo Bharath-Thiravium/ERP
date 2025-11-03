@@ -326,17 +326,88 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
   }
 
   const startCamera = async () => {
+    console.log('🎥 Starting camera...')
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 640, height: 480, facingMode: 'user' } 
-      })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setShowCamera(true)
+      // Check if mediaDevices is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('❌ MediaDevices not supported')
+        toast.error('Camera not supported in this browser')
+        return
       }
-    } catch (error) {
-      console.error('Error accessing camera:', error)
-      toast.error('Unable to access camera. Please check permissions.')
+
+      console.log('✅ MediaDevices supported, requesting camera access...')
+      
+      // Show loading state
+      toast.loading('Requesting camera access...', { id: 'camera-loading' })
+
+      // Request camera permission with better constraints
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 640, max: 1280 }, 
+          height: { ideal: 480, max: 720 }, 
+          facingMode: 'user'
+        },
+        audio: false
+      })
+      
+      console.log('✅ Camera stream obtained:', stream)
+      toast.dismiss('camera-loading')
+      
+      if (videoRef.current) {
+        console.log('📹 Setting video source...')
+        videoRef.current.srcObject = stream
+        
+        // Wait for video to load before showing camera
+        videoRef.current.onloadedmetadata = () => {
+          console.log('✅ Video metadata loaded, starting playback...')
+          videoRef.current?.play().then(() => {
+            console.log('✅ Video playing successfully')
+            setShowCamera(true)
+            toast.success('Camera ready! Position your face in the frame.')
+          }).catch((playError) => {
+            console.error('❌ Error playing video:', playError)
+            toast.error('Error starting video playback')
+          })
+        }
+        
+        videoRef.current.onerror = (error) => {
+          console.error('❌ Video error:', error)
+          toast.error('Error loading camera feed')
+          stopCamera()
+        }
+      } else {
+        console.error('❌ Video ref not available')
+        toast.error('Video element not ready')
+      }
+    } catch (error: any) {
+      console.error('❌ Error accessing camera:', error)
+      toast.dismiss('camera-loading')
+      
+      // Provide specific error messages
+      if (error.name === 'NotAllowedError') {
+        toast.error('❌ Camera permission denied. Please click "Allow" when prompted and try again.')
+      } else if (error.name === 'NotFoundError') {
+        toast.error('❌ No camera found. Please connect a camera and try again.')
+      } else if (error.name === 'NotReadableError') {
+        toast.error('❌ Camera is being used by another application.')
+      } else if (error.name === 'OverconstrainedError') {
+        toast.error('❌ Camera constraints not supported. Trying with basic settings...')
+        // Retry with basic constraints
+        try {
+          const basicStream = await navigator.mediaDevices.getUserMedia({ video: true })
+          if (videoRef.current) {
+            videoRef.current.srcObject = basicStream
+            setShowCamera(true)
+            toast.success('Camera ready with basic settings!')
+          }
+        } catch (retryError) {
+          console.error('❌ Retry failed:', retryError)
+          toast.error('Unable to access camera with any settings')
+        }
+      } else {
+        toast.error(`❌ Camera error: ${error.message || 'Unknown error'}`)
+      }
     }
   }
 
@@ -350,24 +421,55 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
   }
 
   const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const canvas = canvasRef.current
-      const video = videoRef.current
+    if (!videoRef.current || !canvasRef.current) {
+      toast.error('Camera not ready. Please try again.')
+      return
+    }
+
+    const canvas = canvasRef.current
+    const video = videoRef.current
+    
+    // Check if video is playing and has dimensions
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      toast.error('Camera feed not ready. Please wait a moment and try again.')
+      return
+    }
+
+    try {
+      // Set canvas dimensions to match video
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
+      
       const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.drawImage(video, 0, 0)
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const file = new File([blob], 'face-photo.jpg', { type: 'image/jpeg' })
-            handleInputChange('face_photo', file)
-            setFacePreview(canvas.toDataURL())
-            stopCamera()
-            toast.success('Face photo captured successfully!')
-          }
-        }, 'image/jpeg', 0.8)
+      if (!ctx) {
+        toast.error('Unable to process image. Please try again.')
+        return
       }
+
+      // Draw the video frame to canvas
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      
+      // Convert to blob with higher quality
+      canvas.toBlob((blob) => {
+        if (blob) {
+          // Create file with timestamp for uniqueness
+          const timestamp = Date.now()
+          const file = new File([blob], `face-photo-${timestamp}.jpg`, { type: 'image/jpeg' })
+          
+          // Update form data and preview
+          handleInputChange('face_photo', file)
+          setFacePreview(canvas.toDataURL('image/jpeg', 0.9))
+          
+          // Stop camera and show success
+          stopCamera()
+          toast.success('Face photo captured successfully!')
+        } else {
+          toast.error('Failed to capture photo. Please try again.')
+        }
+      }, 'image/jpeg', 0.9) // Higher quality
+    } catch (error) {
+      console.error('Error capturing photo:', error)
+      toast.error('Failed to capture photo. Please try again.')
     }
   }
 
@@ -467,10 +569,11 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                         variant="outline"
                         size="sm"
                         onClick={startCamera}
-                        className="bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-300"
+                        disabled={showCamera}
+                        className="bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-300 disabled:opacity-50"
                       >
                         <Camera className="h-4 w-4 mr-2" />
-                        Capture
+                        {showCamera ? 'Camera Active' : 'Open Camera'}
                       </Button>
                       <Button
                         type="button"
@@ -508,37 +611,53 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
 
               {/* Camera Modal */}
               {showCamera && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50">
-                  <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-lg w-full mx-4">
                     <div className="text-center space-y-4">
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        Capture Face Photo
+                        Capture Face Photo for Recognition
                       </h3>
-                      <div className="relative">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Position your face in the center of the frame and click capture
+                      </p>
+                      <div className="relative bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
                         <video
                           ref={videoRef}
                           autoPlay
                           playsInline
-                          className="w-full rounded-lg"
+                          muted
+                          className="w-full h-auto rounded-lg"
+                          style={{ maxHeight: '400px' }}
                         />
                         <canvas ref={canvasRef} className="hidden" />
+                        
+                        {/* Face guide overlay */}
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-48 h-48 border-2 border-blue-400 rounded-full opacity-50"></div>
+                        </div>
                       </div>
+                      
                       <div className="flex justify-center space-x-4">
                         <Button
                           type="button"
                           onClick={capturePhoto}
-                          className="bg-blue-500 hover:bg-blue-600"
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2"
                         >
                           <Camera className="h-4 w-4 mr-2" />
-                          Capture
+                          Capture Photo
                         </Button>
                         <Button
                           type="button"
                           variant="outline"
                           onClick={stopCamera}
+                          className="px-6 py-2"
                         >
                           Cancel
                         </Button>
+                      </div>
+                      
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        💡 Tip: Ensure good lighting and look directly at the camera
                       </div>
                     </div>
                   </div>

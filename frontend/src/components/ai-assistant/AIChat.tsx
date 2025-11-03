@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { Send, Bot, User, Database, Lightbulb } from 'lucide-react';
+import { Send, Bot, User, Database, Lightbulb, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiClient } from '../../lib/api';
 
@@ -54,6 +54,48 @@ const AIChat: React.FC = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const downloadReport = async (sql: string, filename: string) => {
+    try {
+      // Get full data from backend
+      const response = await apiClient.post('/api/ai/export/', { sql });
+      const fullData = response.data.data;
+      
+      if (!fullData || fullData.length === 0) {
+        alert('No data to export');
+        return;
+      }
+      
+      // Convert to CSV
+      const headers = Object.keys(fullData[0]);
+      const csvContent = [
+        headers.join(','),
+        ...fullData.map((row: any) => 
+          headers.map(header => {
+            const value = row[header];
+            return typeof value === 'string' && value.includes(',') 
+              ? `"${value}"` 
+              : value;
+          }).join(',')
+        )
+      ].join('\n');
+      
+      // Download file
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export data');
+    }
+  };
 
   const handleQuery = async (question?: string) => {
     const queryText = question || query;
@@ -189,6 +231,20 @@ const AIChat: React.FC = () => {
           {message.data && message.data.length > 0 && (
             <div className="mt-3 w-full">
               <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden shadow-sm">
+                <div className="flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
+                  <span className="text-xs text-gray-600 dark:text-gray-400">
+                    {message.data.length} records • First 4 columns shown
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-6 px-2"
+                    onClick={() => downloadReport(message.sql!, 'query_results')}
+                  >
+                    <Download className="w-3 h-3 mr-1" />
+                    Extract
+                  </Button>
+                </div>
                 <div className="overflow-x-auto max-h-64">
                   <table className="w-full text-xs">
                     <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0">
@@ -216,9 +272,6 @@ const AIChat: React.FC = () => {
                       ))}
                     </tbody>
                   </table>
-                </div>
-                <div className="px-3 py-2 text-center text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-600">
-                  {message.data.length} records • First 4 columns shown
                 </div>
               </div>
             </div>

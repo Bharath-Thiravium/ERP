@@ -106,6 +106,46 @@ def query_history(request):
             'error': str(e)
         })
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def export_query_data(request):
+    """Export full query results for download"""
+    try:
+        data = json.loads(request.body)
+        sql = data.get('sql', '').strip()
+        
+        if not sql:
+            return JsonResponse({
+                'error': 'SQL query is required'
+            })
+        
+        # Execute query and get all results
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            columns = [col[0] for col in cursor.description]
+            results = []
+            
+            for row in cursor.fetchall():
+                row_dict = {}
+                for i, value in enumerate(row):
+                    if hasattr(value, 'isoformat'):
+                        row_dict[columns[i]] = value.isoformat()
+                    else:
+                        row_dict[columns[i]] = value
+                results.append(row_dict)
+        
+        return JsonResponse({
+            'data': results,
+            'columns': columns,
+            'count': len(results)
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'error': str(e)
+        })
+
 @require_http_methods(["GET"])
 def available_tables(request):
     """Get list of available tables"""

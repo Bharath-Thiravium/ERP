@@ -702,7 +702,9 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
           </div>
         </div>
       </div>
-      <AIChat />
+      <div className="w-full">
+        <AIChat />
+      </div>
     </div>
   )
 

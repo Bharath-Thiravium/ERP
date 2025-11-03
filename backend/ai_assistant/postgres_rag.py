@@ -1,48 +1,62 @@
-import psycopg2
-from sentence_transformers import SentenceTransformer
-import numpy as np
-from django.conf import settings
 from django.db import connection
 import re
 import json
 from typing import List, Dict, Any
+from datetime import datetime
 
 class PostgresRAG:
     def __init__(self):
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
-        
-    def embed_schema(self):
-        """Embed all table schemas"""
-        with connection.cursor() as cursor:
-            # Get all tables and columns
-            cursor.execute("""
-                SELECT t.table_name, c.column_name, c.data_type, c.is_nullable
-                FROM information_schema.tables t
-                JOIN information_schema.columns c ON t.table_name = c.table_name
-                WHERE t.table_schema = 'public' 
-                AND t.table_type = 'BASE TABLE'
-                ORDER BY t.table_name, c.ordinal_position
-            """)
+        # Comprehensive table mapping with all available tables
+        self.table_keywords = {
+            # HR Module
+            'employee': 'hr_employee', 'employees': 'hr_employee', 'staff': 'hr_employee',
+            'department': 'hr_department', 'departments': 'hr_department', 'dept': 'hr_department',
+            'attendance': 'hr_attendance', 'present': 'hr_attendance', 'absent': 'hr_attendance',
+            'leave': 'hr_leaveapplication', 'leaves': 'hr_leaveapplication', 'vacation': 'hr_leaveapplication',
+            'payroll': 'hr_payrollcycle', 'salary': 'hr_employee', 'salaries': 'hr_employee',
+            'holiday': 'hr_holiday', 'holidays': 'hr_holiday',
+            'designation': 'hr_designation', 'position': 'hr_designation', 'role': 'hr_designation',
+            'interview': 'hr_interview', 'interviews': 'hr_interview',
+            'job': 'hr_jobposting', 'jobs': 'hr_jobposting', 'posting': 'hr_jobposting',
+            'application': 'hr_jobapplication', 'applications': 'hr_jobapplication',
+            'performance': 'hr_performancereview', 'review': 'hr_performancereview',
             
-            from .models import DocumentEmbedding
-            DocumentEmbedding.objects.all().delete()  # Clear existing
+            # Finance Module
+            'customer': 'finance_customer', 'customers': 'finance_customer', 'client': 'finance_customer',
+            'invoice': 'finance_invoices', 'invoices': 'finance_invoices', 'bill': 'finance_invoices',
+            'payment': 'finance_payments', 'payments': 'finance_payments', 'transaction': 'finance_payments',
+            'quotation': 'finance_quotations', 'quotations': 'finance_quotations', 'quote': 'finance_quotations',
+            'purchase': 'finance_purchase_orders', 'po': 'finance_purchase_orders', 'order': 'finance_purchase_orders',
+            'vendor': 'finance_vendors', 'vendors': 'finance_vendors', 'supplier': 'finance_vendors',
+            'bank': 'finance_bankaccount', 'account': 'finance_bankaccount',
+            'product': 'finance_products', 'products': 'finance_products', 'item': 'finance_products',
             
-            for table, column, dtype, nullable in cursor.fetchall():
-                # Create description
-                desc = f"Table {table} column {column} type {dtype}"
-                embedding = self.model.encode(desc).tolist()
-                
-                DocumentEmbedding.objects.create(
-                    table_name=table,
-                    column_name=column,
-                    content=desc,
-                    embedding=embedding,
-                    metadata={
-                        'type': 'schema',
-                        'data_type': dtype,
-                        'nullable': nullable
-                    }
-                )
+            # Inventory Module
+            'inventory': 'inventory_product', 'stock': 'inventory_stocklevel', 'warehouse': 'inventory_warehouse',
+            'category': 'inventory_category', 'categories': 'inventory_category',
+            'movement': 'inventory_stockmovement', 'audit': 'inventory_inventoryaudit',
+            'bundle': 'inventory_productbundle', 'variant': 'inventory_productvariant',
+            'alert': 'inventory_stockalert', 'alerts': 'inventory_stockalert',
+            
+            # CRM Module
+            'lead': 'crm_lead', 'leads': 'crm_lead', 'prospect': 'crm_lead',
+            'contact': 'crm_contact', 'contacts': 'crm_contact',
+            'deal': 'crm_deal', 'deals': 'crm_deal', 'opportunity': 'crm_opportunity',
+            'campaign': 'crm_campaign', 'campaigns': 'crm_campaign', 'marketing': 'crm_campaign',
+            'account': 'crm_account', 'accounts': 'crm_account',
+            'activity': 'crm_activity', 'activities': 'crm_activity',
+            'ticket': 'crm_ticket', 'tickets': 'crm_ticket', 'support': 'crm_ticket',
+            
+            # Authentication & Company
+            'company': 'authentication_company', 'companies': 'authentication_company',
+            'service': 'authentication_service', 'services': 'authentication_service',
+            'user': 'authentication_companyuser', 'users': 'authentication_companyuser',
+            'admin': 'authentication_masteradmin', 'security': 'company_security_logs',
+            
+            # Analytics & System
+            'analytics': 'analytics_systemmetrics', 'metrics': 'analytics_systemmetrics',
+            'alert': 'analytics_systemalert', 'notification': 'notifications_notification'
+        }
 
 class NLQueryProcessor:
     def __init__(self):
@@ -50,206 +64,168 @@ class NLQueryProcessor:
         
     def process_query(self, user_question: str) -> Dict[str, Any]:
         try:
-            # Find relevant tables
-            relevant_tables = self.find_relevant_tables(user_question)
+            # Clean and analyze question
+            question_lower = user_question.lower().strip()
             
-            if len(relevant_tables) > 5:
-                return {
-                    'type': 'suggestion',
-                    'tables': [t[0] for t in relevant_tables[:5]],
-                    'message': 'Multiple tables found. Which data would you like to explore?'
-                }
+            # Find relevant table
+            table_name = self.find_relevant_table(question_lower)
             
-            # Generate SQL
-            sql_query = self.generate_sql(user_question, relevant_tables)
+            if not table_name:
+                return self.get_help_response()
             
-            # Execute query
+            # Generate and execute SQL
+            sql_query = self.generate_sql(question_lower, table_name)
             results = self.execute_query(sql_query)
             
+            # Generate natural language response
+            response = self.generate_natural_response(question_lower, results, table_name)
+            
             return {
-                'type': 'result',
-                'data': results,
+                'type': 'success',
+                'message': response,
+                'data': results[:10] if len(results) > 10 else results,
+                'total_count': len(results),
                 'sql': sql_query,
-                'count': len(results),
-                'explanation': f"Found {len(results)} records"
+                'table': table_name
             }
             
         except Exception as e:
-            from html import escape
             error_msg = str(e)
+            print(f"Query processing error: {error_msg}")
             
-            # Better error messages with comprehensive suggestions
-            if 'does not exist' in error_msg:
+            if 'does not exist' in error_msg or 'relation' in error_msg:
                 return {
                     'type': 'error',
-                    'message': 'Table not found in database',
-                    'suggestion': 'Try asking about: departments, employees, products, customers, invoices, suppliers, leads, contacts',
-                    'available_queries': [
-                        'list all departments',
-                        'show me employees', 
-                        'count products',
-                        'recent customers',
-                        'top invoices',
-                        'all suppliers'
-                    ],
-                    'error': escape(error_msg)
+                    'message': 'The requested data table was not found in the database.',
+                    'suggestion': 'Try asking about: employees, departments, customers, invoices, products, leads, or campaigns',
+                    'examples': [
+                        'Show me all employees',
+                        'List departments', 
+                        'Count customers',
+                        'Recent invoices',
+                        'Top products'
+                    ]
                 }
             else:
                 return {
-                    'type': 'error', 
-                    'message': 'Query execution failed',
-                    'suggestion': 'Try simpler queries like: "list departments", "show employees", "count products"',
-                    'available_topics': ['HR', 'Finance', 'Inventory', 'CRM'],
-                    'error': escape(error_msg)
+                    'type': 'error',
+                    'message': 'Unable to process your query at the moment.',
+                    'suggestion': 'Please try a simpler question or contact support if the issue persists.',
+                    'error_details': error_msg
                 }
     
-    def find_relevant_tables(self, question: str) -> List[tuple]:
-        """Find relevant tables using similarity search"""
-        from .models import DocumentEmbedding
+    def find_relevant_table(self, question: str) -> str:
+        """Find the most relevant table based on keywords"""
+        # Check each keyword in the question
+        for keyword, table in self.rag.table_keywords.items():
+            if keyword in question:
+                return table
         
-        # Check if embeddings exist, if not return default tables
-        if not DocumentEmbedding.objects.exists():
-            # Return default relevant tables based on keywords
-            question_lower = question.lower()
-            
-            keyword_tables = {
-                'department': ('hr_department', 'name'),
-                'employee': ('hr_employee', 'full_name'),
-                'attendance': ('hr_attendance', 'date'),
-                'payroll': ('hr_payrollcycle', 'cycle_name'),
-                'salary': ('hr_employee', 'base_salary'),
-                'leave': ('hr_leaveapplication', 'leave_type'),
-                'product': ('inventory_product', 'name'),
-                'category': ('inventory_category', 'name'),
-                'supplier': ('inventory_supplier', 'name'),
-                'warehouse': ('inventory_warehouse', 'name'),
-                'stock': ('inventory_stocklevel', 'quantity_available'),
-                'inventory': ('inventory_product', 'name'),
-                'customer': ('finance_customer', 'name'),
-                'invoice': ('finance_invoices', 'invoice_number'),
-                'payment': ('finance_payments', 'amount'),
-                'quotation': ('finance_quotations', 'quotation_number'),
-                'purchase': ('finance_purchase_orders', 'po_number'),
-                'lead': ('crm_lead', 'name'),
-                'contact': ('crm_contact', 'name'),
-                'deal': ('crm_deal', 'name'),
-                'opportunity': ('crm_opportunity', 'name'),
-                'campaign': ('crm_campaign', 'name')
-            }
-            
-            for keyword, (table, column) in keyword_tables.items():
-                if keyword in question_lower:
-                    return [(table, column, 1.0)]
-            
-            return [('hr_department', 'name', 1.0)]
-        
-        question_embedding = self.rag.model.encode(question).tolist()
-        
-        # Simple similarity calculation (in production, use pgvector)
-        embeddings = DocumentEmbedding.objects.all()
-        similarities = []
-        
-        for emb in embeddings:
-            # Cosine similarity
-            dot_product = sum(a * b for a, b in zip(question_embedding, emb.embedding))
-            norm_a = sum(a * a for a in question_embedding) ** 0.5
-            norm_b = sum(b * b for b in emb.embedding) ** 0.5
-            similarity = dot_product / (norm_a * norm_b) if norm_a * norm_b > 0 else 0
-            
-            if similarity > 0.3:
-                similarities.append((emb.table_name, emb.column_name, similarity))
-        
-        # Sort by similarity and group by table
-        similarities.sort(key=lambda x: x[2], reverse=True)
-        unique_tables = []
-        seen_tables = set()
-        
-        for table, column, sim in similarities:
-            if table not in seen_tables:
-                unique_tables.append((table, column, sim))
-                seen_tables.add(table)
-        
-        return unique_tables[:10] if unique_tables else [('hr_department', 'name', 1.0)]
+        # Default fallback
+        return 'hr_department'
     
-    def generate_sql(self, question: str, relevant_tables: List[tuple]) -> str:
-        """Generate SQL from natural language"""
-        question_lower = question.lower()
-        
-        # Smart table selection based on question keywords
-        table_mapping = {
-            # HR related
-            'department': 'hr_department',
-            'employee': 'hr_employee', 
-            'attendance': 'hr_attendance',
-            'payroll': 'hr_payrollcycle',
-            'salary': 'hr_employee',
-            'leave': 'hr_leaveapplication',
-            'holiday': 'hr_holiday',
-            
-            # Finance related
-            'customer': 'finance_customer',
-            'invoice': 'finance_invoices',
-            'payment': 'finance_payments',
-            'quotation': 'finance_quotations',
-            'purchase': 'finance_purchase_orders',
-            
-            # Inventory related
-            'product': 'inventory_product',
-            'category': 'inventory_category',
-            'supplier': 'inventory_supplier',
-            'warehouse': 'inventory_warehouse',
-            'stock': 'inventory_stocklevel',
-            'inventory': 'inventory_product',
-            
-            # CRM related
-            'lead': 'crm_lead',
-            'contact': 'crm_contact',
-            'deal': 'crm_deal',
-            'opportunity': 'crm_opportunity',
-            'campaign': 'crm_campaign'
+    def get_help_response(self) -> Dict[str, Any]:
+        """Return help response when no table is found"""
+        return {
+            'type': 'help',
+            'message': 'I can help you query your business data. Here are some examples:',
+            'examples': {
+                'HR': ['Show me all employees', 'List departments', 'Count attendance today'],
+                'Finance': ['Show recent invoices', 'List customers', 'Count payments this month'],
+                'Inventory': ['Show all products', 'Check stock levels', 'List suppliers'],
+                'CRM': ['Show leads', 'List contacts', 'Recent deals']
+            },
+            'suggestion': 'Try asking about employees, customers, products, or any business data you need.'
         }
-        
-        main_table = None
-        for keyword, table in table_mapping.items():
-            if keyword in question_lower:
-                main_table = table
-                break
-        
-        if not main_table:
-            main_table = relevant_tables[0][0] if relevant_tables else 'hr_department'
-        
+    
+    def generate_sql(self, question: str, table_name: str) -> str:
+        """Generate SQL from natural language"""
         # Extract numbers for LIMIT
         numbers = re.findall(r'\d+', question)
         limit = numbers[0] if numbers else '10'
         
         # Intent detection
-        if any(word in question_lower for word in ['count', 'how many', 'total']):
-            return f"SELECT COUNT(*) as total FROM {main_table}"
+        if any(word in question for word in ['count', 'how many', 'total', 'number']):
+            return f"SELECT COUNT(*) as total_count FROM {table_name}"
         
-        elif any(word in question_lower for word in ['top', 'best', 'highest', 'maximum']):
-            # Try to find numeric column for ordering
-            if 'salary' in question_lower:
-                return f"SELECT * FROM {main_table} ORDER BY base_salary DESC LIMIT {limit}"
-            elif 'price' in question_lower:
-                return f"SELECT * FROM {main_table} ORDER BY selling_price DESC LIMIT {limit}"
+        elif any(word in question for word in ['top', 'best', 'highest', 'maximum']):
+            # Try to find appropriate ordering column
+            if 'salary' in question:
+                return f"SELECT * FROM {table_name} ORDER BY base_salary DESC LIMIT {limit}"
+            elif 'price' in question or 'amount' in question:
+                return f"SELECT * FROM {table_name} ORDER BY amount DESC LIMIT {limit}"
+            elif 'recent' in question or 'latest' in question:
+                return f"SELECT * FROM {table_name} ORDER BY created_at DESC LIMIT {limit}"
             else:
-                return f"SELECT * FROM {main_table} ORDER BY id DESC LIMIT {limit}"
+                return f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT {limit}"
         
-        elif any(word in question_lower for word in ['recent', 'latest', 'new']):
-            return f"SELECT * FROM {main_table} ORDER BY created_at DESC LIMIT {limit}"
+        elif any(word in question for word in ['recent', 'latest', 'new', 'last']):
+            return f"SELECT * FROM {table_name} ORDER BY created_at DESC LIMIT {limit}"
+        
+        elif 'today' in question:
+            return f"SELECT * FROM {table_name} WHERE DATE(created_at) = CURRENT_DATE LIMIT {limit}"
+        
+        elif 'this month' in question:
+            return f"SELECT * FROM {table_name} WHERE EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE) LIMIT {limit}"
         
         else:
-            # Default select
-            return f"SELECT * FROM {main_table} LIMIT {limit}"
+            # Default select with reasonable limit
+            return f"SELECT * FROM {table_name} LIMIT {limit}"
+    
+    def generate_natural_response(self, question: str, results: List[Dict], table_name: str) -> str:
+        """Generate natural language response from query results"""
+        if not results:
+            return f"No data found in the {table_name.replace('_', ' ')} table. The table appears to be empty."
+        
+        count = len(results)
+        table_display = table_name.replace('_', ' ').title()
+        
+        # Count queries
+        if 'count' in question or 'how many' in question or 'total' in question:
+            if 'total_count' in results[0]:
+                total = results[0]['total_count']
+                if total == 0:
+                    return f"There are currently no records in the {table_display} table."
+                else:
+                    return f"Found {total} records in the {table_display} table."
+        
+        # Regular data queries
+        if count == 1:
+            response = f"Found 1 record in {table_display}:"
+        else:
+            response = f"Found {count} records in {table_display}:"
+        
+        # Add context based on question intent
+        if 'recent' in question or 'latest' in question:
+            response += f" Here are the most recent entries:"
+        elif 'top' in question or 'best' in question:
+            response += f" Here are the top results:"
+        elif 'today' in question:
+            response += f" Here are today's entries:"
+        elif 'this month' in question:
+            response += f" Here are this month's entries:"
+        
+        return response
     
     def execute_query(self, sql: str) -> List[Dict]:
         """Execute SQL and return results"""
-        with connection.cursor() as cursor:
-            cursor.execute(sql)
-            columns = [col[0] for col in cursor.description]
-            results = []
-            
-            for row in cursor.fetchall():
-                results.append(dict(zip(columns, row)))
-            
-            return results
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql)
+                columns = [col[0] for col in cursor.description]
+                results = []
+                
+                for row in cursor.fetchall():
+                    # Convert datetime objects to strings for JSON serialization
+                    row_dict = {}
+                    for i, value in enumerate(row):
+                        if hasattr(value, 'isoformat'):  # datetime objects
+                            row_dict[columns[i]] = value.isoformat()
+                        else:
+                            row_dict[columns[i]] = value
+                    results.append(row_dict)
+                
+                return results
+        except Exception as e:
+            print(f"SQL execution error: {e}")
+            raise e

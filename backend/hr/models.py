@@ -4,6 +4,21 @@ from django.core.validators import RegexValidator, EmailValidator
 from django.utils import timezone
 from authentication.models import Company, CompanyServiceUser
 from decimal import Decimal
+import json
+
+
+class FlexibleJSONField(models.JSONField):
+    """JSONField that accepts strings and converts them to lists"""
+    
+    def to_python(self, value):
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                if value.strip():
+                    return [skill.strip() for skill in value.split(',') if skill.strip()]
+                return []
+        return super().to_python(value)
 
 
 class Department(models.Model):
@@ -196,7 +211,7 @@ class Employee(models.Model):
     emergency_contact_address = models.TextField(blank=True)
 
     # AI-Enhanced Fields
-    skills = models.JSONField(default=list, blank=True, help_text="List of employee skills")
+    skills = FlexibleJSONField(default=list, blank=True, help_text="List of employee skills")
     performance_score = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="AI-calculated performance score")
     engagement_score = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="Employee engagement score")
     retention_risk = models.CharField(max_length=10, choices=[

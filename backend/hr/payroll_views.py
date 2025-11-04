@@ -3,8 +3,16 @@ from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from django.db.models import Q, Sum, Count, Avg
 from django.utils import timezone
+from django.http import HttpResponse
 from datetime import datetime, timedelta, date
 from decimal import Decimal
+import io
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.units import inch
 
 from authentication.models import ServiceUserSession
 from .models import (
@@ -309,6 +317,112 @@ class PayslipViewSet(viewsets.ModelViewSet):
         if not session_key and self.request.method in ['POST', 'PUT', 'PATCH']:
             session_key = self.request.data.get('session_key')
         return session_key
+
+    @action(detail=True, methods=['get'])
+    def download_pdf(self, request, pk=None):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            payslip = self.get_object()
+            
+            # Generate PDF
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=A4)
+            styles = getSampleStyleSheet()
+            story = []
+            
+            # Company Header
+            company_name = Paragraph(f"<b>{session.service_user.company.name}</b>", styles['Title'])
+            story.append(company_name)
+            story.append(Spacer(1, 12))
+            
+            # Payslip Title
+            title = Paragraph("<b>SALARY SLIP</b>", styles['Heading1'])
+            story.append(title)
+            story.append(Spacer(1, 12))
+            
+            # Employee Details
+            emp_data = [
+                ['Employee Name:', payslip.emp_name, 'Employee ID:', payslip.emp_id],
+                ['Department:', payslip.emp_department, 'Designation:', payslip.emp_designation],
+                ['Working Days:', str(payslip.working_days), 'Present Days:', str(payslip.present_days)]
+            ]
+            
+            emp_table = Table(emp_data, colWidths=[1.5*inch, 2*inch, 1.5*inch, 2*inch])
+            emp_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(emp_table)
+            story.append(Spacer(1, 20))
+            
+            # Salary Details
+            salary_data = [
+                ['EARNINGS', 'AMOUNT (Rs)', 'DEDUCTIONS', 'AMOUNT (Rs)'],
+                ['Basic Salary', f'{payslip.basic_salary:,.2f}', 'Provident Fund', f'{payslip.pf_employee:,.2f}'],
+                ['HRA', f'{payslip.hra:,.2f}', 'ESI', f'{payslip.esi_employee:,.2f}'],
+                ['Conveyance', f'{payslip.conveyance_allowance:,.2f}', 'Professional Tax', f'{payslip.professional_tax:,.2f}'],
+                ['Medical Allowance', f'{payslip.medical_allowance:,.2f}', 'TDS', f'{payslip.tds:,.2f}'],
+                ['Special Allowance', f'{payslip.special_allowance:,.2f}', 'Other Deductions', f'{payslip.other_deductions:,.2f}'],
+                ['Overtime', f'{payslip.overtime_amount:,.2f}', '', ''],
+                ['Bonus', f'{payslip.bonus:,.2f}', '', ''],
+                ['Other Earnings', f'{payslip.other_earnings:,.2f}', '', ''],
+                ['', '', '', ''],
+                ['GROSS SALARY', f'{payslip.gross_salary:,.2f}', 'TOTAL DEDUCTIONS', f'{payslip.total_deductions:,.2f}']
+            ]
+            
+            salary_table = Table(salary_data, colWidths=[2*inch, 1.5*inch, 2*inch, 1.5*inch])
+            salary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+                ('ALIGN', (3, 1), (3, -1), 'RIGHT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(salary_table)
+            story.append(Spacer(1, 20))
+            
+            # Net Salary
+            net_data = [['NET SALARY', f'Rs {payslip.net_salary:,.2f}']]
+            net_table = Table(net_data, colWidths=[4*inch, 3*inch])
+            net_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.darkgreen),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 14),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+                ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ]))
+            story.append(net_table)
+            
+            # Build PDF
+            doc.build(story)
+            buffer.seek(0)
+            
+            response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="payslip_{payslip.emp_id}_{payslip.payroll_cycle.name}.pdf"'
+            return response
+            
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except Payslip.DoesNotExist:
+            return Response({'error': 'Payslip not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class PayrollSettingsViewSet(viewsets.ModelViewSet):

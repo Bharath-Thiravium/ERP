@@ -37,14 +37,14 @@ const AttendanceRecords: React.FC = () => {
           headers: { Authorization: `Bearer ${sessionKey}` },
           params: { session_key: sessionKey }
         }),
-        api.get('/api/hr/api/departments/', {
+        api.get('/api/hr/departments/', {
           headers: { Authorization: `Bearer ${sessionKey}` },
           params: { session_key: sessionKey }
         })
       ])
       
       setEmployees(empResponse.data.results || [])
-      setDepartments(deptResponse.data || [])
+      setDepartments(Array.isArray(deptResponse.data) ? deptResponse.data : deptResponse.data.results || [])
     } catch (error) {
       console.error('Error fetching initial data:', error)
     }
@@ -223,7 +223,7 @@ const AttendanceRecords: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               >
                 <option value="">All Departments</option>
-                {departments.map((dept) => (
+                {Array.isArray(departments) && departments.map((dept) => (
                   <option key={dept.id} value={dept.id}>
                     {dept.name}
                   </option>

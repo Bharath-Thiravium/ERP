@@ -154,6 +154,37 @@ class GovernmentReturnViewSet(viewsets.ModelViewSet):
         except ServiceUserSession.DoesNotExist:
             return GovernmentReturn.objects.none()
 
+    @action(detail=True, methods=['get'])
+    def view_return(self, request, pk=None):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            gov_return = self.get_object()
+            serializer = self.get_serializer(gov_return)
+            return Response(serializer.data)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    @action(detail=True, methods=['post'])
+    def submit_return(self, request, pk=None):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            gov_return = self.get_object()
+            if gov_return.status != 'generated':
+                return Response({'error': 'Return must be generated before submission'}, status=status.HTTP_400_BAD_REQUEST)
+            gov_return.status = 'filed'
+            gov_return.filed_date = date.today()
+            gov_return.acknowledgment_number = f"ACK{gov_return.id}{date.today().strftime('%Y%m%d')}"
+            gov_return.save()
+            return Response({'message': 'Return submitted successfully', 'acknowledgment_number': gov_return.acknowledgment_number})
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
     def get_session_key(self):
         session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
         if not session_key:
@@ -228,7 +259,8 @@ class ComplianceAlertViewSet(viewsets.ModelViewSet):
 @permission_classes([permissions.AllowAny])
 def statutory_compliance_dashboard(request):
     """Get statutory compliance dashboard data"""
-    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    auth_header = request.headers.get('Authorization', '')
+    session_key = auth_header[7:] if auth_header.startswith('Bearer ') else None
     if not session_key:
         session_key = request.query_params.get('session_key')
     
@@ -338,7 +370,8 @@ def statutory_compliance_dashboard(request):
 @permission_classes([permissions.AllowAny])
 def generate_pf_ecr(request):
     """Generate PF ECR (Electronic Challan cum Return)"""
-    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    auth_header = request.headers.get('Authorization', '')
+    session_key = auth_header[7:] if auth_header.startswith('Bearer ') else None
     if not session_key:
         session_key = request.data.get('session_key')
     
@@ -421,7 +454,8 @@ def generate_pf_ecr(request):
 @permission_classes([permissions.AllowAny])
 def generate_esi_return(request):
     """Generate ESI return"""
-    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    auth_header = request.headers.get('Authorization', '')
+    session_key = auth_header[7:] if auth_header.startswith('Bearer ') else None
     if not session_key:
         session_key = request.data.get('session_key')
     
@@ -505,7 +539,8 @@ def generate_esi_return(request):
 @permission_classes([permissions.AllowAny])
 def validate_compliance(request):
     """Validate statutory compliance for employees"""
-    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    auth_header = request.headers.get('Authorization', '')
+    session_key = auth_header[7:] if auth_header.startswith('Bearer ') else None
     if not session_key:
         session_key = request.data.get('session_key')
     
@@ -575,6 +610,110 @@ def validate_compliance(request):
             'compliance_percentage': (compliant_employees / total_employees * 100) if total_employees > 0 else 0,
             'results': validation_results
         })
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def generate_pt_return(request):
+    auth_header = request.headers.get('Authorization', '')
+    session_key = auth_header[7:] if auth_header.startswith('Bearer ') else None
+    if not session_key:
+        session_key = request.data.get('session_key')
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+        
+        period_month = request.data.get('period_month')
+        period_year = request.data.get('period_year')
+        
+        gov_return, created = GovernmentReturn.objects.get_or_create(
+            company=company,
+            return_type='pt_return',
+            period_month=period_month,
+            period_year=period_year,
+            defaults={
+                'due_date': date(period_year, period_month + 1 if period_month < 12 else 1, 7),
+                'created_by': session.service_user
+            }
+        )
+        
+        employees = Employee.objects.filter(company=company, status='active')
+        total_wages = 0
+        total_pt_deduction = 0
+        
+        for employee in employees:
+            pt_amount = 200 if employee.base_salary > 10000 else (150 if employee.base_salary > 5000 else 0)
+            total_wages += float(employee.base_salary)
+            total_pt_deduction += pt_amount
+        
+        gov_return.total_employees = employees.count()
+        gov_return.total_wages = total_wages
+        gov_return.total_contribution = total_pt_deduction
+        gov_return.status = 'generated'
+        gov_return.generated_date = date.today()
+        gov_return.save()
+        
+        return Response({'message': 'Professional Tax return generated successfully'})
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def generate_tds_24q(request):
+    auth_header = request.headers.get('Authorization', '')
+    session_key = auth_header[7:] if auth_header.startswith('Bearer ') else None
+    if not session_key:
+        session_key = request.data.get('session_key')
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+        
+        period_month = request.data.get('period_month')
+        period_year = request.data.get('period_year')
+        
+        gov_return, created = GovernmentReturn.objects.get_or_create(
+            company=company,
+            return_type='tds_24q',
+            period_month=period_month,
+            period_year=period_year,
+            defaults={
+                'due_date': date(period_year, period_month + 1 if period_month < 12 else 1, 30),
+                'created_by': session.service_user
+            }
+        )
+        
+        employees = Employee.objects.filter(company=company, status='active')
+        total_wages = 0
+        total_tds_deduction = 0
+        
+        for employee in employees:
+            annual_salary = employee.base_salary * 12
+            tds_amount = 0
+            if annual_salary > 250000:
+                taxable_income = annual_salary - 50000
+                if taxable_income > 250000:
+                    tds_amount = (taxable_income - 250000) * 0.05 / 12
+            
+            total_wages += float(employee.base_salary)
+            total_tds_deduction += tds_amount
+        
+        gov_return.total_employees = employees.count()
+        gov_return.total_wages = total_wages
+        gov_return.total_contribution = total_tds_deduction
+        gov_return.status = 'generated'
+        gov_return.generated_date = date.today()
+        gov_return.save()
+        
+        return Response({'message': 'TDS 24Q return generated successfully'})
         
     except ServiceUserSession.DoesNotExist:
         return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)

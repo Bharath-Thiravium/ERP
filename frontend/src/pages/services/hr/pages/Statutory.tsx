@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { FileText, Settings, Building } from 'lucide-react'
 import StatutoryDashboard from '../components/statutory/StatutoryDashboard'
-import StatutorySettings from '../components/statutory/StatutorySettings'
+import StatutoryPayrollSettings from '../components/settings/StatutoryPayrollSettings'
 import GovernmentReturns from '../components/statutory/GovernmentReturns'
 
 const Statutory: React.FC = () => {
@@ -60,7 +60,7 @@ const Statutory: React.FC = () => {
       <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 shadow-xl overflow-hidden">
         <div className="p-6">
           {activeView === 'dashboard' && <StatutoryDashboard />}
-          {activeView === 'settings' && <StatutorySettings />}
+          {activeView === 'settings' && <StatutoryPayrollSettings />}
           {activeView === 'returns' && <GovernmentReturns />}
         </div>
       </div>

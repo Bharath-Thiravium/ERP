@@ -55,10 +55,9 @@ class PerformanceViewSet(viewsets.ModelViewSet):
                 status='approved'
             ).count()
             
-            # Average ratings
+            # Average ratings (include all statuses)
             avg_ratings = PerformanceReview.objects.filter(
-                employee__company=company,
-                status='approved'
+                employee__company=company
             ).aggregate(
                 avg_overall=Avg('overall_rating'),
                 avg_quality=Avg('quality_score'),
@@ -66,10 +65,9 @@ class PerformanceViewSet(viewsets.ModelViewSet):
                 avg_collaboration=Avg('collaboration_score')
             )
             
-            # Top performers
+            # Top performers (include all statuses)
             top_performers = list(PerformanceReview.objects.filter(
-                employee__company=company,
-                status='approved'
+                employee__company=company
             ).select_related('employee')
              .order_by('-overall_rating')[:10])
             
@@ -83,10 +81,9 @@ class PerformanceViewSet(viewsets.ModelViewSet):
                     'review_period': f"{review.review_period_start} to {review.review_period_end}"
                 })
             
-            # Department performance
+            # Department performance (include all statuses)
             dept_performance = list(PerformanceReview.objects.filter(
-                employee__company=company,
-                status='approved'
+                employee__company=company
             ).values('employee__department__name')
              .annotate(
                  avg_rating=Avg('overall_rating'),
@@ -103,7 +100,7 @@ class PerformanceViewSet(viewsets.ModelViewSet):
             for review in recent_reviews:
                 recent_data.append({
                     'employee_name': review.employee.full_name,
-                    'reviewer_name': review.reviewer.full_name,
+                    'reviewer_name': review.reviewer.full_name if review.reviewer else 'System',
                     'overall_rating': float(review.overall_rating),
                     'status': review.status,
                     'created_at': review.created_at
@@ -124,6 +121,152 @@ class PerformanceViewSet(viewsets.ModelViewSet):
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
+    @action(detail=False, methods=['get'])
+    def get_reviewers(self, request):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            
+            # Get all active employees who can be reviewers
+            reviewers = Employee.objects.filter(
+                company=session.service_user.company,
+                status='active'
+            ).values('id', 'employee_id', 'first_name', 'last_name', 'designation__title', 'department__name')
+            
+            reviewer_list = []
+            for reviewer in reviewers:
+                reviewer_list.append({
+                    'id': reviewer['id'],
+                    'employee_id': reviewer['employee_id'],
+                    'name': f"{reviewer['first_name']} {reviewer['last_name']}",
+                    'designation': reviewer['designation__title'],
+                    'department': reviewer['department__name']
+                })
+            
+            return Response({'reviewers': reviewer_list})
+            
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    @action(detail=False, methods=['get'])
+    def get_employees(self, request):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            
+            # Get all active employees who can be reviewed
+            employees = Employee.objects.filter(
+                company=session.service_user.company,
+                status='active'
+            ).values('id', 'employee_id', 'first_name', 'last_name', 'designation__title', 'department__name')
+            
+            employee_list = []
+            for employee in employees:
+                employee_list.append({
+                    'id': employee['id'],
+                    'employee_id': employee['employee_id'],
+                    'name': f"{employee['first_name']} {employee['last_name']}",
+                    'designation': employee['designation__title'],
+                    'department': employee['department__name']
+                })
+            
+            return Response({'employees': employee_list})
+            
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    @action(detail=False, methods=['get'])
+    def get_all_reviews(self, request):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            
+            # Get all reviews for the company
+            reviews = PerformanceReview.objects.filter(
+                employee__company=session.service_user.company
+            ).select_related('employee', 'reviewer').order_by('-created_at')
+            
+            review_list = []
+            for review in reviews:
+                review_list.append({
+                    'id': review.id,
+                    'employee_name': review.employee.full_name,
+                    'employee_id': review.employee.employee_id,
+                    'reviewer_name': review.reviewer.full_name if review.reviewer else 'System',
+                    'review_period': f"{review.review_period_start} to {review.review_period_end}",
+                    'overall_rating': float(review.overall_rating),
+                    'quality_score': float(review.quality_score),
+                    'productivity_score': float(review.productivity_score),
+                    'collaboration_score': float(review.collaboration_score),
+                    'goals_achievement': float(review.goals_achievement),
+                    'status': review.status,
+                    'created_at': review.created_at,
+                    'updated_at': review.updated_at
+                })
+            
+            return Response({'reviews': review_list})
+            
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    @action(detail=False, methods=['get'])
+    def analytics(self, request):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+            
+            # Performance trends over time
+            performance_trends = list(PerformanceReview.objects.filter(
+                employee__company=company
+            ).extra(select={'month': "DATE_TRUNC('month', hr_performancereview.created_at)"})
+             .values('month')
+             .annotate(
+                 avg_rating=Avg('overall_rating'),
+                 review_count=Count('id')
+             ).order_by('month'))
+            
+            # Rating distribution
+            rating_distribution = list(PerformanceReview.objects.filter(
+                employee__company=company
+            ).extra(select={'rating_range': 
+                "CASE WHEN overall_rating >= 4.5 THEN 'Excellent (4.5-5.0)' "
+                "WHEN overall_rating >= 3.5 THEN 'Good (3.5-4.4)' "
+                "WHEN overall_rating >= 2.5 THEN 'Average (2.5-3.4)' "
+                "ELSE 'Below Average (&lt;2.5)' END"})
+             .values('rating_range')
+             .annotate(count=Count('id')))
+            
+            # Goal achievement analysis
+            goal_achievement = PerformanceReview.objects.filter(
+                employee__company=company
+            ).aggregate(
+                avg_goal_achievement=Avg('goals_achievement'),
+                high_achievers=Count('id', filter=Q(goals_achievement__gte=90)),
+                low_achievers=Count('id', filter=Q(goals_achievement__lt=50))
+            )
+            
+            return Response({
+                'performance_trends': performance_trends,
+                'rating_distribution': rating_distribution,
+                'goal_achievement': goal_achievement
+            })
+            
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
     @action(detail=False, methods=['post'])
     def create_review(self, request):
         session_key = self.get_session_key()
@@ -136,14 +279,25 @@ class PerformanceViewSet(viewsets.ModelViewSet):
             data = request.data.copy()
             data.pop('session_key', None)
             
-            # Get reviewer (current user)
-            reviewer = Employee.objects.filter(
-                company=session.service_user.company,
-                email=session.service_user.email
-            ).first()
-            
-            if not reviewer:
-                return Response({'error': 'Reviewer not found'}, status=status.HTTP_400_BAD_REQUEST)
+            # Get reviewer from request data or use first available employee as fallback
+            reviewer_id = data.get('reviewer')
+            if reviewer_id:
+                try:
+                    reviewer = Employee.objects.get(
+                        id=reviewer_id,
+                        company=session.service_user.company
+                    )
+                except Employee.DoesNotExist:
+                    return Response({'error': 'Selected reviewer not found'}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # Fallback: use any employee from the company as reviewer
+                reviewer = Employee.objects.filter(
+                    company=session.service_user.company,
+                    status='active'
+                ).first()
+                
+                if not reviewer:
+                    return Response({'error': 'No active employees found to assign as reviewer'}, status=status.HTTP_400_BAD_REQUEST)
             
             serializer = self.get_serializer(data=data)
             if not serializer.is_valid():
@@ -171,8 +325,7 @@ def performance_analytics(request):
         
         # Performance trends over time
         performance_trends = list(PerformanceReview.objects.filter(
-            employee__company=company,
-            status='approved'
+            employee__company=company
         ).extra(select={'month': "DATE_TRUNC('month', created_at)"})
          .values('month')
          .annotate(
@@ -182,8 +335,7 @@ def performance_analytics(request):
         
         # Rating distribution
         rating_distribution = list(PerformanceReview.objects.filter(
-            employee__company=company,
-            status='approved'
+            employee__company=company
         ).extra(select={'rating_range': 
             "CASE WHEN overall_rating >= 4.5 THEN 'Excellent (4.5-5.0)' "
             "WHEN overall_rating >= 3.5 THEN 'Good (3.5-4.4)' "
@@ -194,8 +346,7 @@ def performance_analytics(request):
         
         # Goal achievement analysis
         goal_achievement = PerformanceReview.objects.filter(
-            employee__company=company,
-            status='approved'
+            employee__company=company
         ).aggregate(
             avg_goal_achievement=Avg('goals_achievement'),
             high_achievers=Count('id', filter=Q(goals_achievement__gte=90)),
@@ -208,7 +359,7 @@ def performance_analytics(request):
         
         for emp in employees:
             latest_review = PerformanceReview.objects.filter(
-                employee=emp, status='approved'
+                employee=emp
             ).order_by('-created_at').first()
             
             if latest_review:

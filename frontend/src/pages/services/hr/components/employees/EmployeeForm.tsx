@@ -67,21 +67,95 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     emergency_contact_relationship: employee?.emergency_contact_relationship || '',
     emergency_contact_phone: employee?.emergency_contact_phone || '',
     emergency_contact_address: employee?.emergency_contact_address || '',
-    skills: employee?.skills || [],
+    skills: Array.isArray(employee?.skills) ? employee.skills : [],
     profile_picture: undefined,
     face_photo: undefined,
     capture_face_photo: false
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [profilePreview, setProfilePreview] = useState<string | null>(employee?.profile_picture || null)
-  const [facePreview, setFacePreview] = useState<string | null>(employee?.face_photo || null)
+  const [profilePreview, setProfilePreview] = useState<string | null>(null)
+  const [facePreview, setFacePreview] = useState<string | null>(null)
+  const [skillsText, setSkillsText] = useState<string>('')
   
-  // Update previews when employee changes
+  // Update form data and previews when employee changes
   useEffect(() => {
     if (employee) {
-      setProfilePreview(employee.profile_picture || null)
-      setFacePreview(employee.face_photo || null)
+      // Update form data with employee data
+      setFormData({
+        first_name: employee.first_name || '',
+        last_name: employee.last_name || '',
+        email: employee.email || '',
+        phone: employee.phone || '',
+        date_of_birth: employee.date_of_birth || '',
+        gender: employee.gender || '',
+        department: employee.department || 0,
+        designation: employee.designation || 0,
+        employment_type: employee.employment_type || 'full_time',
+        work_mode: employee.work_mode || 'office',
+        date_of_joining: employee.date_of_joining || '',
+        base_salary: employee.base_salary || 0,
+        address_line1: employee.address_line1 || '',
+        address_line2: employee.address_line2 || '',
+        city: employee.city || '',
+        state: employee.state || '',
+        pincode: employee.pincode || '',
+        country: employee.country || 'India',
+        aadhar_number: employee.aadhar_number || '',
+        pan_number: employee.pan_number || '',
+        pf_number: employee.pf_number || '',
+        uan_number: employee.uan_number || '',
+        esi_number: employee.esi_number || '',
+        bank_name: employee.bank_name || '',
+        bank_account_number: employee.bank_account_number || '',
+        bank_ifsc_code: employee.bank_ifsc_code || '',
+        bank_branch: employee.bank_branch || '',
+        emergency_contact_name: employee.emergency_contact_name || '',
+        emergency_contact_relationship: employee.emergency_contact_relationship || '',
+        emergency_contact_phone: employee.emergency_contact_phone || '',
+        emergency_contact_address: employee.emergency_contact_address || '',
+        skills: Array.isArray(employee.skills) ? employee.skills : [],
+        profile_picture: undefined,
+        face_photo: undefined,
+        capture_face_photo: false
+      })
+      
+      // Construct URLs only if images exist and are not null/empty
+      let profileUrl = null
+      let faceUrl = null
+      
+      console.log('Employee profile_picture:', employee.profile_picture)
+      console.log('Employee face_photo:', employee.face_photo)
+      
+      if (employee.profile_picture && 
+          employee.profile_picture !== null && 
+          employee.profile_picture !== '' && 
+          typeof employee.profile_picture === 'string' &&
+          !employee.profile_picture.includes('svg')) {
+        profileUrl = employee.profile_picture.startsWith('http') 
+          ? employee.profile_picture 
+          : `http://localhost:8000${employee.profile_picture}`
+        console.log('Setting profileUrl:', profileUrl)
+      }
+      
+      if (employee.face_photo && 
+          employee.face_photo !== null && 
+          employee.face_photo !== '' && 
+          typeof employee.face_photo === 'string' &&
+          !employee.face_photo.includes('svg')) {
+        faceUrl = employee.face_photo.startsWith('http') 
+          ? employee.face_photo 
+          : `http://localhost:8000${employee.face_photo}`
+        console.log('Setting faceUrl:', faceUrl)
+      }
+      
+      console.log('Final URLs - Profile:', profileUrl, 'Face:', faceUrl)
+      
+      setProfilePreview(profileUrl)
+      setFacePreview(faceUrl)
+      
+      // Set skills text
+      setSkillsText(Array.isArray(employee.skills) ? employee.skills.join(', ') : '')
     }
   }, [employee])
   const [showCamera, setShowCamera] = useState(false)
@@ -223,9 +297,9 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
       const submitData = new FormData()
       Object.entries(formData).forEach(([key, value]) => {
         if (key === 'skills') {
-          // Send skills as comma-separated string, not JSON
-          const skillsString = Array.isArray(value) ? value.join(', ') : ''
-          submitData.append(key, skillsString)
+          // Send skills as JSON array
+          const skillsArray = Array.isArray(value) ? value : []
+          submitData.append(key, JSON.stringify(skillsArray))
         } else if (key === 'profile_picture' || key === 'face_photo') {
           if (value instanceof File) {
             submitData.append(key, value)
@@ -269,8 +343,10 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     }
   }
 
-  const handleSkillsChange = (skillsText: string) => {
-    const skillsArray = skillsText.split(',').map(skill => skill.trim()).filter(skill => skill)
+  const handleSkillsChange = (text: string) => {
+    setSkillsText(text)
+    // Update skills array when text changes
+    const skillsArray = text.split(',').map(skill => skill.trim()).filter(skill => skill)
     handleInputChange('skills', skillsArray)
   }
 
@@ -326,17 +402,62 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
   }
 
   const startCamera = async () => {
+    console.log('Starting camera...')
+    
     try {
+      // Check if camera is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('Camera not supported')
+        toast.error('Camera not supported in this browser')
+        return
+      }
+
+      console.log('Requesting camera access...')
+      
+      // Show camera modal first
+      setShowCamera(true)
+      
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 640, height: 480, facingMode: 'user' } 
+        video: { 
+          width: { ideal: 640 }, 
+          height: { ideal: 480 }, 
+          facingMode: 'user' 
+        },
+        audio: false
       })
+      
+      console.log('Camera access granted, stream:', stream)
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        setShowCamera(true)
+        
+        // Wait for video to load and play
+        videoRef.current.onloadedmetadata = () => {
+          console.log('Video metadata loaded')
+          videoRef.current?.play().then(() => {
+            console.log('Video playing successfully')
+          }).catch(err => {
+            console.error('Error playing video:', err)
+          })
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error accessing camera:', error)
-      toast.error('Unable to access camera. Please check permissions.')
+      setShowCamera(false) // Hide modal on error
+      
+      let errorMessage = 'Unable to access camera. '
+      
+      if (error.name === 'NotAllowedError') {
+        errorMessage += 'Please allow camera permissions and try again.'
+      } else if (error.name === 'NotFoundError') {
+        errorMessage += 'No camera found on this device.'
+      } else if (error.name === 'NotReadableError') {
+        errorMessage += 'Camera is being used by another application.'
+      } else {
+        errorMessage += 'Please check camera permissions.'
+      }
+      
+      toast.error(errorMessage)
     }
   }
 
@@ -353,21 +474,31 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     if (videoRef.current && canvasRef.current) {
       const canvas = canvasRef.current
       const video = videoRef.current
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
+      
+      // Set canvas dimensions
+      canvas.width = video.videoWidth || 640
+      canvas.height = video.videoHeight || 480
+      
       const ctx = canvas.getContext('2d')
       if (ctx) {
-        ctx.drawImage(video, 0, 0)
+        // Flip the image horizontally to match the mirrored video
+        ctx.scale(-1, 1)
+        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height)
+        
         canvas.toBlob((blob) => {
           if (blob) {
-            const file = new File([blob], 'face-photo.jpg', { type: 'image/jpeg' })
+            const file = new File([blob], `face-photo-${Date.now()}.jpg`, { type: 'image/jpeg' })
             handleInputChange('face_photo', file)
             setFacePreview(canvas.toDataURL())
             stopCamera()
             toast.success('Face photo captured successfully!')
+          } else {
+            toast.error('Failed to capture photo. Please try again.')
           }
-        }, 'image/jpeg', 0.8)
+        }, 'image/jpeg', 0.9)
       }
+    } else {
+      toast.error('Camera not ready. Please try again.')
     }
   }
 
@@ -508,18 +639,20 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
 
               {/* Camera Modal */}
               {showCamera && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50">
-                  <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[9999]">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl">
                     <div className="text-center space-y-4">
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                         Capture Face Photo
                       </h3>
-                      <div className="relative">
+                      <div className="relative bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
                         <video
                           ref={videoRef}
                           autoPlay
                           playsInline
-                          className="w-full rounded-lg"
+                          muted
+                          className="w-full h-64 object-cover rounded-lg"
+                          style={{ transform: 'scaleX(-1)' }}
                         />
                         <canvas ref={canvasRef} className="hidden" />
                       </div>
@@ -527,7 +660,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                         <Button
                           type="button"
                           onClick={capturePhoto}
-                          className="bg-blue-500 hover:bg-blue-600"
+                          className="bg-blue-500 hover:bg-blue-600 text-white"
                         >
                           <Camera className="h-4 w-4 mr-2" />
                           Capture
@@ -776,13 +909,22 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                   Skills & Expertise (comma-separated)
                 </label>
                 <textarea
-                  value={formData.skills.join(', ')}
+                  value={skillsText}
                   onChange={(e) => handleSkillsChange(e.target.value)}
                   placeholder="e.g., JavaScript, React, Node.js, Python, Project Management, Team Leadership"
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
                 />
                 <p className="text-xs text-gray-500 mt-1">Separate multiple skills with commas</p>
+                {formData.skills.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {formData.skills.map((skill, index) => (
+                      <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

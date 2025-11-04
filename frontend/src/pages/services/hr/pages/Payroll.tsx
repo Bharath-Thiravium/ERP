@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import PayrollDashboard from '../components/payroll/PayrollDashboard'
 import PayrollCycleForm from '../components/payroll/PayrollCycleForm'
 import PayslipList from '../components/payroll/PayslipList'
-import PayrollSettings from '../components/payroll/PayrollSettings'
+
 
 const Payroll: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard')
@@ -31,7 +31,7 @@ const Payroll: React.FC = () => {
   }
 
   const handleViewPayslip = (payslip: any) => {
-    // TODO: Implement payslip detail view
+    // This is handled by PayslipList component internally
     console.log('View payslip:', payslip)
   }
 
@@ -59,16 +59,7 @@ const Payroll: React.FC = () => {
         >
           All Payslips
         </button>
-        <button
-          onClick={() => setActiveView('settings')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'settings'
-              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-          }`}
-        >
-          Settings
-        </button>
+
         <button
           onClick={() => setActiveView('create-cycle')}
           className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -104,9 +95,7 @@ const Payroll: React.FC = () => {
         />
       )}
 
-      {activeView === 'settings' && (
-        <PayrollSettings />
-      )}
+
 
       {activeView === 'cycle-details' && selectedCycle && (
         <div className="space-y-6">

@@ -1,11 +1,13 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Camera, MapPin, Clock, User, CheckCircle, AlertCircle, Smartphone } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
+import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
 import toast from 'react-hot-toast'
 
 const MobileAttendanceDemo: React.FC = () => {
+  const { sessionKey } = useServiceUserStore()
   const [selectedEmployee, setSelectedEmployee] = useState('')
   const [location, setLocation] = useState<{latitude: number, longitude: number, address: string} | null>(null)
   const [faceImage, setFaceImage] = useState<File | null>(null)
@@ -17,11 +19,23 @@ const MobileAttendanceDemo: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [cameraActive, setCameraActive] = useState(false)
 
-  const employees = [
-    { id: 'EMP-000001', name: 'John Doe' },
-    { id: 'EMP-000002', name: 'Jane Smith' },
-    { id: 'EMP-000003', name: 'Mike Johnson' }
-  ]
+  const [employees, setEmployees] = useState<any[]>([])
+
+  useEffect(() => {
+    fetchEmployees()
+  }, [])
+
+  const fetchEmployees = async () => {
+    try {
+      const response = await api.get('/api/hr/employees/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      setEmployees(response.data.results || [])
+    } catch (error) {
+      console.error('Error fetching employees:', error)
+    }
+  }
 
   const getCurrentLocation = () => {
     setGettingLocation(true)
@@ -71,6 +85,15 @@ const MobileAttendanceDemo: React.FC = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         setCameraActive(true)
+        
+        // Wait a bit then play
+        setTimeout(() => {
+          if (videoRef.current) {
+            videoRef.current.play().catch(console.error)
+          }
+        }, 100)
+        
+        toast.success('Camera started')
       }
     } catch (error) {
       toast.error('Failed to access camera')
@@ -200,8 +223,8 @@ const MobileAttendanceDemo: React.FC = () => {
               >
                 <option value="">Choose Employee</option>
                 {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name} ({emp.id})
+                  <option key={emp.id} value={emp.employee_id}>
+                    {emp.first_name} {emp.last_name} ({emp.employee_id})
                   </option>
                 ))}
               </select>
@@ -263,78 +286,81 @@ const MobileAttendanceDemo: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!cameraActive && !previewUrl && (
-              <div className="space-y-3">
-                <Button
-                  onClick={startCamera}
-                  className="w-full bg-gradient-to-r from-purple-500 to-pink-600"
-                >
-                  <Camera className="h-4 w-4 mr-2" />
-                  Start Camera
-                </Button>
-                
-                <div className="text-center text-gray-500 dark:text-gray-400">or</div>
-                
-                <Button
-                  onClick={() => fileInputRef.current?.click()}
-                  variant="outline"
-                  className="w-full"
-                >
-                  Upload Photo
-                </Button>
-                
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </div>
-            )}
+            <div className="space-y-3">
+              {!cameraActive && !previewUrl && (
+                <>
+                  <Button
+                    onClick={startCamera}
+                    className="w-full bg-gradient-to-r from-purple-500 to-pink-600"
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    Start Camera
+                  </Button>
+                  
+                  <div className="text-center text-gray-500 dark:text-gray-400">or</div>
+                  
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Upload Photo
+                  </Button>
+                </>
+              )}
 
-            {cameraActive && (
-              <div className="space-y-3">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  className="w-full rounded-lg"
-                />
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full rounded-lg ${cameraActive ? 'block' : 'hidden'}`}
+                style={{ backgroundColor: '#000' }}
+              />
+              
+              {cameraActive && (
                 <Button
                   onClick={capturePhoto}
                   className="w-full bg-gradient-to-r from-blue-500 to-indigo-600"
                 >
                   Capture Photo
                 </Button>
-              </div>
-            )}
+              )}
 
-            {previewUrl && (
-              <div className="space-y-3">
-                <img
-                  src={previewUrl}
-                  alt="Face preview"
-                  className="w-full rounded-lg"
-                />
-                <div className="flex space-x-2">
-                  <Button
-                    onClick={() => {
-                      setPreviewUrl(null)
-                      setFaceImage(null)
-                    }}
-                    variant="outline"
-                    className="flex-1"
-                  >
-                    Retake
-                  </Button>
-                  <div className="flex items-center space-x-1 px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    <span className="text-sm text-green-600 dark:text-green-400">Ready</span>
+              {previewUrl && (
+                <>
+                  <img
+                    src={previewUrl}
+                    alt="Face preview"
+                    className="w-full rounded-lg"
+                  />
+                  <div className="flex space-x-2">
+                    <Button
+                      onClick={() => {
+                        setPreviewUrl(null)
+                        setFaceImage(null)
+                      }}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      Retake
+                    </Button>
+                    <div className="flex items-center space-x-1 px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <span className="text-sm text-green-600 dark:text-green-400">Ready</span>
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
+                </>
+              )}
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </div>
 
             <canvas ref={canvasRef} className="hidden" />
           </CardContent>

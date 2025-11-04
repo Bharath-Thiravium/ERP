@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../../../compone
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
 import toast from 'react-hot-toast'
+import PayslipDetailView from './PayslipDetailView'
 
 interface Payslip {
   id: number
@@ -27,10 +28,11 @@ interface PayslipListProps {
   onViewPayslip: (payslip: Payslip) => void
 }
 
-const PayslipList: React.FC<PayslipListProps> = ({ cycleId, onViewPayslip }) => {
+const PayslipList: React.FC<PayslipListProps> = ({ cycleId }) => {
   const { sessionKey } = useServiceUserStore()
   const [payslips, setPayslips] = useState<Payslip[]>([])
   const [loading, setLoading] = useState(false)
+  const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null)
   const [filters, setFilters] = useState({
     search: '',
     status: '',
@@ -117,6 +119,37 @@ const PayslipList: React.FC<PayslipListProps> = ({ cycleId, onViewPayslip }) => 
       toast.success('Payslips exported successfully')
     } catch (error) {
       toast.error('Failed to export payslips')
+    }
+  }
+
+  const handleViewPayslip = (payslip: Payslip) => {
+    setSelectedPayslip(payslip)
+  }
+
+  const handleCloseDetailView = () => {
+    setSelectedPayslip(null)
+  }
+
+  const handleDownloadPDF = async (payslip: Payslip) => {
+    try {
+      const response = await api.get(`/api/hr/payslips/${payslip.id}/download_pdf/`, {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey },
+        responseType: 'blob'
+      })
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `payslip_${payslip.emp_id}.pdf`
+      link.click()
+      window.URL.revokeObjectURL(url)
+      
+      toast.success('Payslip PDF downloaded successfully')
+    } catch (error) {
+      console.error('Error downloading PDF:', error)
+      toast.error('Failed to download payslip PDF')
     }
   }
 
@@ -288,7 +321,7 @@ const PayslipList: React.FC<PayslipListProps> = ({ cycleId, onViewPayslip }) => 
                       <td className="py-4 px-6">
                         <div className="flex items-center space-x-2">
                           <Button
-                            onClick={() => onViewPayslip(payslip)}
+                            onClick={() => handleViewPayslip(payslip)}
                             size="sm"
                             variant="outline"
                           >
@@ -296,6 +329,7 @@ const PayslipList: React.FC<PayslipListProps> = ({ cycleId, onViewPayslip }) => 
                             View
                           </Button>
                           <Button
+                            onClick={() => handleDownloadPDF(payslip)}
                             size="sm"
                             variant="outline"
                           >
@@ -312,6 +346,15 @@ const PayslipList: React.FC<PayslipListProps> = ({ cycleId, onViewPayslip }) => 
           )}
         </CardContent>
       </Card>
+
+      {/* Payslip Detail Modal */}
+      {selectedPayslip && (
+        <PayslipDetailView
+          payslip={selectedPayslip}
+          onClose={handleCloseDetailView}
+          onDownloadPDF={handleDownloadPDF}
+        />
+      )}
     </div>
   )
 }

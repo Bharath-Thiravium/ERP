@@ -45,6 +45,8 @@ export interface Employee {
   department_name?: string;
   designation: number;
   designation_title?: string;
+  address?: string;
+  salary?: number;
   employment_type: 'full_time' | 'part_time' | 'contract' | 'intern' | 'consultant';
   work_mode: 'office' | 'remote' | 'hybrid';
   date_of_joining: string;

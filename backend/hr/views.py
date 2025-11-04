@@ -182,13 +182,28 @@ class EmployeeListCreateView(ListCreateAPIView):
                 elif manager_value == 'null' or manager_value == 'undefined':
                     request.data['reporting_manager'] = None
             
-            # Handle skills JSON parsing
-            if 'skills' in request.data and isinstance(request.data['skills'], str):
-                try:
-                    import json
-                    request.data['skills'] = json.loads(request.data['skills'])
-                except json.JSONDecodeError:
-                    request.data['skills'] = []
+            # Handle skills - remove from FormData and process separately
+            processed_skills = []
+            if 'skills' in request.data:
+                skills_value = request.data['skills']
+                print(f"DEBUG: Skills value: '{skills_value}', type: {type(skills_value)}")
+                
+                # Remove skills from request data to avoid validation error
+                del request.data['skills']
+                
+                # Process skills separately
+                if isinstance(skills_value, str):
+                    try:
+                        import json
+                        processed_skills = json.loads(skills_value)
+                    except json.JSONDecodeError:
+                        skills_str = skills_value.strip()
+                        if skills_str:
+                            processed_skills = [skill.strip() for skill in skills_str.split(',') if skill.strip()]
+                        else:
+                            processed_skills = []
+                else:
+                    processed_skills = skills_value if isinstance(skills_value, list) else []
 
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
@@ -198,18 +213,34 @@ class EmployeeListCreateView(ListCreateAPIView):
                     company=service_user.company,
                     created_by=service_user
                 )
+                
+                # Set skills after saving
+                employee.skills = processed_skills
+                employee.save(update_fields=['skills'])
 
-            # Return simple response to avoid serialization issues
-            return Response({
+            # Return detailed response with image URLs
+            response_data = {
                 'id': employee.id,
                 'employee_id': employee.employee_id,
                 'first_name': employee.first_name,
                 'last_name': employee.last_name,
+                'full_name': employee.full_name,
                 'email': employee.email,
-                'department': employee.department.name,
-                'designation': employee.designation.title,
+                'phone': employee.phone,
+                'department': employee.department_id,
+                'department_name': employee.department.name,
+                'designation': employee.designation_id,
+                'designation_title': employee.designation.title,
+                'skills': processed_skills,
+                'profile_picture': employee.profile_picture.url if employee.profile_picture else None,
+                'face_photo': employee.face_photo.url if employee.face_photo else None,
+                'status': employee.status,
+                'performance_score': employee.performance_score,
+                'retention_risk': employee.retention_risk,
+                'mobile_app_enabled': employee.mobile_app_enabled,
                 'message': 'Employee created successfully'
-            }, status=status.HTTP_201_CREATED)
+            }
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -252,27 +283,59 @@ class EmployeeDetailView(RetrieveUpdateDestroyAPIView):
             if hasattr(request.data, '_mutable'):
                 request.data._mutable = True
             
-            # Handle skills JSON parsing
-            if 'skills' in request.data and isinstance(request.data['skills'], str):
-                try:
-                    import json
-                    request.data['skills'] = json.loads(request.data['skills'])
-                except json.JSONDecodeError:
-                    request.data['skills'] = []
+            # Handle skills - remove from FormData and process separately
+            processed_skills = None
+            if 'skills' in request.data:
+                skills_value = request.data['skills']
+                del request.data['skills']
+                
+                if isinstance(skills_value, str):
+                    try:
+                        import json
+                        processed_skills = json.loads(skills_value)
+                    except json.JSONDecodeError:
+                        skills_str = skills_value.strip()
+                        if skills_str:
+                            processed_skills = [skill.strip() for skill in skills_str.split(',') if skill.strip()]
+                        else:
+                            processed_skills = []
+                else:
+                    processed_skills = skills_value if isinstance(skills_value, list) else []
 
             partial = kwargs.pop('partial', False)
             instance = self.get_object()
             serializer = self.get_serializer(instance, data=request.data, partial=partial)
             serializer.is_valid(raise_exception=True)
             self.perform_update(serializer)
+            
+            # Set skills after updating if provided
+            if processed_skills is not None:
+                instance.skills = processed_skills
+                instance.save(update_fields=['skills'])
 
-            return Response({
+            # Return detailed response with image URLs
+            response_data = {
                 'id': instance.id,
                 'employee_id': instance.employee_id,
                 'first_name': instance.first_name,
                 'last_name': instance.last_name,
+                'full_name': instance.full_name,
+                'email': instance.email,
+                'phone': instance.phone,
+                'department': instance.department_id,
+                'department_name': instance.department.name,
+                'designation': instance.designation_id,
+                'designation_title': instance.designation.title,
+                'skills': processed_skills if processed_skills is not None else instance.skills,
+                'profile_picture': instance.profile_picture.url if instance.profile_picture else None,
+                'face_photo': instance.face_photo.url if instance.face_photo else None,
+                'status': instance.status,
+                'performance_score': instance.performance_score,
+                'retention_risk': instance.retention_risk,
+                'mobile_app_enabled': instance.mobile_app_enabled,
                 'message': 'Employee updated successfully'
-            })
+            }
+            return Response(response_data)
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)

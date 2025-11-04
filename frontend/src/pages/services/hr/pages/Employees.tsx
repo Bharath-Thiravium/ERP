@@ -4,6 +4,7 @@ import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import EmployeeList from '../components/employees/EmployeeList'
 import EmployeeForm from '../components/employees/EmployeeForm'
+import EmployeeView from '../components/employees/EmployeeView'
 import MobileAccessManager from '../components/employees/MobileAccessManager'
 import { Employee } from '../types/hrTypes'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -12,6 +13,7 @@ import api from '../../../../lib/api'
 const Employees: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
   const [showForm, setShowForm] = useState(false)
+  const [showView, setShowView] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>()
   const [refreshKey, setRefreshKey] = useState(0)
   const [activeView, setActiveView] = useState('overview')
@@ -81,11 +83,16 @@ const Employees: React.FC = () => {
 
   const handleViewEmployee = (employee: Employee) => {
     setSelectedEmployee(employee)
-    setShowForm(true)
+    setShowView(true)
   }
 
   const handleFormClose = () => {
     setShowForm(false)
+    setSelectedEmployee(undefined)
+  }
+
+  const handleViewClose = () => {
+    setShowView(false)
     setSelectedEmployee(undefined)
   }
 
@@ -299,6 +306,13 @@ const Employees: React.FC = () => {
           employee={selectedEmployee}
           onClose={handleFormClose}
           onSave={handleFormSave}
+        />
+      )}
+      
+      {showView && selectedEmployee && (
+        <EmployeeView
+          employee={selectedEmployee}
+          onClose={handleViewClose}
         />
       )}
     </div>

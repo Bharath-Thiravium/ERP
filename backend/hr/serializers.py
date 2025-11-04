@@ -4,6 +4,7 @@ from .models import Department, Designation, Employee, JobPosting, JobApplicatio
 
 class DepartmentSerializer(serializers.ModelSerializer):
     employee_count = serializers.SerializerMethodField()
+    code = serializers.CharField(required=False, allow_blank=True)
     
     class Meta:
         model = Department
@@ -27,6 +28,8 @@ class DesignationSerializer(serializers.ModelSerializer):
 class EmployeeListSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     designation_title = serializers.CharField(source='designation.title', read_only=True)
+    profile_picture = serializers.SerializerMethodField()
+    face_photo = serializers.SerializerMethodField()
     
     class Meta:
         model = Employee
@@ -43,11 +46,29 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             'mobile_app_enabled', 'last_mobile_login', 'mobile_device_id', 'created_at'
         ]
         read_only_fields = ['id', 'employee_id', 'full_name', 'created_at']
+    
+    def get_profile_picture(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+    
+    def get_face_photo(self, obj):
+        if obj.face_photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.face_photo.url)
+            return obj.face_photo.url
+        return None
 
 
 class EmployeeDetailSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     designation_title = serializers.CharField(source='designation.title', read_only=True)
+    profile_picture = serializers.SerializerMethodField()
+    face_photo = serializers.SerializerMethodField()
     
     class Meta:
         model = Employee
@@ -65,6 +86,36 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'mobile_app_enabled', 'last_mobile_login', 'mobile_device_id', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'employee_id', 'full_name', 'created_at', 'updated_at']
+    
+    def get_profile_picture(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+    
+    def get_face_photo(self, obj):
+        if obj.face_photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.face_photo.url)
+            return obj.face_photo.url
+        return None
+    
+    def validate_skills(self, value):
+        if isinstance(value, str):
+            try:
+                import json
+                return json.loads(value)
+            except json.JSONDecodeError:
+                # If not valid JSON, treat as comma-separated string
+                if value.strip():
+                    return [skill.strip() for skill in value.split(',') if skill.strip()]
+                return []
+        elif isinstance(value, list):
+            return value
+        return []
 
 
 class EmployeeCreateSerializer(serializers.ModelSerializer):
@@ -78,13 +129,27 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
             'city', 'state', 'pincode', 'country', 'aadhar_number', 'pan_number',
             'pf_number', 'uan_number', 'esi_number', 'bank_name', 'bank_account_number',
             'bank_ifsc_code', 'bank_branch', 'emergency_contact_name', 'emergency_contact_relationship',
-            'emergency_contact_phone', 'emergency_contact_address', 'skills'
+            'emergency_contact_phone', 'emergency_contact_address', 'skills', 'profile_picture', 'face_photo'
         ]
     
     def validate_email(self, value):
         if Employee.objects.filter(email=value).exists():
             raise serializers.ValidationError("Employee with this email already exists.")
         return value
+    
+    def validate_skills(self, value):
+        if isinstance(value, str):
+            try:
+                import json
+                return json.loads(value)
+            except json.JSONDecodeError:
+                # If not valid JSON, treat as comma-separated string
+                if value.strip():
+                    return [skill.strip() for skill in value.split(',') if skill.strip()]
+                return []
+        elif isinstance(value, list):
+            return value
+        return []
 
 
 class JobPostingSerializer(serializers.ModelSerializer):
@@ -133,6 +198,7 @@ class JobApplicationSerializer(serializers.ModelSerializer):
 class PerformanceReviewSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.full_name', read_only=True)
     reviewer_name = serializers.CharField(source='reviewer.full_name', read_only=True)
+    reviewer = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), required=False, allow_null=True)
     
     class Meta:
         model = PerformanceReview

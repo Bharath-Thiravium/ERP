@@ -2,21 +2,22 @@ import React, { useState, useEffect } from 'react'
 import { Clock, MapPin, Calendar, TrendingUp, CheckCircle, AlertCircle, Home, Building } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
-import { Attendance } from '../../types/hrTypes'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
+import api from '../../../../../lib/api'
+import toast from 'react-hot-toast'
 
 const AttendanceTracker: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
-  const [attendanceData] = useState({
-    presentToday: 87,
-    totalEmployees: 95,
-    remoteWorkers: 34,
-    onLeave: 8,
-    lateArrivals: 5,
-    avgWorkHours: 8.2,
-    attendanceRate: 91.6
+  const [attendanceData, setAttendanceData] = useState({
+    presentToday: 0,
+    totalEmployees: 0,
+    remoteWorkers: 0,
+    onLeave: 0,
+    lateArrivals: 0,
+    avgWorkHours: 0,
+    attendanceRate: 0
   })
-  const [recentAttendance, setRecentAttendance] = useState<Attendance[]>([])
+  const [recentAttendance, setRecentAttendance] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
 
@@ -25,11 +26,50 @@ const AttendanceTracker: React.FC = () => {
     
     try {
       setLoading(true)
-      // API calls will be implemented when backend is ready
-      console.log('Fetching attendance data...')
-      setRecentAttendance([])
+      
+      // Fetch dashboard stats
+      const statsResponse = await api.get('/api/hr/attendance/dashboard-stats/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      
+      // Fetch attendance records for selected date
+      const attendanceResponse = await api.get('/api/hr/attendance/records/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { 
+          session_key: sessionKey,
+          start_date: selectedDate,
+          end_date: selectedDate
+        }
+      })
+      
+      const stats = statsResponse.data
+      const attendanceRecords = attendanceResponse.data.results || []
+      
+      // Calculate work mode distribution
+      const remoteCount = attendanceRecords.filter((r: any) => r.work_mode === 'remote').length
+      const onLeaveCount = attendanceRecords.filter((r: any) => r.status === 'leave').length
+      const lateCount = attendanceRecords.filter((r: any) => r.status === 'late').length
+      
+      // Calculate average work hours
+      const totalHours = attendanceRecords.reduce((sum: number, r: any) => sum + (r.total_hours || 0), 0)
+      const avgHours = attendanceRecords.length > 0 ? totalHours / attendanceRecords.length : 0
+      
+      setAttendanceData({
+        presentToday: stats.today?.present || 0,
+        totalEmployees: stats.today?.total_employees || 0,
+        remoteWorkers: remoteCount,
+        onLeave: onLeaveCount,
+        lateArrivals: lateCount,
+        avgWorkHours: Math.round(avgHours * 10) / 10,
+        attendanceRate: stats.today?.attendance_rate || 0
+      })
+      
+      setRecentAttendance(attendanceRecords)
+      
     } catch (error) {
       console.error('Error fetching attendance data:', error)
+      toast.error('Failed to load attendance data')
     } finally {
       setLoading(false)
     }
@@ -192,9 +232,9 @@ const AttendanceTracker: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div className="bg-gray-500 h-2 rounded-full" style={{ width: '55%' }}></div>
+                    <div className="bg-gray-500 h-2 rounded-full" style={{ width: `${attendanceData.totalEmployees > 0 ? ((attendanceData.presentToday - attendanceData.remoteWorkers) / attendanceData.totalEmployees * 100) : 0}%` }}></div>
                   </div>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">53</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">{attendanceData.presentToday - attendanceData.remoteWorkers}</span>
                 </div>
               </div>
               
@@ -207,9 +247,9 @@ const AttendanceTracker: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: '39%' }}></div>
+                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${attendanceData.totalEmployees > 0 ? (attendanceData.remoteWorkers / attendanceData.totalEmployees * 100) : 0}%` }}></div>
                   </div>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">34</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">{attendanceData.remoteWorkers}</span>
                 </div>
               </div>
               
@@ -222,9 +262,9 @@ const AttendanceTracker: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div className="bg-purple-500 h-2 rounded-full" style={{ width: '6%' }}></div>
+                    <div className="bg-purple-500 h-2 rounded-full" style={{ width: '0%' }}></div>
                   </div>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">8</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">0</span>
                 </div>
               </div>
             </div>
@@ -272,10 +312,12 @@ const AttendanceTracker: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
                       <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium">
-                        {record.employee_name?.charAt(0) || 'U'}
+                        {record.employee?.first_name?.charAt(0) || record.employee?.employee_id?.charAt(0) || 'U'}
                       </div>
                       <div>
-                        <h4 className="font-medium text-gray-900 dark:text-white">{record.employee_name}</h4>
+                        <h4 className="font-medium text-gray-900 dark:text-white">
+                          {record.employee ? `${record.employee.first_name} ${record.employee.last_name}` : 'Unknown Employee'}
+                        </h4>
                         <div className="flex items-center space-x-4 mt-1">
                           <div className="flex items-center space-x-1">
                             <Clock className="h-3 w-3 text-gray-400" />
@@ -283,10 +325,10 @@ const AttendanceTracker: React.FC = () => {
                               {record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString() : 'Not checked in'}
                             </span>
                           </div>
-                          {record.location && (
+                          {record.check_in_location && (
                             <div className="flex items-center space-x-1">
                               <MapPin className="h-3 w-3 text-gray-400" />
-                              <span className="text-xs text-gray-500 dark:text-gray-400">{record.location}</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">{record.check_in_location}</span>
                             </div>
                           )}
                         </div>
@@ -294,15 +336,15 @@ const AttendanceTracker: React.FC = () => {
                     </div>
                     
                     <div className="flex items-center space-x-3">
-                      <span className={`px-2 py-1 text-xs rounded-full flex items-center space-x-1 ${getWorkModeColor(record.work_mode)}`}>
-                        {getWorkModeIcon(record.work_mode)}
-                        <span>{record.work_mode}</span>
+                      <span className={`px-2 py-1 text-xs rounded-full flex items-center space-x-1 ${getWorkModeColor(record.work_mode || 'office')}`}>
+                        {getWorkModeIcon(record.work_mode || 'office')}
+                        <span className="capitalize">{record.work_mode || 'office'}</span>
                       </span>
                       <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(record.status)}`}>
                         {record.status}
                       </span>
                       <div className="text-right">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{record.total_hours}h</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{record.total_hours || 0}h</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">Total hours</p>
                       </div>
                     </div>
@@ -332,7 +374,7 @@ const AttendanceTracker: React.FC = () => {
                 <h4 className="font-medium text-gray-900 dark:text-white">Attendance Trend</h4>
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-300">
-                Attendance rate has improved by 5% this month. Remote work flexibility is contributing to better work-life balance.
+                Current attendance rate: {attendanceData.attendanceRate}%. {attendanceData.attendanceRate > 90 ? 'Excellent attendance performance!' : attendanceData.attendanceRate > 80 ? 'Good attendance, room for improvement.' : 'Attendance needs attention.'}
               </p>
             </div>
             
@@ -344,7 +386,7 @@ const AttendanceTracker: React.FC = () => {
                 <h4 className="font-medium text-gray-900 dark:text-white">Remote Work Impact</h4>
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-300">
-                Remote workers show 15% higher productivity and 20% better attendance compared to office-only employees.
+                {attendanceData.remoteWorkers} employees working remotely today. Average work hours: {attendanceData.avgWorkHours}h per employee.
               </p>
             </div>
           </div>

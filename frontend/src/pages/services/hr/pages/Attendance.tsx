@@ -9,6 +9,9 @@ import AttendanceSystemConfig from '../components/attendance/AttendanceSystemCon
 import AttendanceRecords from '../components/attendance/AttendanceRecords'
 import ManualAttendanceEntry from '../components/attendance/ManualAttendanceEntry'
 import MobileAttendanceDemo from '../components/attendance/MobileAttendanceDemo'
+import AttendanceTracker from '../components/attendance/AttendanceTracker'
+import FaceRecognitionAttendance from '../components/attendance/FaceRecognitionAttendance'
+import BiometricAttendance from '../components/attendance/BiometricAttendance'
 
 interface AttendanceStats {
   today: {
@@ -334,6 +337,36 @@ const Attendance: React.FC = () => {
           Mobile Demo
         </button>
         <button
+          onClick={() => setActiveView('biometric')}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeView === 'biometric'
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          Biometric
+        </button>
+        <button
+          onClick={() => setActiveView('face')}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeView === 'face'
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          Face Recognition
+        </button>
+        <button
+          onClick={() => setActiveView('tracker')}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeView === 'tracker'
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          Live Tracker
+        </button>
+        <button
           onClick={() => setActiveView('config')}
           className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
             activeView === 'config'
@@ -356,6 +389,9 @@ const Attendance: React.FC = () => {
           {activeView === 'records' && <AttendanceRecords />}
           {activeView === 'manual' && <ManualAttendanceEntry onSuccess={fetchAttendanceData} />}
           {activeView === 'mobile' && <MobileAttendanceDemo />}
+          {activeView === 'biometric' && <BiometricAttendance />}
+          {activeView === 'face' && <FaceRecognitionAttendance />}
+          {activeView === 'tracker' && <AttendanceTracker />}
           {activeView === 'config' && <AttendanceSystemConfig onSuccess={fetchAttendanceData} />}
         </>
       )}

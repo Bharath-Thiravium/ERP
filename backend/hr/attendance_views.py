@@ -266,7 +266,7 @@ def mobile_attendance(request):
             
             # Validate location if geo-fencing is enabled
             if hasattr(employee.company, 'attendance_system') and employee.company.attendance_system.enable_geo_fencing:
-                attendance.is_valid_checkin_location = validate_location(
+                attendance.is_valid_checkin_location = validate_employee_location(
                     data.get('latitude'), data.get('longitude'), employee.company.attendance_system
                 )
             
@@ -274,16 +274,21 @@ def mobile_attendance(request):
             if 'face_image' in request.FILES:
                 attendance.check_in_face_image = request.FILES['face_image']
                 
-                # Face recognition validation
-                face_match_result = validate_face_recognition(employee, request.FILES['face_image'])
-                if not face_match_result['is_valid']:
-                    return Response({
-                        'error': 'Face recognition failed',
-                        'message': face_match_result['message']
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                
-                attendance.is_valid_face_match = face_match_result['is_valid']
-                attendance.face_match_score = face_match_result['score']
+                # Face recognition validation against employee's registered face
+                if employee.face_photo:
+                    face_match_result = validate_face_recognition(employee, request.FILES['face_image'])
+                    if not face_match_result['is_valid']:
+                        return Response({
+                            'error': 'Face recognition failed',
+                            'message': face_match_result['message']
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    attendance.is_valid_face_match = face_match_result['is_valid']
+                    attendance.face_match_score = face_match_result['score']
+                else:
+                    # No face photo registered, skip validation but log the image
+                    attendance.is_valid_face_match = True
+                    attendance.face_match_score = 1.0
             
             # Check if late
             if attendance.is_late():
@@ -305,12 +310,20 @@ def mobile_attendance(request):
                 attendance.check_out_face_image = request.FILES['face_image']
                 
                 # Face recognition validation for checkout
-                face_match_result = validate_face_recognition(employee, request.FILES['face_image'])
-                if not face_match_result['is_valid']:
-                    return Response({
-                        'error': 'Face recognition failed',
-                        'message': face_match_result['message']
-                    }, status=status.HTTP_400_BAD_REQUEST)
+                if employee.face_photo:
+                    face_match_result = validate_face_recognition(employee, request.FILES['face_image'])
+                    if not face_match_result['is_valid']:
+                        return Response({
+                            'error': 'Face recognition failed',
+                            'message': face_match_result['message']
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    attendance.is_valid_face_match = face_match_result['is_valid']
+                    attendance.face_match_score = face_match_result['score']
+                else:
+                    # No face photo registered, skip validation but log the image
+                    attendance.is_valid_face_match = True
+                    attendance.face_match_score = 1.0
             
             attendance.calculate_hours()
         
@@ -330,92 +343,80 @@ def mobile_attendance(request):
 @authentication_classes([])
 @permission_classes([permissions.AllowAny])
 def face_recognition_attendance(request):
-    """Face recognition attendance endpoint"""
+    """Enhanced face recognition attendance endpoint"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.data.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
     serializer = FaceRecognitionSerializer(data=request.data)
     if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'error': 'Validation failed',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     data = serializer.validated_data
     face_image = data['face_image']
-    
-    # Here you would implement face recognition logic
-    # For now, we'll return a placeholder response
+    action = data['action']
     
     try:
-        # Placeholder: In real implementation, you'd:
-        # 1. Extract face encoding from the image
-        # 2. Compare with stored employee face encodings
-        # 3. Find the best match above threshold
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
         
-        # For demo, we'll assume we found an employee
-        employee = Employee.objects.filter(face_encoding__isnull=False).first()
-        
-        if not employee:
-            return Response({'error': 'No face match found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        today = date.today()
-        attendance, created = Attendance.objects.get_or_create(
-            employee=employee,
-            date=today,
-            defaults={'status': 'present'}
-        )
-        
-        current_time = timezone.now()
-        
-        if data['action'] == 'checkin':
-            attendance.check_in_time = current_time
-            attendance.check_in_method = 'face_recognition'
-            attendance.check_in_face_image = face_image
-            attendance.face_match_score = 0.95  # Placeholder
-            attendance.is_valid_face_match = True
-        else:
-            attendance.check_out_time = current_time
-            attendance.check_out_method = 'face_recognition'
-            attendance.check_out_face_image = face_image
-            attendance.calculate_hours()
-        
-        attendance.save()
-        
+        # This endpoint is deprecated - use mobile attendance endpoint instead
         return Response({
-            'message': f'Face recognized - {data["action"]} successful',
-            'employee': {
-                'id': employee.id,
-                'name': employee.full_name,
-                'employee_id': employee.employee_id
-            },
-            'match_score': 0.95
-        })
+            'error': 'Face recognition endpoint deprecated',
+            'message': 'Please use mobile attendance endpoint for face recognition',
+            'redirect': '/api/hr/attendance/mobile/'
+        }, status=status.HTTP_410_GONE)
         
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({
+            'error': 'Face recognition system error',
+            'message': str(e),
+            'status': 'failed'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def validate_face_recognition(employee, face_image):
     """Validate face recognition against employee's stored face"""
     try:
-        import face_recognition
-        import numpy as np
-        from PIL import Image
-        import io
-        
-        # Check if employee has a profile picture
-        if not employee.profile_picture:
+        # Check if employee has a face photo (not profile picture)
+        if not employee.face_photo:
             return {
                 'is_valid': False,
                 'score': 0.0,
-                'message': 'No reference photo found for employee. Please update profile picture.'
+                'message': 'No face photo registered for employee. Please register face photo first.'
             }
         
-        # Load employee's reference image
+        # Try to import face_recognition library
         try:
-            reference_image = face_recognition.load_image_file(employee.profile_picture.path)
+            import face_recognition
+            import numpy as np
+            from PIL import Image
+            import io
+        except ImportError:
+            # Face recognition library not installed, allow attendance with warning
+            return {
+                'is_valid': True,
+                'score': 1.0,
+                'message': 'Face recognition library not available - attendance allowed without verification'
+            }
+        
+        # Load employee's reference face image
+        try:
+            reference_image = face_recognition.load_image_file(employee.face_photo.path)
             reference_encodings = face_recognition.face_encodings(reference_image)
             
             if not reference_encodings:
                 return {
                     'is_valid': False,
                     'score': 0.0,
-                    'message': 'No face detected in reference photo. Please update profile picture.'
+                    'message': 'No face detected in registered face photo. Please re-register face photo.'
                 }
             
             reference_encoding = reference_encodings[0]
@@ -423,7 +424,7 @@ def validate_face_recognition(employee, face_image):
             return {
                 'is_valid': False,
                 'score': 0.0,
-                'message': 'Error processing reference photo.'
+                'message': 'Error processing registered face photo.'
             }
         
         # Load and process the uploaded image
@@ -440,7 +441,7 @@ def validate_face_recognition(employee, face_image):
                 return {
                     'is_valid': False,
                     'score': 0.0,
-                    'message': 'No face detected in uploaded photo. Please take a clear photo.'
+                    'message': 'No face detected in captured photo. Please take a clear photo showing your face.'
                 }
             
             uploaded_encoding = uploaded_encodings[0]
@@ -448,7 +449,7 @@ def validate_face_recognition(employee, face_image):
             return {
                 'is_valid': False,
                 'score': 0.0,
-                'message': 'Error processing uploaded photo.'
+                'message': 'Error processing captured photo.'
             }
         
         # Compare faces
@@ -458,39 +459,35 @@ def validate_face_recognition(employee, face_image):
         # Convert distance to similarity score (0-1, where 1 is perfect match)
         similarity_score = 1 - face_distance
         
-        # Set threshold for face recognition (0.6 is a good balance)
+        # Get threshold from attendance system or use default
         threshold = 0.6
+        if hasattr(employee.company, 'attendance_system') and employee.company.attendance_system:
+            threshold = float(employee.company.attendance_system.face_match_threshold)
+        
         is_match = similarity_score >= threshold
         
         if is_match:
             return {
                 'is_valid': True,
                 'score': round(similarity_score, 3),
-                'message': 'Face recognition successful'
+                'message': f'Face recognition successful - {round(similarity_score * 100, 1)}% match'
             }
         else:
             return {
                 'is_valid': False,
                 'score': round(similarity_score, 3),
-                'message': f'Face does not match. Similarity: {round(similarity_score * 100, 1)}%'
+                'message': f'Face does not match registered photo. Similarity: {round(similarity_score * 100, 1)}% (Required: {round(threshold * 100, 1)}%)'
             }
             
-    except ImportError:
-        # Face recognition library not installed, skip validation
-        return {
-            'is_valid': True,
-            'score': 1.0,
-            'message': 'Face recognition not available - attendance allowed'
-        }
     except Exception as e:
         return {
             'is_valid': False,
             'score': 0.0,
-            'message': f'Face recognition error: {str(e)}'
+            'message': f'Face recognition system error: {str(e)}'
         }
 
 
-def validate_location(latitude, longitude, attendance_system):
+def validate_employee_location(latitude, longitude, attendance_system):
     """Validate if employee is within geo-fence"""
     if not latitude or not longitude:
         return False

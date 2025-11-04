@@ -21,6 +21,7 @@ interface GovernmentReturn {
   total_wages: number
   total_contribution: number
   acknowledgment_number: string
+  return_data?: any
 }
 
 const GovernmentReturns: React.FC = () => {
@@ -34,6 +35,8 @@ const GovernmentReturns: React.FC = () => {
     period_month: new Date().getMonth() + 1,
     period_year: new Date().getFullYear()
   })
+  const [viewModalVisible, setViewModalVisible] = useState(false)
+  const [selectedReturn, setSelectedReturn] = useState<GovernmentReturn | null>(null)
 
   useEffect(() => {
     fetchReturns()
@@ -72,6 +75,12 @@ const GovernmentReturns: React.FC = () => {
         case 'esi_return':
           endpoint = '/api/hr/statutory/esi-return/'
           break
+        case 'pt_return':
+          endpoint = '/api/hr/statutory/pt-return/'
+          break
+        case 'tds_24q':
+          endpoint = '/api/hr/statutory/tds-24q/'
+          break
         default:
           throw new Error('Invalid return type')
       }
@@ -97,6 +106,39 @@ const GovernmentReturns: React.FC = () => {
       toast.error('Failed to generate return')
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const handleViewReturn = async (returnId: number) => {
+    if (!sessionKey) return
+    
+    try {
+      const response = await api.get(`/api/hr/government-returns/${returnId}/view_return/`, {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      setSelectedReturn(response.data)
+      setViewModalVisible(true)
+    } catch (error: any) {
+      console.error('Error viewing return:', error)
+      toast.error('Failed to load return details')
+    }
+  }
+
+  const handleSubmitReturn = async (returnId: number) => {
+    if (!sessionKey) return
+    
+    try {
+      const response = await api.post(`/api/hr/government-returns/${returnId}/submit_return/`, {
+        session_key: sessionKey
+      }, {
+        headers: { Authorization: `Bearer ${sessionKey}` }
+      })
+      toast.success(response.data.message)
+      fetchReturns()
+    } catch (error: any) {
+      console.error('Error submitting return:', error)
+      toast.error('Failed to submit return')
     }
   }
 
@@ -258,11 +300,18 @@ const GovernmentReturns: React.FC = () => {
                   )}
                   {returnItem.status === 'generated' && (
                     <>
-                      <Button size="sm" variant="outline">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleViewReturn(returnItem.id)}
+                      >
                         <Download className="h-4 w-4 mr-1" />
-                        Download
+                        View
                       </Button>
-                      <Button size="sm">
+                      <Button 
+                        size="sm"
+                        onClick={() => handleSubmitReturn(returnItem.id)}
+                      >
                         <Send className="h-4 w-4 mr-1" />
                         Submit
                       </Button>
@@ -376,6 +425,84 @@ const GovernmentReturns: React.FC = () => {
                 )}
                 {generating ? 'Generating...' : 'Generate Return'}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Return Modal */}
+      {viewModalVisible && selectedReturn && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {selectedReturn.return_type_display} Details
+              </h3>
+              <button
+                onClick={() => setViewModalVisible(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Period</label>
+                  <p className="text-gray-900 dark:text-white">{selectedReturn.period_month}/{selectedReturn.period_year}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${getStatusColor(selectedReturn.status)}`}>
+                    {selectedReturn.status_display}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Employees</label>
+                  <p className="text-gray-900 dark:text-white">{selectedReturn.total_employees}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Wages</label>
+                  <p className="text-gray-900 dark:text-white">₹{selectedReturn.total_wages.toLocaleString()}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Contribution</label>
+                  <p className="text-gray-900 dark:text-white">₹{selectedReturn.total_contribution.toLocaleString()}</p>
+                </div>
+              </div>
+              
+              {selectedReturn.acknowledgment_number && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Acknowledgment Number</label>
+                  <p className="text-gray-900 dark:text-white">{selectedReturn.acknowledgment_number}</p>
+                </div>
+              )}
+              
+              <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <h4 className="font-medium text-gray-900 dark:text-white mb-2">Return Data</h4>
+                <pre className="text-xs text-gray-600 dark:text-gray-400 overflow-auto">
+                  {JSON.stringify(selectedReturn.return_data, null, 2)}
+                </pre>
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-3 mt-6">
+              <Button variant="outline" onClick={() => setViewModalVisible(false)}>
+                Close
+              </Button>
+              {selectedReturn.status === 'generated' && (
+                <Button onClick={() => {
+                  handleSubmitReturn(selectedReturn.id)
+                  setViewModalVisible(false)
+                }}>
+                  <Send className="h-4 w-4 mr-2" />
+                  Submit Return
+                </Button>
+              )}
             </div>
           </div>
         </div>

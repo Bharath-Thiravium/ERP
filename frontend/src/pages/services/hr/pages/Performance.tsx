@@ -43,6 +43,8 @@ interface PerformanceDashboard {
 const Performance: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
   const [dashboardData, setDashboardData] = useState<PerformanceDashboard | null>(null)
+  const [allReviews, setAllReviews] = useState<any[]>([])
+  const [analyticsData, setAnalyticsData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [showReviewModal, setShowReviewModal] = useState(false)
@@ -50,7 +52,12 @@ const Performance: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData()
-  }, [sessionKey])
+    if (activeTab === 'reviews') {
+      fetchAllReviews()
+    } else if (activeTab === 'analytics') {
+      fetchAnalyticsData()
+    }
+  }, [sessionKey, activeTab])
 
   const fetchDashboardData = async () => {
     if (!sessionKey) return
@@ -67,6 +74,36 @@ const Performance: React.FC = () => {
       toast.error('Failed to load performance data')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchAllReviews = async () => {
+    if (!sessionKey) return
+    
+    try {
+      const response = await api.get('/api/hr/performance/get_all_reviews/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      setAllReviews(response.data.reviews || [])
+    } catch (error) {
+      console.error('Error fetching reviews:', error)
+      toast.error('Failed to load reviews')
+    }
+  }
+
+  const fetchAnalyticsData = async () => {
+    if (!sessionKey) return
+    
+    try {
+      const response = await api.get('/api/hr/performance/analytics/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      setAnalyticsData(response.data)
+    } catch (error) {
+      console.error('Error fetching analytics:', error)
+      toast.error('Failed to load analytics')
     }
   }
 
@@ -94,6 +131,11 @@ const Performance: React.FC = () => {
 
   const handleReviewModalSuccess = () => {
     fetchDashboardData()
+    if (activeTab === 'reviews') {
+      fetchAllReviews()
+    } else if (activeTab === 'analytics') {
+      fetchAnalyticsData()
+    }
     setSelectedReview(null)
   }
 
@@ -414,21 +456,77 @@ const Performance: React.FC = () => {
             <div className="space-y-6">
               <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
                 <CardHeader>
-                  <CardTitle>Performance Reviews</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-12">
-                    <Award className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Review Management</h3>
-                    <p className="text-gray-500 dark:text-gray-400 mb-4">Create and manage performance reviews for your team</p>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Performance Reviews ({allReviews.length})</CardTitle>
                     <Button 
                       onClick={handleNewReview}
                       className="bg-gradient-to-r from-purple-500 to-violet-600"
                     >
                       <Plus className="h-4 w-4 mr-2" />
-                      Create New Review
+                      New Review
                     </Button>
                   </div>
+                </CardHeader>
+                <CardContent>
+                  {allReviews.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 dark:bg-gray-800">
+                          <tr>
+                            <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Employee</th>
+                            <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Reviewer</th>
+                            <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Period</th>
+                            <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Rating</th>
+                            <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Status</th>
+                            <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-white">Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {allReviews.map((review) => (
+                            <tr key={review.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                              <td className="py-4 px-4">
+                                <div>
+                                  <p className="font-medium text-gray-900 dark:text-white">{review.employee_name}</p>
+                                  <p className="text-sm text-gray-500 dark:text-gray-400">{review.employee_id}</p>
+                                </div>
+                              </td>
+                              <td className="py-4 px-4 text-gray-900 dark:text-white">{review.reviewer_name}</td>
+                              <td className="py-4 px-4 text-gray-900 dark:text-white">{review.review_period}</td>
+                              <td className="py-4 px-4">
+                                <div className="flex items-center space-x-2">
+                                  <div className="flex">{renderStars(review.overall_rating)}</div>
+                                  <span className={`font-bold ${getRatingColor(review.overall_rating)}`}>
+                                    {review.overall_rating.toFixed(1)}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-4 px-4">
+                                <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(review.status)}`}>
+                                  {review.status}
+                                </span>
+                              </td>
+                              <td className="py-4 px-4 text-gray-900 dark:text-white">
+                                {new Date(review.created_at).toLocaleDateString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <Award className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Reviews Yet</h3>
+                      <p className="text-gray-500 dark:text-gray-400 mb-4">Create your first performance review</p>
+                      <Button 
+                        onClick={handleNewReview}
+                        className="bg-gradient-to-r from-purple-500 to-violet-600"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create New Review
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -437,18 +535,100 @@ const Performance: React.FC = () => {
           {/* Analytics Tab */}
           {activeTab === 'analytics' && (
             <div className="space-y-6">
-              <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
-                <CardHeader>
-                  <CardTitle>Performance Analytics</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-12">
-                    <TrendingUp className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Advanced Analytics</h3>
-                    <p className="text-gray-500 dark:text-gray-400">Detailed performance analytics and insights will be available here</p>
-                  </div>
-                </CardContent>
-              </Card>
+              {analyticsData ? (
+                <>
+                  {/* Rating Distribution */}
+                  <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
+                    <CardHeader>
+                      <CardTitle>Rating Distribution</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {analyticsData.rating_distribution?.length > 0 ? (
+                        <div className="space-y-3">
+                          {analyticsData.rating_distribution.map((item: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                              <span className="text-gray-900 dark:text-white">{item.rating_range}</span>
+                              <span className="font-bold text-blue-600 dark:text-blue-400">{item.count} reviews</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 dark:text-gray-400">No rating data available</p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Goal Achievement */}
+                  <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
+                    <CardHeader>
+                      <CardTitle>Goal Achievement Analysis</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                          <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                            {analyticsData.goal_achievement?.avg_goal_achievement?.toFixed(1) || '0.0'}%
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">Average Achievement</p>
+                        </div>
+                        <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                            {analyticsData.goal_achievement?.high_achievers || 0}
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">High Achievers (90%+)</p>
+                        </div>
+                        <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                          <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                            {analyticsData.goal_achievement?.low_achievers || 0}
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">Need Improvement (&lt;50%)</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Performance Trends */}
+                  {analyticsData.performance_trends?.length > 0 && (
+                    <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
+                      <CardHeader>
+                        <CardTitle>Performance Trends</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {analyticsData.performance_trends.map((trend: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                              <span className="text-gray-900 dark:text-white">
+                                {new Date(trend.month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                              </span>
+                              <div className="flex items-center space-x-4">
+                                <span className="text-sm text-gray-600 dark:text-gray-400">
+                                  {trend.review_count} reviews
+                                </span>
+                                <span className={`font-bold ${getRatingColor(trend.avg_rating)}`}>
+                                  {trend.avg_rating?.toFixed(1) || '0.0'}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </>
+              ) : (
+                <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
+                  <CardHeader>
+                    <CardTitle>Performance Analytics</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-center py-12">
+                      <TrendingUp className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Analytics Data</h3>
+                      <p className="text-gray-500 dark:text-gray-400">Create some performance reviews to see analytics</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </>

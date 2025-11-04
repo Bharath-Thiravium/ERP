@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from . import attendance_views
+from . import biometric_views
 from . import payroll_views
 from . import analytics_views
 from . import performance_views
@@ -85,6 +86,11 @@ urlpatterns = [
     path('attendance/validate-location/', attendance_views.validate_location, name='validate-location'),
     path('attendance/biometric-sync/', attendance_views.biometric_sync, name='biometric-sync'),
     
+    # Biometric Device Management APIs
+    path('attendance/biometric-devices/', biometric_views.BiometricDeviceViewSet.as_view({'get': 'list', 'post': 'create'}), name='biometric-devices'),
+    path('attendance/biometric-scan/', biometric_views.biometric_scan, name='biometric-scan'),
+    path('attendance/test-device/', biometric_views.test_device, name='test-device'),
+    
     # Payroll Analytics
     path('payroll/analytics/', payroll_views.payroll_analytics, name='payroll-analytics'),
     
@@ -95,6 +101,7 @@ urlpatterns = [
     
     # Performance Analytics
     path('performance/analytics/', performance_views.performance_analytics, name='performance-analytics'),
+    path('performance/get_all_reviews/', performance_views.PerformanceViewSet.as_view({'get': 'get_all_reviews'}), name='performance-all-reviews'),
     path('performance/employee/<int:employee_id>/', performance_views.employee_performance_report, name='employee-performance'),
     
     # Dropdown APIs
@@ -110,6 +117,8 @@ urlpatterns = [
     path('statutory/dashboard/', statutory_views.statutory_compliance_dashboard, name='statutory-dashboard'),
     path('statutory/pf-ecr/', statutory_views.generate_pf_ecr, name='generate-pf-ecr'),
     path('statutory/esi-return/', statutory_views.generate_esi_return, name='generate-esi-return'),
+    path('statutory/pt-return/', statutory_views.generate_pt_return, name='generate-pt-return'),
+    path('statutory/tds-24q/', statutory_views.generate_tds_24q, name='generate-tds-24q'),
     path('statutory/validate-compliance/', statutory_views.validate_compliance, name='validate-compliance'),
     
     # Government Portal Integration APIs (Phase 4)

@@ -60,14 +60,13 @@ def hr_analytics_dashboard(request):
                 'total_employees': active_employees
             })
         
-        # Payroll Analytics (Last 6 months)
+        # Payroll Analytics (Last 6 months) - Remove status filter to show all cycles
         six_months_ago = date.today() - timedelta(days=180)
         payroll_trends = []
         
         cycles = PayrollCycle.objects.filter(
             company=company,
-            start_date__gte=six_months_ago,
-            status='completed'
+            start_date__gte=six_months_ago
         ).order_by('start_date')
         
         for cycle in cycles:
@@ -76,8 +75,13 @@ def hr_analytics_dashboard(request):
                 'cycle_name': cycle.name,
                 'total_gross': float(cycle.total_gross),
                 'total_net': float(cycle.total_net),
-                'total_employees': cycle.total_employees
+                'total_employees': cycle.total_employees,
+                'status': cycle.status
             })
+        
+        # Debug payroll data
+        total_payroll_cycles = PayrollCycle.objects.filter(company=company).count()
+        total_payslips = Payslip.objects.filter(payroll_cycle__company=company).count()
         
         # Top Performers (Based on attendance)
         top_performers = list(Employee.objects.filter(company=company, status='active')
@@ -139,6 +143,11 @@ def hr_analytics_dashboard(request):
             'salary_analytics': {
                 'average_salary': float(salary_stats['avg_salary'] or 0),
                 'total_salary_cost': float(salary_stats['total_salary_cost'] or 0)
+            },
+            'debug_info': {
+                'total_payroll_cycles': total_payroll_cycles,
+                'total_payslips': total_payslips,
+                'company_id': company.id
             }
         })
         

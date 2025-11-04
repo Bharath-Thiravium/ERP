@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../../../compone
 import { Button } from '../../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
+import toast from 'react-hot-toast'
 
 interface LeaveStats {
   total_applications: number
@@ -49,8 +50,9 @@ const LeaveReports: React.FC = () => {
         }
       })
       setStats(response.data)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching stats:', error)
+      toast.error('Failed to fetch statistics')
     } finally {
       setLoading(false)
     }
@@ -74,12 +76,16 @@ const LeaveReports: React.FC = () => {
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `leave_report_${selectedYear}.${format === 'pdf' ? 'pdf' : 'xlsx'}`)
+      const sanitizedYear = String(selectedYear).replace(/[^0-9]/g, '')
+      const sanitizedFormat = format === 'pdf' ? 'pdf' : 'xlsx'
+      link.setAttribute('download', `leave_report_${sanitizedYear}.${sanitizedFormat}`)
       document.body.appendChild(link)
       link.click()
       link.remove()
-    } catch (error) {
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
       console.error('Error exporting report:', error)
+      toast.error('Failed to export report')
     }
   }
 

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { Users, Calendar, Download } from 'lucide-react'
+import { Users, Calendar, Download, Plus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { Button } from '../../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
+import toast from 'react-hot-toast'
 
 interface LeaveBalance {
   id: number
@@ -48,8 +49,9 @@ const LeaveBalances: React.FC = () => {
         }
       })
       setBalances(response.data.results || [])
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching balances:', error)
+      toast.error('Failed to fetch leave balances')
     } finally {
       setLoading(false)
     }
@@ -64,8 +66,9 @@ const LeaveBalances: React.FC = () => {
         params: { session_key: sessionKey }
       })
       setEmployees(response.data.results || [])
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching employees:', error)
+      toast.error('Failed to fetch employees')
     }
   }
 
@@ -87,12 +90,46 @@ const LeaveBalances: React.FC = () => {
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `leave_balances_${selectedYear}.csv`)
+      const sanitizedYear = String(selectedYear).replace(/[^0-9]/g, '')
+      link.setAttribute('download', `leave_balances_${sanitizedYear}.csv`)
       document.body.appendChild(link)
       link.click()
       link.remove()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error exporting balances:', error)
+      toast.error('Failed to export balances')
+    }
+  }
+
+  const initializeBalances = async () => {
+    if (!sessionKey) return
+    
+    try {
+      await api.post('/api/hr/leave-balances/initialize/', 
+        { year: selectedYear, session_key: sessionKey },
+        { headers: { Authorization: `Bearer ${sessionKey}` } }
+      )
+      toast.success('Leave balances initialized successfully')
+      fetchBalances()
+    } catch (error: any) {
+      console.error('Error initializing balances:', error)
+      toast.error('Failed to initialize balances')
+    }
+  }
+
+  const recalculateBalances = async () => {
+    if (!sessionKey) return
+    
+    try {
+      await api.post('/api/hr/leave-balances/recalculate/', 
+        { year: selectedYear, session_key: sessionKey },
+        { headers: { Authorization: `Bearer ${sessionKey}` } }
+      )
+      toast.success('Leave balances recalculated successfully')
+      fetchBalances()
+    } catch (error: any) {
+      console.error('Error recalculating balances:', error)
+      toast.error('Failed to recalculate balances')
     }
   }
 
@@ -141,10 +178,20 @@ const LeaveBalances: React.FC = () => {
           </select>
         </div>
         
-        <Button onClick={exportBalances}>
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </Button>
+        <div className="flex space-x-2">
+          <Button onClick={initializeBalances} variant="outline">
+            <Plus className="h-4 w-4 mr-2" />
+            Initialize Balances
+          </Button>
+          <Button onClick={recalculateBalances} variant="outline">
+            <Calendar className="h-4 w-4 mr-2" />
+            Recalculate
+          </Button>
+          <Button onClick={exportBalances}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       {loading ? (

@@ -10,6 +10,7 @@ interface LeaveType {
   id?: number
   name: string
   code: string
+  category: string
   days_per_year: number
   carry_forward: boolean
   max_carry_forward: number
@@ -24,6 +25,7 @@ const LeaveSettings: React.FC = () => {
   const [newLeaveType, setNewLeaveType] = useState<LeaveType>({
     name: '',
     code: '',
+    category: 'earned',
     days_per_year: 12,
     carry_forward: false,
     max_carry_forward: 0,
@@ -44,15 +46,19 @@ const LeaveSettings: React.FC = () => {
         params: { session_key: sessionKey }
       })
       setLeaveTypes(response.data.results || [])
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching leave types:', error)
+      toast.error('Failed to fetch leave types')
     } finally {
       setLoading(false)
     }
   }
 
   const handleAddLeaveType = async () => {
-    if (!sessionKey || !newLeaveType.name || !newLeaveType.code) return
+    if (!sessionKey || !newLeaveType.name || !newLeaveType.code || !newLeaveType.category) {
+      toast.error('Please fill all required fields')
+      return
+    }
     
     setSaving(true)
     try {
@@ -65,6 +71,7 @@ const LeaveSettings: React.FC = () => {
       setNewLeaveType({
         name: '',
         code: '',
+        category: 'earned',
         days_per_year: 12,
         carry_forward: false,
         max_carry_forward: 0,
@@ -80,6 +87,10 @@ const LeaveSettings: React.FC = () => {
 
   const handleDeleteLeaveType = async (id: number) => {
     if (!sessionKey) return
+    
+    if (!confirm('Are you sure you want to delete this leave type?')) {
+      return
+    }
     
     try {
       await api.delete(`/api/hr/leave-types/${id}/`, {
@@ -112,7 +123,7 @@ const LeaveSettings: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium mb-2">Leave Type Name</label>
               <input
@@ -132,6 +143,22 @@ const LeaveSettings: React.FC = () => {
                 className="w-full px-3 py-2 border rounded-lg"
                 placeholder="e.g., AL"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Category</label>
+              <select
+                value={newLeaveType.category}
+                onChange={(e) => setNewLeaveType({ ...newLeaveType, category: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option value="earned">Earned Leave</option>
+                <option value="casual">Casual Leave</option>
+                <option value="sick">Sick Leave</option>
+                <option value="maternity">Maternity Leave</option>
+                <option value="paternity">Paternity Leave</option>
+                <option value="compensatory">Compensatory Off</option>
+                <option value="unpaid">Unpaid Leave</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">Days per Year</label>
@@ -196,6 +223,7 @@ const LeaveSettings: React.FC = () => {
                 <tr className="border-b">
                   <th className="text-left p-3">Name</th>
                   <th className="text-left p-3">Code</th>
+                  <th className="text-left p-3">Category</th>
                   <th className="text-left p-3">Days/Year</th>
                   <th className="text-left p-3">Carry Forward</th>
                   <th className="text-left p-3">Status</th>
@@ -207,6 +235,9 @@ const LeaveSettings: React.FC = () => {
                   <tr key={leaveType.id} className="border-b hover:bg-gray-50">
                     <td className="p-3 font-medium">{leaveType.name}</td>
                     <td className="p-3">{leaveType.code}</td>
+                    <td className="p-3">
+                      <span className="capitalize">{leaveType.category?.replace('_', ' ')}</span>
+                    </td>
                     <td className="p-3">{leaveType.days_per_year}</td>
                     <td className="p-3">
                       {leaveType.carry_forward ? (

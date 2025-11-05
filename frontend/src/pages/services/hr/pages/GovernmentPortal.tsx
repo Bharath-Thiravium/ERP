@@ -3,11 +3,35 @@ import { Building } from 'lucide-react'
 import GovernmentPortalIntegration from '../components/government/GovernmentPortalIntegration'
 
 const GovernmentPortal: React.FC = () => {
-  const [activeView, setActiveView] = useState('portal')
+  const [activeView, setActiveView] = useState('overview')
 
   const tabs = [
+    { id: 'overview', label: 'Overview', icon: Building },
     { id: 'portal', label: 'Portal Integration', icon: Building }
   ]
+
+  const renderOverview = () => (
+    <div className="space-y-6">
+      <div className="text-center py-12">
+        <div className="mx-auto w-24 h-24 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mb-6">
+          <Building className="h-12 w-12 text-white" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+          Government Portal Integration
+        </h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-2xl mx-auto">
+          Automated submission and management of government returns including PF ECR, ESI returns, Professional Tax, and TDS submissions.
+        </p>
+        <button
+          onClick={() => setActiveView('portal')}
+          className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-medium rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-lg shadow-blue-500/25"
+        >
+          <Building className="h-5 w-5 mr-2" />
+          Portal Integration
+        </button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="space-y-8">
@@ -55,6 +79,7 @@ const GovernmentPortal: React.FC = () => {
       {/* Content Container */}
       <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 shadow-xl overflow-hidden">
         <div className="p-6">
+          {activeView === 'overview' && renderOverview()}
           {activeView === 'portal' && <GovernmentPortalIntegration />}
         </div>
       </div>

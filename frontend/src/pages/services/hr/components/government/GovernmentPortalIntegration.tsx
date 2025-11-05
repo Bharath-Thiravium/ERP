@@ -519,21 +519,68 @@ export default function GovernmentPortalIntegration() {
             </div>
             
             <div className="space-y-4">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Configure your government portal credentials for automated submissions.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="EPFO Username" placeholder="Enter EPFO username" />
-                <Input label="ESIC Username" placeholder="Enter ESIC username" />
-                <Input label="Income Tax Username" placeholder="Enter IT username" />
-                <Input label="PT Username" placeholder="Enter PT username" />
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                <div className="flex items-center">
+                  <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-2" />
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                    <strong>Important:</strong> Portal credentials are encrypted and stored securely. 
+                    You need valid government portal accounts to use this feature.
+                  </p>
+                </div>
               </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input 
+                  label="EPFO Username" 
+                  placeholder="Enter EPFO portal username"
+                />
+                <Input 
+                  label="EPFO Password" 
+                  type="password"
+                  placeholder="Enter EPFO portal password"
+                />
+                <Input 
+                  label="ESIC Username" 
+                  placeholder="Enter ESIC portal username"
+                />
+                <Input 
+                  label="ESIC Password" 
+                  type="password"
+                  placeholder="Enter ESIC portal password"
+                />
+                <Input 
+                  label="Income Tax Username" 
+                  placeholder="Enter IT portal username"
+                />
+                <Input 
+                  label="Income Tax Password" 
+                  type="password"
+                  placeholder="Enter IT portal password"
+                />
+                <Input 
+                  label="Professional Tax Username" 
+                  placeholder="Enter PT portal username"
+                />
+                <Input 
+                  label="Professional Tax Password" 
+                  type="password"
+                  placeholder="Enter PT portal password"
+                />
+              </div>
+              
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  <strong>Note:</strong> Ensure you have active accounts on respective government portals. 
+                  Test credentials will be validated before saving.
+                </p>
+              </div>
+              
               <div className="flex justify-end space-x-3 mt-6">
                 <Button variant="outline" onClick={() => setCredentialsModalVisible(false)}>
                   Cancel
                 </Button>
                 <Button onClick={() => setCredentialsModalVisible(false)}>
-                  Save Credentials
+                  Save & Test Credentials
                 </Button>
               </div>
             </div>

@@ -59,8 +59,8 @@ class AdvancedReportGenerator:
         # Get payslips for the month
         payslips = Payslip.objects.filter(
             employee__company=self.company,
-            pay_period_start__month=month,
-            pay_period_start__year=year
+            payroll_cycle__start_date__month=month,
+            payroll_cycle__start_date__year=year
         )
         
         # Summary data
@@ -101,17 +101,15 @@ class AdvancedReportGenerator:
         emp_data = [['Employee', 'PF Employee', 'PF Employer', 'ESI Employee', 'ESI Employer', 'PT', 'TDS']]
         
         for payslip in payslips:
-            statutory = PayslipStatutoryDetails.objects.filter(payslip=payslip).first()
-            if statutory:
-                emp_data.append([
-                    f"{payslip.employee.first_name} {payslip.employee.last_name}",
-                    f"₹{statutory.pf_employee_contribution:.2f}",
-                    f"₹{statutory.pf_employer_contribution:.2f}",
-                    f"₹{statutory.esi_employee_contribution:.2f}",
-                    f"₹{statutory.esi_employer_contribution:.2f}",
-                    f"₹{statutory.professional_tax:.2f}",
-                    f"₹{statutory.tds_amount:.2f}"
-                ])
+            emp_data.append([
+                payslip.emp_name,
+                f"₹{payslip.pf_employee:.2f}",
+                f"₹{payslip.pf_employer:.2f}",
+                f"₹{payslip.esi_employee:.2f}",
+                f"₹{payslip.esi_employer:.2f}",
+                f"₹{payslip.professional_tax:.2f}",
+                f"₹{payslip.tds:.2f}"
+            ])
         
         emp_table = Table(emp_data)
         emp_table.setStyle(TableStyle([
@@ -199,14 +197,13 @@ class AdvancedReportGenerator:
         }
         
         for payslip in payslips:
-            statutory = PayslipStatutoryDetails.objects.filter(payslip=payslip).first()
-            if statutory:
-                summary['pf_employee'] += statutory.pf_employee_contribution
-                summary['pf_employer'] += statutory.pf_employer_contribution
-                summary['esi_employee'] += statutory.esi_employee_contribution
-                summary['esi_employer'] += statutory.esi_employer_contribution
-                summary['pt_total'] += statutory.professional_tax
-                summary['tds_total'] += statutory.tds_amount
+            # Use payslip fields directly since PayslipStatutoryDetails has different structure
+            summary['pf_employee'] += payslip.pf_employee
+            summary['pf_employer'] += payslip.pf_employer
+            summary['esi_employee'] += payslip.esi_employee
+            summary['esi_employer'] += payslip.esi_employer
+            summary['pt_total'] += payslip.professional_tax
+            summary['tds_total'] += payslip.tds
         
         summary['pf_total'] = summary['pf_employee'] + summary['pf_employer']
         summary['esi_total'] = summary['esi_employee'] + summary['esi_employer']
@@ -449,3 +446,100 @@ class AdvancedReportGenerator:
             ]
         
         return recommendations
+    
+    def generate_compliance_scorecard_pdf(self):
+        """Generate compliance scorecard PDF report"""
+        buffer = io.BytesIO()
+        try:
+            doc = SimpleDocTemplate(buffer, pagesize=A4)
+            story = []
+        
+            title_style = ParagraphStyle('CustomTitle', parent=self.styles['Heading1'], alignment=1, spaceAfter=30)
+            story.append(Paragraph("Compliance Scorecard Report", title_style))
+            story.append(Paragraph(f"Company: {self.company.name}", self.styles['Normal']))
+            story.append(Spacer(1, 20))
+            
+            scorecard = self.generate_compliance_scorecard()
+            
+            # Scorecard table
+            scorecard_data = [
+                ['Compliance Area', 'Score', 'Status'],
+                ['Overall Compliance', f"{scorecard['overall_score']:.1f}%", 'Good' if scorecard['overall_score'] >= 80 else 'Needs Improvement'],
+                ['PF Compliance', f"{scorecard['pf_compliance']:.1f}%", 'Good' if scorecard['pf_compliance'] >= 80 else 'Needs Improvement'],
+                ['ESI Compliance', f"{scorecard['esi_compliance']:.1f}%", 'Good' if scorecard['esi_compliance'] >= 80 else 'Needs Improvement'],
+                ['PT Compliance', f"{scorecard['pt_compliance']:.1f}%", 'Good' if scorecard['pt_compliance'] >= 80 else 'Needs Improvement'],
+                ['TDS Compliance', f"{scorecard['tds_compliance']:.1f}%", 'Good' if scorecard['tds_compliance'] >= 80 else 'Needs Improvement']
+            ]
+            
+            scorecard_table = Table(scorecard_data)
+            scorecard_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+        
+            story.append(scorecard_table)
+            story.append(Spacer(1, 20))
+            
+            # Recommendations
+            story.append(Paragraph("Recommendations", self.styles['Heading2']))
+            for i, rec in enumerate(scorecard['recommendations'], 1):
+                story.append(Paragraph(f"{i}. {rec}", self.styles['Normal']))
+            
+            doc.build(story)
+            buffer.seek(0)
+            return buffer
+        except Exception as e:
+            buffer.close()
+            raise e
+    
+    def generate_returns_summary_pdf(self):
+        """Generate government returns summary PDF report"""
+        buffer = io.BytesIO()
+        try:
+            doc = SimpleDocTemplate(buffer, pagesize=A4)
+            story = []
+        
+            title_style = ParagraphStyle('CustomTitle', parent=self.styles['Heading1'], alignment=1, spaceAfter=30)
+            story.append(Paragraph("Government Returns Summary", title_style))
+            story.append(Paragraph(f"Company: {self.company.name}", self.styles['Normal']))
+            story.append(Spacer(1, 20))
+            
+            from .statutory_models import GovernmentReturn
+            returns = GovernmentReturn.objects.filter(company=self.company).order_by('-created_at')[:10]
+            
+            # Returns table
+            returns_data = [['Return Type', 'Period', 'Status', 'Due Date', 'Filed Date', 'Employees', 'Contribution']]
+            
+            for return_obj in returns:
+                returns_data.append([
+                    return_obj.get_return_type_display(),
+                    f"{return_obj.period_month:02d}/{return_obj.period_year}",
+                    return_obj.status.title(),
+                    return_obj.due_date.strftime('%Y-%m-%d') if return_obj.due_date else '-',
+                    return_obj.filed_date.strftime('%Y-%m-%d') if return_obj.filed_date else '-',
+                    str(return_obj.total_employees),
+                    f"₹{return_obj.total_contribution:,.2f}"
+                ])
+            
+            returns_table = Table(returns_data)
+            returns_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+        
+            story.append(returns_table)
+            
+            doc.build(story)
+            buffer.seek(0)
+            return buffer
+        except Exception as e:
+            buffer.close()
+            raise e

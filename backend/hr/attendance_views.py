@@ -189,37 +189,91 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             check_in_time = request.data.get('check_in_time')
             check_out_time = request.data.get('check_out_time')
             
+            if not all([employee_id, attendance_date, check_in_time, check_out_time]):
+                return Response({'error': 'Employee ID, date, check-in time, and check-out time are required'}, status=status.HTTP_400_BAD_REQUEST)
+            
             employee = Employee.objects.get(id=employee_id, company=session.service_user.company)
             
-            attendance, created = Attendance.objects.get_or_create(
+            # Check if employee has approved leave for this date
+            from .leave_models import LeaveApplication
+            approved_leave = LeaveApplication.objects.filter(
+                employee=employee,
+                status='approved',
+                from_date__lte=attendance_date,
+                to_date__gte=attendance_date
+            ).first()
+            
+            if approved_leave:
+                return Response({
+                    'error': f'Cannot mark attendance - Employee has approved {approved_leave.leave_type.name} on this date',
+                    'leave_details': {
+                        'leave_type': approved_leave.leave_type.name,
+                        'from_date': approved_leave.from_date,
+                        'to_date': approved_leave.to_date,
+                        'reason': approved_leave.reason
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if attendance already exists for this date
+            existing_attendance = Attendance.objects.filter(
+                employee=employee,
+                date=attendance_date
+            ).first()
+            
+            if existing_attendance:
+                return Response({
+                    'error': 'Attendance already marked for this employee on this date',
+                    'existing_attendance': {
+                        'date': existing_attendance.date,
+                        'check_in_time': existing_attendance.check_in_time,
+                        'check_out_time': existing_attendance.check_out_time,
+                        'status': existing_attendance.status
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Parse time strings properly with timezone awareness
+            from datetime import datetime
+            from django.utils import timezone as tz
+            
+            # Parse the datetime strings and ensure they're timezone-aware
+            check_in_dt = datetime.fromisoformat(check_in_time.replace('Z', '+00:00'))
+            check_out_dt = datetime.fromisoformat(check_out_time.replace('Z', '+00:00'))
+            
+            # Convert to local timezone if needed
+            if check_in_dt.tzinfo is None:
+                check_in_dt = tz.make_aware(check_in_dt)
+            if check_out_dt.tzinfo is None:
+                check_out_dt = tz.make_aware(check_out_dt)
+            
+            # Create new attendance record
+            attendance = Attendance.objects.create(
                 employee=employee,
                 date=attendance_date,
-                defaults={
-                    'check_in_method': 'manual',
-                    'check_out_method': 'manual',
-                    'status': 'present'
-                }
+                check_in_time=check_in_dt,
+                check_out_time=check_out_dt,
+                check_in_method='manual',
+                check_out_method='manual',
+                status='present'
             )
             
-            # Convert time strings to datetime objects
-            if check_in_time:
-                from datetime import datetime
-                attendance.check_in_time = datetime.fromisoformat(check_in_time)
-            if check_out_time:
-                from datetime import datetime
-                attendance.check_out_time = datetime.fromisoformat(check_out_time)
-                
+            # Calculate working hours
+            attendance.calculate_hours()
             attendance.save()
-            if attendance.check_in_time and attendance.check_out_time:
-                attendance.calculate_hours()
             
             serializer = self.get_serializer(attendance)
-            return Response(serializer.data)
+            return Response({
+                'message': 'Attendance marked successfully',
+                'attendance': serializer.data
+            })
             
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except Employee.DoesNotExist:
             return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({'error': f'Invalid time format: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': f'Failed to mark attendance: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -245,6 +299,25 @@ def mobile_attendance(request):
     try:
         employee = Employee.objects.get(employee_id=data['employee_id'])
         today = date.today()
+        
+        # Check if employee has approved leave for today
+        from .leave_models import LeaveApplication
+        approved_leave = LeaveApplication.objects.filter(
+            employee=employee,
+            status='approved',
+            from_date__lte=today,
+            to_date__gte=today
+        ).first()
+        
+        if approved_leave:
+            return Response({
+                'error': f'Cannot mark attendance - You have approved {approved_leave.leave_type.name} today',
+                'leave_details': {
+                    'leave_type': approved_leave.leave_type.name,
+                    'from_date': approved_leave.from_date,
+                    'to_date': approved_leave.to_date
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         attendance, created = Attendance.objects.get_or_create(
             employee=employee,

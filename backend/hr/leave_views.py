@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 from authentication.models import ServiceUserSession
 from .leave_models import LeaveType, LeaveBalance, LeaveApplication, Holiday
 from .models import Employee
-from .security_utils import safe_get_auth_header, validate_year_param, validate_month_param, sanitize_filename
+from .security_utils import SecurityValidator, secure_session_check, validate_year_param, validate_month_param, sanitize_filename
 from rest_framework import serializers
 
 
@@ -40,7 +40,8 @@ class LeaveApplicationSerializer(serializers.ModelSerializer):
 class HolidaySerializer(serializers.ModelSerializer):
     class Meta:
         model = Holiday
-        fields = '__all__'
+        fields = ['id', 'name', 'date', 'holiday_type', 'is_mandatory', 'description', 'applicable_states', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 
 class LeaveTypeViewSet(viewsets.ModelViewSet):

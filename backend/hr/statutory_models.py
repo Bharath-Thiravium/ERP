@@ -1,7 +1,9 @@
 from django.db import models
 from django.core.validators import RegexValidator
+from django.core.exceptions import ValidationError
 from authentication.models import Company, CompanyServiceUser
 from .models import Employee, Payslip
+from .compliance_validators import ComplianceValidators, DataIntegrityValidator
 
 
 class StatutorySettings(models.Model):
@@ -50,6 +52,23 @@ class StatutorySettings(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    def clean(self):
+        """Validate statutory settings data"""
+        try:
+            DataIntegrityValidator.validate_statutory_settings({
+                'pf_employee_rate': self.pf_employee_rate,
+                'pf_employer_rate': self.pf_employer_rate,
+                'esi_employee_rate': self.esi_employee_rate,
+                'esi_employer_rate': self.esi_employer_rate,
+                'tan_number': self.tan_number
+            })
+        except ValidationError as e:
+            raise ValidationError(f"Statutory settings validation failed: {str(e)}")
+    
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"Statutory Settings - {self.company.name}"

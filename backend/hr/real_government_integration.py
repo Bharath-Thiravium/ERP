@@ -2,35 +2,61 @@ import requests
 import json
 from datetime import datetime
 from django.conf import settings
+from .encryption_utils import SecureAPIClient, log_portal_activity
 
 
-class EPFOPortalIntegration:
-    """Real EPFO portal integration"""
+class EPFOPortalIntegration(SecureAPIClient):
+    """Real EPFO portal integration with enhanced security"""
     
     BASE_URL = "https://unifiedportal-mem.epfindia.gov.in/epfo"
     
     def __init__(self, establishment_code, username, password):
+        super().__init__(self.BASE_URL)
         self.establishment_code = establishment_code
         self.username = username
         self.password = password
-        self.session = requests.Session()
+        self.create_session()
     
     def login(self):
-        """Login to EPFO portal"""
-        login_url = f"{self.BASE_URL}/login"
-        payload = {
-            'username': self.username,
-            'password': self.password,
-            'establishment_code': self.establishment_code
-        }
-        response = self.session.post(login_url, data=payload)
-        return response.status_code == 200
+        """Login to EPFO portal with enhanced security"""
+        try:
+            login_url = f"{self.BASE_URL}/login"
+            payload = {
+                'username': self.username,
+                'password': self.password,
+                'establishment_code': self.establishment_code
+            }
+            
+            response = self.session.post(login_url, data=payload, timeout=self.timeout)
+            success = response.status_code == 200
+            
+            if success:
+                # Store session cookies for subsequent requests
+                self.session.cookies.update(response.cookies)
+            
+            return success
+        except Exception as e:
+            print(f"EPFO login error: {e}")
+            return False
     
     def submit_ecr(self, ecr_data):
-        """Submit ECR to EPFO"""
-        ecr_url = f"{self.BASE_URL}/ecr/submit"
-        response = self.session.post(ecr_url, json=ecr_data)
-        return response.json()
+        """Submit ECR to EPFO with validation"""
+        try:
+            ecr_url = f"{self.BASE_URL}/ecr/submit"
+            
+            # Add CSRF token if available
+            if hasattr(self, 'csrf_token'):
+                ecr_data['csrf_token'] = self.csrf_token
+            
+            response = self.session.post(ecr_url, json=ecr_data, timeout=self.timeout)
+            response.raise_for_status()
+            
+            return response.json()
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': f'ECR submission failed: {str(e)}'
+            }
     
     def check_ecr_status(self, ecr_reference):
         """Check ECR submission status"""
@@ -39,23 +65,31 @@ class EPFOPortalIntegration:
         return response.json()
     
     def download_challan(self, month, year):
-        """Download PF challan"""
-        challan_url = f"{self.BASE_URL}/challan/download"
-        params = {'month': month, 'year': year}
-        response = self.session.get(challan_url, params=params)
-        return response.content
+        """Download PF challan with validation"""
+        try:
+            challan_url = f"{self.BASE_URL}/challan/download"
+            params = {'month': month, 'year': year}
+            
+            response = self.session.get(challan_url, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            
+            return response.content
+        except Exception as e:
+            print(f"Challan download error: {e}")
+            return None
 
 
-class ESICPortalIntegration:
-    """Real ESIC portal integration"""
+class ESICPortalIntegration(SecureAPIClient):
+    """Real ESIC portal integration with enhanced security"""
     
     BASE_URL = "https://www.esic.in/ESICInsurancePortal"
     
     def __init__(self, employer_code, username, password):
+        super().__init__(self.BASE_URL)
         self.employer_code = employer_code
         self.username = username
         self.password = password
-        self.session = requests.Session()
+        self.create_session()
     
     def login(self):
         """Login to ESIC portal"""
@@ -81,16 +115,17 @@ class ESICPortalIntegration:
         return response.json()
 
 
-class IncomeTaxPortalIntegration:
-    """Real Income Tax portal integration"""
+class IncomeTaxPortalIntegration(SecureAPIClient):
+    """Real Income Tax portal integration with enhanced security"""
     
     BASE_URL = "https://www.incometax.gov.in/iec/foportal"
     
     def __init__(self, tan_number, username, password):
+        super().__init__(self.BASE_URL)
         self.tan_number = tan_number
         self.username = username
         self.password = password
-        self.session = requests.Session()
+        self.create_session()
     
     def login(self):
         """Login to Income Tax portal"""
@@ -117,16 +152,17 @@ class IncomeTaxPortalIntegration:
         return response.content
 
 
-class ProfessionalTaxPortalIntegration:
-    """Real Professional Tax portal integration (Maharashtra)"""
+class ProfessionalTaxPortalIntegration(SecureAPIClient):
+    """Real Professional Tax portal integration with enhanced security"""
     
     BASE_URL = "https://mahagst.gov.in/professionaltax"
     
     def __init__(self, registration_number, username, password):
+        super().__init__(self.BASE_URL)
         self.registration_number = registration_number
         self.username = username
         self.password = password
-        self.session = requests.Session()
+        self.create_session()
     
     def login(self):
         """Login to PT portal"""

@@ -1,8 +1,10 @@
 from django.db import models
 from django.utils import timezone
 from datetime import datetime, timedelta
+from decimal import Decimal
 from .models import Employee, Company
 from .statutory_models import StatutorySettings, ComplianceAlert
+from .error_handlers import ComplianceError, SafeCalculator
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,29 +17,38 @@ class ComplianceEngine:
         self.statutory_settings = StatutorySettings.objects.filter(company=company).first()
     
     def run_compliance_checks(self):
-        """Run all compliance checks and generate alerts"""
+        """Run all compliance checks and generate alerts with error handling"""
         alerts = []
         
-        # PF Compliance Checks
-        alerts.extend(self._check_pf_compliance())
-        
-        # ESI Compliance Checks
-        alerts.extend(self._check_esi_compliance())
-        
-        # Professional Tax Checks
-        alerts.extend(self._check_pt_compliance())
-        
-        # TDS Compliance Checks
-        alerts.extend(self._check_tds_compliance())
-        
-        # Labor Law Compliance
-        alerts.extend(self._check_labor_law_compliance())
-        
-        # Save alerts
-        for alert_data in alerts:
-            ComplianceAlert.objects.create(**alert_data)
-        
-        return alerts
+        try:
+            # PF Compliance Checks
+            alerts.extend(self._check_pf_compliance())
+            
+            # ESI Compliance Checks
+            alerts.extend(self._check_esi_compliance())
+            
+            # Professional Tax Checks
+            alerts.extend(self._check_pt_compliance())
+            
+            # TDS Compliance Checks
+            alerts.extend(self._check_tds_compliance())
+            
+            # Labor Law Compliance
+            alerts.extend(self._check_labor_law_compliance())
+            
+            # Save alerts with error handling
+            for alert_data in alerts:
+                try:
+                    ComplianceAlert.objects.create(**alert_data)
+                except Exception as e:
+                    logger.error(f"Failed to create compliance alert: {str(e)}")
+            
+            logger.info(f"Compliance check completed for company {self.company.id}: {len(alerts)} alerts generated")
+            return alerts
+            
+        except Exception as e:
+            logger.error(f"Error during compliance checks for company {self.company.id}: {str(e)}")
+            raise ComplianceError("Compliance check failed", "COMPLIANCE_CHECK_ERROR")
     
     def _check_pf_compliance(self):
         """Check PF compliance issues"""
@@ -57,7 +68,7 @@ class ComplianceEngine:
                 })
             
             # Check PF eligibility vs enrollment
-            if emp.basic_salary >= 15000:
+            if emp.base_salary >= 15000:
                 alerts.append({
                     'company': self.company,
                     'alert_type': 'compliance_violation',
@@ -75,7 +86,9 @@ class ComplianceEngine:
         employees = Employee.objects.filter(company=self.company, status='active')
         
         for emp in employees:
-            if emp.gross_salary <= 21000:
+            # Calculate gross salary (base + allowances)
+            gross_salary = emp.base_salary * Decimal('1.4')  # Approximate gross (base + 40% allowances)
+            if gross_salary <= 21000:
                 alerts.append({
                     'company': self.company,
                     'alert_type': 'compliance_violation',
@@ -134,7 +147,7 @@ class ComplianceEngine:
         min_wage = 15000  # Example minimum wage
         
         for emp in employees:
-            if emp.basic_salary < min_wage:
+            if emp.base_salary < min_wage:
                 alerts.append({
                     'company': self.company,
                     'alert_type': 'wage_violation',

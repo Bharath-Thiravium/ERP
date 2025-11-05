@@ -4,6 +4,10 @@ Enhanced statutory calculations for Indian compliance
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import date, datetime
 from .statutory_models import StatutorySettings, MinimumWageRate
+from .error_handlers import SafeCalculator, ComplianceError
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class StatutoryCalculator:
@@ -14,11 +18,11 @@ class StatutoryCalculator:
         self.settings = self.get_statutory_settings()
     
     def get_statutory_settings(self):
-        """Get company statutory settings"""
+        """Get company statutory settings with error handling"""
         try:
             return StatutorySettings.objects.get(company=self.company)
         except StatutorySettings.DoesNotExist:
-            # Return default settings
+            logger.warning(f"No statutory settings found for company {self.company.id}, using defaults")
             return StatutorySettings(
                 company=self.company,
                 pf_enabled=True,
@@ -33,22 +37,33 @@ class StatutoryCalculator:
                 pt_state='Maharashtra',
                 tds_enabled=True
             )
+        except Exception as e:
+            logger.error(f"Error getting statutory settings: {str(e)}")
+            raise ComplianceError("Failed to retrieve statutory settings", "SETTINGS_ERROR")
     
     def calculate_pf(self, employee, basic_salary, present_days, working_days):
         """Enhanced PF calculation with ceiling and eligibility checks"""
-        if not self.settings.pf_enabled:
-            return {
-                'employee_pf': Decimal('0'),
-                'employer_pf': Decimal('0'),
-                'eps_contribution': Decimal('0'),
-                'pf_wages': Decimal('0'),
-                'ceiling_applied': False,
-                'eligible': False
-            }
-        
-        # Calculate PF wages (attendance-based basic salary)
-        attendance_ratio = Decimal(present_days) / Decimal(working_days) if working_days > 0 else Decimal('1')
-        pf_wages = basic_salary * attendance_ratio
+        try:
+            if not self.settings.pf_enabled:
+                return {
+                    'employee_pf': Decimal('0'),
+                    'employer_pf': Decimal('0'),
+                    'eps_contribution': Decimal('0'),
+                    'pf_wages': Decimal('0'),
+                    'ceiling_applied': False,
+                    'eligible': False
+                }
+            
+            # Validate inputs
+            if not all(isinstance(x, (int, float, Decimal)) for x in [basic_salary, present_days, working_days]):
+                raise ComplianceError("Invalid input types for PF calculation", "INVALID_INPUT")
+            
+            if working_days <= 0:
+                raise ComplianceError("Working days must be greater than 0", "INVALID_WORKING_DAYS")
+            
+            # Calculate PF wages (attendance-based basic salary)
+            attendance_ratio = SafeCalculator.safe_divide(Decimal(present_days), Decimal(working_days), Decimal('1'))
+            pf_wages = SafeCalculator.safe_multiply(basic_salary, attendance_ratio)
         
         # Apply PF ceiling
         ceiling_applied = False
@@ -66,14 +81,19 @@ class StatutoryCalculator:
         if eps_contribution > Decimal('1250'):
             eps_contribution = Decimal('1250')
         
-        return {
-            'employee_pf': employee_pf,
-            'employer_pf': employer_pf,
-            'eps_contribution': eps_contribution,
-            'pf_wages': pf_wages,
-            'ceiling_applied': ceiling_applied,
-            'eligible': True
-        }
+            return {
+                'employee_pf': employee_pf,
+                'employer_pf': employer_pf,
+                'eps_contribution': eps_contribution,
+                'pf_wages': pf_wages,
+                'ceiling_applied': ceiling_applied,
+                'eligible': True
+            }
+        except ComplianceError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in PF calculation: {str(e)}")
+            raise ComplianceError("PF calculation failed", "PF_CALC_ERROR")
     
     def calculate_esi(self, employee, gross_salary, present_days, working_days):
         """Enhanced ESI calculation with ceiling and eligibility checks"""

@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, date
 from decimal import Decimal
 
 from authentication.models import ServiceUserSession
+from .security_utils import SecurityValidator, secure_session_check
+from .error_handlers import handle_compliance_errors, safe_get_session, log_compliance_action, ComplianceError
 from .statutory_models import (
     StatutorySettings,
     EmployeeStatutoryDetails,
@@ -43,53 +45,42 @@ class StatutorySettingsViewSet(viewsets.ModelViewSet):
     serializer_class = StatutorySettingsSerializer
 
     def get_queryset(self):
-        session_key = self.get_session_key()
-        if not session_key:
-            return StatutorySettings.objects.none()
-
         try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            session_key = secure_session_check(self.request)
+            if not session_key:
+                return StatutorySettings.objects.none()
+            
+            session = safe_get_session(session_key)
             return StatutorySettings.objects.filter(company=session.service_user.company)
-        except ServiceUserSession.DoesNotExist:
+        except (ComplianceError, Exception):
             return StatutorySettings.objects.none()
 
     def get_session_key(self):
-        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
-        if not session_key:
-            session_key = self.request.query_params.get('session_key')
-        if not session_key and self.request.method in ['POST', 'PUT', 'PATCH']:
-            session_key = self.request.data.get('session_key')
-        return session_key
+        return secure_session_check(self.request)
 
+    @handle_compliance_errors
     def create(self, request, *args, **kwargs):
         session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            
-            # Check if settings already exist
-            existing_settings = StatutorySettings.objects.filter(company=session.service_user.company).first()
-            if existing_settings:
-                # Update existing settings
-                data = request.data.copy()
-                data.pop('session_key', None)
-                serializer = self.get_serializer(existing_settings, data=data, partial=True)
-                serializer.is_valid(raise_exception=True)
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            else:
-                # Create new settings
-                data = request.data.copy()
-                data.pop('session_key', None)
-                serializer = self.get_serializer(data=data)
-                serializer.is_valid(raise_exception=True)
-                serializer.save(company=session.service_user.company)
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-                
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        session = safe_get_session(session_key)
+        
+        # Sanitize input data
+        data = {k: SecurityValidator.sanitize_input(v) for k, v in request.data.items()}
+        data.pop('session_key', None)
+        
+        # Check if settings already exist
+        existing_settings = StatutorySettings.objects.filter(company=session.service_user.company).first()
+        if existing_settings:
+            serializer = self.get_serializer(existing_settings, data=data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            log_compliance_action('UPDATE_STATUTORY_SETTINGS', session.service_user.company, session.service_user)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(company=session.service_user.company)
+            log_compliance_action('CREATE_STATUTORY_SETTINGS', session.service_user.company, session.service_user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class EmployeeStatutoryDetailsViewSet(viewsets.ModelViewSet):
@@ -257,112 +248,103 @@ class ComplianceAlertViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([permissions.AllowAny])
+@handle_compliance_errors
 def statutory_compliance_dashboard(request):
     """Get statutory compliance dashboard data"""
-    auth_header = request.headers.get('Authorization', '')
-    session_key = auth_header[7:] if auth_header.startswith('Bearer ') else None
-    if not session_key:
-        session_key = request.query_params.get('session_key')
+    session_key = secure_session_check(request)
+    session = safe_get_session(session_key)
+    company = session.service_user.company
     
-    if not session_key:
-        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    # Get statutory settings
+    statutory_settings = StatutorySettings.objects.filter(company=company).first()
     
-    try:
-        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        company = session.service_user.company
-        
-        # Get statutory settings
-        statutory_settings = StatutorySettings.objects.filter(company=company).first()
-        
-        # PF Compliance Summary
-        pf_compliance = {
-            'enabled': statutory_settings.pf_enabled if statutory_settings else False,
-            'total_employees': 0,
-            'eligible_employees': 0,
-            'monthly_contribution': 0
-        }
-        
-        if statutory_settings and statutory_settings.pf_enabled:
-            employees = Employee.objects.filter(company=company, status='active')
-            pf_compliance['total_employees'] = employees.count()
-            pf_compliance['eligible_employees'] = employees.filter(base_salary__lte=statutory_settings.pf_ceiling).count()
-        
-        # ESI Compliance Summary
-        esi_compliance = {
-            'enabled': statutory_settings.esi_enabled if statutory_settings else False,
-            'total_employees': 0,
-            'eligible_employees': 0,
-            'monthly_contribution': 0
-        }
-        
-        if statutory_settings and statutory_settings.esi_enabled:
-            employees = Employee.objects.filter(company=company, status='active')
-            esi_compliance['total_employees'] = employees.count()
-            esi_compliance['eligible_employees'] = employees.filter(base_salary__lte=statutory_settings.esi_ceiling).count()
-        
-        # Professional Tax Compliance
-        pt_compliance = {
-            'enabled': statutory_settings.pt_enabled if statutory_settings else False,
-            'state': statutory_settings.pt_state if statutory_settings else 'Maharashtra',
-            'total_employees': Employee.objects.filter(company=company, status='active').count()
-        }
-        
-        # TDS Compliance
-        tds_compliance = {
-            'enabled': statutory_settings.tds_enabled if statutory_settings else False,
-            'total_employees': Employee.objects.filter(company=company, status='active').count(),
-            'taxable_employees': 0
-        }
-        
-        # Pending Returns
-        pending_returns = list(GovernmentReturn.objects.filter(
-            company=company,
-            status='pending'
-        ).values('return_type', 'period_month', 'period_year', 'due_date'))
-        
-        # Overdue Returns
-        overdue_returns = list(GovernmentReturn.objects.filter(
-            company=company,
-            status='overdue'
-        ).values('return_type', 'period_month', 'period_year', 'due_date'))
-        
-        # Recent Alerts
-        recent_alerts = list(ComplianceAlert.objects.filter(
-            company=company,
-            is_resolved=False
-        ).order_by('-created_at')[:5].values('title', 'priority', 'due_date', 'created_at'))
-        
-        # Compliance Summary
-        total_compliance_items = 4  # PF, ESI, PT, TDS
-        compliant_items = sum([
-            statutory_settings.pf_enabled if statutory_settings else 0,
-            statutory_settings.esi_enabled if statutory_settings else 0,
-            statutory_settings.pt_enabled if statutory_settings else 0,
-            statutory_settings.tds_enabled if statutory_settings else 0,
-        ])
-        
-        compliance_summary = {
-            'total_items': total_compliance_items,
-            'compliant_items': compliant_items,
-            'compliance_percentage': (compliant_items / total_compliance_items) * 100,
-            'status': 'Compliant' if compliant_items == total_compliance_items else 'Needs Attention'
-        }
-        
-        dashboard_data = {
-            'pf_compliance': pf_compliance,
-            'esi_compliance': esi_compliance,
-            'pt_compliance': pt_compliance,
-            'tds_compliance': tds_compliance,
-            'pending_returns': pending_returns,
-            'overdue_returns': overdue_returns,
-            'recent_alerts': recent_alerts,
-            'compliance_summary': compliance_summary
-        }
-        
-        return Response(dashboard_data)
-        
-    except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    # PF Compliance Summary
+    pf_compliance = {
+        'enabled': statutory_settings.pf_enabled if statutory_settings else False,
+        'total_employees': 0,
+        'eligible_employees': 0,
+        'monthly_contribution': 0
+    }
+    
+    if statutory_settings and statutory_settings.pf_enabled:
+        employees = Employee.objects.filter(company=company, status='active')
+        pf_compliance['total_employees'] = employees.count()
+        pf_compliance['eligible_employees'] = employees.filter(base_salary__lte=statutory_settings.pf_ceiling).count()
+    
+    # ESI Compliance Summary
+    esi_compliance = {
+        'enabled': statutory_settings.esi_enabled if statutory_settings else False,
+        'total_employees': 0,
+        'eligible_employees': 0,
+        'monthly_contribution': 0
+    }
+    
+    if statutory_settings and statutory_settings.esi_enabled:
+        employees = Employee.objects.filter(company=company, status='active')
+        esi_compliance['total_employees'] = employees.count()
+        esi_compliance['eligible_employees'] = employees.filter(base_salary__lte=statutory_settings.esi_ceiling).count()
+    
+    # Professional Tax Compliance
+    pt_compliance = {
+        'enabled': statutory_settings.pt_enabled if statutory_settings else False,
+        'state': statutory_settings.pt_state if statutory_settings else 'Maharashtra',
+        'total_employees': Employee.objects.filter(company=company, status='active').count()
+    }
+    
+    # TDS Compliance
+    tds_compliance = {
+        'enabled': statutory_settings.tds_enabled if statutory_settings else False,
+        'total_employees': Employee.objects.filter(company=company, status='active').count(),
+        'taxable_employees': 0
+    }
+    
+    # Pending Returns
+    pending_returns = list(GovernmentReturn.objects.filter(
+        company=company,
+        status='pending'
+    ).values('return_type', 'period_month', 'period_year', 'due_date'))
+    
+    # Overdue Returns
+    overdue_returns = list(GovernmentReturn.objects.filter(
+        company=company,
+        status='overdue'
+    ).values('return_type', 'period_month', 'period_year', 'due_date'))
+    
+    # Recent Alerts
+    recent_alerts = list(ComplianceAlert.objects.filter(
+        company=company,
+        is_resolved=False
+    ).order_by('-created_at')[:5].values('title', 'priority', 'due_date', 'created_at'))
+    
+    # Compliance Summary
+    total_compliance_items = 4  # PF, ESI, PT, TDS
+    compliant_items = sum([
+        statutory_settings.pf_enabled if statutory_settings else 0,
+        statutory_settings.esi_enabled if statutory_settings else 0,
+        statutory_settings.pt_enabled if statutory_settings else 0,
+        statutory_settings.tds_enabled if statutory_settings else 0,
+    ])
+    
+    compliance_summary = {
+        'total_items': total_compliance_items,
+        'compliant_items': compliant_items,
+        'compliance_percentage': (compliant_items / total_compliance_items) * 100,
+        'status': 'Compliant' if compliant_items == total_compliance_items else 'Needs Attention'
+    }
+    
+    dashboard_data = {
+        'pf_compliance': pf_compliance,
+        'esi_compliance': esi_compliance,
+        'pt_compliance': pt_compliance,
+        'tds_compliance': tds_compliance,
+        'pending_returns': pending_returns,
+        'overdue_returns': overdue_returns,
+        'recent_alerts': recent_alerts,
+        'compliance_summary': compliance_summary
+    }
+    
+    log_compliance_action('VIEW_COMPLIANCE_DASHBOARD', company, session.service_user)
+    return Response(dashboard_data)
 
 
 @api_view(['POST'])

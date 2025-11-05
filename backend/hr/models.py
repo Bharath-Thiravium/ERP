@@ -527,13 +527,30 @@ class Attendance(models.Model):
         return escape(f"{self.employee.full_name} - {self.date}")
     
     def calculate_hours(self):
-        """Calculate total working hours"""
+        """Calculate total working hours with proper timezone handling"""
         if self.check_in_time and self.check_out_time:
-            delta = self.check_out_time - self.check_in_time
+            # Ensure both times are timezone-aware
+            from django.utils import timezone as tz
+            
+            check_in = self.check_in_time
+            check_out = self.check_out_time
+            
+            # Make timezone-aware if needed
+            if check_in.tzinfo is None:
+                check_in = tz.make_aware(check_in)
+            if check_out.tzinfo is None:
+                check_out = tz.make_aware(check_out)
+            
+            # Calculate time difference
+            delta = check_out - check_in
             total_minutes = delta.total_seconds() / 60
             break_minutes = float(self.break_hours) * 60
-            self.total_hours = round((total_minutes - break_minutes) / 60, 2)
-            self.save()
+            
+            # Calculate total hours (minimum 0)
+            calculated_hours = max(0, (total_minutes - break_minutes) / 60)
+            self.total_hours = round(calculated_hours, 2)
+            
+            # Don't call save() here to avoid recursion - let the caller handle it
     
     def is_late(self):
         """Check if employee is late"""

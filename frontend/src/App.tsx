@@ -5,7 +5,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Toaster } from 'react-hot-toast'
 import { AppRouter } from './lib/router'
 import { useAuthStore } from './store/authStore'
-import { useServiceUserStore } from './store/serviceUserStore'
+// import { useServiceUserStore } from './store/serviceUserStore' // Removed unused import
 import { useThemeStore } from './store/themeStore'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import AuthWrapper from './components/auth/AuthWrapper'
@@ -41,8 +41,7 @@ function App() {
     const initialize = async () => {
       try {
         await initializeAuth()
-        // Ensure state is fully synchronized
-        await new Promise(resolve => setTimeout(resolve, 150))
+        // Remove artificial delay that causes timing issues
       } catch (error) {
         console.error('Auth initialization error:', error)
       } finally {
@@ -56,26 +55,7 @@ function App() {
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
 
-  // Prevent back navigation to login pages when authenticated
-  React.useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
-      const { isAuthenticated } = useAuthStore.getState()
-      const { isAuthenticated: isServiceAuthenticated } = useServiceUserStore.getState()
-      
-      const isAnyUserAuthenticated = isAuthenticated || isServiceAuthenticated
-      const isOnLoginPage = window.location.pathname === '/login' || 
-                           window.location.pathname === '/2fa' || 
-                           window.location.pathname === '/service-login'
-      
-      if (isAnyUserAuthenticated && isOnLoginPage) {
-        event.preventDefault()
-        window.history.pushState(null, '', window.location.pathname)
-      }
-    }
 
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
 
   // Show loading screen during initialization
   if (isInitializing || isLoading) {

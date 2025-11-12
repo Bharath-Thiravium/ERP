@@ -35,4 +35,7 @@ urlpatterns = [
     
     # Government API Credentials Management (Phase 1)
     path('government-api/', include('company_dashboard.government_credentials_urls')),
+    
+    # Document Numbering System
+    path('document-numbering/', include('company_dashboard.document_numbering_urls')),
 ]

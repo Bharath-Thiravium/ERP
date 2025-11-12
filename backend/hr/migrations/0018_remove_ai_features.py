@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('hr', '0003_add_statutory_compliance_models'),
+        ('hr', '0017_update_portal_credentials_encryption'),
     ]
 
     operations = [

@@ -6,12 +6,14 @@ import re
 from pathlib import Path
 from django.db import transaction
 from django.conf import settings
+from datetime import datetime
 from .models import Company, CompanyAutoCodeSettings
 
 
 def generate_auto_code(company_id, code_type):
     """
     Generate auto code for a company and code type
+    Enhanced to support new document numbering system with fallback
     
     Args:
         company_id: ID of the company
@@ -20,6 +22,38 @@ def generate_auto_code(company_id, code_type):
     Returns:
         Generated code string (e.g., ACMEEMP001, TECHINV001)
     """
+    # First try the new document numbering system
+    try:
+        from company_dashboard.document_numbering_models import DocumentNumberingConfig
+        
+        # Get current financial year
+        today = datetime.now().date()
+        if today.month >= 4:  # April to December
+            start_year = today.year
+            end_year = today.year + 1
+        else:  # January to March
+            start_year = today.year - 1
+            end_year = today.year
+        
+        financial_year = f"{start_year}-{str(end_year)[-2:]}"
+        
+        # Try to find active configuration
+        with transaction.atomic():
+            config = DocumentNumberingConfig.objects.select_for_update().filter(
+                company_id=company_id,
+                document_type=code_type,
+                financial_year=financial_year,
+                is_active=True
+            ).first()
+            
+            if config:
+                # Use new numbering system
+                return config.get_next_number()
+    except Exception:
+        # Fall through to old system
+        pass
+    
+    # Fallback to original system
     try:
         company = Company.objects.get(id=company_id)
         
@@ -51,6 +85,45 @@ def generate_auto_code(company_id, code_type):
     except Exception as e:
         print(f"Auto-code generation error: {str(e)}")
         raise ValueError(f"Error generating auto code: {str(e)}")
+
+
+def get_next_document_number(service_id, company_id, document_type, manual_override=None):
+    """
+    Get next document number with optional manual override
+    NEW FUNCTION for enhanced document numbering
+    """
+    try:
+        from company_dashboard.document_numbering_models import DocumentNumberingConfig
+        
+        # Get current financial year
+        today = datetime.now().date()
+        if today.month >= 4:
+            start_year = today.year
+            end_year = today.year + 1
+        else:
+            start_year = today.year - 1
+            end_year = today.year
+        
+        financial_year = f"{start_year}-{str(end_year)[-2:]}"
+        
+        with transaction.atomic():
+            config = DocumentNumberingConfig.objects.select_for_update().get(
+                service_id=service_id,
+                company_id=company_id,
+                document_type=document_type,
+                financial_year=financial_year,
+                is_active=True
+            )
+            
+            if manual_override and config.allow_manual_override:
+                # Validate manual override format and uniqueness
+                # This would need additional validation logic
+                return manual_override['document_number']
+            else:
+                return config.get_next_number()
+                
+    except Exception as e:
+        raise Exception(f"Document numbering not configured for {document_type}: {str(e)}")
 
 
 def get_company_prefix(company_id):

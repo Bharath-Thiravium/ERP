@@ -265,10 +265,15 @@ class Warehouse(models.Model):
     def capacity_utilization(self):
         """Calculate capacity utilization percentage"""
         try:
-            if self.total_capacity and self.total_capacity > 0:
-                return (self.used_capacity / self.total_capacity) * 100
+            total_capacity = float(self.total_capacity or 0)
+            used_capacity = float(self.used_capacity or 0)
+            
+            if total_capacity > 0:
+                return (used_capacity / total_capacity) * 100
             return 0
-        except (TypeError, ZeroDivisionError):
+        except (TypeError, ZeroDivisionError, ValueError) as e:
+            import logging
+            logging.error(f"Error calculating capacity utilization for warehouse {self.id}: {e}")
             return 0
 
 
@@ -452,29 +457,43 @@ class Product(models.Model):
                 total=models.Sum('quantity_available')
             )['total']
             return result or 0
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.error(f"Error calculating current stock for product {self.id}: {e}")
             return 0
 
     @property
     def stock_value(self):
         """Calculate total stock value"""
         try:
-            return self.current_stock * self.cost_price
-        except (TypeError, AttributeError):
+            current_stock = self.current_stock or 0
+            cost_price = self.cost_price or 0
+            return float(current_stock) * float(cost_price)
+        except (TypeError, AttributeError, ValueError) as e:
+            import logging
+            logging.error(f"Error calculating stock value for product {self.id}: {e}")
             return 0
 
     def is_low_stock(self):
         """Check if product is below minimum stock level"""
         try:
-            return self.current_stock <= self.min_stock_level
-        except (TypeError, AttributeError):
+            current_stock = self.current_stock or 0
+            min_stock_level = self.min_stock_level or 0
+            return float(current_stock) <= float(min_stock_level)
+        except (TypeError, AttributeError, ValueError) as e:
+            import logging
+            logging.error(f"Error checking low stock for product {self.id}: {e}")
             return False
 
     def needs_reorder(self):
         """Check if product needs reordering"""
         try:
-            return self.current_stock <= self.reorder_point
-        except (TypeError, AttributeError):
+            current_stock = self.current_stock or 0
+            reorder_point = self.reorder_point or 0
+            return float(current_stock) <= float(reorder_point)
+        except (TypeError, AttributeError, ValueError) as e:
+            import logging
+            logging.error(f"Error checking reorder need for product {self.id}: {e}")
             return False
 
 

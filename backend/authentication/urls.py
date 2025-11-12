@@ -4,6 +4,7 @@ from . import views
 from . import master_admin_settings
 from . import services_management
 from . import enhanced_security_views
+from .service_views import ActiveServicesView
 from .email_settings_views import (
     master_admin_email_settings_view,
     test_master_admin_email_view,
@@ -64,6 +65,7 @@ urlpatterns = [
 
     # Services
     path('services/', views.ServiceListView.as_view(), name='service_list'),
+    path('services/active/', ActiveServicesView.as_view(), name='active_services'),
     
     # Services Management (Master Admin)
     path('master-admin/services/', services_management.get_all_services, name='master_admin_services'),

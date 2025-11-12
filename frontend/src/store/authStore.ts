@@ -129,9 +129,9 @@ export const useAuthStore = create<AuthState>()(
             forcePasswordReset: data.force_password_reset || false,
           })
 
-          // Force state persistence
+          // Force state persistence immediately
           const currentState = get()
-          localStorage.setItem('auth-storage', JSON.stringify({
+          const stateToStore = {
             state: {
               user: currentState.user,
               isAuthenticated: currentState.isAuthenticated,
@@ -142,7 +142,10 @@ export const useAuthStore = create<AuthState>()(
               forcePasswordReset: currentState.forcePasswordReset,
             },
             version: 0
-          }))
+          }
+          localStorage.setItem('auth-storage', JSON.stringify(stateToStore))
+          
+          // State is now synchronized immediately without artificial delays
 
           // Show success message
           toast.success(`Welcome back, ${data.user.email}!`)
@@ -202,18 +205,16 @@ export const useAuthStore = create<AuthState>()(
           deviceId: null,
         })
 
-        // Clear browser history to prevent back button access
-        if (window.history.length > 1) {
-          window.history.replaceState(null, '', '/login')
-        }
+
 
         // Show success message
         toast.success('Logged out successfully')
 
-        // Redirect to login page if not already there
-        if (!window.location.pathname.includes('/login')) {
-          window.location.replace('/login')
-        }
+        // Clear session storage to ensure clean state
+        sessionStorage.clear()
+        
+        // Don't force redirect here - let the router handle it naturally
+        // This preserves browser history and prevents back button issues
       },
 
       initializeAuth: async () => {
@@ -226,15 +227,37 @@ export const useAuthStore = create<AuthState>()(
         const approvalStatusStr = sessionStorage.getItem('approvalStatus')
         const mustChangePasswordStr = sessionStorage.getItem('mustChangePassword')
         const forcePasswordResetStr = sessionStorage.getItem('forcePasswordReset')
+        
+        // Also check localStorage for persisted state
+        let persistedState = null
+        try {
+          const persistedData = localStorage.getItem('auth-storage')
+          if (persistedData) {
+            persistedState = JSON.parse(persistedData).state
+          }
+        } catch (error) {
+          console.warn('Failed to parse persisted auth state:', error)
+        }
 
-        if (token && userStr) {
+        if (token && (userStr || persistedState?.user)) {
           try {
-            const user = JSON.parse(userStr)
-            const firstLoginRequired = firstLoginStr ? JSON.parse(firstLoginStr) : false
-            const approvalPending = approvalPendingStr ? JSON.parse(approvalPendingStr) : false
-            const approvalStatus = approvalStatusStr ? JSON.parse(approvalStatusStr) : null
-            const mustChangePassword = mustChangePasswordStr ? JSON.parse(mustChangePasswordStr) : false
-            const forcePasswordReset = forcePasswordResetStr ? JSON.parse(forcePasswordResetStr) : false
+            // Use session storage first, fallback to persisted state
+            const user = userStr ? JSON.parse(userStr) : persistedState?.user
+            const firstLoginRequired = firstLoginStr ? JSON.parse(firstLoginStr) : (persistedState?.firstLoginRequired || false)
+            const approvalPending = approvalPendingStr ? JSON.parse(approvalPendingStr) : (persistedState?.approvalPending || false)
+            const approvalStatus = approvalStatusStr ? JSON.parse(approvalStatusStr) : (persistedState?.approvalStatus || null)
+            const mustChangePassword = mustChangePasswordStr ? JSON.parse(mustChangePasswordStr) : (persistedState?.mustChangePassword || false)
+            const forcePasswordReset = forcePasswordResetStr ? JSON.parse(forcePasswordResetStr) : (persistedState?.forcePasswordReset || false)
+            
+            // If we used persisted state, restore to session storage
+            if (!userStr && persistedState?.user) {
+              sessionStorage.setItem('user', JSON.stringify(user))
+              sessionStorage.setItem('firstLoginRequired', JSON.stringify(firstLoginRequired))
+              sessionStorage.setItem('approvalPending', JSON.stringify(approvalPending))
+              sessionStorage.setItem('approvalStatus', JSON.stringify(approvalStatus))
+              sessionStorage.setItem('mustChangePassword', JSON.stringify(mustChangePassword))
+              sessionStorage.setItem('forcePasswordReset', JSON.stringify(forcePasswordReset))
+            }
 
             // Set initial state from stored data
             set({

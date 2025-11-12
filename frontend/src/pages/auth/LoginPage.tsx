@@ -67,14 +67,12 @@ const LoginPage: React.FC = () => {
       reset()
       setHasFailedAttempt(false) // Reset on success
       
-      // Use setTimeout to ensure state is fully updated before navigation
-      setTimeout(() => {
-        if (userType === 'master') {
-          window.location.replace('/master-admin')
-        } else {
-          window.location.replace('/company')
-        }
-      }, 100)
+      // Use React Router navigation to maintain proper history
+      if (userType === 'master') {
+        navigate('/master-admin', { replace: true })
+      } else {
+        navigate('/company', { replace: true })
+      }
     } else if (result && typeof result === 'object' && 'requires_2fa' in result && result.requires_2fa) {
       setHasFailedAttempt(false) // Reset on 2FA (not a failure)
       // Store credentials in sessionStorage for 2FA page
@@ -82,7 +80,8 @@ const LoginPage: React.FC = () => {
         credentials: data,
         userType: userType as 'master' | 'company'
       }))
-      window.location.replace('/2fa')
+      // Force navigation with window.location to ensure page change
+      window.location.href = '/2fa'
     } else {
       // Login failed
       setHasFailedAttempt(true)

@@ -35,57 +35,48 @@ const ServiceUserLogin: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
 
-  // Available services that companies can have
-  const availableServices = [
-    {
-      id: 'finance',
-      name: 'Finance Management',
-      description: 'Financial planning, budgeting, and accounting',
-      icon: '💰',
-      color: 'blue',
-      gradient: 'from-blue-500 to-blue-700'
-    },
-    {
-      id: 'hr',
-      name: 'Human Resources',
-      description: 'Employee management and HR operations',
-      icon: '👥',
-      color: 'purple',
-      gradient: 'from-purple-500 to-purple-700'
-    },
-    {
-      id: 'inventory',
-      name: 'Inventory Management',
-      description: 'Stock control and warehouse management',
-      icon: '📦',
-      color: 'orange',
-      gradient: 'from-orange-500 to-orange-700'
-    },
-    {
-      id: 'crm',
-      name: 'Customer Relations',
-      description: 'Customer relationship management',
-      icon: '🤝',
-      color: 'green',
-      gradient: 'from-green-500 to-green-700'
-    },
-    {
-      id: 'procurement',
-      name: 'Procurement',
-      description: 'Purchase orders and supplier management',
-      icon: '🛒',
-      color: 'indigo',
-      gradient: 'from-indigo-500 to-indigo-700'
-    },
-    {
-      id: 'analytics',
-      name: 'Business Analytics',
-      description: 'Data analysis and business intelligence',
-      icon: '📊',
-      color: 'pink',
-      gradient: 'from-pink-500 to-pink-700'
+  const [availableServices, setAvailableServices] = useState<any[]>([])
+  const [servicesLoading, setServicesLoading] = useState(true)
+
+  // Service type to UI mapping
+  const serviceUIMap = {
+    finance: { icon: '💰', color: 'blue', gradient: 'from-blue-500 to-blue-700' },
+    hr: { icon: '👥', color: 'purple', gradient: 'from-purple-500 to-purple-700' },
+    inventory: { icon: '📦', color: 'orange', gradient: 'from-orange-500 to-orange-700' },
+    crm: { icon: '🤝', color: 'green', gradient: 'from-green-500 to-green-700' },
+    procurement: { icon: '🛒', color: 'indigo', gradient: 'from-indigo-500 to-indigo-700' },
+    analytics: { icon: '📊', color: 'pink', gradient: 'from-pink-500 to-pink-700' },
+    orders: { icon: '📋', color: 'yellow', gradient: 'from-yellow-500 to-yellow-700' },
+    manufacturing: { icon: '🏭', color: 'gray', gradient: 'from-gray-500 to-gray-700' },
+    quality: { icon: '✅', color: 'emerald', gradient: 'from-emerald-500 to-emerald-700' },
+    maintenance: { icon: '🔧', color: 'red', gradient: 'from-red-500 to-red-700' }
+  }
+
+  // Fetch services from API
+  React.useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const response = await fetch('/api/auth/services/active/')
+        const services = await response.json()
+        
+        const mappedServices = services.map((service: any) => ({
+          id: service.service_type,
+          name: service.name,
+          description: service.description,
+          ...serviceUIMap[service.service_type as keyof typeof serviceUIMap] || { icon: '⚙️', color: 'gray', gradient: 'from-gray-500 to-gray-700' }
+        }))
+        
+        setAvailableServices(mappedServices)
+      } catch (error) {
+        console.error('Failed to fetch services:', error)
+        toast.error('Failed to load services')
+      } finally {
+        setServicesLoading(false)
+      }
     }
-  ]
+    
+    fetchServices()
+  }, [])
 
   // Service type configurations for login
   const serviceConfigs = {
@@ -220,27 +211,33 @@ const ServiceUserLogin: React.FC = () => {
               </CardHeader>
 
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {availableServices.map((service) => (
-                    <button
-                      key={service.id}
-                      onClick={() => handleServiceSelect(service.id)}
-                      className={`p-4 rounded-xl border-2 transition-all duration-300 hover:scale-105 bg-gradient-to-br ${service.gradient} hover:shadow-lg group`}
-                    >
-                      <div className="text-center space-y-3">
-                        <div className="text-3xl">{service.icon}</div>
-                        <div>
-                          <h3 className="font-semibold text-white group-hover:text-white/90">
-                            {service.name}
-                          </h3>
-                          <p className="text-xs text-white/80 group-hover:text-white/70">
-                            {service.description}
-                          </p>
+                {servicesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {availableServices.map((service: any) => (
+                      <button
+                        key={service.id}
+                        onClick={() => handleServiceSelect(service.id)}
+                        className={`p-4 rounded-xl border-2 transition-all duration-300 hover:scale-105 bg-gradient-to-br ${service.gradient} hover:shadow-lg group`}
+                      >
+                        <div className="text-center space-y-3">
+                          <div className="text-3xl">{service.icon}</div>
+                          <div>
+                            <h3 className="font-semibold text-white group-hover:text-white/90">
+                              {service.name}
+                            </h3>
+                            <p className="text-xs text-white/80 group-hover:text-white/70">
+                              {service.description}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </>
           ) : (

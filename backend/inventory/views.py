@@ -1,5 +1,10 @@
 from rest_framework import viewsets, status, permissions
 from django.utils._os import safe_join
+from django.utils.html import escape
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+import re
+import os
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
@@ -200,14 +205,17 @@ class CategoryListCreateView(ListCreateAPIView):
             
             queryset = Category.objects.filter(company=company, is_active=True)
             
-            # Search functionality
+            # Search functionality with input sanitization
             search = self.request.query_params.get('search', '')
             if search:
-                queryset = queryset.filter(
-                    Q(name__icontains=search) |
-                    Q(code__icontains=search) |
-                    Q(description__icontains=search)
-                )
+                # Sanitize search input
+                search = escape(search.strip()[:100])  # Limit length and escape HTML
+                if search:  # Only search if there's content after sanitization
+                    queryset = queryset.filter(
+                        Q(name__icontains=search) |
+                        Q(code__icontains=search) |
+                        Q(description__icontains=search)
+                    )
             
             return queryset.order_by('name')
             
@@ -282,15 +290,18 @@ class SupplierListCreateView(ListCreateAPIView):
             
             queryset = Supplier.objects.filter(company=company, is_active=True)
             
-            # Search functionality
+            # Search functionality with input sanitization
             search = self.request.query_params.get('search', '')
             if search:
-                queryset = queryset.filter(
-                    Q(name__icontains=search) |
-                    Q(supplier_code__icontains=search) |
-                    Q(email__icontains=search) |
-                    Q(phone__icontains=search)
-                )
+                # Sanitize search input
+                search = escape(search.strip()[:100])  # Limit length and escape HTML
+                if search:  # Only search if there's content after sanitization
+                    queryset = queryset.filter(
+                        Q(name__icontains=search) |
+                        Q(supplier_code__icontains=search) |
+                        Q(email__icontains=search) |
+                        Q(phone__icontains=search)
+                    )
             
             return queryset.order_by('name')
             
@@ -365,14 +376,17 @@ class WarehouseListCreateView(ListCreateAPIView):
             
             queryset = Warehouse.objects.filter(company=company, is_active=True)
             
-            # Search functionality
+            # Search functionality with input sanitization
             search = self.request.query_params.get('search', '')
             if search:
-                queryset = queryset.filter(
-                    Q(name__icontains=search) |
-                    Q(code__icontains=search) |
-                    Q(city__icontains=search)
-                )
+                # Sanitize search input
+                search = escape(search.strip()[:100])  # Limit length and escape HTML
+                if search:  # Only search if there's content after sanitization
+                    queryset = queryset.filter(
+                        Q(name__icontains=search) |
+                        Q(code__icontains=search) |
+                        Q(city__icontains=search)
+                    )
             
             return queryset.order_by('name')
             
@@ -519,24 +533,34 @@ class ProductListCreateView(ListCreateAPIView):
                 'category', 'primary_supplier'
             )
             
-            # Search functionality
+            # Search functionality with input sanitization
             search = self.request.query_params.get('search', '')
             if search:
-                queryset = queryset.filter(
-                    Q(name__icontains=search) |
-                    Q(product_code__icontains=search) |
-                    Q(sku__icontains=search) |
-                    Q(barcode__icontains=search)
-                )
+                # Sanitize search input
+                search = escape(search.strip()[:100])  # Limit length and escape HTML
+                if search:  # Only search if there's content after sanitization
+                    queryset = queryset.filter(
+                        Q(name__icontains=search) |
+                        Q(product_code__icontains=search) |
+                        Q(sku__icontains=search) |
+                        Q(barcode__icontains=search)
+                    )
             
-            # Filtering
+            # Filtering with validation
             category_id = self.request.query_params.get('category')
             if category_id:
-                queryset = queryset.filter(category_id=category_id)
+                try:
+                    category_id = int(category_id)
+                    queryset = queryset.filter(category_id=category_id)
+                except (ValueError, TypeError):
+                    pass  # Ignore invalid category_id
                 
             product_type = self.request.query_params.get('product_type')
             if product_type:
-                queryset = queryset.filter(product_type=product_type)
+                # Validate product_type against allowed choices
+                allowed_types = ['finished_good', 'raw_material', 'semi_finished', 'consumable', 'service', 'digital']
+                if product_type in allowed_types:
+                    queryset = queryset.filter(product_type=product_type)
                 
             low_stock = self.request.query_params.get('low_stock')
             if low_stock == 'true':
@@ -626,18 +650,29 @@ class StockMovementListCreateView(ListCreateAPIView):
                 product__company=company
             ).select_related('product', 'warehouse', 'created_by')
             
-            # Filtering
+            # Filtering with validation
             product_id = self.request.query_params.get('product')
             if product_id:
-                queryset = queryset.filter(product_id=product_id)
+                try:
+                    product_id = int(product_id)
+                    queryset = queryset.filter(product_id=product_id)
+                except (ValueError, TypeError):
+                    pass  # Ignore invalid product_id
                 
             warehouse_id = self.request.query_params.get('warehouse')
             if warehouse_id:
-                queryset = queryset.filter(warehouse_id=warehouse_id)
+                try:
+                    warehouse_id = int(warehouse_id)
+                    queryset = queryset.filter(warehouse_id=warehouse_id)
+                except (ValueError, TypeError):
+                    pass  # Ignore invalid warehouse_id
                 
             movement_type = self.request.query_params.get('movement_type')
             if movement_type:
-                queryset = queryset.filter(movement_type=movement_type)
+                # Validate movement_type against allowed choices
+                allowed_types = ['in', 'out', 'purchase', 'sale', 'return', 'transfer', 'adjustment', 'damage', 'production']
+                if movement_type in allowed_types:
+                    queryset = queryset.filter(movement_type=movement_type)
                 
             return queryset.order_by('-created_at')
             
@@ -1025,10 +1060,29 @@ def upload_product_image(request, product_id):
         
         image_file = request.FILES['image']
         
-        # Upload image
-        file_path = InventoryFileHandler.upload_product_image(
-            image_file, product_id, service_user.company.id
-        )
+        # Validate file type and size
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        max_size = 5 * 1024 * 1024  # 5MB
+        
+        if image_file.content_type not in allowed_types:
+            return Response({'error': 'Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if image_file.size > max_size:
+            return Response({'error': 'File too large. Maximum size is 5MB.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Sanitize filename
+        safe_filename = re.sub(r'[^a-zA-Z0-9._-]', '', image_file.name)
+        if not safe_filename:
+            safe_filename = f'product_{product_id}_{timezone.now().timestamp()}.jpg'
+        
+        # Upload image with validation
+        try:
+            file_path = InventoryFileHandler.upload_product_image(
+                image_file, product_id, service_user.company.id, safe_filename
+            )
+        except Exception as e:
+            logging.error(f"File upload error: {e}")
+            return Response({'error': 'File upload failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         # Update product image gallery
         if not product.image_gallery:

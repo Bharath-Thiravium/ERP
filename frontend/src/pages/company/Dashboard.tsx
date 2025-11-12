@@ -35,7 +35,8 @@ import {
   Code,
   Globe,
   Monitor,
-  FileText
+  FileText,
+  Hash
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
 import { useAuthStore } from '../../store/authStore'
@@ -62,6 +63,7 @@ import SessionManagement from '../../components/company/security/SessionManageme
 import SecurityAuditLogs from '../../components/company/security/SecurityAuditLogs'
 import AdvancedSecurity from '../../components/company/security/AdvancedSecurity'
 import GovernmentAPICredentials from '../../components/company/government/GovernmentAPICredentials'
+import DocumentNumbering from '../../components/company/DocumentNumbering'
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -210,6 +212,8 @@ const CompanyDashboard: React.FC = () => {
         toast.success('Service user created! Credentials downloaded as TXT file.', {
           duration: 5000
         })
+      } else {
+        toast.error('Service user created but credentials not available for download')
       }
     },
     onError: (error: any) => {
@@ -391,6 +395,7 @@ Website: https://athenas.co.in
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'activity', label: 'Activity', icon: Activity },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'document-numbering', label: 'Document Numbering', icon: Hash },
     { id: 'government-api', label: 'Government API', icon: Globe },
     { id: 'settings', label: 'Settings', icon: Shield }
   ]
@@ -732,6 +737,10 @@ Website: https://athenas.co.in
               }
             }}
           />
+        )}
+
+        {activeTab === 'document-numbering' && (
+          <DocumentNumbering onNavigateToTab={setActiveTab} />
         )}
 
         {activeTab === 'government-api' && (

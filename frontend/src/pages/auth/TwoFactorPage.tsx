@@ -27,8 +27,19 @@ const TwoFactorPage: React.FC = () => {
   const navigate = useNavigate()
   const [use2FARecovery, setUse2FARecovery] = useState(false)
   const [storedData, setStoredData] = useState<StoredCredentials | null>(null)
-  const { login, isLoading, error } = useAuthStore()
+  const { login, isLoading, error, isAuthenticated, user } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
+  
+  // Redirect if already authenticated
+  React.useEffect(() => {
+    if (isAuthenticated && user) {
+      if (user.is_master_admin) {
+        navigate('/master-admin', { replace: true })
+      } else if (user.is_company_user) {
+        navigate('/company', { replace: true })
+      }
+    }
+  }, [isAuthenticated, user, navigate])
   
   // Get credentials from sessionStorage
   React.useEffect(() => {
@@ -68,20 +79,19 @@ const TwoFactorPage: React.FC = () => {
       reset()
       // Clear stored credentials
       sessionStorage.removeItem('2fa_credentials')
-      // Clear browser history to prevent back navigation
-      window.history.replaceState(null, '', '/')
-      // Use window.location.replace to bypass router interference
+      
+      // Use React Router navigation immediately
       if (storedData.userType === 'master') {
-        window.location.replace('/master-admin')
+        navigate('/master-admin', { replace: true })
       } else {
-        window.location.replace('/company')
+        navigate('/company', { replace: true })
       }
     }
   }
 
   const handleBack = () => {
     sessionStorage.removeItem('2fa_credentials')
-    window.location.replace('/login')
+    navigate('/login', { replace: true })
   }
 
   if (!storedData?.credentials) {

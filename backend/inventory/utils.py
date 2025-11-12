@@ -3,6 +3,8 @@ Utility functions for inventory module with security enhancements
 """
 import os
 import logging
+import uuid
+import re
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from .security_validators import InventorySecurityValidator
@@ -28,14 +30,25 @@ def secure_file_upload(file_obj, upload_path):
     
     # Sanitize filename
     try:
-        filename = InventorySecurityValidator.sanitize_input(file_obj.name)
-        filename = filename.replace(' ', '_')
+        # Generate secure filename to prevent path traversal
+        import uuid
+        import re
+        
+        # Extract extension
+        file_extension = os.path.splitext(file_obj.name)[1].lower()
+        
+        # Generate secure filename
+        secure_filename = f"{uuid.uuid4().hex}{file_extension}"
         
         # Validate upload path
         safe_path = InventorySecurityValidator.validate_file_path(upload_path)
         
-        return os.path.join(safe_path, filename)
-    except Exception:
+        # Ensure path doesn't contain traversal attempts
+        safe_path = safe_path.replace('../', '').replace('..\\', '')
+        
+        return os.path.join(safe_path, secure_filename)
+    except Exception as e:
+        logging.error(f"File upload error: {e}")
         raise ValidationError('Invalid file or path')
 
 
@@ -139,13 +152,23 @@ def log_inventory_action(user, action, model_name, object_id, details=None):
     Log inventory actions for audit trail
     """
     try:
-        username = InventorySecurityValidator.sanitize_input(user.username) if user and user.username else 'Unknown'
-        action = InventorySecurityValidator.sanitize_input(action) if action else 'Unknown'
-        model_name = InventorySecurityValidator.sanitize_input(model_name) if model_name else 'Unknown'
+        # Validate and sanitize inputs
+        username = 'Unknown'
+        if user and hasattr(user, 'username') and user.username:
+            username = InventorySecurityValidator.sanitize_input(str(user.username))
+        
+        action = InventorySecurityValidator.sanitize_input(str(action)) if action else 'Unknown'
+        model_name = InventorySecurityValidator.sanitize_input(str(model_name)) if model_name else 'Unknown'
+        
+        # Validate object_id
+        try:
+            object_id = int(object_id) if object_id else 'Unknown'
+        except (ValueError, TypeError):
+            object_id = 'Invalid'
         
         log_message = f"User {username} performed {action} on {model_name} {object_id}"
         if details:
-            details = InventorySecurityValidator.sanitize_input(str(details))
+            details = InventorySecurityValidator.sanitize_input(str(details)[:500])  # Limit length
             log_message += f" - Details: {details}"
         
         logging.info(log_message)

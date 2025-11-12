@@ -25,13 +25,17 @@ class CategorySerializer(serializers.ModelSerializer):
     def get_subcategories_count(self, obj):
         try:
             return obj.subcategories.filter(is_active=True).count()
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.error(f"Error getting subcategories count for category {obj.id}: {e}")
             return 0
 
     def get_products_count(self, obj):
         try:
             return obj.products.filter(is_active=True).count()
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.error(f"Error getting products count for category {obj.id}: {e}")
             return 0
     
     def validate_name(self, value):
@@ -214,10 +218,13 @@ class ProductCreateSerializer(serializers.ModelSerializer):
 
     def validate_barcode(self, value):
         if value:
-            validated_barcode = InventorySecurityValidator.validate_barcode(value)
-            if Product.objects.filter(barcode=validated_barcode).exists():
-                raise serializers.ValidationError("Barcode must be unique.")
-            return validated_barcode
+            try:
+                validated_barcode = InventorySecurityValidator.validate_barcode(value)
+                if Product.objects.filter(barcode=validated_barcode).exists():
+                    raise serializers.ValidationError("Barcode must be unique.")
+                return validated_barcode
+            except ValidationError as e:
+                raise serializers.ValidationError(str(e))
         return value
     
     def validate_name(self, value):
@@ -236,12 +243,17 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         return InventorySecurityValidator.validate_json_field(value)
     
     def validate_additional_images(self, value):
+        if not value:
+            return []
+        
         validated_images = []
         for img_url in value:
             try:
                 validated_url = InventorySecurityValidator.validate_image_url(img_url)
                 validated_images.append(validated_url)
-            except ValidationError:
+            except ValidationError as e:
+                import logging
+                logging.warning(f"Invalid image URL skipped: {img_url} - {e}")
                 continue
         return validated_images
 

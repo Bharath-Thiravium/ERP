@@ -42,8 +42,17 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requireApproved = false,
   requireServiceUser = false,
 }) => {
-  const { isAuthenticated, user, firstLoginRequired, approvalPending } = useAuthStore()
+  const { isAuthenticated, user, firstLoginRequired, approvalPending, isLoading } = useAuthStore()
   const { isAuthenticated: isServiceUserAuthenticated, serviceUser } = useServiceUserStore()
+  
+  // Show loading while authentication is being processed
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+      </div>
+    )
+  }
 
   // Enhanced authentication check with session validation
   React.useEffect(() => {
@@ -97,6 +106,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // For regular routes, check main authentication
   if (!isAuthenticated || !user) {
+    // Don't redirect if we're still loading or if user just completed 2FA
+    const has2FACredentials = sessionStorage.getItem('2fa_credentials')
+    if (has2FACredentials) {
+      return <Navigate to="/2fa" replace />
+    }
     return <Navigate to="/login" replace />
   }
 
@@ -131,10 +145,13 @@ interface PublicRouteProps {
 const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
   const { isAuthenticated, user, firstLoginRequired, approvalPending } = useAuthStore()
 
-  // Only redirect if user is authenticated and NOT on login or 2FA pages
-  if (isAuthenticated && user && 
-      !window.location.pathname.includes('/login') && 
-      !window.location.pathname.includes('/2fa')) {
+  // Don't redirect if on 2FA page (user is in middle of login process)
+  if (window.location.pathname === '/2fa') {
+    return <>{children}</>
+  }
+
+  // Only redirect if user is authenticated and NOT on login pages
+  if (isAuthenticated && user && !window.location.pathname.includes('/login')) {
     
     // Redirect based on user type and status
     if (user.is_master_admin) {
@@ -187,9 +204,11 @@ export const AppRouter: React.FC = () => {
       <Route
         path="/2fa"
         element={
-          <SuspenseWrapper>
-            <TwoFactorPage />
-          </SuspenseWrapper>
+          <PublicRoute>
+            <SuspenseWrapper>
+              <TwoFactorPage />
+            </SuspenseWrapper>
+          </PublicRoute>
         }
       />
 

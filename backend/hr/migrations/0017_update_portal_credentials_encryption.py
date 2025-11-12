@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('hr', '0008_government_credentials'),
+        ('hr', '0016_alter_employee_skills'),
     ]
 
     operations = [

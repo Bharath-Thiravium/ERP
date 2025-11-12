@@ -8,7 +8,7 @@ import django.core.validators
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('hr', '0004_remove_ai_features'),
+        ('hr', '0004_add_compliance_performance_indexes'),
         ('authentication', '0001_initial'),
     ]
 

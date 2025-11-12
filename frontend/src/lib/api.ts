@@ -153,8 +153,13 @@ api.interceptors.response.use(
           clearTokens()
 
           // Don't show error toast for token refresh failures
-          if (!window.location.pathname.includes('/login')) {
-            window.location.href = '/login'
+          // Only redirect if not already on login page and not during navigation
+          if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/unauthorized')) {
+            // Use history-friendly navigation instead of replace
+            clearTokens()
+            sessionStorage.clear()
+            // Let the auth store handle the redirect properly
+            return Promise.reject(refreshError)
           }
           return Promise.reject(refreshError)
         }
@@ -165,11 +170,11 @@ api.interceptors.response.use(
                                      originalRequest.url?.includes('/api/inventory/') ||
                                      originalRequest.url?.includes('/api/crm/')
         
-        if (!isServiceUserEndpoint) {
+        if (!isServiceUserEndpoint && !originalRequest.url?.includes('/validate-token/')) {
           clearTokens()
-          if (!window.location.pathname.includes('/login')) {
-            window.location.href = '/login'
-          }
+          sessionStorage.clear()
+          // Let the auth store and router handle redirects properly
+          // Don't force navigation here to preserve browser history
         }
       }
     }
@@ -1393,6 +1398,43 @@ export const apiClient = {
 
   getMasterAdminEmailUsage: () =>
     api.get('/api/auth/master-admin/email-settings/usage/'),
+
+  // Document Numbering APIs
+  getCurrentFinancialYear: () =>
+    api.get('/api/company-dashboard/document-numbering/current-financial-year/'),
+
+  getDocumentNumberingConfigs: (params?: any) =>
+    api.get('/api/company-dashboard/document-numbering/configs/', { params }),
+
+  createDocumentNumberingConfig: (data: any) =>
+    api.post('/api/company-dashboard/document-numbering/configs/', data),
+
+  getDocumentNumberingConfig: (id: number) =>
+    api.get(`/api/company-dashboard/document-numbering/configs/${id}/`),
+
+  updateDocumentNumberingConfig: (id: number, data: any) =>
+    api.put(`/api/company-dashboard/document-numbering/configs/${id}/`, data),
+
+  deleteDocumentNumberingConfig: (id: number) =>
+    api.delete(`/api/company-dashboard/document-numbering/configs/${id}/`),
+
+  bulkSetupDocumentNumbering: (data: any) =>
+    api.post('/api/company-dashboard/document-numbering/bulk-setup/', data),
+
+  generateDocumentNumber: (data: any) =>
+    api.post('/api/company-dashboard/document-numbering/generate-number/', data),
+
+  getDocumentNumberingHistory: (params?: any) =>
+    api.get('/api/company-dashboard/document-numbering/history/', { params }),
+
+  getNumberingDashboardStats: () =>
+    api.get('/api/company-dashboard/document-numbering/dashboard-stats/'),
+
+  getFinancialYearSettings: (params?: any) =>
+    api.get('/api/company-dashboard/document-numbering/financial-year-settings/', { params }),
+
+  createFinancialYearSettings: (data: any) =>
+    api.post('/api/company-dashboard/document-numbering/financial-year-settings/', data),
 
   // Convenience methods for backward compatibility
   getEmployees: (params?: any) => apiClient.getHREmployees(params),

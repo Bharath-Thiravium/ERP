@@ -167,51 +167,51 @@ class Customer(models.Model):
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.CASCADE, related_name='created_customers', null=True, blank=True)
     customer_code = models.CharField(max_length=20, unique=True, blank=True, help_text="Auto-generated unique customer code")
 
-    # Customer Type and Basic Details
-    customer_type = models.CharField(max_length=20, choices=CUSTOMER_TYPE_CHOICES, default='business')
-    name = models.CharField(max_length=255, help_text="Customer/Company Name")
-    display_name = models.CharField(max_length=255, blank=True, help_text="Display name for invoices")
+    # Customer Type and Basic Details - MANDATORY FIELDS
+    customer_type = models.CharField(max_length=20, choices=CUSTOMER_TYPE_CHOICES, help_text="MANDATORY: Customer type")
+    name = models.CharField(max_length=255, help_text="MANDATORY: Customer/Company Name")
+    display_name = models.CharField(max_length=255, help_text="MANDATORY: Display name for invoices")
 
-    # Contact Information
-    email = models.EmailField(validators=[EmailValidator()], blank=True)
-    phone = models.CharField(max_length=15, blank=True)
-    mobile = models.CharField(max_length=15, blank=True)
-    website = models.URLField(blank=True)
+    # Contact Information - MANDATORY PHONE
+    email = models.EmailField(validators=[EmailValidator()], blank=True, null=True)
+    phone = models.CharField(max_length=15, help_text="MANDATORY: Primary phone number")
+    mobile = models.CharField(max_length=15, blank=True, null=True)
+    website = models.URLField(blank=True, null=True)
 
-    # Address Information
-    billing_address_line1 = models.CharField(max_length=255, blank=True)
-    billing_address_line2 = models.CharField(max_length=255, blank=True)
-    billing_city = models.CharField(max_length=100, blank=True)
-    billing_state = models.CharField(max_length=100, blank=True)
-    billing_pincode = models.CharField(max_length=10, blank=True)
+    # Address Information - MANDATORY BILLING ADDRESS
+    billing_address_line1 = models.CharField(max_length=255, help_text="MANDATORY: Billing address line 1")
+    billing_address_line2 = models.CharField(max_length=255, blank=True, null=True)
+    billing_city = models.CharField(max_length=100, help_text="MANDATORY: Billing city")
+    billing_state = models.CharField(max_length=100, help_text="MANDATORY: Billing state")
+    billing_pincode = models.CharField(max_length=10, help_text="MANDATORY: Billing PIN code")
     billing_country = models.CharField(max_length=100, default='India')
 
-    # Shipping Address (can be different from billing)
+    # Shipping Address (can be different from billing) - ALL OPTIONAL
     shipping_same_as_billing = models.BooleanField(default=True)
-    shipping_address_line1 = models.CharField(max_length=255, blank=True)
-    shipping_address_line2 = models.CharField(max_length=255, blank=True)
-    shipping_city = models.CharField(max_length=100, blank=True)
-    shipping_state = models.CharField(max_length=100, blank=True)
-    shipping_pincode = models.CharField(max_length=10, blank=True)
-    shipping_country = models.CharField(max_length=100, blank=True)
+    shipping_address_line1 = models.CharField(max_length=255, blank=True, null=True)
+    shipping_address_line2 = models.CharField(max_length=255, blank=True, null=True)
+    shipping_city = models.CharField(max_length=100, blank=True, null=True)
+    shipping_state = models.CharField(max_length=100, blank=True, null=True)
+    shipping_pincode = models.CharField(max_length=10, blank=True, null=True)
+    shipping_country = models.CharField(max_length=100, blank=True, null=True)
 
-    # Business Information (for business customers)
-    business_type = models.CharField(max_length=20, choices=BUSINESS_TYPE_CHOICES, blank=True)
-    industry = models.CharField(max_length=100, blank=True)
+    # Business Information (for business customers) - ALL OPTIONAL
+    business_type = models.CharField(max_length=20, choices=BUSINESS_TYPE_CHOICES, blank=True, null=True)
+    industry = models.CharField(max_length=100, blank=True, null=True)
 
-    # Tax Information
+    # Tax Information - MANDATORY GSTIN
     gstin = models.CharField(
         max_length=15,
-        blank=True,
         validators=[RegexValidator(
             regex=r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$',
             message='Enter a valid GSTIN number'
         )],
-        help_text="15-digit GST Identification Number"
+        help_text="MANDATORY: 15-digit GST Identification Number"
     )
     pan_number = models.CharField(
         max_length=10,
         blank=True,
+        null=True,
         validators=[RegexValidator(
             regex=r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$',
             message='Enter a valid PAN number'
@@ -219,10 +219,11 @@ class Customer(models.Model):
         help_text="10-character PAN number"
     )
 
-    # Individual Customer Information
+    # Individual Customer Information - ALL OPTIONAL
     aadhar_number = models.CharField(
         max_length=12,
         blank=True,
+        null=True,
         validators=[RegexValidator(
             regex=r'^[0-9]{12}$',
             message='Enter a valid 12-digit Aadhar number'
@@ -230,19 +231,20 @@ class Customer(models.Model):
         help_text="12-digit Aadhar number (for individuals)"
     )
 
-    # Banking Information
-    bank_name = models.CharField(max_length=100, blank=True)
-    bank_account_number = models.CharField(max_length=20, blank=True)
+    # Banking Information - ALL OPTIONAL
+    bank_name = models.CharField(max_length=100, blank=True, null=True)
+    bank_account_number = models.CharField(max_length=20, blank=True, null=True)
     bank_ifsc_code = models.CharField(
         max_length=11,
         blank=True,
+        null=True,
         validators=[RegexValidator(
             regex=r'^[A-Z]{4}0[A-Z0-9]{6}$',
             message='Enter a valid IFSC code'
         )]
     )
-    bank_branch = models.CharField(max_length=100, blank=True)
-    account_holder_name = models.CharField(max_length=200, blank=True)
+    bank_branch = models.CharField(max_length=100, blank=True, null=True)
+    account_holder_name = models.CharField(max_length=200, blank=True, null=True)
     
     # Bank Integration Fields
     bank_verification_status = models.CharField(
@@ -258,22 +260,22 @@ class Customer(models.Model):
     statement_import_enabled = models.BooleanField(default=False)
     last_statement_import = models.DateTimeField(null=True, blank=True)
 
-    # Financial Information
+    # Financial Information - ALL OPTIONAL
     credit_limit = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
-    payment_terms = models.CharField(max_length=100, blank=True, help_text="e.g., Net 30, COD, Advance")
+    payment_terms = models.CharField(max_length=100, blank=True, null=True, help_text="e.g., Net 30, COD, Advance")
     currency = models.CharField(max_length=3, default='INR')
     
-    # Opening Balance
+    # Opening Balance - ALL OPTIONAL
     opening_balance = models.DecimalField(max_digits=15, decimal_places=2, default=0.00, help_text="Opening balance for this customer")
     opening_balance_date = models.DateField(null=True, blank=True, help_text="Date when opening balance was set")
 
-    # Additional Information
-    project_area = models.CharField(max_length=255, blank=True, help_text="Project area or address label for easy identification")
-    notes = models.TextField(blank=True, help_text="Internal notes about the customer")
+    # Additional Information - ALL OPTIONAL
+    project_area = models.CharField(max_length=255, blank=True, null=True, help_text="Project area or address label for easy identification")
+    notes = models.TextField(blank=True, null=True, help_text="Internal notes about the customer")
     is_active = models.BooleanField(default=True)
     
-    # Indian Compliance Fields
-    state_code = models.CharField(max_length=2, blank=True, help_text="2-digit state code for GST")
+    # Indian Compliance Fields - ALL OPTIONAL
+    state_code = models.CharField(max_length=2, blank=True, null=True, help_text="2-digit state code for GST")
     is_gst_registered = models.BooleanField(default=False)
     gst_registration_date = models.DateField(null=True, blank=True)
 
@@ -296,11 +298,42 @@ class Customer(models.Model):
         from django.core.exceptions import ValidationError
         errors = {}
         
-        # Validate required fields
+        # MANDATORY FIELDS VALIDATION
+        if not self.customer_type or not self.customer_type.strip():
+            errors['customer_type'] = 'Customer type is required.'
+        
         if not self.name or not self.name.strip():
             errors['name'] = 'Customer name is required.'
         
-        # Validate email format if provided
+        if not self.display_name or not self.display_name.strip():
+            errors['display_name'] = 'Display name is required.'
+        
+        if not self.phone or not self.phone.strip():
+            errors['phone'] = 'Phone number is required.'
+        
+        # MANDATORY BILLING ADDRESS VALIDATION
+        if not self.billing_address_line1 or not self.billing_address_line1.strip():
+            errors['billing_address_line1'] = 'Billing address line 1 is required.'
+        
+        if not self.billing_city or not self.billing_city.strip():
+            errors['billing_city'] = 'Billing city is required.'
+        
+        if not self.billing_state or not self.billing_state.strip():
+            errors['billing_state'] = 'Billing state is required.'
+        
+        if not self.billing_pincode or not self.billing_pincode.strip():
+            errors['billing_pincode'] = 'Billing PIN code is required.'
+        
+        # MANDATORY GSTIN VALIDATION
+        if not self.gstin or not self.gstin.strip():
+            errors['gstin'] = 'GSTIN is required.'
+        else:
+            import re
+            gstin_pattern = r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+            if not re.match(gstin_pattern, self.gstin):
+                errors['gstin'] = 'Please enter a valid GSTIN (15 characters).'
+        
+        # OPTIONAL FIELDS VALIDATION (only if provided)
         if self.email:
             from django.core.validators import validate_email
             try:
@@ -308,28 +341,18 @@ class Customer(models.Model):
             except ValidationError:
                 errors['email'] = 'Please enter a valid email address.'
         
-        # Validate GSTIN format if provided
-        if self.gstin:
-            import re
-            gstin_pattern = r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
-            if not re.match(gstin_pattern, self.gstin):
-                errors['gstin'] = 'Please enter a valid GSTIN (15 characters).'
-        
-        # Validate PAN format if provided
         if self.pan_number:
             import re
             pan_pattern = r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$'
             if not re.match(pan_pattern, self.pan_number):
                 errors['pan_number'] = 'Please enter a valid PAN (10 characters).'
         
-        # Validate Aadhar format if provided
         if self.aadhar_number:
             import re
             aadhar_pattern = r'^[0-9]{12}$'
             if not re.match(aadhar_pattern, self.aadhar_number):
                 errors['aadhar_number'] = 'Please enter a valid Aadhar number (12 digits).'
         
-        # Validate IFSC format if provided
         if self.bank_ifsc_code:
             import re
             ifsc_pattern = r'^[A-Z]{4}0[A-Z0-9]{6}$'
@@ -340,9 +363,8 @@ class Customer(models.Model):
         if self.credit_limit < 0:
             errors['credit_limit'] = 'Credit limit cannot be negative.'
         
-        # Validate shipping address logic
+        # Validate shipping address logic (only if different from billing)
         if not self.shipping_same_as_billing:
-            # If shipping is different from billing, validate required shipping fields
             if not self.shipping_address_line1 or not self.shipping_address_line1.strip():
                 errors['shipping_address_line1'] = 'Shipping Address Line 1 is required when shipping address is different from billing address.'
             if not self.shipping_city or not self.shipping_city.strip():
@@ -401,6 +423,7 @@ class Customer(models.Model):
                             # Different error, re-raise
                             raise e
         
+        # Display name is now mandatory, but set default if somehow empty
         if not self.display_name:
             self.display_name = self.name
         super().save(*args, **kwargs)

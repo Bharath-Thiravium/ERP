@@ -464,7 +464,7 @@ const DetailedInfoForm: React.FC = () => {
                         Document Upload
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Upload required business documents for verification
+                        Upload business documents for verification (all documents are optional)
                       </p>
                     </div>
                   </div>
@@ -473,7 +473,7 @@ const DetailedInfoForm: React.FC = () => {
                     {/* Business License */}
                     <div className="group">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Business License *
+                        Business License
                       </label>
                       <div className="relative">
                         <input
@@ -501,7 +501,7 @@ const DetailedInfoForm: React.FC = () => {
                             <div className="text-center">
                               <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                               <p className="text-sm text-gray-600 dark:text-gray-400">
-                                Click to upload business license
+                                Click to upload business license (optional)
                               </p>
                               <p className="text-xs text-gray-500">PDF, JPG, PNG (Max 5MB)</p>
                             </div>
@@ -522,7 +522,7 @@ const DetailedInfoForm: React.FC = () => {
                     {/* Tax Certificate */}
                     <div className="group">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Tax Certificate *
+                        Tax Certificate
                       </label>
                       <div className="relative">
                         <input
@@ -550,7 +550,7 @@ const DetailedInfoForm: React.FC = () => {
                             <div className="text-center">
                               <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                               <p className="text-sm text-gray-600 dark:text-gray-400">
-                                Click to upload tax certificate
+                                Click to upload tax certificate (optional)
                               </p>
                               <p className="text-xs text-gray-500">PDF, JPG, PNG (Max 5MB)</p>
                             </div>
@@ -669,7 +669,7 @@ const DetailedInfoForm: React.FC = () => {
                     {/* Incorporation Certificate */}
                     <div className="group">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Incorporation Certificate *
+                        Incorporation Certificate
                       </label>
                       <div className="relative">
                         <input
@@ -697,7 +697,7 @@ const DetailedInfoForm: React.FC = () => {
                             <div className="text-center">
                               <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                               <p className="text-sm text-gray-600 dark:text-gray-400">
-                                Click to upload incorporation certificate
+                                Click to upload incorporation certificate (optional)
                               </p>
                               <p className="text-xs text-gray-500">PDF, JPG, PNG (Max 5MB)</p>
                             </div>

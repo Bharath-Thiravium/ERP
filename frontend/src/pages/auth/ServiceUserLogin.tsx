@@ -134,25 +134,25 @@ const ServiceUserLogin: React.FC = () => {
       // Navigate to appropriate service dashboard
       switch (formData.service_type) {
         case 'finance':
-          navigate('/services/finance/dashboard')
+          navigate('/services/finance/dashboard', { replace: true })
           break
         case 'hr':
-          navigate('/services/hr/dashboard')
+          navigate('/services/hr/dashboard', { replace: true })
           break
         case 'inventory':
-          navigate('/services/inventory/dashboard')
+          navigate('/services/inventory/dashboard', { replace: true })
           break
         case 'crm':
-          navigate('/services/crm')
+          navigate('/services/crm', { replace: true })
           break
         case 'procurement':
-          navigate('/services/procurement/dashboard')
+          navigate('/services/procurement/dashboard', { replace: true })
           break
         case 'analytics':
-          navigate('/services/analytics/dashboard')
+          navigate('/services/analytics/dashboard', { replace: true })
           break
         default:
-          navigate('/services/dashboard')
+          navigate('/services/dashboard', { replace: true })
       }
     }
   }

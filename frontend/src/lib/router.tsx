@@ -143,31 +143,25 @@ interface PublicRouteProps {
 }
 
 const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
-  const { isAuthenticated, user, firstLoginRequired, approvalPending } = useAuthStore()
+  const { isAuthenticated, user } = useAuthStore()
 
-  // Don't redirect if on 2FA page (user is in middle of login process)
+  // Only handle 2FA page specifically
   if (window.location.pathname === '/2fa') {
     return <>{children}</>
   }
 
-  // Only redirect if user is authenticated and NOT on login pages
-  if (isAuthenticated && user && !window.location.pathname.includes('/login')) {
-    
-    // Redirect based on user type and status
+  // For login page, don't interfere
+  if (window.location.pathname === '/login') {
+    return <>{children}</>
+  }
+
+  // Only redirect if user is authenticated and on root path
+  if (isAuthenticated && user && window.location.pathname === '/') {
     if (user.is_master_admin) {
       return <Navigate to="/master-admin" replace />
     }
     
     if (user.is_company_user) {
-      if (firstLoginRequired) {
-        return <Navigate to="/company/detailed-info" replace />
-      }
-
-      if (approvalPending) {
-        return <Navigate to="/company/waiting-approval" replace />
-      }
-
-      // For approved company users, redirect to dashboard
       return <Navigate to="/company" replace />
     }
   }

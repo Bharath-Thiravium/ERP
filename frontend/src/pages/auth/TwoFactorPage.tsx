@@ -30,16 +30,19 @@ const TwoFactorPage: React.FC = () => {
   const { login, isLoading, error, isAuthenticated, user } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
   
-  // Redirect if already authenticated
+  // Redirect if already authenticated (after 2FA completion)
   React.useEffect(() => {
     if (isAuthenticated && user) {
-      if (user.is_master_admin) {
-        navigate('/master-admin', { replace: true })
-      } else if (user.is_company_user) {
-        navigate('/company', { replace: true })
-      }
+      // Use window.location for reliable navigation after 2FA
+      setTimeout(() => {
+        if (user.is_master_admin) {
+          window.location.replace('/master-admin')
+        } else if (user.is_company_user) {
+          window.location.replace('/company')
+        }
+      }, 100)
     }
-  }, [isAuthenticated, user, navigate])
+  }, [isAuthenticated, user])
   
   // Get credentials from sessionStorage
   React.useEffect(() => {
@@ -80,12 +83,8 @@ const TwoFactorPage: React.FC = () => {
       // Clear stored credentials
       sessionStorage.removeItem('2fa_credentials')
       
-      // Use React Router navigation immediately
-      if (storedData.userType === 'master') {
-        navigate('/master-admin', { replace: true })
-      } else {
-        navigate('/company', { replace: true })
-      }
+      // Let the auth state change trigger navigation
+      // Navigation will be handled by the auth state useEffect
     }
   }
 

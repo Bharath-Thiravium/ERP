@@ -36,7 +36,9 @@ const LoginPage: React.FC = () => {
     lockoutExpiresAt,
     passwordExpiresInDays,
     passwordExpiresAt,
-    securityAlerts
+    securityAlerts,
+    isAuthenticated,
+    user
   } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
 
@@ -49,7 +51,19 @@ const LoginPage: React.FC = () => {
     resolver: zodResolver(loginSchema),
   })
 
-
+  // Auto-redirect when authentication state changes (only for successful login, not 2FA)
+  useEffect(() => {
+    if (isAuthenticated && user && !isLoading) {
+      // Use window.location for reliable navigation after auth state change
+      setTimeout(() => {
+        if (user.is_master_admin) {
+          window.location.replace('/master-admin')
+        } else if (user.is_company_user) {
+          window.location.replace('/company')
+        }
+      }, 100)
+    }
+  }, [isAuthenticated, user, isLoading])
 
   useEffect(() => {
     setTimeout(() => setIsAnimating(false), 500)
@@ -65,25 +79,17 @@ const LoginPage: React.FC = () => {
     
     if (result === true) {
       reset()
-      setHasFailedAttempt(false) // Reset on success
-      
-      // Use React Router navigation to maintain proper history
-      if (userType === 'master') {
-        navigate('/master-admin', { replace: true })
-      } else {
-        navigate('/company', { replace: true })
-      }
-    } else if (result && typeof result === 'object' && 'requires_2fa' in result && result.requires_2fa) {
-      setHasFailedAttempt(false) // Reset on 2FA (not a failure)
-      // Store credentials in sessionStorage for 2FA page
+      setHasFailedAttempt(false)
+      // Navigation will be handled by useEffect when auth state updates
+    } else if (result && typeof result === 'object' && 'requires_2fa' in result && result.requires_2fa === true) {
+      setHasFailedAttempt(false)
       sessionStorage.setItem('2fa_credentials', JSON.stringify({
         credentials: data,
         userType: userType as 'master' | 'company'
       }))
-      // Force navigation with window.location to ensure page change
-      window.location.href = '/2fa'
+      // Force immediate navigation to 2FA page
+      window.location.replace('/2fa')
     } else {
-      // Login failed
       setHasFailedAttempt(true)
     }
   }

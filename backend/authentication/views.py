@@ -92,7 +92,8 @@ class MasterAdminLoginView(APIView):
                 )
             
             # Check if 2FA is required
-            if serializer.validated_data.get('requires_2fa'):
+            requires_2fa = serializer.validated_data.get('requires_2fa', False)
+            if requires_2fa is True:
                 return Response({
                     'requires_2fa': True,
                     'message': '2FA code required',
@@ -661,7 +662,8 @@ class CompanyUserLoginView(APIView):
                 }, status=status.HTTP_403_FORBIDDEN)
             
             # Check if 2FA is required
-            if serializer.validated_data.get('requires_2fa'):
+            requires_2fa = serializer.validated_data.get('requires_2fa', False)
+            if requires_2fa is True:
                 return Response({
                     'requires_2fa': True,
                     'message': '2FA code required',

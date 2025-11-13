@@ -88,9 +88,10 @@ export const useAuthStore = create<AuthState>()(
             return false
           }
           
-          // Check if 2FA is required
-          if (data.requires_2fa === true || data.requires_2fa === 'true') {
+          // Check if 2FA is required - explicit boolean check
+          if (data.requires_2fa === true) {
             set({ isLoading: false })
+            // Don't update auth state for 2FA - just return the requirement
             return {
               requires_2fa: true,
               user_id: data.user_id || data.id
@@ -99,25 +100,17 @@ export const useAuthStore = create<AuthState>()(
 
           // Check if we have access token (successful full login)
           if (!data.access) {
-            set({ isLoading: false, error: 'Invalid login response' })
+            set({ isLoading: false, error: 'Invalid login response - no access token' })
             return false
           }
 
           // Normal login success
-          // Store tokens securely
+
+
+
+          // Store tokens and update state immediately
           setTokens(data.access, data.refresh)
-
-          // Store user data in sessionStorage (less persistent than localStorage)
-          sessionStorage.setItem('user', JSON.stringify(data.user))
-
-          // Store additional auth states
-          sessionStorage.setItem('firstLoginRequired', JSON.stringify(data.first_login_required || false))
-          sessionStorage.setItem('approvalPending', JSON.stringify(data.approval_pending || false))
-          sessionStorage.setItem('approvalStatus', JSON.stringify(data.approval_status || null))
-          sessionStorage.setItem('mustChangePassword', JSON.stringify(data.must_change_password || false))
-          sessionStorage.setItem('forcePasswordReset', JSON.stringify(data.force_password_reset || false))
-
-          // Update state synchronously
+          
           set({
             user: data.user,
             isAuthenticated: true,
@@ -128,28 +121,26 @@ export const useAuthStore = create<AuthState>()(
             mustChangePassword: data.must_change_password || false,
             forcePasswordReset: data.force_password_reset || false,
           })
-
-          // Force state persistence immediately
-          const currentState = get()
+          
+          // Force immediate persistence
           const stateToStore = {
             state: {
-              user: currentState.user,
-              isAuthenticated: currentState.isAuthenticated,
-              firstLoginRequired: currentState.firstLoginRequired,
-              approvalPending: currentState.approvalPending,
-              approvalStatus: currentState.approvalStatus,
-              mustChangePassword: currentState.mustChangePassword,
-              forcePasswordReset: currentState.forcePasswordReset,
+              user: data.user,
+              isAuthenticated: true,
+              firstLoginRequired: data.first_login_required || false,
+              approvalPending: data.approval_pending || false,
+              approvalStatus: data.approval_status || null,
+              mustChangePassword: data.must_change_password || false,
+              forcePasswordReset: data.force_password_reset || false,
             },
             version: 0
           }
           localStorage.setItem('auth-storage', JSON.stringify(stateToStore))
-          
-          // State is now synchronized immediately without artificial delays
 
           // Show success message
           toast.success(`Welcome back, ${data.user.email}!`)
 
+          // Return true for successful login (not 2FA object)
           return true
         } catch (error: any) {
           const errorData = error.response?.data || {}

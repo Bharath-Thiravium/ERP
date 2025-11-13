@@ -66,6 +66,9 @@ class FastMasterAdminLoginSerializer(serializers.Serializer):
                                 cache.set(cache_key, failed_attempts + 1, 900)
                                 raise serializers.ValidationError('Invalid recovery code.')
                             master_admin.use_recovery_code(recovery_code)
+                    else:
+                        # Explicitly set requires_2fa to False when 2FA is disabled
+                        attrs['requires_2fa'] = False
                     
                     # Clear failed attempts on success
                     cache.delete(cache_key)
@@ -75,6 +78,9 @@ class FastMasterAdminLoginSerializer(serializers.Serializer):
                     raise serializers.ValidationError('Invalid credentials.')
                 
                 attrs['user'] = user
+                # Ensure requires_2fa is always set
+                if 'requires_2fa' not in attrs:
+                    attrs['requires_2fa'] = False
                 return attrs
             else:
                 # Increment failed attempts
@@ -150,8 +156,12 @@ class FastCompanyUserLoginSerializer(serializers.Serializer):
                                 valid_code.is_used = True
                                 valid_code.used_at = timezone.now()
                                 valid_code.save()
+                        else:
+                            # Explicitly set requires_2fa to False when 2FA is disabled
+                            attrs['requires_2fa'] = False
                     except CompanySecuritySettings.DoesNotExist:
-                        pass  # No 2FA settings
+                        # No 2FA settings - explicitly set to False
+                        attrs['requires_2fa'] = False
                     
                     # Quick approval check
                     if company_user.company.approval_status != 'approved':
@@ -170,6 +180,9 @@ class FastCompanyUserLoginSerializer(serializers.Serializer):
                     raise serializers.ValidationError('Invalid credentials.')
                 
                 attrs['user'] = user
+                # Ensure requires_2fa is always set
+                if 'requires_2fa' not in attrs:
+                    attrs['requires_2fa'] = False
                 return attrs
             else:
                 cache.set(cache_key, failed_attempts + 1, 900)

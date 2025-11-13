@@ -68,9 +68,19 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ['customer_code']
     
     def validate_gstin(self, value):
-        """Validate GSTIN format"""
-        if value and len(value) != 15:
+        """Validate GSTIN format - MANDATORY field"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("GSTIN is required")
+        
+        if len(value) != 15:
             raise serializers.ValidationError("GSTIN must be exactly 15 characters long")
+        
+        # Validate GSTIN pattern
+        import re
+        gstin_pattern = r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+        if not re.match(gstin_pattern, value):
+            raise serializers.ValidationError("Please enter a valid GSTIN format")
+        
         return value
     
     def validate_pan_number(self, value):
@@ -86,22 +96,32 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate(self, attrs):
-        """Cross-field validation"""
-        # If customer type is individual, Aadhar is recommended
-        if attrs.get('customer_type') == 'individual' and not attrs.get('aadhar_number'):
-            # This is just a warning, not an error
-            pass
+        """Cross-field validation with MANDATORY field checks"""
+        # MANDATORY FIELD VALIDATION
+        required_fields = {
+            'customer_type': 'Customer type is required',
+            'name': 'Customer name is required',
+            'display_name': 'Display name is required',
+            'phone': 'Phone number is required',
+            'billing_address_line1': 'Billing address line 1 is required',
+            'billing_city': 'Billing city is required',
+            'billing_state': 'Billing state is required',
+            'billing_pincode': 'Billing PIN code is required',
+            'gstin': 'GSTIN is required'
+        }
         
-        # If customer type is business, GSTIN and PAN are recommended
-        if attrs.get('customer_type') == 'business':
-            if not attrs.get('gstin') and not attrs.get('pan_number'):
-                # This is just a warning, not an error
-                pass
+        errors = {}
+        for field, message in required_fields.items():
+            value = attrs.get(field)
+            if not value or (isinstance(value, str) and not value.strip()):
+                errors[field] = message
         
-        # Shipping address validation logic
+        if errors:
+            raise serializers.ValidationError(errors)
+        
+        # Shipping address validation logic (only if different from billing)
         shipping_same_as_billing = attrs.get('shipping_same_as_billing', True)
         
-        # Only validate shipping fields if shipping address is explicitly different from billing
         if shipping_same_as_billing is False:
             # When checkbox is unchecked (False), shipping address fields are required
             required_shipping_fields = ['shipping_address_line1', 'shipping_city', 'shipping_state', 'shipping_pincode']
@@ -111,12 +131,15 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
                     field_value = field_value.strip()
                 if not field_value:
                     field_display = field.replace('shipping_', '').replace('_', ' ').title()
-                    raise serializers.ValidationError({field: f"{field_display} is required when shipping address is different from billing address"})
+                    errors[field] = f"{field_display} is required when shipping address is different from billing address"
         else:
             # When checkbox is checked (True), clear shipping address fields to avoid confusion
             shipping_fields = ['shipping_address_line1', 'shipping_address_line2', 'shipping_city', 'shipping_state', 'shipping_pincode', 'shipping_country']
             for field in shipping_fields:
                 attrs[field] = ''
+        
+        if errors:
+            raise serializers.ValidationError(errors)
         
         return attrs
 
@@ -175,9 +198,19 @@ class CustomerUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ['customer_code', 'company', 'created_by', 'created_at']
     
     def validate_gstin(self, value):
-        """Validate GSTIN format"""
-        if value and len(value) != 15:
+        """Validate GSTIN format - MANDATORY field"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("GSTIN is required")
+        
+        if len(value) != 15:
             raise serializers.ValidationError("GSTIN must be exactly 15 characters long")
+        
+        # Validate GSTIN pattern
+        import re
+        gstin_pattern = r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+        if not re.match(gstin_pattern, value):
+            raise serializers.ValidationError("Please enter a valid GSTIN format")
+        
         return value
     
     def validate_pan_number(self, value):

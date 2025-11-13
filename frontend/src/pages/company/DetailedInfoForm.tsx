@@ -31,7 +31,7 @@ const detailedInfoSchema = z.object({
     .regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, 'Please enter a valid GST number (e.g., 22AAAAA0000A1Z5)')
     .optional()
     .or(z.literal('')),
-  registration_number: z.string().min(5, 'Registration number is required'),
+
   contact_person_name: z.string().min(2, 'Contact person name is required'),
   contact_person_title: z.string().min(2, 'Contact person title is required'),
   contact_person_email: z.string().email('Please enter a valid email'),
@@ -384,15 +384,6 @@ const DetailedInfoForm: React.FC = () => {
                     icon={<Receipt className="h-4 w-4" />}
                     error={errors.gst_number?.message}
                     helperText="Enter your GST registration number (optional)"
-                  />
-
-                  <Input
-                    {...register('registration_number')}
-                    label="Registration Number *"
-                    placeholder="Enter business registration number"
-                    icon={<CreditCard className="h-4 w-4" />}
-                    error={errors.registration_number?.message}
-                    required
                   />
                 </div>
               </div>

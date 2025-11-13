@@ -239,7 +239,7 @@ class CompanyDetailedInfoSerializer(serializers.ModelSerializer):
         model = Company
         fields = [
             'business_type', 'industry', 'employee_count', 'annual_revenue',
-            'website', 'tax_id', 'pan_number', 'gst_number', 'registration_number', 'contact_person_name',
+            'website', 'tax_id', 'pan_number', 'gst_number', 'contact_person_name',
             'contact_person_title', 'contact_person_email', 'contact_person_phone',
             'description', 'special_requirements'
         ]

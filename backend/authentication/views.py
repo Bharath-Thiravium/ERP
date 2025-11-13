@@ -494,7 +494,6 @@ class CompanyDetailedInfoView(APIView):
                 # Save file with secure naming
                 import os
                 from django.core.files.storage import default_storage
-                from django.utils import timezone
                 
                 # Create secure filename
                 timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')

@@ -546,6 +546,14 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
 
       // Remove customer_code from payload (let backend generate it)
       delete (payload as any).customer_code
+      
+      // Handle empty date fields - send null instead of empty string
+      if (!payload.opening_balance_date || payload.opening_balance_date === '') {
+        payload.opening_balance_date = null
+      }
+      if (!payload.gst_registration_date || payload.gst_registration_date === '') {
+        payload.gst_registration_date = null
+      }
 
       // If shipping is same as billing, ensure shipping fields are empty
       if (payload.shipping_same_as_billing) {
@@ -1122,7 +1130,10 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                         <input
                           type="date"
                           value={formData.gst_registration_date || ''}
-                          onChange={(e) => handleInputChange('gst_registration_date', e.target.value)}
+                          onChange={(e) => {
+                            const dateValue = e.target.value // Already in YYYY-MM-DD format from date input
+                            handleInputChange('gst_registration_date', dateValue || null)
+                          }}
                           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         />
                       </div>
@@ -1380,7 +1391,10 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                     <input
                       type="date"
                       value={formData.opening_balance_date || ''}
-                      onChange={(e) => handleInputChange('opening_balance_date', e.target.value)}
+                      onChange={(e) => {
+                        const dateValue = e.target.value // Already in YYYY-MM-DD format from date input
+                        handleInputChange('opening_balance_date', dateValue || null)
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     />
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">

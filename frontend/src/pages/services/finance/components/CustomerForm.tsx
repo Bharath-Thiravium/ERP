@@ -356,51 +356,71 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
 
-    // Only validate essential fields
+    // Basic Info - Mandatory fields
     if (!formData.name.trim()) {
       newErrors.name = 'Customer name is required'
     }
+    if (!formData.display_name.trim()) {
+      newErrors.display_name = 'Display name is required'
+    }
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required'
+    }
     
-    // Email validation (only if provided)
+    // Address - Mandatory fields
+    if (!formData.billing_address_line1.trim()) {
+      newErrors.billing_address_line1 = 'Address line 1 is required'
+    }
+    if (!formData.billing_city.trim()) {
+      newErrors.billing_city = 'City is required'
+    }
+    if (!formData.billing_state.trim()) {
+      newErrors.billing_state = 'State is required'
+    }
+    if (!formData.billing_pincode.trim()) {
+      newErrors.billing_pincode = 'PIN code is required'
+    }
+    
+    // Tax & Legal - Mandatory fields
+    if (!formData.gstin.trim()) {
+      newErrors.gstin = 'GSTIN is required'
+    }
+    if (!formData.pan_number.trim()) {
+      newErrors.pan_number = 'PAN number is required'
+    }
+    
+    // Format validations (for all fields with values)
     if (formData.email && formData.email.trim() && !validateEmail(formData.email)) {
       newErrors.email = 'Please enter a valid email address'
     }
-    
-    // Phone validation (only if provided)
     if (formData.phone && formData.phone.trim() && !validatePhone(formData.phone)) {
       newErrors.phone = 'Please enter a valid phone number'
     }
-    
-    // GSTIN validation (only if provided)
+    if (formData.mobile && formData.mobile.trim() && !validatePhone(formData.mobile)) {
+      newErrors.mobile = 'Please enter a valid mobile number'
+    }
     if (formData.gstin && formData.gstin.trim() && !validateGSTIN(formData.gstin)) {
       newErrors.gstin = 'Please enter a valid GSTIN (15 characters)'
     }
-    
-    // PAN validation (only if provided)
     if (formData.pan_number && formData.pan_number.trim() && !validatePAN(formData.pan_number)) {
       newErrors.pan_number = 'Please enter a valid PAN (10 characters)'
     }
+    if (formData.aadhar_number && formData.aadhar_number.trim() && !validateAadhar(formData.aadhar_number)) {
+      newErrors.aadhar_number = 'Please enter a valid Aadhar number (12 digits)'
+    }
+    if (formData.billing_pincode && formData.billing_pincode.trim() && !validatePincode(formData.billing_pincode)) {
+      newErrors.billing_pincode = 'PIN code must be exactly 6 digits'
+    }
+    if (formData.shipping_pincode && formData.shipping_pincode.trim() && !validatePincode(formData.shipping_pincode)) {
+      newErrors.shipping_pincode = 'PIN code must be exactly 6 digits'
+    }
     
-    // IFSC validation (only if provided)
+    // Banking fields - Optional (only validate format if provided)
     if (formData.bank_ifsc_code && formData.bank_ifsc_code.trim() && !validateIFSC(formData.bank_ifsc_code)) {
       newErrors.bank_ifsc_code = 'Please enter a valid IFSC code'
     }
     
-    // Pincode validation (only if provided)
-    if (formData.billing_pincode && formData.billing_pincode.trim() && !validatePincode(formData.billing_pincode)) {
-      newErrors.billing_pincode = 'PIN code must be exactly 6 digits'
-    }
-
-    // Optional validations
-    if (formData.mobile && !validatePhone(formData.mobile)) {
-      newErrors.mobile = 'Please enter a valid mobile number'
-    }
-    if (formData.aadhar_number && !validateAadhar(formData.aadhar_number)) {
-      newErrors.aadhar_number = 'Please enter a valid Aadhar number (12 digits)'
-    }
-    if (formData.shipping_pincode && !validatePincode(formData.shipping_pincode)) {
-      newErrors.shipping_pincode = 'PIN code must be exactly 6 digits'
-    }
+    // Other Info fields - Optional
     if (formData.credit_limit < 0) {
       newErrors.credit_limit = 'Credit limit cannot be negative'
     }
@@ -772,7 +792,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
 
                   {renderInput('name', 'Customer Name', 'text', 'Enter customer name', true)}
                   {renderInput('display_name', 'Display Name', 'text', 'Name to show on invoices', true)}
-                  {renderInput('email', 'Email', 'email', 'customer@example.com', true, undefined, <Mail className="w-4 h-4" />)}
+                  {renderInput('email', 'Email', 'email', 'customer@example.com', false, undefined, <Mail className="w-4 h-4" />)}
                   {renderInput('phone', 'Phone', 'tel', '9876543210', true, undefined, <Phone className="w-4 h-4" />)}
                   {renderInput('mobile', 'Mobile', 'tel', '9876543210', false, undefined, <Phone className="w-4 h-4" />)}
                   {renderInput('website', 'Website', 'url', 'https://example.com', false, undefined, <Globe className="w-4 h-4" />)}
@@ -1189,7 +1209,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Bank Name <span className="text-red-500">*</span>
+                      Bank Name
                     </label>
                     <input
                       type="text"
@@ -1207,7 +1227,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Account Number <span className="text-red-500">*</span>
+                      Account Number
                     </label>
                     <input
                       type="text"
@@ -1224,7 +1244,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      IFSC Code <span className="text-red-500">*</span>
+                      IFSC Code
                     </label>
                     <input
                       type="text"
@@ -1255,7 +1275,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Account Holder Name <span className="text-red-500">*</span>
+                      Account Holder Name
                     </label>
                     <input
                       type="text"

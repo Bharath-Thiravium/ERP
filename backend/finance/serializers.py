@@ -687,6 +687,12 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=True
     )
+    quotation = serializers.PrimaryKeyRelatedField(
+        queryset=Quotation.objects.all(),
+        required=False,
+        allow_null=True,
+        help_text="Optional quotation for PO creation"
+    )
 
     class Meta:
         model = PurchaseOrder
@@ -700,13 +706,17 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         po_items_data = validated_data.pop('po_items')
 
-        # Get quotation to copy GST information
-        quotation = validated_data['quotation']
+        # Get quotation to copy GST information (if provided)
+        quotation = validated_data.get('quotation')
 
-        # Set GST information from quotation
-        validated_data['gst_type'] = quotation.gst_type
-        validated_data['customer_gstin'] = quotation.customer_gstin
-        validated_data['company_gstin'] = quotation.company_gstin
+        if quotation:
+            # Set GST information from quotation
+            validated_data['gst_type'] = quotation.gst_type
+            validated_data['customer_gstin'] = quotation.customer_gstin
+            validated_data['company_gstin'] = quotation.company_gstin
+        else:
+            # For direct PO creation, GST info will be set in model's save method
+            pass
 
         # Create the purchase order
         purchase_order = PurchaseOrder.objects.create(**validated_data)

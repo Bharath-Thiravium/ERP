@@ -810,7 +810,7 @@ class PurchaseOrder(models.Model):
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='purchase_orders')
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='purchase_orders')
-    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='purchase_orders', help_text="Original quotation this PO is based on")
+    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='purchase_orders', null=True, blank=True, help_text="Original quotation this PO is based on (optional for direct POs)")
 
     # PO/WO Details
     po_number = models.CharField(max_length=100, help_text="Client's PO/WO number")
@@ -959,6 +959,24 @@ class PurchaseOrder(models.Model):
                         self.internal_po_number = f"PO-{timezone.now().year}-000001"
                 else:
                     self.internal_po_number = f"PO-{timezone.now().year}-000001"
+
+        # Set GST information from customer and company if not from quotation
+        if not self.quotation and self.customer:
+            # Determine GST type based on customer and company GSTIN
+            if self.customer.gstin and hasattr(self.company, 'gst_number') and self.company.gst_number:
+                customer_state_code = self.customer.gstin[:2]
+                company_state_code = self.company.gst_number[:2]
+
+                if customer_state_code == company_state_code:
+                    self.gst_type = 'cgst_sgst'  # Same state - CGST + SGST
+                else:
+                    self.gst_type = 'igst'  # Different state - IGST
+            else:
+                self.gst_type = 'exempt'  # No GST if either party doesn't have GSTIN
+
+            # Store GSTIN values at time of PO creation
+            self.customer_gstin = self.customer.gstin or ''
+            self.company_gstin = getattr(self.company, 'gst_number', '') or ''
 
         # Initialize balance tracking for new POs before saving
         is_new = self.pk is None

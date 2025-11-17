@@ -1205,7 +1205,7 @@ class PurchaseOrderListCreateView(ListCreateAPIView):
                 created_by=service_user
             )
 
-            # Update the related quotation status to 'approved'
+            # Update the related quotation status to 'approved' (only if PO was created from quotation)
             if purchase_order.quotation:
                 quotation = purchase_order.quotation
                 quotation.status = 'approved'
@@ -1305,8 +1305,8 @@ class PurchaseOrderDetailView(RetrieveUpdateDestroyAPIView):
             # Delete the purchase order
             response = super().destroy(request, *args, **kwargs)
 
-            # If deletion was successful, revert quotation status to 'sent'
-            if response.status_code == 204:  # HTTP 204 No Content (successful deletion)
+            # If deletion was successful and quotation exists, revert quotation status to 'sent'
+            if response.status_code == 204 and quotation:  # HTTP 204 No Content (successful deletion)
                 quotation.status = 'sent'
                 quotation.save()
 

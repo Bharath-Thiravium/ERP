@@ -71,7 +71,7 @@ interface Quotation {
 interface PurchaseOrder {
   id?: number
   internal_po_number?: string
-  quotation: number
+  quotation?: number | null
   po_number: string
   po_date: string
   po_file?: File | null
@@ -114,6 +114,20 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     console.log('🔍 PO Form - Storage Session Key:', !!sessionStorage.getItem('service_session_key'))
     console.log('🔍 PO Form - Quotation:', !!quotation)
   }, [sessionKey, quotation])
+
+  // Click outside handler for product dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (productSearchRef.current && !productSearchRef.current.contains(event.target as Node)) {
+        setShowProductDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -122,9 +136,10 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const productSearchRef = React.useRef<HTMLDivElement>(null)
 
   const [formData, setFormData] = useState<PurchaseOrder>({
-    quotation: quotation?.id || 0,
+    quotation: quotation?.id || null,
     po_number: '',
     po_date: new Date().toISOString().split('T')[0],
     po_file: null,
@@ -404,14 +419,17 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     const discountAmount = formData.discount_percentage > 0 ? (subtotal * formData.discount_percentage / 100) : formData.discount_amount
     const subtotalAfterDiscount = subtotal - discountAmount
 
-    // Calculate GST
+    // Calculate GST on subtotal after discount
     const gstType = determineGSTType()
     let totalTax = 0
 
     if (gstType !== 'exempt') {
       totalTax = formData.po_items.reduce((sum, item) => {
-        const itemTotal = item.quantity * item.unit_price
-        return sum + (itemTotal * item.gst_rate / 100)
+        const itemTotal = (item.quantity * item.unit_price)
+        // Apply discount proportionally to each item before calculating GST
+        const itemDiscount = discountAmount > 0 ? (itemTotal / subtotal) * discountAmount : 0
+        const itemTotalAfterDiscount = itemTotal - itemDiscount
+        return sum + (itemTotalAfterDiscount * item.gst_rate / 100)
       }, 0)
     }
 
@@ -458,9 +476,10 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       newErrors.customer = 'Customer is required'
     }
 
-    if (!formData.quotation) {
-      newErrors.quotation = 'Quotation is required'
-    }
+    // Quotation is now optional for direct PO creation
+    // if (!formData.quotation) {
+    //   newErrors.quotation = 'Quotation is required'
+    // }
 
     if (formData.po_items.length === 0) {
       newErrors.po_items = 'At least one item is required'
@@ -596,11 +615,16 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              {purchaseOrder ? 'Edit Purchase Order' : 'Create Purchase Order'}
+              {purchaseOrder ? 'Edit Purchase Order' : (quotation ? 'Create Purchase Order from Quotation' : 'Create Direct Purchase Order')}
             </h2>
             {quotation && (
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 From Quotation: {quotation.quotation_number}
+              </p>
+            )}
+            {!quotation && !purchaseOrder && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Creating PO directly without quotation
               </p>
             )}
           </div>
@@ -675,7 +699,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   <Calendar className="w-4 h-4 inline mr-1" />
-                  Quotation Date
+                  {quotation ? 'Quotation Date' : 'Order Date'}
                 </label>
                 <input
                   type="date"
@@ -711,18 +735,42 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               </div>
             </div>
 
-            {/* Customer Display */}
+            {/* Customer Selection/Display */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <User className="w-4 h-4 inline mr-1" />
-                Customer (From Quotation)
+                Customer {quotation ? '(From Quotation)' : '*'}
               </label>
-              <input
-                type="text"
-                value={selectedCustomer?.name || 'Loading customer...'}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white cursor-not-allowed"
-                readOnly
-              />
+              {quotation ? (
+                <input
+                  type="text"
+                  value={selectedCustomer?.name || 'Loading customer...'}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white cursor-not-allowed"
+                  readOnly
+                />
+              ) : (
+                <select
+                  value={formData.customer || ''}
+                  onChange={(e) => {
+                    const customerId = parseInt(e.target.value)
+                    setFormData(prev => ({ ...prev, customer: customerId }))
+                    if (customerId) {
+                      loadCustomerDetails(customerId)
+                    } else {
+                      setSelectedCustomer(null)
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="">Select a customer...</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name} ({customer.customer_code})
+                    </option>
+                  ))}
+                </select>
+              )}
+              {errors.customer && <p className="mt-1 text-sm text-red-600">{errors.customer}</p>}
             </div>
 
             {/* Customer Details Display */}
@@ -744,27 +792,43 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               </div>
             )}
 
-            {/* Shipping Address Display */}
+            {/* Shipping Address Selection/Display */}
             {selectedCustomer && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   <MapPin className="w-4 h-4 inline mr-1" />
-                  Shipping Address (From Quotation)
+                  Shipping Address {quotation ? '(From Quotation)' : ''}
                 </label>
-                <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white text-sm">
-                  {selectedCustomer.shipping_addresses && selectedCustomer.shipping_addresses.length > 0 ? (
-                    selectedCustomer.shipping_addresses
-                      .filter(addr => addr.id === formData.shipping_address)
-                      .map(address => (
-                        <div key={address.id}>
-                          {address.address_line1}, {address.city}, {address.state} {address.pincode}
-                          {address.is_default && ' (Default)'}
-                        </div>
-                      ))[0] || 'Same as billing address'
-                  ) : (
-                    'Same as billing address'
-                  )}
-                </div>
+                {quotation ? (
+                  <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white text-sm">
+                    {selectedCustomer.shipping_addresses && selectedCustomer.shipping_addresses.length > 0 ? (
+                      selectedCustomer.shipping_addresses
+                        .filter(addr => addr.id === formData.shipping_address)
+                        .map(address => (
+                          <div key={address.id}>
+                            {address.address_line1}, {address.city}, {address.state} {address.pincode}
+                            {address.is_default && ' (Default)'}
+                          </div>
+                        ))[0] || 'Same as billing address'
+                    ) : (
+                      'Same as billing address'
+                    )}
+                  </div>
+                ) : (
+                  <select
+                    value={formData.shipping_address || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, shipping_address: e.target.value ? parseInt(e.target.value) : null }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    <option value="">Same as billing address</option>
+                    {selectedCustomer.shipping_addresses?.map((address) => (
+                      <option key={address.id} value={address.id}>
+                        {address.address_line1}, {address.city}, {address.state} {address.pincode}
+                        {address.is_default && ' (Default)'}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             )}
 
@@ -773,7 +837,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               {/* Left Column - Product Search */}
               <div>
                 <h4 className="font-medium text-gray-900 dark:text-white mb-3">Add Products</h4>
-                <div className="relative mb-4">
+                <div className="relative mb-4" ref={productSearchRef}>
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <input
                     type="text"
@@ -784,13 +848,14 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                     }}
                     onFocus={() => setShowProductDropdown(true)}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="Search products..."
+                    placeholder={!quotation ? "Click to select products or type to search..." : "Search products..."}
                   />
 
-                  {showProductDropdown && productSearch && (
+                  {showProductDropdown && (
                     <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                       {products
                         .filter(product =>
+                          !productSearch || 
                           product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
                           product.product_code.toLowerCase().includes(productSearch.toLowerCase())
                         )
@@ -807,6 +872,15 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                           </div>
                         ))
                       }
+                      {products.filter(product =>
+                        !productSearch || 
+                        product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+                        product.product_code.toLowerCase().includes(productSearch.toLowerCase())
+                      ).length === 0 && (
+                        <div className="px-3 py-2 text-gray-500 dark:text-gray-400 text-center">
+                          {products.length === 0 ? 'No products available' : 'No products match your search'}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -881,7 +955,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                   </div>
                 ) : (
                   <div className="text-gray-500 dark:text-gray-400 text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                    <p className="mb-4">No products selected. {quotation ? 'Loading products from quotation...' : 'Search and select products from the left panel.'}</p>
+                    <p className="mb-4">No products selected. {quotation ? 'Loading products from quotation...' : (!selectedCustomer ? 'Please select a customer first.' : 'Search and select products from the left panel.')}</p>
                     {selectedCustomer && companyDetails && (
                       <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg text-sm">
                         <p className="font-medium text-gray-900 dark:text-white text-center">
@@ -896,21 +970,105 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               </div>
             </div>
 
+            {/* Discount and Charges Section - Only for direct PO creation */}
+            {!quotation && formData.po_items.length > 0 && (
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 dark:text-white mb-3">Discount & Charges</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Discount %
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={formData.discount_percentage}
+                      onChange={(e) => {
+                        const percentage = parseFloat(e.target.value) || 0
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          discount_percentage: percentage,
+                          discount_amount: 0 // Reset amount when percentage is used
+                        }))
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Discount Amount (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.discount_amount}
+                      onChange={(e) => {
+                        const amount = parseFloat(e.target.value) || 0
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          discount_amount: amount,
+                          discount_percentage: 0 // Reset percentage when amount is used
+                        }))
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Shipping Charges (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.shipping_charges}
+                      onChange={(e) => setFormData(prev => ({ ...prev, shipping_charges: parseFloat(e.target.value) || 0 }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Other Charges (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.other_charges}
+                      onChange={(e) => setFormData(prev => ({ ...prev, other_charges: parseFloat(e.target.value) || 0 }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Summary Section */}
             {formData.po_items.length > 0 && (
               <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 dark:text-white mb-3">Order Summary</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
-                    <span className="text-gray-900 dark:text-white">₹{totals.subtotal.toFixed(2)}</span>
+                    <span className="text-gray-600 dark:text-gray-400">Items Total:</span>
+                    <span className="text-gray-900 dark:text-white">₹{formData.po_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0).toFixed(2)}</span>
                   </div>
                   {totals.discountAmount > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Discount:</span>
+                      <span className="text-gray-600 dark:text-gray-400">Discount {formData.discount_percentage > 0 ? `(${formData.discount_percentage}%)` : ''}:</span>
                       <span className="text-red-600">-₹{totals.discountAmount.toFixed(2)}</span>
                     </div>
                   )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
+                    <span className="text-gray-900 dark:text-white">₹{totals.subtotal.toFixed(2)}</span>
+                  </div>
                   {totals.gstType === 'cgst_sgst' && totals.totalTax > 0 && (
                     <>
                       <div className="flex justify-between">

@@ -230,7 +230,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
             </div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No Purchase Orders Yet</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
-              Get started by creating your first purchase order or work order from a sent quotation.
+              Get started by creating your first purchase order or work order. You can create POs directly or from sent quotations.
             </p>
             <button
               onClick={onCreateNew}
@@ -319,7 +319,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                             )}
                           </div>
                           <div className="text-sm text-gray-500 dark:text-gray-400">
-                            From: {po.quotation_number}
+                            {po.quotation_number ? `From: ${po.quotation_number}` : 'Direct PO (No Quotation)'}
                           </div>
                         </div>
                       </td>

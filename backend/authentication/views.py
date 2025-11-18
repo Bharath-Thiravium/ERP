@@ -1783,6 +1783,128 @@ class CompanyProfileView(APIView):
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
+class CompanyDetailsView(APIView):
+    """Company details view and edit for company users"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get company details for the authenticated company user"""
+        if not hasattr(request.user, 'company_user'):
+            return Response(
+                {'error': 'Only company users can access company details.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_user = request.user.company_user
+        company = company_user.company
+
+        # Return company data
+        logo_url = None
+        if company.logo:
+            logo_url = request.build_absolute_uri(company.logo.url)
+
+        return Response({
+            'id': company.id,
+            'name': company.name,
+            'email': company.email,
+            'phone': company.phone,
+            'address': company.address,
+            'logo': logo_url,
+            'business_type': company.business_type,
+            'industry': company.industry,
+            'employee_count': company.employee_count,
+            'annual_revenue': company.annual_revenue,
+            'website': company.website,
+            'gst_number': company.gst_number,
+            'pan_number': company.pan_number,
+            'registration_number': company.registration_number,
+            'contact_person_name': company.contact_person_name,
+            'contact_person_title': company.contact_person_title,
+            'contact_person_email': company.contact_person_email,
+            'contact_person_phone': company.contact_person_phone,
+            'description': company.description,
+            'domain_name': company.domain_name,
+            'approval_status': company.approval_status,
+            'created_at': company.created_at.isoformat() if company.created_at else None,
+            'updated_at': company.updated_at.isoformat() if company.updated_at else None,
+        })
+
+    def put(self, request):
+        """Update company details"""
+        if not hasattr(request.user, 'company_user'):
+            return Response(
+                {'error': 'Only company users can update company details.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_user = request.user.company_user
+        company = company_user.company
+
+        # Fields that can be updated by company users
+        updatable_fields = [
+            'phone', 'address', 'business_type', 'industry', 'employee_count',
+            'annual_revenue', 'website', 'gst_number', 'pan_number',
+            'registration_number', 'contact_person_name', 'contact_person_title',
+            'contact_person_email', 'contact_person_phone', 'description', 'domain_name'
+        ]
+
+        # Update only the provided fields
+        updated_fields = []
+        for field in updatable_fields:
+            if field in request.data:
+                old_value = getattr(company, field)
+                new_value = request.data[field]
+                if old_value != new_value:
+                    setattr(company, field, new_value)
+                    updated_fields.append(field)
+
+        if updated_fields:
+            company.save()
+            
+            # Log the update
+            log_security_event(
+                request.user,
+                'COMPANY_DETAILS_UPDATED',
+                request,
+                f'Updated company details: {", ".join(updated_fields)}'
+            )
+
+        # Return updated company data
+        logo_url = None
+        if company.logo:
+            logo_url = request.build_absolute_uri(company.logo.url)
+
+        return Response({
+            'message': 'Company details updated successfully.',
+            'updated_fields': updated_fields,
+            'company': {
+                'id': company.id,
+                'name': company.name,
+                'email': company.email,
+                'phone': company.phone,
+                'address': company.address,
+                'logo': logo_url,
+                'business_type': company.business_type,
+                'industry': company.industry,
+                'employee_count': company.employee_count,
+                'annual_revenue': company.annual_revenue,
+                'website': company.website,
+                'gst_number': company.gst_number,
+                'pan_number': company.pan_number,
+                'registration_number': company.registration_number,
+                'contact_person_name': company.contact_person_name,
+                'contact_person_title': company.contact_person_title,
+                'contact_person_email': company.contact_person_email,
+                'contact_person_phone': company.contact_person_phone,
+                'description': company.description,
+                'domain_name': company.domain_name,
+                'approval_status': company.approval_status,
+                'created_at': company.created_at.isoformat() if company.created_at else None,
+                'updated_at': company.updated_at.isoformat() if company.updated_at else None,
+            }
+        })
+
+
 class CompanyLogoUpdateView(APIView):
     """Update company logo"""
     permission_classes = [IsAuthenticated]
@@ -1996,6 +2118,128 @@ Login URL: [Your Company Login URL]
         secure_file_write(filepath, content)
         
         return filename
+
+
+class CompanyDetailsView(APIView):
+    """Company details view and edit for company users"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get company details for the authenticated company user"""
+        if not hasattr(request.user, 'company_user'):
+            return Response(
+                {'error': 'Only company users can access company details.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_user = request.user.company_user
+        company = company_user.company
+
+        # Return company data
+        logo_url = None
+        if company.logo:
+            logo_url = request.build_absolute_uri(company.logo.url)
+
+        return Response({
+            'id': company.id,
+            'name': company.name,
+            'email': company.email,
+            'phone': company.phone,
+            'address': company.address,
+            'logo': logo_url,
+            'business_type': company.business_type,
+            'industry': company.industry,
+            'employee_count': company.employee_count,
+            'annual_revenue': company.annual_revenue,
+            'website': company.website,
+            'gst_number': company.gst_number,
+            'pan_number': company.pan_number,
+            'registration_number': company.registration_number,
+            'contact_person_name': company.contact_person_name,
+            'contact_person_title': company.contact_person_title,
+            'contact_person_email': company.contact_person_email,
+            'contact_person_phone': company.contact_person_phone,
+            'description': company.description,
+            'domain_name': company.domain_name,
+            'approval_status': company.approval_status,
+            'created_at': company.created_at.isoformat() if company.created_at else None,
+            'updated_at': company.updated_at.isoformat() if company.updated_at else None,
+        })
+
+    def put(self, request):
+        """Update company details"""
+        if not hasattr(request.user, 'company_user'):
+            return Response(
+                {'error': 'Only company users can update company details.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_user = request.user.company_user
+        company = company_user.company
+
+        # Fields that can be updated by company users
+        updatable_fields = [
+            'phone', 'address', 'business_type', 'industry', 'employee_count',
+            'annual_revenue', 'website', 'gst_number', 'pan_number',
+            'registration_number', 'contact_person_name', 'contact_person_title',
+            'contact_person_email', 'contact_person_phone', 'description', 'domain_name'
+        ]
+
+        # Update only the provided fields
+        updated_fields = []
+        for field in updatable_fields:
+            if field in request.data:
+                old_value = getattr(company, field)
+                new_value = request.data[field]
+                if old_value != new_value:
+                    setattr(company, field, new_value)
+                    updated_fields.append(field)
+
+        if updated_fields:
+            company.save()
+            
+            # Log the update
+            log_security_event(
+                request.user,
+                'COMPANY_DETAILS_UPDATED',
+                request,
+                f'Updated company details: {", ".join(updated_fields)}'
+            )
+
+        # Return updated company data
+        logo_url = None
+        if company.logo:
+            logo_url = request.build_absolute_uri(company.logo.url)
+
+        return Response({
+            'message': 'Company details updated successfully.',
+            'updated_fields': updated_fields,
+            'company': {
+                'id': company.id,
+                'name': company.name,
+                'email': company.email,
+                'phone': company.phone,
+                'address': company.address,
+                'logo': logo_url,
+                'business_type': company.business_type,
+                'industry': company.industry,
+                'employee_count': company.employee_count,
+                'annual_revenue': company.annual_revenue,
+                'website': company.website,
+                'gst_number': company.gst_number,
+                'pan_number': company.pan_number,
+                'registration_number': company.registration_number,
+                'contact_person_name': company.contact_person_name,
+                'contact_person_title': company.contact_person_title,
+                'contact_person_email': company.contact_person_email,
+                'contact_person_phone': company.contact_person_phone,
+                'description': company.description,
+                'domain_name': company.domain_name,
+                'approval_status': company.approval_status,
+                'created_at': company.created_at.isoformat() if company.created_at else None,
+                'updated_at': company.updated_at.isoformat() if company.updated_at else None,
+            }
+        })
 
 
 class GenerateAutoCodeView(APIView):

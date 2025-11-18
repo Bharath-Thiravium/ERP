@@ -51,6 +51,7 @@ urlpatterns = [
     # Company User endpoints
     path('company/login/', views.CompanyUserLoginView.as_view(), name='company_user_login'),
     path('company/update-logo/', views.CompanyLogoUpdateView.as_view(), name='company_logo_update'),
+    path('company/details/', views.CompanyDetailsView.as_view(), name='company_details'),
 
     # Service User endpoints
     path('service-user/login/', views.ServiceUserLoginView.as_view(), name='service_user_login'),

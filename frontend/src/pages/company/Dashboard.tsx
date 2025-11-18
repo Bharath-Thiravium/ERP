@@ -64,6 +64,7 @@ import SecurityAuditLogs from '../../components/company/security/SecurityAuditLo
 import AdvancedSecurity from '../../components/company/security/AdvancedSecurity'
 import GovernmentAPICredentials from '../../components/company/government/GovernmentAPICredentials'
 import DocumentNumbering from '../../components/company/DocumentNumbering'
+import CompanyDetailsPage from './CompanyDetailsPage'
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -392,6 +393,7 @@ Website: https://athenas.co.in
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'services', label: 'Services', icon: Settings },
     { id: 'users', label: 'Service Users', icon: Users },
+    { id: 'company-details', label: 'Company Details', icon: Building2 },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'activity', label: 'Activity', icon: Activity },
     { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -705,6 +707,10 @@ Website: https://athenas.co.in
             onCopyToClipboard={copyToClipboard}
             onDeleteUser={(userId) => deleteServiceUserMutation.mutate(userId)}
           />
+        )}
+
+        {activeTab === 'company-details' && (
+          <CompanyDetailsPage />
         )}
 
         {activeTab === 'analytics' && (

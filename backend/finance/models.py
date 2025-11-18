@@ -74,7 +74,7 @@ class Product(models.Model):
     gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
 
     # Pricing
-    unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default='PCS')
+    unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default='PCS', blank=True)
     selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     purchase_price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
 

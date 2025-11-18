@@ -257,6 +257,13 @@ export const apiClient = {
   uploadCompanyLogo: (formData: FormData) =>
     api.post('/api/auth/company/update-logo/', formData),
 
+  // Company Details
+  getCompanyDetails: () =>
+    api.get('/api/auth/company/details/'),
+
+  updateCompanyDetails: (data: any) =>
+    api.put('/api/auth/company/details/', data),
+
   refreshToken: (refreshToken: string) =>
     api.post('/api/token/refresh/', { refresh: refreshToken }),
 

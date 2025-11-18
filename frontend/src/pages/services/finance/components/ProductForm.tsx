@@ -335,9 +335,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     if (formData.product_type === 'service' && !formData.sac_code) {
       newErrors.sac_code = 'SAC code is required for services'
     }
-    if (!formData.unit.trim()) {
-      newErrors.unit = 'Unit is required'
-    }
+    // Unit is now optional - no validation needed
     // Handle selling_price validation (could be empty string or number)
     const sellingPrice = typeof formData.selling_price === 'string' && formData.selling_price === ''
       ? 0
@@ -725,7 +723,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Unit <span className="text-red-500">*</span>
+                Unit
               </label>
               <select
                 name="unit"

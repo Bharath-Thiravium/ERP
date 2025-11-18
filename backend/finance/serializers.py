@@ -374,7 +374,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'name', 'product_type', 'description',
-            'hsn_code', 'sac_code',
+            'hsn_code', 'sac_code', 'gst_rate',
             'unit', 'selling_price', 'purchase_price',
             'track_inventory', 'current_stock', 'minimum_stock',
             'is_active'
@@ -401,9 +401,29 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        """Create product and let the model handle GST rate calculation"""
-        # Remove gst_rate from validated_data if it exists (shouldn't be sent from frontend)
-        validated_data.pop('gst_rate', None)
+        """Create product and handle manual GST rate overrides"""
+        # Check if GST rate is being manually set
+        gst_rate = validated_data.get('gst_rate')
+        if gst_rate is not None:
+            expected_gst_rate = None
+            hsn_code = validated_data.get('hsn_code')
+            sac_code = validated_data.get('sac_code')
+            product_type = validated_data.get('product_type', 'product')
+            
+            if product_type == 'product' and hsn_code:
+                expected_gst_rate = hsn_code.gst_rate
+            elif product_type == 'service' and sac_code:
+                expected_gst_rate = sac_code.gst_rate
+            
+            # If GST rate differs from expected auto-rate, it's a manual override
+            if expected_gst_rate is not None and float(gst_rate) != float(expected_gst_rate):
+                # Create the product first
+                product = super().create(validated_data)
+                # Then mark as manual override and save again
+                product.manual_gst_override = True
+                product.save(update_fields=['manual_gst_override'])
+                return product
+        
         return super().create(validated_data)
 
 
@@ -414,7 +434,7 @@ class ProductUpdateSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'name', 'product_type', 'description',
-            'hsn_code', 'sac_code',
+            'hsn_code', 'sac_code', 'gst_rate',
             'unit', 'selling_price', 'purchase_price',
             'track_inventory', 'current_stock', 'minimum_stock',
             'is_active'
@@ -442,9 +462,24 @@ class ProductUpdateSerializer(serializers.ModelSerializer):
         return attrs
 
     def update(self, instance, validated_data):
-        """Update product and let the model handle GST rate calculation"""
-        # Remove gst_rate from validated_data if it exists (shouldn't be sent from frontend)
-        validated_data.pop('gst_rate', None)
+        """Update product and preserve manual GST rate changes"""
+        # Check if GST rate is being manually overridden
+        gst_rate = validated_data.get('gst_rate')
+        if gst_rate is not None:
+            expected_gst_rate = None
+            hsn_code = validated_data.get('hsn_code', instance.hsn_code)
+            sac_code = validated_data.get('sac_code', instance.sac_code)
+            product_type = validated_data.get('product_type', instance.product_type)
+            
+            if product_type == 'product' and hsn_code:
+                expected_gst_rate = hsn_code.gst_rate
+            elif product_type == 'service' and sac_code:
+                expected_gst_rate = sac_code.gst_rate
+            
+            # If GST rate differs from expected auto-rate, mark as manual override
+            if expected_gst_rate is not None and float(gst_rate) != float(expected_gst_rate):
+                instance._manual_gst_override = True
+        
         return super().update(instance, validated_data)
 
 

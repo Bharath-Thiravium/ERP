@@ -86,6 +86,9 @@ class Product(models.Model):
     # Status
     is_active = models.BooleanField(default=True)
 
+    # Manual override tracking
+    manual_gst_override = models.BooleanField(default=False, help_text="True if GST rate was manually overridden")
+    
     # Audit fields
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_products')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -104,39 +107,89 @@ class Product(models.Model):
         if not self.product_code:
             try:
                 from authentication.utils import generate_auto_code
-                self.product_code = generate_auto_code(self.company.id, 'product')
+                # Use product_type specific code generation
+                code_type = 'product' if self.product_type == 'product' else 'service'
+                self.product_code = generate_auto_code(self.company.id, code_type)
             except Exception as e:
                 # Fallback to old system if auto-code fails
                 if self.product_type == 'product':
-                    # Generate PRD- codes for products
+                    # Generate company prefix + PROD codes for products
+                    company_prefix = getattr(self.company, 'company_prefix', 'COMP')
                     last_product = Product.objects.filter(
                         company=self.company,
-                        product_type='product',
-                        product_code__startswith='PRD-'
+                        product_type='product'
                     ).order_by('-id').first()
-                    if last_product:
-                        last_number = int(last_product.product_code.split('-')[-1])
-                        self.product_code = f"PRD-{last_number + 1:06d}"
+                    if last_product and last_product.product_code:
+                        # Extract number from existing code
+                        import re
+                        match = re.search(r'(\d+)$', last_product.product_code)
+                        if match:
+                            last_number = int(match.group(1))
+                            self.product_code = f"{company_prefix}PROD{last_number + 1:02d}"
+                        else:
+                            self.product_code = f"{company_prefix}PROD01"
                     else:
-                        self.product_code = "PRD-000001"
+                        self.product_code = f"{company_prefix}PROD01"
                 else:
-                    # Generate SER- codes for services
+                    # Generate company prefix + SER codes for services
+                    company_prefix = getattr(self.company, 'company_prefix', 'COMP')
                     last_service = Product.objects.filter(
                         company=self.company,
-                        product_type='service',
-                        product_code__startswith='SER-'
+                        product_type='service'
                     ).order_by('-id').first()
-                    if last_service:
-                        last_number = int(last_service.product_code.split('-')[-1])
-                        self.product_code = f"SER-{last_number + 1:06d}"
+                    if last_service and last_service.product_code:
+                        # Extract number from existing code
+                        import re
+                        match = re.search(r'(\d+)$', last_service.product_code)
+                        if match:
+                            last_number = int(match.group(1))
+                            self.product_code = f"{company_prefix}SER{last_number + 1:02d}"
+                        else:
+                            self.product_code = f"{company_prefix}SER01"
                     else:
-                        self.product_code = "SER-000001"
+                        self.product_code = f"{company_prefix}SER01"
 
-        # Auto-set GST rate from HSN/SAC code
-        if self.product_type == 'product' and self.hsn_code:
-            self.gst_rate = self.hsn_code.gst_rate
-        elif self.product_type == 'service' and self.sac_code:
-            self.gst_rate = self.sac_code.gst_rate
+        # Handle GST rate auto-fill vs manual override
+        is_new_instance = self.pk is None
+        temp_manual_override = getattr(self, '_manual_gst_override', False)
+        
+        # For new instances, auto-fill GST rate from HSN/SAC unless manually overridden
+        if is_new_instance and not temp_manual_override and not self.manual_gst_override:
+            if self.product_type == 'product' and self.hsn_code:
+                self.gst_rate = self.hsn_code.gst_rate
+            elif self.product_type == 'service' and self.sac_code:
+                self.gst_rate = self.sac_code.gst_rate
+        
+        # For existing instances, respect manual overrides
+        elif not is_new_instance:
+            try:
+                # Get the current product from database
+                current_product = Product.objects.get(pk=self.pk)
+                expected_gst_rate = None
+                
+                if self.product_type == 'product' and self.hsn_code:
+                    expected_gst_rate = self.hsn_code.gst_rate
+                elif self.product_type == 'service' and self.sac_code:
+                    expected_gst_rate = self.sac_code.gst_rate
+                
+                # Check if GST rate was manually changed
+                if temp_manual_override or (expected_gst_rate is not None and self.gst_rate != expected_gst_rate):
+                    # Mark as manual override and keep the current rate
+                    self.manual_gst_override = True
+                elif not current_product.manual_gst_override and expected_gst_rate is not None:
+                    # Auto-update GST rate if not manually overridden
+                    self.gst_rate = expected_gst_rate
+                    
+            except Product.DoesNotExist:
+                # Product doesn't exist yet, treat as new
+                if self.product_type == 'product' and self.hsn_code:
+                    self.gst_rate = self.hsn_code.gst_rate
+                elif self.product_type == 'service' and self.sac_code:
+                    self.gst_rate = self.sac_code.gst_rate
+        
+        # Set manual override flag if temp flag was set
+        if temp_manual_override:
+            self.manual_gst_override = True
 
         super().save(*args, **kwargs)
 

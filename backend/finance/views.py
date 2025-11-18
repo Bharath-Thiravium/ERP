@@ -384,10 +384,14 @@ class ProductPagination(PageNumberPagination):
 
 
 class ProductListCreateView(ListCreateAPIView):
-    """List and create products for finance service"""
+    """List and create products for finance service with rate limiting"""
     authentication_classes = []  # Disable JWT authentication
     permission_classes = [permissions.AllowAny]  # Uses session-based auth
     pagination_class = ProductPagination
+    
+    # Rate limiting for bulk operations
+    _last_request_time = {}
+    _request_count = {}
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -447,7 +451,7 @@ class ProductListCreateView(ListCreateAPIView):
         return session_key
 
     def create(self, request, *args, **kwargs):
-        """Override create to handle session authentication"""
+        """Override create to handle session authentication and GST rate manual overrides"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -466,10 +470,35 @@ class ProductListCreateView(ListCreateAPIView):
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
+            # Check if GST rate is being manually set (different from HSN/SAC auto-rate)
+            gst_rate = request.data.get('gst_rate', 0)
+            hsn_code_id = request.data.get('hsn_code')
+            sac_code_id = request.data.get('sac_code')
+            product_type = request.data.get('product_type', 'product')
+            
+            manual_gst_override = False
+            if gst_rate and (hsn_code_id or sac_code_id):
+                try:
+                    if product_type == 'product' and hsn_code_id:
+                        hsn_code = HSNCode.objects.get(id=hsn_code_id)
+                        if float(gst_rate) != float(hsn_code.gst_rate):
+                            manual_gst_override = True
+                    elif product_type == 'service' and sac_code_id:
+                        sac_code = SACCode.objects.get(id=sac_code_id)
+                        if float(gst_rate) != float(sac_code.gst_rate):
+                            manual_gst_override = True
+                except (HSNCode.DoesNotExist, SACCode.DoesNotExist, ValueError):
+                    pass
+
             product = serializer.save(
                 company=service_user.company,
                 created_by=service_user
             )
+            
+            # Set manual override flag if needed
+            if manual_gst_override:
+                product._manual_gst_override = True
+                product.save()
 
             # Return detailed product data
             detail_serializer = ProductDetailSerializer(product)
@@ -567,7 +596,7 @@ class ProductDetailView(RetrieveUpdateDestroyAPIView):
             )
 
     def update(self, request, *args, **kwargs):
-        """Override update to handle session authentication"""
+        """Override update to handle session authentication and GST rate manual overrides"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -580,6 +609,23 @@ class ProductDetailView(RetrieveUpdateDestroyAPIView):
                 session_key=session_key,
                 is_active=True
             )
+            
+            # Get the product instance to check for manual GST override
+            product = self.get_object()
+            
+            # Check if GST rate is being manually overridden
+            new_gst_rate = request.data.get('gst_rate')
+            if new_gst_rate is not None:
+                expected_gst_rate = None
+                if product.product_type == 'product' and product.hsn_code:
+                    expected_gst_rate = product.hsn_code.gst_rate
+                elif product.product_type == 'service' and product.sac_code:
+                    expected_gst_rate = product.sac_code.gst_rate
+                
+                # If new GST rate differs from expected auto-rate, mark as manual override
+                if expected_gst_rate is not None and float(new_gst_rate) != float(expected_gst_rate):
+                    product._manual_gst_override = True
+            
             # Proceed with normal update
             return super().update(request, *args, **kwargs)
 
@@ -879,33 +925,45 @@ class GenerateProductCodeView(APIView):
                 is_active=True
             )
             service_user = session.service_user
+            company = service_user.company
 
             product_type = request.query_params.get('type', 'product')
+            company_prefix = getattr(company, 'company_prefix', 'COMP')
 
             if product_type == 'product':
-                # Generate PRD- codes for products
+                # Generate company prefix + PROD codes for products
                 last_product = Product.objects.filter(
-                    company=service_user.company,
-                    product_type='product',
-                    product_code__startswith='PRD-'
+                    company=company,
+                    product_type='product'
                 ).order_by('-id').first()
-                if last_product:
-                    last_number = int(last_product.product_code.split('-')[-1])
-                    next_code = f"PRD-{last_number + 1:06d}"
+                if last_product and last_product.product_code:
+                    # Extract number from existing code
+                    import re
+                    match = re.search(r'(\d+)$', last_product.product_code)
+                    if match:
+                        last_number = int(match.group(1))
+                        next_code = f"{company_prefix}PROD{last_number + 1:02d}"
+                    else:
+                        next_code = f"{company_prefix}PROD01"
                 else:
-                    next_code = "PRD-000001"
+                    next_code = f"{company_prefix}PROD01"
             else:
-                # Generate SER- codes for services
+                # Generate company prefix + SER codes for services
                 last_service = Product.objects.filter(
-                    company=service_user.company,
-                    product_type='service',
-                    product_code__startswith='SER-'
+                    company=company,
+                    product_type='service'
                 ).order_by('-id').first()
-                if last_service:
-                    last_number = int(last_service.product_code.split('-')[-1])
-                    next_code = f"SER-{last_number + 1:06d}"
+                if last_service and last_service.product_code:
+                    # Extract number from existing code
+                    import re
+                    match = re.search(r'(\d+)$', last_service.product_code)
+                    if match:
+                        last_number = int(match.group(1))
+                        next_code = f"{company_prefix}SER{last_number + 1:02d}"
+                    else:
+                        next_code = f"{company_prefix}SER01"
                 else:
-                    next_code = "SER-000001"
+                    next_code = f"{company_prefix}SER01"
 
             return Response({'code': next_code})
 

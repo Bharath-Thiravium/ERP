@@ -470,6 +470,12 @@ export const apiClient = {
   generateProductCode: (type: string, params?: any) =>
     api.get(`/api/finance/generate-code/?type=${type}`, { params }),
 
+  // Rate limiting helper for bulk operations
+  createFinanceProductWithDelay: async (data: any, delay: number = 500) => {
+    await new Promise(resolve => setTimeout(resolve, delay))
+    return apiClient.createFinanceProduct(data)
+  },
+
   // HSN/SAC Codes
   searchHSNCodes: (params?: any) =>
     api.get('/api/finance/hsn-codes/search/', { params }),

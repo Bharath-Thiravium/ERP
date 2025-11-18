@@ -378,7 +378,7 @@ class CustomerDetailView(RetrieveUpdateDestroyAPIView):
 
 class ProductPagination(PageNumberPagination):
     """Custom pagination for products"""
-    page_size = 5
+    page_size = 100
     page_size_query_param = 'page_size'
     max_page_size = 100
 
@@ -786,6 +786,68 @@ class SACCodeCreateView(APIView):
                 return Response(response_serializer.data, status=status.HTTP_201_CREATED)
             else:
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class ProductSearchView(APIView):
+    """Search products for quotation forms - without pagination"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        """Search products by name, code, or description"""
+        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = request.query_params.get('session_key')
+
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            search = request.query_params.get('search', '')
+            # Validate and sanitize limit parameter
+            try:
+                limit = int(request.query_params.get('limit', 100))
+                limit = max(1, min(limit, 200))  # Ensure limit is between 1 and 200
+            except (ValueError, TypeError):
+                limit = 100
+
+            # Get products for this company only
+            queryset = Product.objects.filter(
+                company=service_user.company,
+                is_active=True
+            )
+
+            if search:
+                queryset = queryset.filter(
+                    Q(name__icontains=search) |
+                    Q(product_code__icontains=search) |
+                    Q(description__icontains=search) |
+                    Q(hsn_code__code__icontains=search) |
+                    Q(sac_code__code__icontains=search) |
+                    Q(hsn_code__description__icontains=search) |
+                    Q(sac_code__service_name__icontains=search)
+                )
+
+            # Limit results for performance but show all company products
+            queryset = queryset.order_by('-created_at')[:limit]
+
+            serializer = ProductListSerializer(queryset, many=True)
+            return Response({'results': serializer.data})
 
         except ServiceUserSession.DoesNotExist:
             return Response(

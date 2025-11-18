@@ -188,7 +188,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       return
     }
     try {
-      const response = await apiClient.getFinanceProducts({ session_key: sessionKey })
+      const response = await apiClient.searchFinanceProducts({ session_key: sessionKey, limit: 200 })
       setProducts(response.data.results || [])
     } catch (error) {
       console.error('Error loading products:', error)

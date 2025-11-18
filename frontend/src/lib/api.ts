@@ -483,6 +483,10 @@ export const apiClient = {
   createSACCode: (data: any) =>
     api.post('/api/finance/sac-codes/create/', data),
 
+  // Product search (for quotation forms)
+  searchFinanceProducts: (params?: any) =>
+    api.get('/api/finance/products/search/', { params }),
+
   // Quotations
   getFinanceQuotations: (params?: any) =>
     api.get('/api/finance/quotations/', { params }),

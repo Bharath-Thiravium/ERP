@@ -46,6 +46,7 @@ class Product(models.Model):
     ]
 
     UNIT_CHOICES = [
+        ('NOS', 'Numbers'),
         ('PCS', 'Pieces'),
         ('KG', 'Kilograms'),
         ('GM', 'Grams'),
@@ -174,7 +175,7 @@ class Customer(models.Model):
 
     # Contact Information - MANDATORY PHONE
     email = models.EmailField(validators=[EmailValidator()], blank=True, null=True)
-    phone = models.CharField(max_length=15, help_text="MANDATORY: Primary phone number")
+    phone = models.CharField(max_length=15, blank=True, null=True, help_text="Primary phone number")
     mobile = models.CharField(max_length=15, blank=True, null=True)
     website = models.URLField(blank=True, null=True)
 
@@ -308,8 +309,7 @@ class Customer(models.Model):
         if not self.display_name or not self.display_name.strip():
             errors['display_name'] = 'Display name is required.'
         
-        if not self.phone or not self.phone.strip():
-            errors['phone'] = 'Phone number is required.'
+        # Phone is now optional since email is available
         
         # MANDATORY BILLING ADDRESS VALIDATION
         if not self.billing_address_line1 or not self.billing_address_line1.strip():
@@ -1390,7 +1390,7 @@ class ProformaInvoice(models.Model):
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
-    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='proforma_invoices')
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='proforma_invoices', null=True, blank=True)
 
     # Proforma Invoice Details
     proforma_number = models.CharField(max_length=50, unique=True, db_index=True)

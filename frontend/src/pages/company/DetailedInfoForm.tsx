@@ -22,7 +22,7 @@ const detailedInfoSchema = z.object({
   employee_count: z.number().min(1, 'Employee count must be at least 1'),
   annual_revenue: z.number().min(0, 'Annual revenue must be positive'),
   website: z.string().url('Please enter a valid website URL').optional().or(z.literal('')),
-  tax_id: z.string().min(5, 'Tax ID is required'),
+
   pan_number: z.string()
     .regex(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'Please enter a valid PAN number (e.g., ABCDE1234F)')
     .optional()
@@ -359,14 +359,7 @@ const DetailedInfoForm: React.FC = () => {
                     error={errors.website?.message}
                   />
 
-                  <Input
-                    {...register('tax_id')}
-                    label="Tax ID *"
-                    placeholder="Enter tax identification number"
-                    icon={<FileText className="h-4 w-4" />}
-                    error={errors.tax_id?.message}
-                    required
-                  />
+
 
                   <Input
                     {...register('pan_number')}

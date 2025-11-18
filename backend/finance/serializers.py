@@ -102,7 +102,6 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
             'customer_type': 'Customer type is required',
             'name': 'Customer name is required',
             'display_name': 'Display name is required',
-            'phone': 'Phone number is required',
             'billing_address_line1': 'Billing address line 1 is required',
             'billing_city': 'Billing city is required',
             'billing_state': 'Billing state is required',
@@ -253,6 +252,44 @@ class HSNCodeSerializer(serializers.ModelSerializer):
         fields = ['id', 'code', 'description', 'gst_rate']
 
 
+class HSNCodeCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating HSN codes manually"""
+
+    class Meta:
+        model = HSNCode
+        fields = ['code', 'description', 'gst_rate']
+
+    def validate_code(self, value):
+        """Validate HSN code format"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("HSN code is required")
+        
+        # Remove spaces and convert to string
+        code = str(value).strip().replace(' ', '')
+        
+        # Check if code already exists
+        if HSNCode.objects.filter(code=code).exists():
+            raise serializers.ValidationError(f"HSN code {code} already exists")
+        
+        # Validate format (4-8 digits)
+        if not code.isdigit() or len(code) < 4 or len(code) > 8:
+            raise serializers.ValidationError("HSN code must be 4-8 digits")
+        
+        return code
+
+    def validate_gst_rate(self, value):
+        """Validate GST rate"""
+        if value < 0 or value > 28:
+            raise serializers.ValidationError("GST rate must be between 0 and 28")
+        return value
+
+    def validate_description(self, value):
+        """Validate description"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Description is required")
+        return value.strip()
+
+
 # SAC Code Serializers
 class SACCodeSerializer(serializers.ModelSerializer):
     """Serializer for SAC codes"""
@@ -260,6 +297,44 @@ class SACCodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = SACCode
         fields = ['id', 'code', 'service_name', 'description', 'gst_rate']
+
+
+class SACCodeCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating SAC codes manually"""
+
+    class Meta:
+        model = SACCode
+        fields = ['code', 'service_name', 'description', 'gst_rate']
+
+    def validate_code(self, value):
+        """Validate SAC code format"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("SAC code is required")
+        
+        # Remove spaces and convert to string
+        code = str(value).strip().replace(' ', '')
+        
+        # Check if code already exists
+        if SACCode.objects.filter(code=code).exists():
+            raise serializers.ValidationError(f"SAC code {code} already exists")
+        
+        # Validate format (6 digits)
+        if not code.isdigit() or len(code) != 6:
+            raise serializers.ValidationError("SAC code must be exactly 6 digits")
+        
+        return code
+
+    def validate_gst_rate(self, value):
+        """Validate GST rate"""
+        if value < 0 or value > 28:
+            raise serializers.ValidationError("GST rate must be between 0 and 28")
+        return value
+
+    def validate_service_name(self, value):
+        """Validate service name"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Service name is required")
+        return value.strip()
 
 
 # Product Serializers
@@ -918,17 +993,24 @@ class ProformaInvoiceDetailSerializer(serializers.ModelSerializer):
 
 
 class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating proforma invoices from Purchase Orders"""
+    """Serializer for creating proforma invoices from Purchase Orders or directly"""
     proforma_items = serializers.ListField(
         child=serializers.DictField(),
         write_only=True,
         required=False
     )
+    purchase_order = serializers.PrimaryKeyRelatedField(
+        queryset=PurchaseOrder.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    claim_type = serializers.CharField(required=False, allow_null=True)
+    claim_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
 
     class Meta:
         model = ProformaInvoice
         fields = [
-            'purchase_order', 'proforma_date', 'due_date', 'reference',
+            'purchase_order', 'customer', 'proforma_date', 'due_date', 'reference',
             'shipping_address', 'discount_percentage', 'discount_amount',
             'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions', 'status',
             'claim_type', 'claim_percentage', 'is_advance_bill', 'proforma_items'
@@ -940,8 +1022,14 @@ class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
         # Extract proforma_items_data before creating the invoice
         proforma_items_data = validated_data.pop('proforma_items', None)
 
-        # Get purchase order to copy information
-        purchase_order = validated_data['purchase_order']
+        # Get purchase order to copy information (if provided)
+        purchase_order = validated_data.get('purchase_order')
+        
+        # Direct creation without PO
+        if not purchase_order:
+            return self._create_direct_proforma(validated_data, proforma_items_data)
+        
+        # PO-based creation (existing logic)
 
         # Auto-fix balance tracking if needed
         purchase_order.fix_balance_tracking()
@@ -1072,6 +1160,69 @@ class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
         if proforma_invoice.purchase_order:
             proforma_invoice.purchase_order.update_balance_tracking()
 
+        return proforma_invoice
+    
+    def _create_direct_proforma(self, validated_data, proforma_items_data):
+        """Create proforma invoice directly without Purchase Order"""
+        from decimal import Decimal
+        
+        if not proforma_items_data:
+            raise serializers.ValidationError("Items are required for direct proforma creation")
+        
+        customer = validated_data['customer']
+        company = self.context['company']
+        
+        # Remove claim_type for direct creation (not needed without PO)
+        validated_data.pop('claim_type', None)
+        validated_data.pop('claim_percentage', None)
+        
+        # Set GST information
+        if customer.gstin and hasattr(company, 'gst_number') and company.gst_number:
+            customer_state_code = customer.gstin[:2]
+            company_state_code = company.gst_number[:2]
+            validated_data['gst_type'] = 'cgst_sgst' if customer_state_code == company_state_code else 'igst'
+        else:
+            validated_data['gst_type'] = 'exempt'
+        
+        validated_data['customer_gstin'] = customer.gstin or ''
+        validated_data['company_gstin'] = getattr(company, 'gst_number', '') or ''
+        
+        # Create proforma invoice
+        proforma_invoice = ProformaInvoice.objects.create(**validated_data)
+        
+        # Create items
+        items_to_create = []
+        for index, item_data in enumerate(proforma_items_data, 1):
+            product_id = item_data.get('product')
+            try:
+                product = Product.objects.get(id=product_id)
+                
+                hsn_sac_code = ''
+                if product.hsn_code:
+                    hsn_sac_code = product.hsn_code.code
+                elif product.sac_code:
+                    hsn_sac_code = product.sac_code.code
+                
+                items_to_create.append(ProformaInvoiceItem(
+                    proforma_invoice=proforma_invoice,
+                    product=product,
+                    product_name=item_data.get('product_name', product.name),
+                    product_code=product.product_code,
+                    description=product.description,
+                    hsn_sac_code=hsn_sac_code,
+                    quantity=Decimal(str(item_data.get('quantity', 0))),
+                    unit=item_data.get('unit', product.unit),
+                    unit_price=Decimal(str(item_data.get('unit_price', 0))),
+                    line_total=Decimal(str(item_data.get('line_total', 0))),
+                    gst_rate=product.gst_rate,
+                    line_number=index
+                ))
+            except Product.DoesNotExist:
+                continue
+        
+        ProformaInvoiceItem.objects.bulk_create(items_to_create)
+        proforma_invoice.calculate_totals()
+        
         return proforma_invoice
 
 
@@ -1231,10 +1382,16 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
 
 
 class InvoiceCreateSerializer(serializers.ModelSerializer):
-    """World-Class Invoice Creation - ONLY from Purchase Orders (No Proforma Conversion)"""
+    """World-Class Invoice Creation - from Purchase Orders or directly"""
     purchase_order = serializers.PrimaryKeyRelatedField(
         queryset=PurchaseOrder.objects.all(),
-        required=True  # Now required - invoices ONLY from PO
+        required=False,  # Optional for direct creation
+        allow_null=True
+    )
+    invoice_items = serializers.ListField(
+        child=serializers.DictField(),
+        write_only=True,
+        required=False
     )
 
     # Add sophisticated claiming fields
@@ -1246,23 +1403,31 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = [
-            'purchase_order', 'invoice_date', 'due_date', 'reference',
+            'purchase_order', 'customer', 'invoice_date', 'due_date', 'reference',
             'shipping_address', 'discount_percentage', 'discount_amount',
             'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions', 'status',
-            'claim_type', 'claim_percentage', 'selected_items', 'item_percentages'
+            'claim_type', 'claim_percentage', 'selected_items', 'item_percentages', 'invoice_items'
         ]
 
     def validate(self, data):
-        """World-Class validation - ONLY Purchase Order claiming"""
+        """World-Class validation - Purchase Order or direct creation"""
         purchase_order = data.get('purchase_order')
+        customer = data.get('customer')
+        invoice_items = data.get('invoice_items')
         claim_type = data.get('claim_type')
         claim_percentage = data.get('claim_percentage', 0)
 
+        # For direct creation, customer and items are required
         if not purchase_order:
-            raise serializers.ValidationError("Purchase order is required for invoice creation")
+            if not customer:
+                raise serializers.ValidationError("Customer is required for direct invoice creation")
+            if not invoice_items:
+                raise serializers.ValidationError("Items are required for direct invoice creation")
+            return data
         
+        # For PO-based creation, claim type is required
         if not claim_type:
-            raise serializers.ValidationError("Claim type is required for invoice creation")
+            raise serializers.ValidationError("Claim type is required for PO-based invoice creation")
 
         # Validate percentage-based claiming for PO
         if claim_type == 'percentage':
@@ -1288,9 +1453,13 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        """Create invoice ONLY from Purchase Order with automatic GST calculation"""
+        """Create invoice from Purchase Order or directly with automatic GST calculation"""
         purchase_order = validated_data.get('purchase_order')
-        invoice = self._create_from_purchase_order(validated_data, purchase_order)
+        
+        if purchase_order:
+            invoice = self._create_from_purchase_order(validated_data, purchase_order)
+        else:
+            invoice = self._create_direct_invoice(validated_data)
         
         # Apply automatic GST calculation if customer has Indian compliance data
         if invoice.customer.state_code and invoice.customer.is_gst_registered:
@@ -1327,8 +1496,69 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                 print(f"GST calculation failed for invoice {invoice.invoice_number}: {e}")
         
         return invoice
-
-
+    
+    def _create_direct_invoice(self, validated_data):
+        """Create invoice directly without Purchase Order"""
+        from decimal import Decimal
+        
+        invoice_items_data = validated_data.pop('invoice_items', [])
+        customer = validated_data['customer']
+        company = self.context['company']
+        
+        # Remove PO-specific fields for direct creation
+        validated_data.pop('claim_type', None)
+        validated_data.pop('claim_percentage', None)
+        validated_data.pop('selected_items', None)
+        validated_data.pop('item_percentages', None)
+        
+        # Set GST information
+        if customer.gstin and hasattr(company, 'gst_number') and company.gst_number:
+            customer_state_code = customer.gstin[:2]
+            company_state_code = company.gst_number[:2]
+            validated_data['gst_type'] = 'cgst_sgst' if customer_state_code == company_state_code else 'igst'
+        else:
+            validated_data['gst_type'] = 'exempt'
+        
+        validated_data['customer_gstin'] = customer.gstin or ''
+        validated_data['company_gstin'] = getattr(company, 'gst_number', '') or ''
+        
+        # Create invoice
+        invoice = Invoice.objects.create(**validated_data)
+        
+        # Create items
+        items_to_create = []
+        for index, item_data in enumerate(invoice_items_data, 1):
+            product_id = item_data.get('product')
+            try:
+                product = Product.objects.get(id=product_id)
+                
+                hsn_sac_code = ''
+                if product.hsn_code:
+                    hsn_sac_code = product.hsn_code.code
+                elif product.sac_code:
+                    hsn_sac_code = product.sac_code.code
+                
+                items_to_create.append(InvoiceItem(
+                    invoice=invoice,
+                    product=product,
+                    product_name=item_data.get('product_name', product.name),
+                    product_code=product.product_code,
+                    description=product.description,
+                    hsn_sac_code=hsn_sac_code,
+                    quantity=Decimal(str(item_data.get('quantity', 0))),
+                    unit=item_data.get('unit', product.unit),
+                    unit_price=Decimal(str(item_data.get('unit_price', 0))),
+                    line_total=Decimal(str(item_data.get('line_total', 0))),
+                    gst_rate=product.gst_rate,
+                    line_number=index
+                ))
+            except Product.DoesNotExist:
+                continue
+        
+        InvoiceItem.objects.bulk_create(items_to_create)
+        invoice.calculate_totals()
+        
+        return invoice
 
     def _create_from_purchase_order(self, validated_data, purchase_order):
         """World-Class Invoice Creation - Supports item-level percentage and quantity claiming"""
@@ -1339,8 +1569,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         claim_percentage = validated_data.pop('claim_percentage', 0)
         selected_items = validated_data.pop('selected_items', {})
         item_percentages = validated_data.pop('item_percentages', {})
-        
-
+        validated_data.pop('invoice_items', None)  # Remove direct items for PO-based creation
 
         # Set customer and GST information from purchase order
         validated_data['customer'] = purchase_order.customer

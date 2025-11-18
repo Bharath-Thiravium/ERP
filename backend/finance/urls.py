@@ -57,6 +57,10 @@ urlpatterns = [
     # HSN/SAC code search endpoints
     path('hsn-codes/search/', views.HSNCodeSearchView.as_view(), name='hsn_code_search'),
     path('sac-codes/search/', views.SACCodeSearchView.as_view(), name='sac_code_search'),
+    
+    # HSN/SAC code creation endpoints
+    path('hsn-codes/create/', views.HSNCodeCreateView.as_view(), name='hsn_code_create'),
+    path('sac-codes/create/', views.SACCodeCreateView.as_view(), name='sac_code_create'),
 
     # Generate product/service code endpoint
     path('generate-code/', views.GenerateProductCodeView.as_view(), name='generate_product_code'),

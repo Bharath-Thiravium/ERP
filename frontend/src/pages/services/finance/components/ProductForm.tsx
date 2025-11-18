@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { X, Search } from 'lucide-react'
+import { X, Search, Plus } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
+import CreateHSNCodeModal from './CreateHSNCodeModal'
+import CreateSACCodeModal from './CreateSACCodeModal'
 
 interface Product {
   id: number
@@ -82,6 +84,10 @@ const ProductForm: React.FC<ProductFormProps> = ({
   const [showSacDropdown, setShowSacDropdown] = useState(false)
   const [selectedHsnCode, setSelectedHsnCode] = useState<HSNCode | null>(null)
   const [selectedSacCode, setSelectedSacCode] = useState<SACCode | null>(null)
+  
+  // Modal states
+  const [showCreateHSNModal, setShowCreateHSNModal] = useState(false)
+  const [showCreateSACModal, setShowCreateSACModal] = useState(false)
   
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -254,6 +260,30 @@ const ProductForm: React.FC<ProductFormProps> = ({
     }))
     setShowSacDropdown(false)
     setSacCodes([])
+  }
+
+  // Handle successful HSN code creation
+  const handleHSNCodeCreated = (newHsnCode: HSNCode) => {
+    setSelectedHsnCode(newHsnCode)
+    setHsnSearchTerm(`${newHsnCode.code} - ${newHsnCode.description}`)
+    setFormData(prev => ({
+      ...prev,
+      hsn_code: newHsnCode.id.toString(),
+      gst_rate: newHsnCode.gst_rate
+    }))
+    setShowCreateHSNModal(false)
+  }
+
+  // Handle successful SAC code creation
+  const handleSACCodeCreated = (newSacCode: SACCode) => {
+    setSelectedSacCode(newSacCode)
+    setSacSearchTerm(`${newSacCode.code} - ${newSacCode.service_name}`)
+    setFormData(prev => ({
+      ...prev,
+      sac_code: newSacCode.id.toString(),
+      gst_rate: newSacCode.gst_rate
+    }))
+    setShowCreateSACModal(false)
   }
 
   // Handle product type change
@@ -511,10 +541,20 @@ const ProductForm: React.FC<ProductFormProps> = ({
           {/* HSN/SAC Code Selection */}
           {formData.product_type === 'product' ? (
             <div className="relative hsn-sac-dropdown">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                HSN Code <span className="text-red-500">*</span>
-                {selectedHsnCode && <span className="text-green-600 text-xs ml-2">✓ Selected</span>}
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  HSN Code <span className="text-red-500">*</span>
+                  {selectedHsnCode && <span className="text-green-600 text-xs ml-2">✓ Selected</span>}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateHSNModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-800 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-300 rounded transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add New HSN
+                </button>
+              </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
@@ -564,10 +604,20 @@ const ProductForm: React.FC<ProductFormProps> = ({
             </div>
           ) : (
             <div className="relative hsn-sac-dropdown">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                SAC Code <span className="text-red-500">*</span>
-                {selectedSacCode && <span className="text-green-600 text-xs ml-2">✓ Selected</span>}
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  SAC Code <span className="text-red-500">*</span>
+                  {selectedSacCode && <span className="text-green-600 text-xs ml-2">✓ Selected</span>}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateSACModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-800 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-300 rounded transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add New SAC
+                </button>
+              </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
@@ -686,6 +736,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 }`}
               >
                 <option value="">Select Unit</option>
+                <option value="NOS">Numbers (NOS)</option>
                 <option value="PCS">Pieces (PCS)</option>
                 <option value="KG">Kilograms (KG)</option>
                 <option value="LITER">Liters (LITER)</option>
@@ -832,6 +883,20 @@ const ProductForm: React.FC<ProductFormProps> = ({
           </div>
         </form>
       </div>
+      
+      {/* HSN Code Creation Modal */}
+      <CreateHSNCodeModal
+        isOpen={showCreateHSNModal}
+        onClose={() => setShowCreateHSNModal(false)}
+        onSuccess={handleHSNCodeCreated}
+      />
+      
+      {/* SAC Code Creation Modal */}
+      <CreateSACCodeModal
+        isOpen={showCreateSACModal}
+        onClose={() => setShowCreateSACModal(false)}
+        onSuccess={handleSACCodeCreated}
+      />
     </div>
   )
 }

@@ -363,9 +363,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
     if (!formData.display_name.trim()) {
       newErrors.display_name = 'Display name is required'
     }
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Phone number is required'
-    }
+    // Phone is now optional since email is available
     
     // Address - Mandatory fields
     if (!formData.billing_address_line1.trim()) {
@@ -801,7 +799,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   {renderInput('name', 'Customer Name', 'text', 'Enter customer name', true)}
                   {renderInput('display_name', 'Display Name', 'text', 'Name to show on invoices', true)}
                   {renderInput('email', 'Email', 'email', 'customer@example.com', false, undefined, <Mail className="w-4 h-4" />)}
-                  {renderInput('phone', 'Phone', 'tel', '9876543210', true, undefined, <Phone className="w-4 h-4" />)}
+                  {renderInput('phone', 'Phone', 'tel', '9876543210', false, undefined, <Phone className="w-4 h-4" />)}
                   {renderInput('mobile', 'Mobile', 'tel', '9876543210', false, undefined, <Phone className="w-4 h-4" />)}
                   {renderInput('website', 'Website', 'url', 'https://example.com', false, undefined, <Globe className="w-4 h-4" />)}
 

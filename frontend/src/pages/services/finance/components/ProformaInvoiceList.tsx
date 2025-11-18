@@ -23,6 +23,7 @@ import {
 import ProformaInvoiceView from './ProformaInvoiceView'
 import UpdatePaymentModal from './UpdatePaymentModal'
 import SendEmailModal from './SendEmailModal'
+import DirectCreateProformaInvoiceModal from './DirectCreateProformaInvoiceModal'
 
 interface ProformaInvoice {
   id: number
@@ -136,6 +137,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
   const [selectedForPayment, setSelectedForPayment] = useState<ProformaInvoice | null>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [selectedForEmail, setSelectedForEmail] = useState<ProformaInvoice | null>(null)
+  const [showDirectCreateModal, setShowDirectCreateModal] = useState(false)
   
   const handleUpdatePayment = (proformaInvoice: ProformaInvoice) => {
     setSelectedForPayment(proformaInvoice)
@@ -215,13 +217,22 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Proforma Invoices</h2>
           <p className="text-gray-600 dark:text-gray-400">Manage your proforma invoices</p>
         </div>
-        <button
-          onClick={() => toast.success('Create proforma invoices via Purchase Orders → Raise Invoice')}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Proforma Invoice
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => toast.success('Create proforma invoices via Purchase Orders → Raise Invoice')}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            From Purchase Order
+          </button>
+          <button
+            onClick={() => setShowDirectCreateModal(true)}
+            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Direct Creation
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -463,6 +474,18 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
           invoiceNumber={selectedForEmail.proforma_number}
           invoiceType="proforma_invoice"
           customerEmail=""
+        />
+      )}
+
+      {/* Direct Create Proforma Invoice Modal */}
+      {showDirectCreateModal && (
+        <DirectCreateProformaInvoiceModal
+          isOpen={showDirectCreateModal}
+          onClose={() => setShowDirectCreateModal(false)}
+          onSuccess={() => {
+            setShowDirectCreateModal(false)
+            fetchProformaInvoices()
+          }}
         />
       )}
     </div>

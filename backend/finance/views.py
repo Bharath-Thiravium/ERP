@@ -24,6 +24,7 @@ from .serializers import (
     ProductListSerializer, ProductDetailSerializer,
     ProductCreateSerializer, ProductUpdateSerializer,
     HSNCodeSerializer, SACCodeSerializer,
+    HSNCodeCreateSerializer, SACCodeCreateSerializer,
     QuotationListSerializer, QuotationDetailSerializer,
     QuotationCreateSerializer, QuotationUpdateSerializer,
     PurchaseOrderListSerializer, PurchaseOrderDetailSerializer,
@@ -709,6 +710,82 @@ class SACCodeSearchView(APIView):
 
             serializer = SACCodeSerializer(queryset, many=True)
             return Response({'results': serializer.data})
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class HSNCodeCreateView(APIView):
+    """Create new HSN codes manually"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        """Create a new HSN code"""
+        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = request.data.get('session_key')
+
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+
+            serializer = HSNCodeCreateSerializer(data=request.data)
+            if serializer.is_valid():
+                hsn_code = serializer.save()
+                response_serializer = HSNCodeSerializer(hsn_code)
+                return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class SACCodeCreateView(APIView):
+    """Create new SAC codes manually"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        """Create a new SAC code"""
+        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = request.data.get('session_key')
+
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+
+            serializer = SACCodeCreateSerializer(data=request.data)
+            if serializer.is_valid():
+                sac_code = serializer.save()
+                response_serializer = SACCodeSerializer(sac_code)
+                return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         except ServiceUserSession.DoesNotExist:
             return Response(
@@ -1403,7 +1480,7 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
             service_user = session.service_user
 
             # Create proforma invoice with company and created_by
-            serializer = self.get_serializer(data=request.data)
+            serializer = self.get_serializer(data=request.data, context={'company': service_user.company})
             serializer.is_valid(raise_exception=True)
 
             proforma_invoice = serializer.save(
@@ -1411,7 +1488,7 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
                 created_by=service_user
             )
 
-            # Get updated PO balance data after proforma creation
+            # Get updated PO balance data after proforma creation (only if PO exists)
             updated_po_data = None
             if proforma_invoice.purchase_order:
                 po_serializer = PurchaseOrderListSerializer(proforma_invoice.purchase_order)
@@ -1640,7 +1717,7 @@ class InvoiceListCreateView(ListCreateAPIView):
             service_user = session.service_user
 
             # Create invoice with company and created_by
-            serializer = self.get_serializer(data=request.data)
+            serializer = self.get_serializer(data=request.data, context={'company': service_user.company})
             serializer.is_valid(raise_exception=True)
 
             invoice = serializer.save(
@@ -1648,9 +1725,9 @@ class InvoiceListCreateView(ListCreateAPIView):
                 created_by=service_user
             )
 
-            # Get updated PO balance data after invoice creation
+            # Get updated PO balance data after invoice creation (only if PO exists)
             updated_po_data = None
-            if invoice.purchase_order:
+            if hasattr(invoice, 'purchase_order') and invoice.purchase_order:
                 po_serializer = PurchaseOrderListSerializer(invoice.purchase_order)
                 updated_po_data = po_serializer.data
 

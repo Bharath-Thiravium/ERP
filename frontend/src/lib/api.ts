@@ -470,6 +470,12 @@ export const apiClient = {
   searchSACCodes: (params?: any) =>
     api.get('/api/finance/sac-codes/search/', { params }),
 
+  createHSNCode: (data: any) =>
+    api.post('/api/finance/hsn-codes/create/', data),
+
+  createSACCode: (data: any) =>
+    api.post('/api/finance/sac-codes/create/', data),
+
   // Quotations
   getFinanceQuotations: (params?: any) =>
     api.get('/api/finance/quotations/', { params }),

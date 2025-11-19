@@ -411,7 +411,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     if (quantity === '') {
       updatedItems[index].quantity = '' as any
     } else {
-      updatedItems[index].quantity = Math.max(1, Number(quantity))
+      updatedItems[index].quantity = Math.max(0.01, Number(quantity))
     }
     setFormData(prev => ({ ...prev, po_items: updatedItems }))
   }
@@ -966,19 +966,19 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Quantity</label>
                               <input
                                 type="number"
-                                min="1"
-                                step="1"
+                                min="0.01"
+                                step="0.01"
                                 value={item.quantity}
                                 onChange={(e) => {
                                   const value = e.target.value
                                   if (value === '') {
                                     handleItemQuantityChange(index, '')
                                   } else {
-                                    handleItemQuantityChange(index, parseInt(value) || 1)
+                                    handleItemQuantityChange(index, parseFloat(value) || 0.01)
                                   }
                                 }}
                                 onBlur={(e) => {
-                                  if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                                  if (e.target.value === '' || parseFloat(e.target.value) < 0.01) {
                                     handleItemQuantityChange(index, 1)
                                   }
                                 }}

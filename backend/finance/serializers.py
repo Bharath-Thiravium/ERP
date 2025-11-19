@@ -803,6 +803,9 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
         allow_null=True,
         help_text="Optional quotation for PO creation"
     )
+    # Make quotation_date and valid_until optional for direct PO creation
+    quotation_date = serializers.DateField(required=False, allow_null=True)
+    valid_until = serializers.DateField(required=False, allow_null=True)
 
     class Meta:
         model = PurchaseOrder
@@ -812,6 +815,18 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
             'discount_amount', 'shipping_charges', 'other_charges', 'notes',
             'terms_and_conditions', 'status', 'claim_type', 'po_items'
         ]
+
+    def validate(self, attrs):
+        """Validate PO creation data"""
+        quotation = attrs.get('quotation')
+        
+        # If no quotation is provided (direct PO), remove quotation-specific fields
+        if not quotation:
+            # Remove quotation_date and valid_until for direct PO creation
+            attrs.pop('quotation_date', None)
+            attrs.pop('valid_until', None)
+        
+        return attrs
 
     def create(self, validated_data):
         po_items_data = validated_data.pop('po_items')
@@ -884,6 +899,9 @@ class PurchaseOrderUpdateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
+    # Make quotation_date and valid_until optional for updates
+    quotation_date = serializers.DateField(required=False, allow_null=True)
+    valid_until = serializers.DateField(required=False, allow_null=True)
 
     class Meta:
         model = PurchaseOrder
@@ -897,6 +915,13 @@ class PurchaseOrderUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         po_items_data = validated_data.pop('po_items', None)
+        
+        # If this is a direct PO (no quotation), remove quotation-specific fields if they're empty
+        if not instance.quotation:
+            if not validated_data.get('quotation_date'):
+                validated_data.pop('quotation_date', None)
+            if not validated_data.get('valid_until'):
+                validated_data.pop('valid_until', None)
 
         # Update PO fields
         for attr, value in validated_data.items():

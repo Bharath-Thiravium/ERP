@@ -144,8 +144,8 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     po_date: new Date().toISOString().split('T')[0],
     po_file: null,
     customer: quotation?.customer || 0,
-    quotation_date: quotation?.quotation_date || new Date().toISOString().split('T')[0],
-    valid_until: quotation?.valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    quotation_date: quotation?.quotation_date || '',
+    valid_until: quotation?.valid_until || '',
     reference: quotation?.reference || '',
     shipping_address: quotation?.shipping_address || null,
     discount_percentage: Number(quotation?.discount_percentage) || 0,
@@ -507,13 +507,28 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     setLoading(true)
     
     try {
+      // Prepare form data and remove empty quotation fields for direct PO creation
+      let dataToSend: any = { ...formData }
+      
+      // If this is a direct PO (no quotation), remove empty quotation_date and valid_until
+      if (!formData.quotation) {
+        if (!dataToSend.quotation_date || dataToSend.quotation_date.trim() === '') {
+          const { quotation_date, ...rest } = dataToSend
+          dataToSend = rest
+        }
+        if (!dataToSend.valid_until || dataToSend.valid_until.trim() === '') {
+          const { valid_until, ...rest } = dataToSend
+          dataToSend = rest
+        }
+      }
+      
       // Sanitize form data before logging to prevent log injection
       const sanitizedFormData = {
-        ...formData,
-        po_number: formData.po_number.replace(/[\r\n]/g, ''),
-        reference: formData.reference.replace(/[\r\n]/g, ''),
-        notes: formData.notes.replace(/[\r\n]/g, ' '),
-        terms_and_conditions: formData.terms_and_conditions.replace(/[\r\n]/g, ' ')
+        ...dataToSend,
+        po_number: dataToSend.po_number.replace(/[\r\n]/g, ''),
+        reference: dataToSend.reference.replace(/[\r\n]/g, ''),
+        notes: dataToSend.notes.replace(/[\r\n]/g, ' '),
+        terms_and_conditions: dataToSend.terms_and_conditions.replace(/[\r\n]/g, ' ')
       }
       console.log('Form data before sending:', sanitizedFormData)
 
@@ -524,7 +539,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
         if (selectedFile) {
           // Handle file upload for update
           const formDataToSend = new FormData()
-          Object.entries(formData).forEach(([key, value]) => {
+          Object.entries(dataToSend).forEach(([key, value]) => {
             if (key === 'po_items') {
               formDataToSend.append('po_items', JSON.stringify(value))
             } else if (key !== 'po_file' && value !== null && value !== undefined) {
@@ -536,14 +551,14 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
           
           response = await apiClient.put(`/api/finance/purchase-orders/${purchaseOrder.id}/`, formDataToSend)
         } else {
-          response = await apiClient.updateFinancePurchaseOrder(purchaseOrder.id, { ...formData, session_key: sessionKey })
+          response = await apiClient.updateFinancePurchaseOrder(purchaseOrder.id, { ...dataToSend, session_key: sessionKey })
         }
       } else {
         // Create new PO
         if (selectedFile) {
           // Handle file upload for creation
           const formDataToSend = new FormData()
-          Object.entries(formData).forEach(([key, value]) => {
+          Object.entries(dataToSend).forEach(([key, value]) => {
             if (key === 'po_items') {
               formDataToSend.append('po_items', JSON.stringify(value))
             } else if (key !== 'po_file' && value !== null && value !== undefined) {
@@ -555,7 +570,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
           
           response = await apiClient.post('/api/finance/purchase-orders/', formDataToSend)
         } else {
-          response = await apiClient.createFinancePurchaseOrder({ ...formData, session_key: sessionKey })
+          response = await apiClient.createFinancePurchaseOrder({ ...dataToSend, session_key: sessionKey })
         }
       }
 
@@ -694,33 +709,48 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               </div>
             </div>
 
-            {/* Quotation Details */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  <Calendar className="w-4 h-4 inline mr-1" />
-                  {quotation ? 'Quotation Date' : 'Order Date'}
-                </label>
-                <input
-                  type="date"
-                  value={formData.quotation_date}
-                  onChange={(e) => setFormData(prev => ({ ...prev, quotation_date: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  readOnly={!!quotation}
-                />
+            {/* Quotation Details - Only show for quotation-based POs */}
+            {quotation ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <Calendar className="w-4 h-4 inline mr-1" />
+                    Quotation Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.quotation_date}
+                    onChange={(e) => setFormData(prev => ({ ...prev, quotation_date: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Valid Until
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.valid_until}
+                    onChange={(e) => setFormData(prev => ({ ...prev, valid_until: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Reference
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.reference}
+                    onChange={(e) => setFormData(prev => ({ ...prev, reference: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Customer PO number or reference"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Valid Until
-                </label>
-                <input
-                  type="date"
-                  value={formData.valid_until}
-                  onChange={(e) => setFormData(prev => ({ ...prev, valid_until: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  readOnly={!!quotation}
-                />
-              </div>
+            ) : (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Reference
@@ -733,7 +763,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                   placeholder="Customer PO number or reference"
                 />
               </div>
-            </div>
+            )}
 
             {/* Customer Selection/Display */}
             <div>

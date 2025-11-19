@@ -861,9 +861,9 @@ class PurchaseOrder(models.Model):
     # Internal tracking
     internal_po_number = models.CharField(max_length=50, unique=True, db_index=True, help_text="Our internal PO number")
 
-    # Quotation Details (copied from original quotation)
-    quotation_date = models.DateField()
-    valid_until = models.DateField()
+    # Quotation Details (copied from original quotation, optional for direct POs)
+    quotation_date = models.DateField(null=True, blank=True)
+    valid_until = models.DateField(null=True, blank=True)
     reference = models.CharField(max_length=100, blank=True, help_text="Customer reference or PO number")
 
     # Shipping Address (can be different from customer's default)
@@ -970,36 +970,91 @@ class PurchaseOrder(models.Model):
     def save(self, *args, **kwargs):
         # Generate internal PO number if not provided
         if not self.internal_po_number:
-            try:
-                from authentication.utils import generate_auto_code
-                self.internal_po_number = generate_auto_code(self.company.id, 'purchase_order')
-            except Exception as e:
-                # Fallback to old system if auto-code fails
-                latest_po = PurchaseOrder.objects.filter(
-                    company=self.company
-                ).order_by('-created_at').first()
-
-                if latest_po and latest_po.internal_po_number:
-                    # Extract number from format PO-2025-000001
-                    try:
-                        parts = latest_po.internal_po_number.split('-')
-                        if len(parts) == 3 and parts[0] == 'PO':
-                            year = parts[1]
-                            number = int(parts[2])
-                            current_year = timezone.now().year
-
-                            if int(year) == current_year:
-                                new_number = number + 1
-                            else:
-                                new_number = 1
-
-                            self.internal_po_number = f"PO-{current_year}-{new_number:06d}"
+            from django.db import transaction
+            import time
+            
+            max_retries = 10
+            for attempt in range(max_retries):
+                try:
+                    with transaction.atomic():
+                        # First try the company's auto-code system
+                        try:
+                            from authentication.utils import generate_auto_code
+                            generated_code = generate_auto_code(self.company.id, 'purchase_order')
+                            
+                            # Check if this generated code already exists
+                            if not PurchaseOrder.objects.filter(
+                                company=self.company,
+                                internal_po_number=generated_code
+                            ).exists():
+                                self.internal_po_number = generated_code
+                                break  # Success, exit retry loop
+                        except Exception:
+                            pass  # Fall through to manual generation
+                        
+                        # Fallback to manual generation
+                        current_year = timezone.now().year
+                        
+                        # Get ALL existing PO numbers for this company (not just current year)
+                        # to handle cases where company dashboard uses different format
+                        existing_pos = PurchaseOrder.objects.filter(
+                            company=self.company
+                        ).values_list('internal_po_number', flat=True)
+                        
+                        # Try different number formats based on existing patterns
+                        patterns_to_try = [
+                            f'PO-{current_year % 100}-{{:03d}}',  # PO-25-001 format
+                            f'PO-{current_year}-{{:06d}}',        # PO-2025-000001 format
+                            f'PO-{{:06d}}',                       # PO-000001 format
+                        ]
+                        
+                        generated = False
+                        for pattern in patterns_to_try:
+                            # Find the highest number for this pattern
+                            max_number = 0
+                            pattern_prefix = pattern.split('{')[0]  # Get prefix before number
+                            
+                            for existing_po in existing_pos:
+                                if existing_po and existing_po.startswith(pattern_prefix):
+                                    try:
+                                        # Extract number from the end
+                                        number_part = existing_po[len(pattern_prefix):]
+                                        if number_part.isdigit():
+                                            max_number = max(max_number, int(number_part))
+                                    except (ValueError, IndexError):
+                                        continue
+                            
+                            # Try the next number in sequence
+                            next_number = max_number + 1
+                            candidate = pattern.format(next_number)
+                            
+                            # Check if this candidate is unique
+                            if candidate not in existing_pos:
+                                self.internal_po_number = candidate
+                                generated = True
+                                break
+                        
+                        if generated:
+                            break  # Success, exit retry loop
+                        
+                        # If all patterns failed, use timestamp-based fallback
+                        timestamp = int(time.time() * 1000) % 1000000
+                        self.internal_po_number = f"PO-{current_year}-T{timestamp:06d}"
+                        break
+                        
+                except Exception as retry_error:
+                    if 'unique constraint' in str(retry_error).lower() or 'duplicate' in str(retry_error).lower():
+                        # If it's a uniqueness error, retry
+                        if attempt < max_retries - 1:
+                            continue
                         else:
-                            self.internal_po_number = f"PO-{timezone.now().year}-000001"
-                    except (ValueError, IndexError):
-                        self.internal_po_number = f"PO-{timezone.now().year}-000001"
-                else:
-                    self.internal_po_number = f"PO-{timezone.now().year}-000001"
+                            # Last attempt failed, use timestamp-based code
+                            timestamp = int(time.time() * 1000) % 1000000
+                            self.internal_po_number = f"PO-FALLBACK-{timestamp:06d}"
+                            break
+                    else:
+                        # Different error, re-raise
+                        raise retry_error
 
         # Set GST information from customer and company if not from quotation
         if not self.quotation and self.customer:

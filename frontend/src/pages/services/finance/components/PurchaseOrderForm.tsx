@@ -139,6 +139,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [existingFile, setExistingFile] = useState<string | null>(null)
   const productSearchRef = React.useRef<HTMLDivElement>(null)
 
   const [formData, setFormData] = useState<PurchaseOrder>({
@@ -200,6 +201,11 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
         other_charges: Number(purchaseOrder.other_charges) || 0,
         po_items: convertedItems
       })
+
+      // Set existing file if available
+      if ((purchaseOrder as any).po_file) {
+        setExistingFile((purchaseOrder as any).po_file)
+      }
 
       // Set selected customer if available - use customer_details for detailed view
       const customerData = (purchaseOrder as any).customer_details || purchaseOrder.customer
@@ -705,18 +711,41 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                 <Upload className="w-4 h-4 inline mr-1" />
                 PO File Attachment
               </label>
-              <div className="flex items-center space-x-4">
-                <input
-                  type="file"
-                  onChange={handleFileChange}
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                  className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900 dark:file:text-blue-300"
-                />
-                {selectedFile && (
-                  <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                    <FileText className="w-4 h-4 mr-1" />
-                    {selectedFile.name}
+              <div className="space-y-3">
+                {existingFile && !selectedFile && (
+                  <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center text-sm text-blue-800 dark:text-blue-200">
+                      <FileText className="w-4 h-4 mr-2" />
+                      <span>Current file: {existingFile.split('/').pop()}</span>
+                    </div>
+                    <a
+                      href={existingFile}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 text-sm font-medium"
+                    >
+                      View File
+                    </a>
                   </div>
+                )}
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="file"
+                    onChange={handleFileChange}
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900 dark:file:text-blue-300"
+                  />
+                  {selectedFile && (
+                    <div className="flex items-center text-sm text-green-600 dark:text-green-400">
+                      <FileText className="w-4 h-4 mr-1" />
+                      New: {selectedFile.name}
+                    </div>
+                  )}
+                </div>
+                {existingFile && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {selectedFile ? 'New file will replace the current file' : 'Select a new file to replace the current one (optional)'}
+                  </p>
                 )}
               </div>
             </div>

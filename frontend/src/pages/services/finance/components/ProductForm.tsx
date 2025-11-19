@@ -5,6 +5,7 @@ import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 import CreateHSNCodeModal from './CreateHSNCodeModal'
 import CreateSACCodeModal from './CreateSACCodeModal'
+import CreateUnitModal from './CreateUnitModal'
 
 interface Product {
   id: number
@@ -39,6 +40,13 @@ interface SACCode {
   service_name: string
   description: string
   gst_rate: number
+}
+
+interface Unit {
+  id: number
+  code: string
+  name: string
+  is_active: boolean
 }
 
 interface ProductFormProps {
@@ -85,9 +93,16 @@ const ProductForm: React.FC<ProductFormProps> = ({
   const [selectedHsnCode, setSelectedHsnCode] = useState<HSNCode | null>(null)
   const [selectedSacCode, setSelectedSacCode] = useState<SACCode | null>(null)
   
+  // Unit search state
+  const [unitSearchTerm, setUnitSearchTerm] = useState('')
+  const [units, setUnits] = useState<Unit[]>([])
+  const [showUnitDropdown, setShowUnitDropdown] = useState(false)
+  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
+  
   // Modal states
   const [showCreateHSNModal, setShowCreateHSNModal] = useState(false)
   const [showCreateSACModal, setShowCreateSACModal] = useState(false)
+  const [showCreateUnitModal, setShowCreateUnitModal] = useState(false)
   
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -204,6 +219,22 @@ const ProductForm: React.FC<ProductFormProps> = ({
     }
   }
 
+  // Search Units
+  const searchUnits = async (searchTerm: string = '') => {
+    if (!sessionKey) {
+      console.error('No session key available')
+      return
+    }
+
+    try {
+      const response = await apiClient.searchUnits({ session_key: sessionKey, search: searchTerm })
+      setUnits(response.data.results || [])
+    } catch (error) {
+      console.error('Error searching units:', error)
+      setUnits([])
+    }
+  }
+
   // Handle HSN search input change
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -234,19 +265,42 @@ const ProductForm: React.FC<ProductFormProps> = ({
     return () => clearTimeout(timer)
   }, [sacSearchTerm, formData.product_type, sessionKey])
 
+  // Handle unit search input change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (unitSearchTerm.trim()) {
+        searchUnits(unitSearchTerm)
+        setShowUnitDropdown(true)
+      } else {
+        searchUnits('')
+        setShowUnitDropdown(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [unitSearchTerm, sessionKey])
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element
-      if (!target.closest('.hsn-sac-dropdown')) {
+      if (!target.closest('.hsn-sac-dropdown') && !target.closest('.unit-dropdown')) {
         setShowHsnDropdown(false)
         setShowSacDropdown(false)
+        setShowUnitDropdown(false)
       }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  // Load units on component mount
+  useEffect(() => {
+    if (sessionKey) {
+      searchUnits('')
+    }
+  }, [sessionKey])
 
   // Handle HSN code selection
   const handleHsnCodeSelect = (hsnCode: HSNCode) => {
@@ -296,6 +350,31 @@ const ProductForm: React.FC<ProductFormProps> = ({
       gst_rate: newSacCode.gst_rate
     }))
     setShowCreateSACModal(false)
+  }
+
+  // Handle unit selection
+  const handleUnitSelect = (unit: Unit) => {
+    setSelectedUnit(unit)
+    setUnitSearchTerm(unit.code)
+    setFormData(prev => ({
+      ...prev,
+      unit: unit.code
+    }))
+    setShowUnitDropdown(false)
+    setUnits([])
+  }
+
+  // Handle successful unit creation
+  const handleUnitCreated = (newUnit: Unit) => {
+    setSelectedUnit(newUnit)
+    setUnitSearchTerm(newUnit.code)
+    setFormData(prev => ({
+      ...prev,
+      unit: newUnit.code
+    }))
+    setShowCreateUnitModal(false)
+    // Refresh units list
+    searchUnits('')
   }
 
   // Handle product type change
@@ -764,30 +843,63 @@ const ProductForm: React.FC<ProductFormProps> = ({
               </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Unit
-              </label>
-              <select
-                name="unit"
-                value={formData.unit}
-                onChange={handleInputChange}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${
-                  errors.unit ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-                }`}
-              >
-                <option value="">Select Unit</option>
-                <option value="NOS">Numbers (NOS)</option>
-                <option value="PCS">Pieces (PCS)</option>
-                <option value="KG">Kilograms (KG)</option>
-                <option value="LITER">Liters (LITER)</option>
-                <option value="METER">Meters (METER)</option>
-                <option value="BOX">Box (BOX)</option>
-                <option value="HOUR">Hours (HOUR)</option>
-                <option value="DAY">Days (DAY)</option>
-                <option value="MONTH">Months (MONTH)</option>
-                <option value="YEAR">Years (YEAR)</option>
-              </select>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Unit
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateUnitModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-green-100 hover:bg-green-200 dark:bg-green-800 dark:hover:bg-green-700 text-green-700 dark:text-green-300 rounded transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add New Unit
+                </button>
+              </div>
+              <div className="relative unit-dropdown">
+                <input
+                  type="text"
+                  name="unit"
+                  value={unitSearchTerm}
+                  onChange={(e) => {
+                    setUnitSearchTerm(e.target.value)
+                    setShowUnitDropdown(true)
+                    if (!e.target.value) {
+                      setSelectedUnit(null)
+                      setFormData(prev => ({ ...prev, unit: '' }))
+                    }
+                  }}
+                  onFocus={() => {
+                    searchUnits('')
+                    setShowUnitDropdown(true)
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${
+                    errors.unit ? 'border-red-500' : selectedUnit ? 'border-green-300 dark:border-green-600' : 'border-gray-300 dark:border-gray-600'
+                  }`}
+                  placeholder="Type to search units or add new..."
+                />
+                
+                {/* Unit Dropdown */}
+                {showUnitDropdown && units.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {units.map((unit) => (
+                      <div
+                        key={unit.id}
+                        onClick={() => handleUnitSelect(unit)}
+                        className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-100 dark:border-gray-600 last:border-b-0"
+                      >
+                        <div className="font-medium text-gray-900 dark:text-white">
+                          {unit.code}
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                          {unit.name}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               {errors.unit && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.unit}</p>
               )}
@@ -937,6 +1049,13 @@ const ProductForm: React.FC<ProductFormProps> = ({
         isOpen={showCreateSACModal}
         onClose={() => setShowCreateSACModal(false)}
         onSuccess={handleSACCodeCreated}
+      />
+      
+      {/* Unit Creation Modal */}
+      <CreateUnitModal
+        isOpen={showCreateUnitModal}
+        onClose={() => setShowCreateUnitModal(false)}
+        onSuccess={handleUnitCreated}
       />
     </div>
   )

@@ -17,6 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 from authentication.models import ServiceUserSession, CompanyServiceUser
 from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
+from .unit_models import Unit
 from .email_utils import send_invoice_email, send_proforma_email, send_quotation_email, send_purchase_order_email
 from .serializers import (
     CustomerListSerializer, CustomerDetailSerializer,

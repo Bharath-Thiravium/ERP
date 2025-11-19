@@ -3,6 +3,7 @@ from django.db import models
 from django.core.validators import RegexValidator, EmailValidator
 from django.utils import timezone
 from authentication.models import Company, CompanyServiceUser
+from .unit_models import Unit
 
 
 class HSNCode(models.Model):
@@ -45,21 +46,7 @@ class Product(models.Model):
         ('service', 'Service'),
     ]
 
-    UNIT_CHOICES = [
-        ('NOS', 'Numbers'),
-        ('PCS', 'Pieces'),
-        ('KG', 'Kilograms'),
-        ('GM', 'Grams'),
-        ('LITER', 'Liters'),
-        ('METER', 'Meters'),
-        ('SQFT', 'Square Feet'),
-        ('HOUR', 'Hours'),
-        ('DAY', 'Days'),
-        ('MONTH', 'Months'),
-        ('YEAR', 'Years'),
-        ('BOX', 'Box'),
-        ('SET', 'Set'),
-    ]
+    # Unit choices removed - now using dynamic Unit model
 
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='products')
@@ -74,7 +61,8 @@ class Product(models.Model):
     gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
 
     # Pricing
-    unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default='PCS', blank=True)
+    unit = models.CharField(max_length=10, blank=True)  # Keep existing field as is
+    unit_ref = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')  # New dynamic unit
     selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     purchase_price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
 
@@ -807,7 +795,7 @@ class QuotationItem(models.Model):
             self.product_name = self.product.name
             self.product_code = self.product.product_code
             self.description = self.product.description
-            self.unit = self.product.unit
+            self.unit = self.product.unit_ref.code if self.product.unit_ref else self.product.unit
             self.gst_rate = self.product.gst_rate
 
             # Get HSN/SAC code
@@ -1377,7 +1365,7 @@ class PurchaseOrderItem(models.Model):
             self.product_name = self.product.name
             self.product_code = self.product.product_code
             self.description = self.product.description
-            self.unit = self.product.unit
+            self.unit = self.product.unit_ref.code if self.product.unit_ref else self.product.unit
             self.gst_rate = self.product.gst_rate
 
             # Get HSN/SAC code
@@ -1708,7 +1696,7 @@ class ProformaInvoiceItem(models.Model):
             self.product_name = self.product.name
             self.product_code = self.product.product_code
             self.description = self.product.description
-            self.unit = self.product.unit
+            self.unit = self.product.unit_ref.code if self.product.unit_ref else self.product.unit
             self.gst_rate = self.product.gst_rate
 
             # Get HSN/SAC code
@@ -2433,7 +2421,7 @@ class PurchaseRequestItem(models.Model):
             self.product_name = self.product.name
             self.product_code = self.product.product_code
             self.description = self.product.description
-            self.unit = self.product.unit
+            self.unit = self.product.unit_ref.code if self.product.unit_ref else self.product.unit
             self.gst_rate = self.product.gst_rate
             
             if self.product.hsn_code:
@@ -2598,7 +2586,7 @@ class VendorInvoiceItem(models.Model):
             self.product_name = self.product.name
             self.product_code = self.product.product_code
             self.description = self.product.description
-            self.unit = self.product.unit
+            self.unit = self.product.unit_ref.code if self.product.unit_ref else self.product.unit
             self.gst_rate = self.product.gst_rate
             
             if self.product.hsn_code:

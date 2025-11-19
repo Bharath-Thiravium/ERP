@@ -8,6 +8,7 @@ from . import analytics_views
 
 from . import integration_views
 from . import purchase_views
+from . import unit_views
 
 
 # Create router for ViewSets
@@ -67,6 +68,9 @@ urlpatterns = [
 
     # Generate product/service code endpoint
     path('generate-code/', views.GenerateProductCodeView.as_view(), name='generate_product_code'),
+    
+    # Unit management endpoints
+    path('units/', unit_views.UnitListCreateView.as_view(), name='unit_list_create'),
 
     # World-Class Payment Management endpoints
     path('world-class-payments/', views.WorldClassPaymentListCreateView.as_view(), name='world_class_payments'),

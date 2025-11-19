@@ -33,6 +33,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -57,6 +58,15 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
     { value: 'other', label: 'Other' },
   ];
 
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   const fetchPayments = async () => {
     if (!sessionKey) return;
 
@@ -67,7 +77,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
         page_size: '10',
       });
 
-      if (searchTerm) params.append('search', searchTerm);
+      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
       if (statusFilter) params.append('status', statusFilter);
       if (paymentMethodFilter) params.append('payment_method', paymentMethodFilter);
 
@@ -85,7 +95,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
 
   useEffect(() => {
     fetchPayments();
-  }, [sessionKey, currentPage, searchTerm, statusFilter, paymentMethodFilter]);
+  }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter, paymentMethodFilter]);
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this payment?')) return;
@@ -144,7 +154,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
           className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-athenas-blue to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl"
         >
           <Plus className="w-4 h-4 mr-2" />
-          Record Payment
+          Update Payments
         </button>
       </div>
 
@@ -182,6 +192,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
           <button
             onClick={() => {
               setSearchTerm('');
+              setDebouncedSearchTerm('');
               setStatusFilter('');
               setPaymentMethodFilter('');
               setCurrentPage(1);
@@ -205,7 +216,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
               className="inline-flex items-center px-4 py-2 bg-athenas-blue text-white rounded-lg hover:bg-blue-600 transition-colors"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Record Payment
+              Update Payments
             </button>
           </div>
         ) : (

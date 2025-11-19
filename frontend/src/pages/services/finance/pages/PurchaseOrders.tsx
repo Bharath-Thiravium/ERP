@@ -7,8 +7,9 @@ import PODetailsModal from '../components/SophisticatedPOModal'
 import RaiseInvoiceModal from '../components/RaiseInvoiceModal'
 import SimpleProformaForm from '../components/SimpleProformaForm'
 import SimpleTaxInvoiceForm from '../components/SimpleTaxInvoiceForm'
+import SendEmailModal from '../components/SendEmailModal'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
 interface PurchaseOrder {
@@ -119,6 +120,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
   const [showRaiseInvoice, setShowRaiseInvoice] = useState(false)
   const [showProformaForm, setShowProformaForm] = useState(false)
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
+  const [showEmailModal, setShowEmailModal] = useState(false)
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [selectedPOId, setSelectedPOId] = useState<number | null>(null)
   const [refreshList, setRefreshList] = useState(0)
@@ -137,8 +139,8 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
   }, [initialAction, quotationForPO])
 
   const handleAddPO = () => {
-    setSelectedPO(null)
     setQuotationData(null)
+    setSelectedPO(null)
     setIsEditing(false)
     setShowForm(true)
   }
@@ -148,9 +150,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
 
     try {
       // Load full PO details for editing
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinancePurchaseOrder(po.id, { session_key: sessionKey })
 
       setSelectedPO(response.data)
       setQuotationData(null)
@@ -167,9 +167,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
 
     try {
       // Load full PO details for viewing
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinancePurchaseOrder(po.id, { session_key: sessionKey })
 
       setSelectedPO(response.data)
       setSelectedPOId(po.id)
@@ -233,12 +231,13 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
     if (!sessionKey) return
 
     try {
-      // Load full PO details for invoice creation
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
-
-      setSelectedPO(response.data)
+      // Load fresh PO details with updated balance tracking
+      const response = await apiClient.getFinancePurchaseOrder(po.id, { session_key: sessionKey })
+      
+      // Ensure balance tracking is up to date
+      const freshPOData = response.data
+      
+      setSelectedPO(freshPOData)
       setShowRaiseInvoice(true)
     } catch (error) {
       console.error('Error loading PO details:', error)
@@ -251,16 +250,36 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
     setSelectedPO(null)
   }
 
-  const handleCreateProforma = (data: any) => {
-    setInvoiceData(data)
-    setShowRaiseInvoice(false)
-    setShowProformaForm(true)
+  const handleCreateProforma = async (data: any) => {
+    if (!sessionKey || !selectedPO) return
+    
+    try {
+      // Fetch fresh PO data before opening proforma form
+      const response = await apiClient.getFinancePurchaseOrder(selectedPO.id, { session_key: sessionKey })
+      setSelectedPO(response.data)
+      setInvoiceData(data)
+      setShowRaiseInvoice(false)
+      setShowProformaForm(true)
+    } catch (error) {
+      console.error('Error refreshing PO data:', error)
+      toast.error('Failed to refresh purchase order data')
+    }
   }
 
-  const handleCreateTaxInvoice = (data: any) => {
-    setInvoiceData(data)
-    setShowRaiseInvoice(false)
-    setShowInvoiceForm(true)
+  const handleCreateTaxInvoice = async (data: any) => {
+    if (!sessionKey || !selectedPO) return
+    
+    try {
+      // Fetch fresh PO data before opening tax invoice form
+      const response = await apiClient.getFinancePurchaseOrder(selectedPO.id, { session_key: sessionKey })
+      setSelectedPO(response.data)
+      setInvoiceData(data)
+      setShowRaiseInvoice(false)
+      setShowInvoiceForm(true)
+    } catch (error) {
+      console.error('Error refreshing PO data:', error)
+      toast.error('Failed to refresh purchase order data')
+    }
   }
 
   const handleProformaFormClose = () => {
@@ -281,7 +300,24 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
     setInvoiceData(null)
     setSelectedPO(null)
     setRefreshList(prev => prev + 1)
-    toast.success('Invoice created successfully!')
+    // Success toast is already shown by individual forms
+  }
+
+  const handleSendEmail = (po: any) => {
+    setSelectedPO(po)
+    setShowEmailModal(true)
+  }
+
+  const handleEmailModalClose = () => {
+    setShowEmailModal(false)
+    setSelectedPO(null)
+  }
+
+  const handleEmailSuccess = () => {
+    setShowEmailModal(false)
+    setSelectedPO(null)
+    // Refresh list to update any status changes
+    setRefreshList(prev => prev + 1)
   }
 
   const handlePODeleted = () => {
@@ -318,6 +354,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
         onView={handleViewPO}
         onViewDetails={handleViewDetails}
         onRaiseInvoice={handleRaiseInvoice}
+        onSendEmail={handleSendEmail}
         onDelete={handlePODeleted}
       />
 
@@ -375,6 +412,19 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
           invoiceData={invoiceData}
           onClose={handleInvoiceFormClose}
           onSuccess={handleInvoiceSuccess}
+        />
+      )}
+
+      {/* Send Email Modal */}
+      {showEmailModal && selectedPO && (
+        <SendEmailModal
+          isOpen={showEmailModal}
+          onClose={handleEmailModalClose}
+          invoiceId={selectedPO.id}
+          invoiceNumber={selectedPO.internal_po_number}
+          invoiceType="purchase_order"
+          customerEmail={selectedPO.customer_details?.email || ''}
+          onSuccess={handleEmailSuccess}
         />
       )}
     </div>

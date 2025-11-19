@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import QuotationList from '../components/QuotationList'
 import QuotationForm from '../components/QuotationForm'
 import QuotationDetail from '../components/QuotationDetail'
+import QuotationEdit from '../components/QuotationEdit'
 
 interface Quotation {
   id: number
@@ -27,7 +28,7 @@ interface QuotationsProps {
 
 const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
   const navigate = useNavigate()
-  const [currentView, setCurrentView] = useState<'list' | 'form' | 'detail'>('list')
+  const [currentView, setCurrentView] = useState<'list' | 'form' | 'detail' | 'edit'>('list')
   const [selectedQuotation, setSelectedQuotation] = useState<Quotation | null>(null)
   const [refreshList, setRefreshList] = useState(0)
 
@@ -56,6 +57,11 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
     setCurrentView('detail')
   }
 
+  const handleEdit = (quotation: Quotation) => {
+    setSelectedQuotation(quotation)
+    setCurrentView('edit')
+  }
+
   const handleFormClose = () => {
     setCurrentView('list')
   }
@@ -72,8 +78,9 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
   }
 
   const handleDetailEdit = () => {
-    // This will be handled by QuotationDetail component internally
-    // We can remove this if QuotationDetail doesn't need it
+    if (selectedQuotation) {
+      setCurrentView('edit')
+    }
   }
 
   const handleCreatePO = (quotation: Quotation) => {
@@ -94,7 +101,7 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
         <QuotationList
           key={refreshList} // Force re-render when refreshList changes
           onCreateNew={handleCreateNew}
-          onEdit={() => {}} // Add empty handler for now
+          onEdit={handleEdit}
           onView={handleView}
           onCreatePO={handleCreatePO}
         />
@@ -112,6 +119,21 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
           quotationId={selectedQuotation.id}
           onClose={handleDetailClose}
           onEdit={handleDetailEdit}
+        />
+      )}
+
+      {currentView === 'edit' && selectedQuotation && (
+        <QuotationEdit
+          quotationId={selectedQuotation.id}
+          onClose={() => {
+            setSelectedQuotation(null)
+            setCurrentView('list')
+          }}
+          onSuccess={() => {
+            setSelectedQuotation(null)
+            setCurrentView('list')
+            setRefreshList(prev => prev + 1)
+          }}
         />
       )}
     </div>

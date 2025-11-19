@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import QuotationForm from './QuotationForm'
 import toast from 'react-hot-toast'
@@ -25,9 +25,7 @@ const QuotationEdit: React.FC<QuotationEditProps> = ({ quotationId, onClose, onS
   const loadQuotationDetails = async () => {
     try {
       setLoading(true)
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/quotations/${quotationId}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceQuotation(quotationId, { session_key: sessionKey })
 
       console.log('Loaded quotation for editing:', response.data)
       setQuotation(response.data)

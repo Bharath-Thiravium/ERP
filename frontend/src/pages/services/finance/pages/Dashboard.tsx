@@ -2,11 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
-
-
-
+  PlusCircle,
   CreditCard,
-  PieChart,
   BarChart3,
   Building,
   Users,
@@ -18,27 +15,24 @@ import {
   Sun,
   Moon,
   Shield,
-  Search,
-  Filter,
-  Calendar,
   RefreshCw,
   MoreVertical,
   ExternalLink,
   ChevronRight,
   Banknote,
-
-  PlusCircle,
   User,
   ShoppingCart,
-  FileText
+  FileText,
+  Zap
 } from 'lucide-react'
-import { useAuthStore } from '../../../../store/authStore'
+// import { useAuthStore } from '../../../../store/authStore'
 import { useThemeStore } from '../../../../store/themeStore'
 import api, { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
+import { useSessionValidation } from '../../../../hooks/useSessionValidation'
 import toast from 'react-hot-toast'
 import Customers from './Customers'
 import Products from './Products'
@@ -48,13 +42,27 @@ import ProformaInvoices from './ProformaInvoices'
 import Invoices from './Invoices'
 import Payments from './Payments'
 import CustomerLedger from '../components/CustomerLedger'
+import ComplianceDashboard from './ComplianceDashboard'
+
+// Purchase & Expense Management Pages
+import Vendors from './Vendors'
+import PurchaseRequests from './PurchaseRequests'
+import VendorInvoices from './VendorInvoices'
+import PurchasePayments from './PurchasePayments'
+import VendorLedger from './VendorLedger'
+
+import { EInvoiceManager } from '../components/EInvoiceManager'
+
+import Integration from './Integration'
 
 const FinanceDashboard: React.FC = () => {
   const navigate = useNavigate()
-  const { logout } = useAuthStore()
+  // const { logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
-  const { serviceUser, sessionKey } = useServiceUserStore()
-
+  const { serviceUser, sessionKey, logout: serviceUserLogout } = useServiceUserStore()
+  
+  // Add session validation
+  useSessionValidation()
 
   const [activeTab, setActiveTab] = useState('overview')
   const [isLoading, setIsLoading] = useState(true)
@@ -91,10 +99,32 @@ const FinanceDashboard: React.FC = () => {
     paidInvoices: 0,
     recentActivity: [] as any[]
   })
+
+  // Purchase & Expense data state
+  const [purchaseExpenseData, setPurchaseExpenseData] = useState({
+    totalVendors: 0,
+    activeVendors: 0,
+    totalPurchaseRequests: 0,
+    pendingRequests: 0,
+    totalVendorInvoices: 0,
+    vendorInvoiceValue: 0,
+    outstandingVendorAmount: 0,
+    totalPurchasePayments: 0,
+    totalPaid: 0,
+    totalTDS: 0
+  })
   const [isChangingPassword, setIsChangingPassword] = useState(false)
 
   // Handle URL parameters and session storage for PO creation
   useEffect(() => {
+    // Ensure session key is maintained during navigation
+    const storeSessionKey = useServiceUserStore.getState().sessionKey
+    const storageSessionKey = sessionStorage.getItem('service_session_key')
+    
+    if (storeSessionKey && !storageSessionKey) {
+      sessionStorage.setItem('service_session_key', storeSessionKey)
+    }
+    
     const urlParams = new URLSearchParams(window.location.search)
     const tab = urlParams.get('tab')
     const action = urlParams.get('action')
@@ -106,10 +136,15 @@ const FinanceDashboard: React.FC = () => {
     if (action === 'create' && tab === 'purchase-orders') {
       const storedQuotation = sessionStorage.getItem('quotationForPO')
       if (storedQuotation) {
-        setQuotationForPO(JSON.parse(storedQuotation))
-        setPOAction('create')
-        // Clear the session storage
-        sessionStorage.removeItem('quotationForPO')
+        try {
+          setQuotationForPO(JSON.parse(storedQuotation))
+          setPOAction('create')
+          // Clear the session storage
+          sessionStorage.removeItem('quotationForPO')
+        } catch (error) {
+          console.error('Error parsing quotation data:', error)
+          sessionStorage.removeItem('quotationForPO')
+        }
       }
     }
 
@@ -121,6 +156,29 @@ const FinanceDashboard: React.FC = () => {
 
 // Handle PO creation from quotations
 const handleQuotationCreatePO = (quotation: any) => {
+  // Ensure session key is preserved during navigation
+  const currentSessionKey = useServiceUserStore.getState().sessionKey
+  const storageSessionKey = sessionStorage.getItem('service_session_key')
+  
+  // Ensure session key is in sessionStorage
+  if (currentSessionKey && !storageSessionKey) {
+    sessionStorage.setItem('service_session_key', currentSessionKey)
+  } else if (!currentSessionKey && !storageSessionKey) {
+    // Try to restore from localStorage
+    try {
+      const storeData = localStorage.getItem('service-user-storage')
+      if (storeData) {
+        const parsed = JSON.parse(storeData)
+        const storeSessionKey = parsed?.state?.sessionKey
+        if (storeSessionKey) {
+          sessionStorage.setItem('service_session_key', storeSessionKey)
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to restore session during PO creation:', error)
+    }
+  }
+  
   setQuotationForPO(quotation)
   setPOAction('create')
   setActiveTab('purchase-orders')
@@ -164,9 +222,11 @@ const handlePOCreated = () => {
     }
   }
 
-  // Simplified sidebar menu items - Overview, Customers, Products, Quotations, PO/WO, Proforma Invoices, Invoices, and Settings
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['purchase-expense'])
+
+  // Complete sidebar menu items with hierarchical structure
   const sidebarItems = [
-    { id: 'overview', label: 'Overview', icon: BarChart3, active: true },
+    { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'products', label: 'Products', icon: Building },
     { id: 'quotations', label: 'Quotations', icon: CreditCard },
@@ -175,8 +235,71 @@ const handlePOCreated = () => {
     { id: 'invoices', label: 'Invoices', icon: FileText },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'customer-ledger', label: 'Customer Ledger', icon: User },
+    {
+      id: 'purchase-expense',
+      label: 'Purchase & Expense',
+      icon: ShoppingCart,
+      isParent: true,
+      children: [
+        { id: 'vendors', label: 'Vendors', icon: Users },
+        { id: 'purchase-requests', label: 'Purchase Requests', icon: FileText },
+        { id: 'vendor-invoices', label: 'Vendor Invoices', icon: FileText },
+        { id: 'purchase-payments', label: 'Purchase Payments', icon: CreditCard },
+        { id: 'vendor-ledger', label: 'Vendor Ledger', icon: User }
+      ]
+    },
+    { id: 'compliance', label: 'Indian Compliance', icon: Shield },
+    { id: 'einvoice', label: 'E-Invoice', icon: Zap },
+    { id: 'integration', label: 'Integration', icon: Zap },
     { id: 'settings', label: 'Settings', icon: Settings }
   ]
+
+  const toggleMenu = (menuId: string) => {
+    setExpandedMenus(prev => 
+      prev.includes(menuId) 
+        ? prev.filter(id => id !== menuId)
+        : [...prev, menuId]
+    )
+  }
+
+  // Fetch purchase and expense data
+  const fetchPurchaseExpenseData = async () => {
+    if (!sessionKey) return
+
+    try {
+      const [vendorsRes, purchaseRequestsRes, vendorInvoicesRes, purchasePaymentsRes] = await Promise.all([
+        api.get('/api/finance/vendors/', { headers: { Authorization: `Bearer ${sessionKey}` } }),
+        api.get('/api/finance/purchase-requests/', { headers: { Authorization: `Bearer ${sessionKey}` } }),
+        api.get('/api/finance/vendor-invoices/', { headers: { Authorization: `Bearer ${sessionKey}` } }),
+        api.get('/api/finance/purchase-payments/', { headers: { Authorization: `Bearer ${sessionKey}` } })
+      ])
+
+      const vendors = vendorsRes.data.results || []
+      const purchaseRequests = purchaseRequestsRes.data.results || []
+      const vendorInvoices = vendorInvoicesRes.data.results || []
+      const purchasePayments = purchasePaymentsRes.data.results || []
+
+      const vendorInvoiceValue = vendorInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.total_amount || 0), 0)
+      const outstandingVendorAmount = vendorInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.outstanding_amount || 0), 0)
+      const totalPaid = purchasePayments.reduce((sum: number, pay: any) => sum + parseFloat(pay.amount || 0), 0)
+      const totalTDS = purchasePayments.reduce((sum: number, pay: any) => sum + parseFloat(pay.tds_amount || 0), 0)
+
+      setPurchaseExpenseData({
+        totalVendors: vendors.length,
+        activeVendors: vendors.filter((v: any) => v.is_active).length,
+        totalPurchaseRequests: purchaseRequests.length,
+        pendingRequests: purchaseRequests.filter((pr: any) => pr.status === 'draft').length,
+        totalVendorInvoices: vendorInvoices.length,
+        vendorInvoiceValue,
+        outstandingVendorAmount,
+        totalPurchasePayments: purchasePayments.length,
+        totalPaid,
+        totalTDS
+      })
+    } catch (error) {
+      console.error('Error fetching purchase expense data:', error)
+    }
+  }
 
   // Fetch real financial data from APIs
   const fetchFinancialData = async () => {
@@ -238,6 +361,13 @@ const handlePOCreated = () => {
 
 
   useEffect(() => {
+    // Validate session on component mount
+    const sessionKey = sessionStorage.getItem('service_session_key')
+    if (!sessionKey) {
+      window.location.replace('/service-login')
+      return
+    }
+
     // Check if service user is authenticated and set company data
     const timer = setTimeout(() => {
       setIsLoading(false)
@@ -272,6 +402,7 @@ const handlePOCreated = () => {
   useEffect(() => {
     if (sessionKey) {
       fetchFinancialData()
+      fetchPurchaseExpenseData()
     }
   }, [sessionKey])
 
@@ -279,6 +410,7 @@ const handlePOCreated = () => {
   useEffect(() => {
     if (quotationRefreshKey > 0 && sessionKey) {
       fetchFinancialData()
+      fetchPurchaseExpenseData()
     }
   }, [quotationRefreshKey, sessionKey])
 
@@ -298,25 +430,104 @@ const handlePOCreated = () => {
       }
 
       return {
-        id: item.id || index,
+        id: `${type}-${item.id || index}-${index}`,
         date: item.created_at ? new Date(item.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
         description: `${description} - ${item.customer_name || 'Customer'}`,
         amount,
         type,
-        status: item.status || 'draft'
+        status: item.status || 'draft',
+        originalItem: item
       }
     })
   }
 
+  // Handle transaction actions
+  const handleRefreshTransactions = () => {
+    fetchFinancialData()
+    fetchPurchaseExpenseData()
+    toast.success('Transactions refreshed')
+  }
 
+  const handleNewTransaction = () => {
+    setActiveTab('quotations')
+  }
 
+  const handleViewTransaction = (transaction: any) => {
+    const { type } = transaction
+    if (type === 'quotation') {
+      setActiveTab('quotations')
+    } else if (type === 'purchase_order') {
+      setActiveTab('purchase-orders')
+    } else if (type === 'proforma_invoice') {
+      setActiveTab('proforma-invoices')
+    }
+  }
 
+  const handleEditTransaction = (transaction: any) => {
+    handleViewTransaction(transaction)
+  }
+
+  const handleDeleteTransaction = () => {
+    toast.error('Delete functionality not implemented')
+  }
+
+  // Handle chart actions
+  const handleRevenueAnalyticsMenu = () => {
+    toast('Revenue analytics options not implemented')
+  }
+
+  const handlePaymentStatusExport = () => {
+    toast('Payment status export not implemented')
+  }
+
+  // Handle password change
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error('New passwords do not match')
+      return
+    }
+
+    if (passwordData.newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters long')
+      return
+    }
+
+    setIsChangingPassword(true)
+    try {
+      if (!sessionKey) {
+        toast.error('Session expired. Please login again.')
+        return
+      }
+
+      await apiClient.changeServiceUserPassword({
+        session_key: sessionKey,
+        current_password: passwordData.currentPassword,
+        new_password: passwordData.newPassword,
+        confirm_password: passwordData.confirmPassword
+      })
+
+      toast.success('Password changed successfully')
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      })
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to change password')
+    } finally {
+      setIsChangingPassword(false)
+    }
+  }
 
   const renderOverview = () => (
     <div className="space-y-8">
-      {/* Enhanced Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Quotations Card */}
+      {/* Enhanced Key Metrics - Sales & Purchase Management */}
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Sales Management</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Total Quotations Card */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 p-6 text-white shadow-xl shadow-blue-500/25">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
           <div className="relative">
@@ -415,45 +626,300 @@ const handlePOCreated = () => {
             </div>
           </div>
         </div>
+        </div>
       </div>
 
+      {/* Purchase & Expense Management Section */}
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Purchase & Expense Management</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Vendors Card */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 p-6 text-white shadow-xl shadow-purple-500/25">
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <Building className="h-6 w-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs opacity-80">Total Vendors</div>
+                  <div className="text-2xl font-bold">{purchaseExpenseData.totalVendors}</div>
+                </div>
+              </div>
+              <div className="flex items-center text-sm">
+                <span className="font-medium">{purchaseExpenseData.activeVendors} active vendors</span>
+                <span className="ml-2 opacity-70">• Ready to use</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Purchase Requests Card */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 p-6 text-white shadow-xl shadow-green-500/25">
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <FileText className="h-6 w-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs opacity-80">Purchase Requests</div>
+                  <div className="text-2xl font-bold">{purchaseExpenseData.totalPurchaseRequests}</div>
+                </div>
+              </div>
+              <div className="flex items-center text-sm">
+                <span className="font-medium">{purchaseExpenseData.totalPurchaseRequests} requests sent</span>
+                <span className="ml-2 opacity-70">• {purchaseExpenseData.pendingRequests} pending</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Vendor Invoices Card */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 p-6 text-white shadow-xl shadow-indigo-500/25">
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <FileText className="h-6 w-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs opacity-80">Vendor Invoices</div>
+                  <div className="text-2xl font-bold">₹{purchaseExpenseData.vendorInvoiceValue.toLocaleString()}</div>
+                </div>
+              </div>
+              <div className="flex items-center text-sm">
+                <span className="font-medium">{purchaseExpenseData.totalVendorInvoices} invoices</span>
+                <span className="ml-2 opacity-70">• ₹{purchaseExpenseData.outstandingVendorAmount.toLocaleString()} outstanding</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Purchase Payments Card */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 p-6 text-white shadow-xl shadow-teal-500/25">
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <CreditCard className="h-6 w-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs opacity-80">Payments Made</div>
+                  <div className="text-2xl font-bold">₹{purchaseExpenseData.totalPaid.toLocaleString()}</div>
+                </div>
+              </div>
+              <div className="flex items-center text-sm">
+                <span className="font-medium">{purchaseExpenseData.totalPurchasePayments} payments</span>
+                <span className="ml-2 opacity-70">• ₹{purchaseExpenseData.totalTDS.toLocaleString()} TDS</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Modern Charts and Analytics Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Revenue vs Expenses Chart */}
+        {/* Revenue Analytics Chart */}
         <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Revenue vs Expenses</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Monthly comparison for the last 6 months</p>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Revenue Analytics</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Quotations vs Purchase Orders vs Invoices</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleRevenueAnalyticsMenu}>
               <MoreVertical className="h-4 w-4" />
             </Button>
           </div>
-          <div className="h-64 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl">
-            <div className="text-center">
-              <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Chart visualization will be implemented</p>
+          <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl p-4">
+            <div className="h-full flex flex-col justify-between">
+              {/* Revenue Bars */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Quotations</span>
+                  <span className="text-sm font-bold text-blue-600">₹{financialData.quotationValue.toLocaleString()}</span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-1000"
+                    style={{ width: `${Math.min((financialData.quotationValue / Math.max(financialData.quotationValue, financialData.poValue, financialData.invoiceValue)) * 100, 100)}%` }}
+                  ></div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Purchase Orders</span>
+                  <span className="text-sm font-bold text-green-600">₹{financialData.poValue.toLocaleString()}</span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-green-500 to-green-600 h-3 rounded-full transition-all duration-1000"
+                    style={{ width: `${Math.min((financialData.poValue / Math.max(financialData.quotationValue, financialData.poValue, financialData.invoiceValue)) * 100, 100)}%` }}
+                  ></div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Invoices</span>
+                  <span className="text-sm font-bold text-purple-600">₹{financialData.invoiceValue.toLocaleString()}</span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-purple-500 to-purple-600 h-3 rounded-full transition-all duration-1000"
+                    style={{ width: `${Math.min((financialData.invoiceValue / Math.max(financialData.quotationValue, financialData.poValue, financialData.invoiceValue)) * 100, 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+              
+              {/* Conversion Rate */}
+              <div className="mt-4 p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                <div className="text-xs text-gray-600 dark:text-gray-400">Conversion Rate</div>
+                <div className="text-sm font-bold text-gray-900 dark:text-white">
+                  {financialData.quotationValue > 0 ? ((financialData.poValue / financialData.quotationValue) * 100).toFixed(1) : 0}% Quote to PO
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Expense Breakdown */}
+        {/* Payment Status Breakdown */}
         <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Expense Breakdown</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Current month expense categories</p>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Payment Status</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Outstanding vs Paid amounts</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handlePaymentStatusExport}>
               <ExternalLink className="h-4 w-4" />
             </Button>
           </div>
-          <div className="h-64 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl">
-            <div className="text-center">
-              <PieChart className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Pie chart visualization will be implemented</p>
+          <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl p-4">
+            <div className="h-full flex flex-col justify-center">
+              {/* Donut Chart Simulation */}
+              <div className="relative mx-auto">
+                <div className="w-32 h-32 mx-auto relative">
+                  {/* Outer Ring - Total Invoice Value */}
+                  <div className="w-32 h-32 rounded-full border-8 border-gray-200 dark:border-gray-700"></div>
+                  
+                  {/* Outstanding Amount Ring */}
+                  <div 
+                    className="absolute top-0 left-0 w-32 h-32 rounded-full border-8 border-red-500 transform -rotate-90 transition-all duration-1000"
+                    style={{
+                      borderImage: `conic-gradient(#ef4444 0deg ${financialData.invoiceValue > 0 ? (financialData.outstandingAmount / financialData.invoiceValue) * 360 : 0}deg, transparent ${financialData.invoiceValue > 0 ? (financialData.outstandingAmount / financialData.invoiceValue) * 360 : 0}deg 360deg) 1`,
+                      borderRadius: '50%'
+                    }}
+                  ></div>
+                  
+                  {/* Center Text */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-gray-900 dark:text-white">
+                        {financialData.invoiceValue > 0 ? ((1 - financialData.outstandingAmount / financialData.invoiceValue) * 100).toFixed(0) : 0}%
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Paid</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Legend */}
+              <div className="mt-6 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Paid</span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    ₹{(financialData.invoiceValue - financialData.outstandingAmount).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Outstanding</span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    ₹{financialData.outstandingAmount.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Business Insights */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Quick Stats */}
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Stats</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Conversion Rate</span>
+              <span className="font-semibold text-green-600">
+                {financialData.quotationValue > 0 ? ((financialData.poValue / financialData.quotationValue) * 100).toFixed(1) : 0}%
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Avg. Deal Size</span>
+              <span className="font-semibold text-blue-600">
+                ₹{financialData.totalPurchaseOrders > 0 ? (financialData.poValue / financialData.totalPurchaseOrders).toLocaleString() : 0}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Collection Rate</span>
+              <span className="font-semibold text-purple-600">
+                {financialData.invoiceValue > 0 ? (((financialData.invoiceValue - financialData.outstandingAmount) / financialData.invoiceValue) * 100).toFixed(1) : 0}%
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Document Status */}
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Document Status</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Pending Quotes</span>
+              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                {financialData.pendingQuotations}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Draft POs</span>
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                {financialData.draftPOs}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Paid Invoices</span>
+              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                {financialData.paidInvoices}
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Performance Metrics */}
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Performance</h3>
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Total Revenue</span>
+                <span className="text-sm font-semibold text-green-600">
+                  ₹{(financialData.quotationValue + financialData.poValue + financialData.invoiceValue).toLocaleString()}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                <div className="bg-green-500 h-2 rounded-full" style={{ width: '100%' }}></div>
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Active Documents</span>
+                <span className="text-sm font-semibold text-blue-600">
+                  {financialData.totalQuotations + financialData.totalPurchaseOrders + financialData.totalInvoices}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                <div className="bg-blue-500 h-2 rounded-full" style={{ width: '100%' }}></div>
+              </div>
             </div>
           </div>
         </div>
@@ -466,10 +932,16 @@ const handlePOCreated = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Transactions</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">Latest financial activities</p>
           </div>
-          <Button size="sm" className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Add Transaction
-          </Button>
+          <div className="flex space-x-2">
+            <Button variant="outline" size="sm" onClick={handleRefreshTransactions}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+            <Button size="sm" onClick={handleNewTransaction} className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
+              <PlusCircle className="h-4 w-4 mr-2" />
+              New Transaction
+            </Button>
+          </div>
         </div>
         <div className="space-y-3">
           {getRecentActivity().map((transaction: any) => (
@@ -515,13 +987,13 @@ const handlePOCreated = () => {
                   ₹{transaction.amount.toLocaleString()}
                 </p>
                 <div className="flex items-center space-x-2 mt-1">
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleViewTransaction(transaction)}>
                     <Eye className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleEditTransaction(transaction)}>
                     <Edit className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500 hover:text-red-700">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500 hover:text-red-700" onClick={() => handleDeleteTransaction()}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -533,49 +1005,6 @@ const handlePOCreated = () => {
 
     </div>
   )
-
-
-
-  // Handle password change
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error('New passwords do not match')
-      return
-    }
-
-    if (passwordData.newPassword.length < 8) {
-      toast.error('Password must be at least 8 characters long')
-      return
-    }
-
-    setIsChangingPassword(true)
-    try {
-      if (!sessionKey) {
-        toast.error('Session expired. Please login again.')
-        return
-      }
-
-      await apiClient.changeServiceUserPassword({
-        session_key: sessionKey,
-        current_password: passwordData.currentPassword,
-        new_password: passwordData.newPassword,
-        confirm_password: passwordData.confirmPassword
-      })
-
-      toast.success('Password changed successfully')
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      })
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to change password')
-    } finally {
-      setIsChangingPassword(false)
-    }
-  }
 
   // Render Settings Page
   const renderSettings = () => (
@@ -680,7 +1109,7 @@ const handlePOCreated = () => {
                 Username
               </label>
               <p className="text-gray-900 dark:text-white font-medium">
-                {serviceUser?.username || 'N/A'}
+                {serviceUser?.unique_service_id || 'N/A'}
               </p>
             </div>
             <div>
@@ -733,6 +1162,22 @@ const handlePOCreated = () => {
         return <Payments sessionKey={sessionKey || ''} />
       case 'customer-ledger':
         return <CustomerLedger sessionKey={sessionKey || ''} />
+      case 'vendors':
+        return <Vendors />
+      case 'purchase-requests':
+        return <PurchaseRequests sessionKey={sessionKey || ''} />
+      case 'vendor-invoices':
+        return <VendorInvoices sessionKey={sessionKey || ''} />
+      case 'purchase-payments':
+        return <PurchasePayments />
+      case 'vendor-ledger':
+        return <VendorLedger />
+      case 'compliance':
+        return <ComplianceDashboard sessionKey={sessionKey || ''} />
+      case 'einvoice':
+        return <EInvoiceManager />
+      case 'integration':
+        return <Integration />
       case 'settings':
         return renderSettings()
       default:
@@ -773,9 +1218,53 @@ const handlePOCreated = () => {
         {/* Navigation Menu */}
         <nav className="mt-6 px-3">
           <div className="space-y-1">
-            {sidebarItems.map((item) => {
+            {sidebarItems.map((item: any) => {
               const Icon = item.icon
               const isActive = activeTab === item.id
+              const isExpanded = expandedMenus.includes(item.id)
+              const hasActiveChild = item.children?.some((child: any) => activeTab === child.id)
+              
+              if (item.isParent) {
+                return (
+                  <div key={item.id}>
+                    <button
+                      onClick={() => toggleMenu(item.id)}
+                      className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ${
+                        hasActiveChild
+                          ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/25'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Icon className={`h-5 w-5 mr-3 ${hasActiveChild ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
+                      {item.label}
+                      <ChevronRight className={`h-4 w-4 ml-auto transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                    </button>
+                    {isExpanded && (
+                      <div className="ml-6 mt-1 space-y-1">
+                        {item.children.map((child: any) => {
+                          const ChildIcon = child.icon
+                          const isChildActive = activeTab === child.id
+                          return (
+                            <button
+                              key={child.id}
+                              onClick={() => setActiveTab(child.id)}
+                              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                                isChildActive
+                                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/25'
+                                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
+                              }`}
+                            >
+                              <ChildIcon className={`h-4 w-4 mr-3 ${isChildActive ? 'text-white' : 'text-gray-400 dark:text-gray-500'}`} />
+                              {child.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+              
               return (
                 <button
                   key={item.id}
@@ -814,7 +1303,7 @@ const handlePOCreated = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={logout}
+              onClick={serviceUserLogout}
               className="h-8 w-8 p-0"
             >
               <LogOut className="h-4 w-4" />
@@ -833,7 +1322,12 @@ const handlePOCreated = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => navigate('/company/services')}
+                  onClick={() => {
+                    // Clear service user session and redirect to company services
+                    sessionStorage.removeItem('service_session_key')
+                    serviceUserLogout()
+                    navigate('/company/services')
+                  }}
                   className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                 >
                   <ArrowLeft className="h-4 w-4 mr-2" />
@@ -841,27 +1335,11 @@ const handlePOCreated = () => {
                 </Button>
                 <div className="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                  Finance Dashboard
+                  Finance Module
                 </h1>
               </div>
 
               <div className="flex items-center space-x-3">
-                <Button variant="outline" size="sm">
-                  <Search className="h-4 w-4 mr-2" />
-                  Search
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Filter
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Period
-                </Button>
-                <Button size="sm" className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
-                  <PlusCircle className="h-4 w-4 mr-2" />
-                  Add Transaction
-                </Button>
                 <Button
                   variant="ghost"
                   size="sm"

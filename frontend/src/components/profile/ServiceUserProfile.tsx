@@ -99,7 +99,7 @@ const ServiceUserProfile: React.FC = () => {
               </label>
               <div className="flex items-center space-x-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                 <User className="h-4 w-4 text-gray-400" />
-                <span className="text-gray-900 dark:text-white">{serviceUser?.username}</span>
+                <span className="text-gray-900 dark:text-white">{serviceUser?.unique_service_id}</span>
               </div>
             </div>
             

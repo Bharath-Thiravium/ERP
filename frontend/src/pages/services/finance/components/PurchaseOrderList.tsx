@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 
-import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, MapPin, Package, ShoppingCart, Receipt } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, MapPin, Package, ShoppingCart, Receipt, Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface PurchaseOrder {
@@ -37,21 +37,32 @@ interface PurchaseOrderListProps {
   onView: (po: PurchaseOrder) => void
   onViewDetails: (po: PurchaseOrder) => void
   onRaiseInvoice: (po: PurchaseOrder) => void
+  onSendEmail: (po: PurchaseOrder) => void
   onDelete?: () => void
 }
 
-const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCreateNew, onEdit, onView, onViewDetails, onRaiseInvoice, onDelete }) => {
+const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCreateNew, onEdit, onView, onViewDetails, onRaiseInvoice, onSendEmail, onDelete }) => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [hoveredPO, setHoveredPO] = useState<number | null>(null)
 
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
   useEffect(() => {
     fetchPurchaseOrders(currentPage)
-  }, [currentPage, searchTerm, statusFilter])
+  }, [currentPage, debouncedSearchTerm, statusFilter])
 
   const fetchPurchaseOrders = async (page: number) => {
     if (!sessionKey) return
@@ -61,11 +72,11 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
       const params = new URLSearchParams({
         page: page.toString(),
         session_key: sessionKey,
-        ...(searchTerm && { search: searchTerm }),
+        ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
         ...(statusFilter && { status: statusFilter })
       })
 
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/purchase-orders/?${params}`)
+      const response = await apiClient.getFinancePurchaseOrders(Object.fromEntries(new URLSearchParams(params)))
 
       setPurchaseOrders(response.data.results)
       setTotalPages(Math.ceil(response.data.count / 5))
@@ -88,7 +99,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
     }
 
     try {
-      await axios.delete(`http://127.0.0.1:8000/api/finance/purchase-orders/${po.id}/?session_key=${sessionKey}`)
+      await apiClient.deleteFinancePurchaseOrder(po.id, { session_key: sessionKey })
 
       toast.success('Purchase order deleted successfully! Quotation status reverted to "sent".')
       fetchPurchaseOrders(currentPage)
@@ -219,7 +230,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
             </div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No Purchase Orders Yet</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
-              Get started by creating your first purchase order or work order from a sent quotation.
+              Get started by creating your first purchase order or work order. You can create POs directly or from sent quotations.
             </p>
             <button
               onClick={onCreateNew}
@@ -308,7 +319,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                             )}
                           </div>
                           <div className="text-sm text-gray-500 dark:text-gray-400">
-                            From: {po.quotation_number}
+                            {po.quotation_number ? `From: ${po.quotation_number}` : 'Direct PO (No Quotation)'}
                           </div>
                         </div>
                       </td>
@@ -356,6 +367,13 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => onSendEmail(po)}
+                            className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300"
+                            title="Send Mail"
+                          >
+                            <Mail className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => onRaiseInvoice(po)}
                             className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"

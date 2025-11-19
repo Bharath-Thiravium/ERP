@@ -1,0 +1,209 @@
+import React, { useState } from 'react'
+import { X } from 'lucide-react'
+import { apiClient } from '../../../../lib/api'
+import toast from 'react-hot-toast'
+
+interface CreateHSNCodeModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onSuccess: (hsnCode: any) => void
+}
+
+const CreateHSNCodeModal: React.FC<CreateHSNCodeModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess
+}) => {
+  const [formData, setFormData] = useState({
+    code: '',
+    description: '',
+    gst_rate: 18
+  })
+  const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'gst_rate' ? parseFloat(value) || 0 : value
+    }))
+    
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }))
+    }
+  }
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {}
+
+    if (!formData.code.trim()) {
+      newErrors.code = 'HSN code is required'
+    } else if (!/^\d{4,8}$/.test(formData.code.trim())) {
+      newErrors.code = 'HSN code must be 4-8 digits'
+    }
+
+    if (!formData.description.trim()) {
+      newErrors.description = 'Description is required'
+    }
+
+    if (formData.gst_rate < 0 || formData.gst_rate > 28) {
+      newErrors.gst_rate = 'GST rate must be between 0 and 28'
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!validateForm()) {
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await apiClient.createHSNCode(formData)
+      toast.success('HSN code created successfully!')
+      onSuccess(response.data)
+      onClose()
+      
+      // Reset form
+      setFormData({
+        code: '',
+        description: '',
+        gst_rate: 18
+      })
+      setErrors({})
+    } catch (error: any) {
+      console.error('Error creating HSN code:', error)
+      if (error.response?.data) {
+        const serverErrors: Record<string, string> = {}
+        Object.keys(error.response.data).forEach(key => {
+          if (Array.isArray(error.response.data[key])) {
+            serverErrors[key] = error.response.data[key][0]
+          } else {
+            serverErrors[key] = error.response.data[key]
+          }
+        })
+        setErrors(serverErrors)
+        toast.error('Please fix the validation errors and try again.')
+      } else {
+        toast.error('Failed to create HSN code. Please try again.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+            Add New HSN Code
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* HSN Code */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              HSN Code <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="code"
+              value={formData.code}
+              onChange={handleInputChange}
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${
+                errors.code ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+              }`}
+              placeholder="Enter 4-8 digit HSN code"
+              maxLength={8}
+            />
+            {errors.code && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.code}</p>
+            )}
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Description <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleInputChange}
+              rows={3}
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${
+                errors.description ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+              }`}
+              placeholder="Enter product description"
+            />
+            {errors.description && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.description}</p>
+            )}
+          </div>
+
+          {/* GST Rate */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              GST Rate (%) <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              name="gst_rate"
+              value={formData.gst_rate}
+              onChange={handleInputChange}
+              step="0.01"
+              min="0"
+              max="28"
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${
+                errors.gst_rate ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+              }`}
+              placeholder="Enter GST rate (0-28)"
+            />
+            {errors.gst_rate && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.gst_rate}</p>
+            )}
+          </div>
+
+          {/* Form Actions */}
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors flex items-center gap-2"
+            >
+              {loading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
+              Create HSN Code
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+export default CreateHSNCodeModal

@@ -1,145 +1,214 @@
 from rest_framework import serializers
-from .models import (
-    Department, Designation, Employee, SalaryStructure, 
-    Attendance, LeaveType, LeaveBalance, LeaveApplication, Payroll
-)
+from .models import Department, Designation, Employee, JobPosting, JobApplication, AttendanceSystem, Attendance, AttendanceDevice, AttendanceLog, PerformanceReview
+
 
 class DepartmentSerializer(serializers.ModelSerializer):
     employee_count = serializers.SerializerMethodField()
+    code = serializers.CharField(required=False, allow_blank=True)
     
     class Meta:
         model = Department
-        fields = ['id', 'name', 'description', 'head', 'employee_count', 'created_at']
-        
+        fields = ['id', 'name', 'code', 'description', 'manager', 'is_active', 'employee_count', 'created_at']
+        read_only_fields = ['id', 'created_at', 'employee_count']
+    
     def get_employee_count(self, obj):
         return obj.employees.filter(status='active').count()
 
+
 class DesignationSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
+    code = serializers.CharField(required=False, allow_blank=True)
     
     class Meta:
         model = Designation
-        fields = ['id', 'title', 'department', 'department_name', 'level']
+        fields = ['id', 'title', 'code', 'department', 'department_name', 'level', 
+                 'min_salary', 'max_salary', 'is_active', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
-class EmployeeSerializer(serializers.ModelSerializer):
+
+class EmployeeListSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     designation_title = serializers.CharField(source='designation.title', read_only=True)
-    reporting_manager_name = serializers.CharField(source='reporting_manager.full_name', read_only=True)
-    full_name = serializers.CharField(read_only=True)
+    profile_picture = serializers.SerializerMethodField()
+    face_photo = serializers.SerializerMethodField()
     
     class Meta:
         model = Employee
         fields = [
-            'id', 'employee_id', 'first_name', 'last_name', 'full_name',
-            'email', 'phone', 'gender', 'date_of_birth',
-            'address_line1', 'address_line2', 'city', 'state', 'pincode', 'country',
-            'department', 'department_name', 'designation', 'designation_title',
-            'reporting_manager', 'reporting_manager_name', 'join_date', 'confirmation_date',
-            'aadhar_number', 'pan_number', 'uan_number', 'esi_number',
-            'bank_name', 'bank_account_number', 'bank_ifsc_code', 'bank_branch',
+            'id', 'employee_id', 'first_name', 'last_name', 'full_name', 'email', 
+            'phone', 'date_of_birth', 'gender', 'department', 'department_name', 'designation', 'designation_title',
+            'employment_type', 'work_mode', 'status', 'date_of_joining', 
+            'base_salary', 'address_line1', 'address_line2',
+            'city', 'state', 'pincode', 'country', 'aadhar_number', 'pan_number',
+            'pf_number', 'uan_number', 'esi_number', 'bank_name', 'bank_account_number',
+            'bank_ifsc_code', 'bank_branch', 'emergency_contact_name', 'emergency_contact_relationship',
+            'emergency_contact_phone', 'emergency_contact_address', 'skills', 'performance_score', 
+            'engagement_score', 'retention_risk', 'profile_picture', 'face_photo', 
+            'mobile_app_enabled', 'last_mobile_login', 'mobile_device_id', 'created_at'
+        ]
+        read_only_fields = ['id', 'employee_id', 'full_name', 'created_at']
+    
+    def get_profile_picture(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+    
+    def get_face_photo(self, obj):
+        if obj.face_photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.face_photo.url)
+            return obj.face_photo.url
+        return None
+
+
+class EmployeeDetailSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    designation_title = serializers.CharField(source='designation.title', read_only=True)
+    profile_picture = serializers.SerializerMethodField()
+    face_photo = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Employee
+        fields = [
+            'id', 'employee_id', 'first_name', 'last_name', 'full_name', 'email', 
+            'phone', 'date_of_birth', 'gender', 'department', 'department_name',
+            'designation', 'designation_title', 'employment_type', 'work_mode',
+            'date_of_joining', 'date_of_leaving', 'status',
+            'base_salary', 'currency', 'address_line1', 'address_line2',
+            'city', 'state', 'pincode', 'country', 'aadhar_number', 'pan_number',
+            'pf_number', 'uan_number', 'esi_number', 'bank_name', 'bank_account_number',
+            'bank_ifsc_code', 'bank_branch', 'emergency_contact_name', 'emergency_contact_relationship',
+            'emergency_contact_phone', 'emergency_contact_address', 'skills', 'performance_score', 
+            'engagement_score', 'retention_risk', 'profile_picture', 'face_photo', 'face_encoding',
+            'mobile_app_enabled', 'last_mobile_login', 'mobile_device_id', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'employee_id', 'full_name', 'created_at', 'updated_at']
+    
+    def get_profile_picture(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+    
+    def get_face_photo(self, obj):
+        if obj.face_photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.face_photo.url)
+            return obj.face_photo.url
+        return None
+    
+    def validate_skills(self, value):
+        if isinstance(value, str):
+            try:
+                import json
+                return json.loads(value)
+            except json.JSONDecodeError:
+                # If not valid JSON, treat as comma-separated string
+                if value.strip():
+                    return [skill.strip() for skill in value.split(',') if skill.strip()]
+                return []
+        elif isinstance(value, list):
+            return value
+        return []
+
+
+class EmployeeCreateSerializer(serializers.ModelSerializer):
+    
+    class Meta:
+        model = Employee
+        fields = [
+            'first_name', 'last_name', 'email', 'phone', 'date_of_birth', 'gender',
+            'department', 'designation', 'employment_type', 'work_mode', 'date_of_joining',
+            'base_salary', 'address_line1', 'address_line2',
+            'city', 'state', 'pincode', 'country', 'aadhar_number', 'pan_number',
+            'pf_number', 'uan_number', 'esi_number', 'bank_name', 'bank_account_number',
+            'bank_ifsc_code', 'bank_branch', 'emergency_contact_name', 'emergency_contact_relationship',
+            'emergency_contact_phone', 'emergency_contact_address', 'skills', 'profile_picture', 'face_photo'
+        ]
+    
+    def validate_email(self, value):
+        if Employee.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Employee with this email already exists.")
+        return value
+    
+    def validate_skills(self, value):
+        if isinstance(value, str):
+            try:
+                import json
+                return json.loads(value)
+            except json.JSONDecodeError:
+                # If not valid JSON, treat as comma-separated string
+                if value.strip():
+                    return [skill.strip() for skill in value.split(',') if skill.strip()]
+                return []
+        elif isinstance(value, list):
+            return value
+        return []
+
+
+class JobPostingSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    designation_title = serializers.CharField(source='designation.title', read_only=True)
+    company_name = serializers.CharField(source='company.name', read_only=True)
+    company_logo = serializers.SerializerMethodField()
+    applications_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = JobPosting
+        fields = [
+            'id', 'title', 'department', 'department_name', 'designation', 'designation_title',
+            'company_name', 'company_logo', 'description', 'requirements', 'responsibilities', 'employment_type', 'work_mode',
+            'min_salary', 'max_salary', 'required_skills', 'ai_screening_enabled', 'status',
+            'posted_date', 'application_deadline', 'applications_count', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'applications_count', 'company_logo']
+    
+    def get_applications_count(self, obj):
+        return obj.applications.count()
+    
+    def get_company_logo(self, obj):
+        if obj.company.logo:
+            return obj.company.logo.url
+        return None
+
+
+class JobApplicationSerializer(serializers.ModelSerializer):
+    job_title = serializers.CharField(source='job_posting.title', read_only=True)
+    
+    class Meta:
+        model = JobApplication
+        fields = [
+            'id', 'job_posting', 'job_title', 'first_name', 'last_name', 'full_name',
+            'email', 'phone', 'current_position', 'current_company', 'total_experience',
+            'relevant_experience', 'current_salary', 'expected_salary', 'notice_period',
+            'current_location', 'willing_to_relocate', 'linkedin_profile', 'portfolio_url',
+            'education_details', 'skills', 'certifications', 'languages', 'resume', 'cover_letter',
+            'application_source', 'share_id', 'ai_score', 'skill_match_percentage', 'ai_screening_notes', 'status', 
+            'interview_date', 'interview_notes', 'interviewer', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'full_name', 'ai_score', 'skill_match_percentage', 'ai_screening_notes', 'created_at', 'updated_at']
+
+
+class PerformanceReviewSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    reviewer_name = serializers.CharField(source='reviewer.full_name', read_only=True)
+    reviewer = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), required=False, allow_null=True)
+    
+    class Meta:
+        model = PerformanceReview
+        fields = [
+            'id', 'employee', 'employee_name', 'reviewer', 'reviewer_name',
+            'review_period_start', 'review_period_end', 'goals_achievement',
+            'quality_score', 'productivity_score', 'collaboration_score',
+            'overall_rating', 'ai_performance_prediction', 'improvement_suggestions',
+            'strengths', 'areas_for_improvement', 'goals_for_next_period',
             'status', 'created_at', 'updated_at'
         ]
-        extra_kwargs = {
-            'aadhar_number': {'write_only': True},
-            'pan_number': {'write_only': True},
-            'bank_account_number': {'write_only': True}
-        }
-
-class SalaryStructureSerializer(serializers.ModelSerializer):
-    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
-    gross_salary = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    pf_deduction = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    esi_deduction = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    
-    class Meta:
-        model = SalaryStructure
-        fields = [
-            'id', 'employee', 'employee_name',
-            'basic_salary', 'hra', 'da', 'transport_allowance', 'medical_allowance', 'other_allowances',
-            'gross_salary', 'pf_applicable', 'esi_applicable', 'professional_tax',
-            'pf_deduction', 'esi_deduction', 'effective_from'
-        ]
-
-class AttendanceSerializer(serializers.ModelSerializer):
-    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
-    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
-    department_name = serializers.CharField(source='employee.department.name', read_only=True)
-    
-    class Meta:
-        model = Attendance
-        fields = [
-            'id', 'employee', 'employee_name', 'employee_id', 'department_name',
-            'date', 'check_in_time', 'check_out_time', 'working_hours', 'overtime_hours',
-            'status', 'check_in_location', 'check_out_location',
-            'check_in_latitude', 'check_in_longitude', 'notes'
-        ]
-
-class LeaveTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = LeaveType
-        fields = ['id', 'name', 'annual_allocation', 'carry_forward', 'max_carry_forward', 'is_active']
-
-class LeaveBalanceSerializer(serializers.ModelSerializer):
-    leave_type_name = serializers.CharField(source='leave_type.name', read_only=True)
-    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
-    available = serializers.IntegerField(read_only=True)
-    
-    class Meta:
-        model = LeaveBalance
-        fields = [
-            'id', 'employee', 'employee_name', 'leave_type', 'leave_type_name',
-            'year', 'allocated', 'used', 'carry_forward', 'available'
-        ]
-
-class LeaveApplicationSerializer(serializers.ModelSerializer):
-    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
-    leave_type_name = serializers.CharField(source='leave_type.name', read_only=True)
-    approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True)
-    
-    class Meta:
-        model = LeaveApplication
-        fields = [
-            'id', 'employee', 'employee_name', 'leave_type', 'leave_type_name',
-            'from_date', 'to_date', 'days_requested', 'reason', 'status',
-            'approved_by', 'approved_by_name', 'approved_at', 'rejection_reason',
-            'applied_at', 'updated_at'
-        ]
-
-class PayrollSerializer(serializers.ModelSerializer):
-    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
-    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
-    department_name = serializers.CharField(source='employee.department.name', read_only=True)
-    
-    class Meta:
-        model = Payroll
-        fields = [
-            'id', 'employee', 'employee_name', 'employee_id', 'department_name',
-            'month', 'year', 'basic_salary', 'hra', 'da', 'transport_allowance',
-            'medical_allowance', 'other_allowances', 'overtime_amount',
-            'pf_deduction', 'esi_deduction', 'professional_tax', 'tds_deduction', 'other_deductions',
-            'working_days', 'present_days', 'leave_days',
-            'gross_salary', 'total_deductions', 'net_salary',
-            'status', 'processed_at', 'created_at'
-        ]
-
-# Dashboard Statistics Serializers
-class HRStatsSerializer(serializers.Serializer):
-    total_employees = serializers.IntegerField()
-    active_employees = serializers.IntegerField()
-    present_today = serializers.IntegerField()
-    on_leave = serializers.IntegerField()
-    pending_leave_approvals = serializers.IntegerField()
-    monthly_payroll = serializers.DecimalField(max_digits=15, decimal_places=2)
-    attendance_rate = serializers.DecimalField(max_digits=5, decimal_places=2)
-    departments_count = serializers.IntegerField()
-    new_joinees = serializers.IntegerField()
-    active_recruitments = serializers.IntegerField()
-    recent_activity = serializers.ListField(child=serializers.DictField(), required=False)
-
-class AttendanceSummarySerializer(serializers.Serializer):
-    date = serializers.DateField()
-    present = serializers.IntegerField()
-    absent = serializers.IntegerField()
-    late = serializers.IntegerField()
-    on_leave = serializers.IntegerField()
-    attendance_rate = serializers.DecimalField(max_digits=5, decimal_places=2)
+        read_only_fields = ['id', 'created_at', 'updated_at']

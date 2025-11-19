@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { X, User, MapPin, FileText, DollarSign, Printer, Mail, Edit, Download } from 'lucide-react'
-import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
+
 import PrintableQuotation from './PrintableQuotation'
+import SendEmailModal from './SendEmailModal'
 
 interface QuotationItem {
   id: number
@@ -86,6 +86,7 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
   const [quotation, setQuotation] = useState<QuotationDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
+  const [showEmailModal, setShowEmailModal] = useState(false)
   const printableRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -100,12 +101,7 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
 
     try {
       setLoading(true)
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/quotations/${quotationId}/`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const response = await apiClient.getFinanceQuotation(quotationId, { session_key: sessionKey })
 
       setQuotation(response.data)
     } catch (error) {
@@ -169,103 +165,67 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
     }).format(parseFloat(amount))
   }
 
-  const handlePrint = () => {
-    // Create a new window with the printable content
-    const printWindow = window.open('', '_blank')
-    if (printWindow && printableRef.current) {
-      const printContent = printableRef.current.innerHTML
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Quotation - ${quotation?.quotation_number}</title>
-            <style>
-              body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-              @media print {
-                body { margin: 0; }
-                @page { margin: 1in; size: A4; }
-              }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-          </body>
-        </html>
-      `)
-      printWindow.document.close()
-      printWindow.focus()
-      printWindow.print()
-      printWindow.close()
+  const handlePrint = async () => {
+    if (!quotation || !sessionKey) return
+
+    try {
+      // Use the backend API to generate PDF with company logo and from address
+      const response = await fetch(`/api/finance/quotations/${quotation.id}/pdf/?session_key=${sessionKey}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${sessionKey}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF')
+      }
+
+      // Get the PDF blob and open in new window for printing
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const printWindow = window.open(url, '_blank')
+      
+      if (printWindow) {
+        printWindow.onload = () => {
+          printWindow.print()
+        }
+      }
+    } catch (error) {
+      console.error('Error generating PDF for print:', error)
+      alert('Error generating PDF for print. Please try again.')
     }
   }
 
   const handleDownloadPDF = async () => {
-    if (!quotation || !printableRef.current) return
+    if (!quotation || !sessionKey) return
 
     setIsGeneratingPDF(true)
     try {
-      // Create canvas from the printable content
-      const canvas = await html2canvas(printableRef.current, {
-        scale: 1.5,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: printableRef.current.scrollWidth,
-        height: printableRef.current.scrollHeight,
+      // Use the backend API to generate PDF with company logo and from address
+      const response = await fetch(`/api/finance/quotations/${quotation.id}/pdf/?session_key=${sessionKey}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${sessionKey}`,
+        },
       })
 
-      // Create PDF
-      const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF('p', 'mm', 'a4')
-
-      const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfHeight = pdf.internal.pageSize.getHeight()
-      const imgWidth = canvas.width
-      const imgHeight = canvas.height
-
-      // Calculate scaling to fit width
-      const ratio = pdfWidth / (imgWidth * 0.264583) // Convert pixels to mm
-      const scaledHeight = (imgHeight * 0.264583) * ratio
-
-      // If content fits on one page
-      if (scaledHeight <= pdfHeight) {
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, scaledHeight)
-      } else {
-        // Split into multiple pages
-        let yPosition = 0
-        const pageHeight = pdfHeight
-
-        while (yPosition < scaledHeight) {
-          const remainingHeight = scaledHeight - yPosition
-          const currentPageHeight = Math.min(pageHeight, remainingHeight)
-
-          // Calculate source coordinates for cropping
-          const srcY = (yPosition / ratio) / 0.264583
-          const srcHeight = (currentPageHeight / ratio) / 0.264583
-
-          // Create a cropped canvas for this page
-          const pageCanvas = document.createElement('canvas')
-          const pageCtx = pageCanvas.getContext('2d')
-          pageCanvas.width = canvas.width
-          pageCanvas.height = srcHeight
-
-          if (pageCtx) {
-            pageCtx.drawImage(canvas, 0, srcY, canvas.width, srcHeight, 0, 0, canvas.width, srcHeight)
-            const pageImgData = pageCanvas.toDataURL('image/png')
-
-            if (yPosition > 0) {
-              pdf.addPage()
-            }
-
-            pdf.addImage(pageImgData, 'PNG', 0, 0, pdfWidth, currentPageHeight)
-          }
-
-          yPosition += pageHeight
-        }
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF')
       }
 
-      // Download the PDF
-      pdf.save(`Quotation-${quotation.quotation_number}.pdf`)
+      // Get the PDF blob
+      const blob = await response.blob()
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Quotation-${quotation.quotation_number}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Error generating PDF:', error)
       alert('Error generating PDF. Please try again.')
@@ -275,8 +235,7 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
   }
 
   const handleSendEmail = () => {
-    // This would typically open an email modal or send the quotation
-    alert('Email functionality would be implemented here')
+    setShowEmailModal(true)
   }
 
   if (loading) {
@@ -662,6 +621,20 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
           <PrintableQuotation quotation={quotation} />
         </div>
       </div>
+
+      {/* Email Modal */}
+      <SendEmailModal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        invoiceId={quotation.id}
+        invoiceNumber={quotation.quotation_number}
+        invoiceType="quotation"
+        customerEmail={quotation.customer_details.email}
+        onSuccess={() => {
+          setShowEmailModal(false);
+          fetchQuotationDetail(); // Refresh quotation details
+        }}
+      />
     </div>
   )
 }

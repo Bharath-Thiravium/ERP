@@ -31,9 +31,9 @@ interface ProformaInvoice {
 }
 
 interface PaymentFormData {
-  invoice_type: 'tax_invoice' | 'proforma_invoice' | '';
-  invoice: string;
-  proforma_invoice: string;
+  invoice_type?: 'tax_invoice' | 'proforma_invoice' | '';
+  invoice?: string | number;
+  proforma_invoice?: string | number;
   payment_date: string;
   amount: string;
   payment_method: string;
@@ -307,6 +307,9 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, ses
     }
 
     setLoading(true);
+    // Clean form data - only send the relevant invoice field
+    const cleanFormData: any = { ...formData };
+    
     try {
       const url = payment?.id 
         ? `/api/finance/payments/${payment.id}/`
@@ -314,7 +317,48 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, ses
       
       const method = payment?.id ? 'put' : 'post';
       
-      await api[method](url, formData, {
+      // Remove invoice_type field as it's not needed by backend
+      delete cleanFormData.invoice_type;
+      
+      // Only send the relevant invoice field based on invoice type
+      if (formData.invoice_type === 'tax_invoice') {
+        // For tax invoice payments, remove proforma_invoice field completely
+        delete cleanFormData.proforma_invoice;
+        // Ensure invoice is a number, not string, and not empty
+        if (cleanFormData.invoice && cleanFormData.invoice !== '' && cleanFormData.invoice !== '0') {
+          cleanFormData.invoice = parseInt(cleanFormData.invoice.toString());
+        } else {
+          // If no valid invoice ID, this is an error
+          toast.error('Please select a valid tax invoice');
+          setLoading(false);
+          return;
+        }
+      } else if (formData.invoice_type === 'proforma_invoice') {
+        // For proforma invoice payments, remove invoice field completely
+        delete cleanFormData.invoice;
+        // Ensure proforma_invoice is a number, not string, and not empty
+        if (cleanFormData.proforma_invoice && cleanFormData.proforma_invoice !== '' && cleanFormData.proforma_invoice !== '0') {
+          cleanFormData.proforma_invoice = parseInt(cleanFormData.proforma_invoice.toString());
+        } else {
+          // If no valid proforma invoice ID, this is an error
+          toast.error('Please select a valid proforma invoice');
+          setLoading(false);
+          return;
+        }
+      } else {
+        // If no invoice type selected, this is an error
+        toast.error('Please select an invoice type');
+        setLoading(false);
+        return;
+      }
+      
+      console.log('Form data before cleaning:', formData);
+      console.log('Sending payment data:', cleanFormData);
+      console.log('Invoice type:', formData.invoice_type);
+      console.log('Invoice ID:', formData.invoice);
+      console.log('Proforma Invoice ID:', formData.proforma_invoice);
+      
+      await api[method](url, cleanFormData, {
         headers: { Authorization: `Bearer ${sessionKey}` }
       });
 
@@ -322,6 +366,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, ses
       onSave();
     } catch (error: any) {
       console.error('Error saving payment:', error);
+      console.error('Request data was:', cleanFormData);
       if (error.response?.data) {
         const errorData = error.response.data;
         if (typeof errorData === 'object') {

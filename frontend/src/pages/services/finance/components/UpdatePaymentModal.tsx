@@ -13,13 +13,15 @@ interface UpdatePaymentModalProps {
   onClose: () => void;
   onSuccess: () => void;
   sessionKey: string;
+  invoiceType?: 'tax_invoice' | 'proforma_invoice';
 }
 
 const UpdatePaymentModal: React.FC<UpdatePaymentModalProps> = ({
   invoice,
   onClose,
   onSuccess,
-  sessionKey
+  sessionKey,
+  invoiceType = 'tax_invoice'
 }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -70,10 +72,28 @@ const UpdatePaymentModal: React.FC<UpdatePaymentModalProps> = ({
     setLoading(true);
 
     try {
-      await api.post(`/api/finance/invoices/${invoice.id}/payments/`, {
-        ...formData,
+      // Use the correct payment creation endpoint based on invoice type
+      const paymentData: any = {
+        payment_date: formData.payment_date,
+        amount: parseFloat(formData.amount_received),
+        tds_amount: parseFloat(formData.tds_amount) || 0,
+        tds_percentage: parseFloat(formData.tds_percentage) || 0,
+        net_amount_received: parseFloat(formData.net_amount),
+        payment_method: formData.payment_method,
+        reference_number: formData.reference_number,
+        notes: formData.notes,
+        status: 'completed',
         session_key: sessionKey
-      });
+      };
+
+      // Set the correct invoice field based on type
+      if (invoiceType === 'proforma_invoice') {
+        paymentData.proforma_invoice = invoice.id;
+      } else {
+        paymentData.invoice = invoice.id;
+      }
+
+      await api.post('/api/finance/payments/', paymentData);
 
       toast.success('Payment updated successfully!');
       onSuccess();

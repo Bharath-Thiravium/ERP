@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { apiClient, setTokens, clearTokens } from '../lib/api'
-import { User, LoginResponse, MasterAdminLoginRequest, CompanyUserLoginRequest } from '../types'
+import tokenManager from '../lib/tokenManager'
+import { User,  MasterAdminLoginRequest, CompanyUserLoginRequest, SecurityAlert } from '../types'
 import toast from 'react-hot-toast'
 
 interface AuthState {
@@ -12,15 +13,29 @@ interface AuthState {
   firstLoginRequired: boolean
   approvalPending: boolean
   approvalStatus: string | null
+  mustChangePassword: boolean
+  forcePasswordReset: boolean
+  // Phase 2: Security Features
+  accountLocked: boolean
+  remainingAttempts: number | null
+  lockoutExpiresAt: string | null
+  passwordExpiresInDays: number | null
+  passwordExpiresAt: string | null
+  securityAlerts: SecurityAlert[]
+  trustedDevice: boolean
+  deviceId: string | null
 
   // Actions
-  login: (credentials: MasterAdminLoginRequest | CompanyUserLoginRequest, userType: 'master' | 'company') => Promise<boolean>
+  login: (credentials: MasterAdminLoginRequest | CompanyUserLoginRequest, userType: 'master' | 'company', rememberDevice?: boolean) => Promise<boolean | {requires_2fa: boolean, user_id: number}>
   logout: () => void
   initializeAuth: () => void
   clearError: () => void
   setFirstLoginRequired: (required: boolean) => void
   setApprovalPending: (pending: boolean) => void
+  setMustChangePassword: (required: boolean) => void
+  setForcePasswordReset: (required: boolean) => void
   updateUser: (user: Partial<User>) => void
+  clearSecurityAlerts: () => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -33,40 +48,69 @@ export const useAuthStore = create<AuthState>()(
       firstLoginRequired: false,
       approvalPending: false,
       approvalStatus: null,
+      mustChangePassword: false,
+      forcePasswordReset: false,
+      // Phase 2: Security Features
+      accountLocked: false,
+      remainingAttempts: null,
+      lockoutExpiresAt: null,
+      passwordExpiresInDays: null,
+      passwordExpiresAt: null,
+      securityAlerts: [],
+      trustedDevice: false,
+      deviceId: null,
 
       login: async (credentials, userType) => {
-        console.log('🔍 DEBUG: Login function called', { credentials: { email: credentials.email, password: '***' }, userType })
         set({ isLoading: true, error: null })
 
         try {
-          console.log('🔍 DEBUG: Making API call...')
           const response = userType === 'master'
             ? await apiClient.masterAdminLogin(credentials)
             : await apiClient.companyUserLogin(credentials)
 
-          console.log('🔍 DEBUG: API response received', { status: response.status, data: response.data })
-          const data: LoginResponse = response.data
+          const data = response.data
+          
+          // Update security state from response
+          set({
+            accountLocked: data.account_locked || false,
+            remainingAttempts: data.remaining_attempts || null,
+            lockoutExpiresAt: data.lockout_expires_at || null,
+            passwordExpiresInDays: data.password_expires_in_days || null,
+            passwordExpiresAt: data.password_expires_at || null,
+            securityAlerts: data.security_alerts || [],
+            trustedDevice: data.trusted_device || false,
+            deviceId: data.device_id || null
+          })
+          
+          // Check if account is locked
+          if (data.account_locked) {
+            set({ isLoading: false, error: 'Account is temporarily locked' })
+            return false
+          }
+          
+          // Check if 2FA is required - explicit boolean check
+          if (data.requires_2fa === true) {
+            set({ isLoading: false })
+            // Don't update auth state for 2FA - just return the requirement
+            return {
+              requires_2fa: true,
+              user_id: data.user_id || data.id
+            }
+          }
 
-          // Store tokens
-          console.log('🔍 DEBUG: Storing tokens and user data')
+          // Check if we have access token (successful full login)
+          if (!data.access) {
+            set({ isLoading: false, error: 'Invalid login response - no access token' })
+            return false
+          }
+
+          // Normal login success
+
+
+
+          // Store tokens and update state immediately
           setTokens(data.access, data.refresh)
-
-          // Store user data
-          localStorage.setItem('user', JSON.stringify(data.user))
-
-          // Store additional auth states
-          localStorage.setItem('firstLoginRequired', JSON.stringify(data.first_login_required || false))
-          localStorage.setItem('approvalPending', JSON.stringify(data.approval_pending || false))
-          localStorage.setItem('approvalStatus', JSON.stringify(data.approval_status || null))
-
-          console.log('🔍 DEBUG: All data stored in localStorage')
-
-          // Update state
-          console.log('🔍 DEBUG: Setting auth state to authenticated')
-          console.log('🔍 DEBUG: Response data:', data)
-          console.log('🔍 DEBUG: first_login_required:', data.first_login_required)
-          console.log('🔍 DEBUG: approval_pending:', data.approval_pending)
-
+          
           set({
             user: data.user,
             isAuthenticated: true,
@@ -74,51 +118,61 @@ export const useAuthStore = create<AuthState>()(
             firstLoginRequired: data.first_login_required || false,
             approvalPending: data.approval_pending || false,
             approvalStatus: data.approval_status || null,
+            mustChangePassword: data.must_change_password || false,
+            forcePasswordReset: data.force_password_reset || false,
           })
-          console.log('🔍 DEBUG: Auth state updated successfully')
-          console.log('🔍 DEBUG: Final auth state:', {
-            isAuthenticated: true,
-            firstLoginRequired: data.first_login_required || false,
-            approvalPending: data.approval_pending || false,
-            user: data.user
-          })
+          
+          // Force immediate persistence
+          const stateToStore = {
+            state: {
+              user: data.user,
+              isAuthenticated: true,
+              firstLoginRequired: data.first_login_required || false,
+              approvalPending: data.approval_pending || false,
+              approvalStatus: data.approval_status || null,
+              mustChangePassword: data.must_change_password || false,
+              forcePasswordReset: data.force_password_reset || false,
+            },
+            version: 0
+          }
+          localStorage.setItem('auth-storage', JSON.stringify(stateToStore))
 
           // Show success message
-          console.log('🔍 DEBUG: Login successful, showing toast')
           toast.success(`Welcome back, ${data.user.email}!`)
 
-          console.log('🔍 DEBUG: Returning true from login function')
+          // Return true for successful login (not 2FA object)
           return true
         } catch (error: any) {
-          console.log('🔍 DEBUG: Login error caught', error)
-          console.log('🔍 DEBUG: Error response', error.response)
-          const errorMessage = error.response?.data?.error ||
-                              error.response?.data?.message ||
-                              'Login failed. Please try again.'
+          const errorData = error.response?.data || {}
+          const errorMessage = errorData.error || errorData.message || 'Login failed. Please try again.'
           
+          // Update security state from error response
           set({ 
             isLoading: false, 
             error: errorMessage,
             isAuthenticated: false,
-            user: null 
+            user: null,
+            accountLocked: errorData.locked || false,
+            remainingAttempts: errorData.attempts_remaining || null,
+            lockoutExpiresAt: errorData.locked_until || null
           })
 
-          console.log('🔍 DEBUG: Showing error toast', errorMessage)
-          toast.error(errorMessage)
-          console.log('🔍 DEBUG: Returning false from login function')
+          // Show appropriate error message
+          if (errorData.locked) {
+            toast.error('Account locked due to too many failed attempts')
+          } else if (errorData.attempts_remaining !== undefined) {
+            toast.error(`Login failed. ${errorData.attempts_remaining} attempts remaining.`)
+          } else {
+            toast.error(errorMessage)
+          }
+          
           return false
         }
       },
 
       logout: () => {
-        console.log('🔍 DEBUG: LOGOUT FUNCTION CALLED!')
-        console.trace('🔍 DEBUG: logout call stack')
-
         // Clear all authentication data
         clearTokens()
-        localStorage.removeItem('firstLoginRequired')
-        localStorage.removeItem('approvalPending')
-        localStorage.removeItem('approvalStatus')
 
         // Reset auth state
         set({
@@ -129,64 +183,99 @@ export const useAuthStore = create<AuthState>()(
           firstLoginRequired: false,
           approvalPending: false,
           approvalStatus: null,
+          mustChangePassword: false,
+          forcePasswordReset: false,
+          // Reset security state
+          accountLocked: false,
+          remainingAttempts: null,
+          lockoutExpiresAt: null,
+          passwordExpiresInDays: null,
+          passwordExpiresAt: null,
+          securityAlerts: [],
+          trustedDevice: false,
+          deviceId: null,
         })
+
+
 
         // Show success message
         toast.success('Logged out successfully')
 
-        // Redirect to login page if not already there
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login'
-        }
+        // Clear session storage to ensure clean state
+        sessionStorage.clear()
+        
+        // Don't force redirect here - let the router handle it naturally
+        // This preserves browser history and prevents back button issues
       },
 
       initializeAuth: async () => {
-        console.log('🔍 DEBUG: initializeAuth called')
-        const token = localStorage.getItem('access_token')
-        const userStr = localStorage.getItem('user')
-        const firstLoginStr = localStorage.getItem('firstLoginRequired')
-        const approvalPendingStr = localStorage.getItem('approvalPending')
-        const approvalStatusStr = localStorage.getItem('approvalStatus')
+        set({ isLoading: true })
+        
+        const token = tokenManager.getAccessToken()
+        const userStr = sessionStorage.getItem('user')
+        const firstLoginStr = sessionStorage.getItem('firstLoginRequired')
+        const approvalPendingStr = sessionStorage.getItem('approvalPending')
+        const approvalStatusStr = sessionStorage.getItem('approvalStatus')
+        const mustChangePasswordStr = sessionStorage.getItem('mustChangePassword')
+        const forcePasswordResetStr = sessionStorage.getItem('forcePasswordReset')
+        
+        // Also check localStorage for persisted state
+        let persistedState = null
+        try {
+          const persistedData = localStorage.getItem('auth-storage')
+          if (persistedData) {
+            persistedState = JSON.parse(persistedData).state
+          }
+        } catch (error) {
+          console.warn('Failed to parse persisted auth state:', error)
+        }
 
-        console.log('🔍 DEBUG: localStorage data', {
-          hasToken: !!token,
-          hasUser: !!userStr,
-          token: token?.substring(0, 20) + '...'
-        })
-
-        if (token && userStr) {
+        if (token && (userStr || persistedState?.user)) {
           try {
-            const user = JSON.parse(userStr)
-            const firstLoginRequired = firstLoginStr ? JSON.parse(firstLoginStr) : false
-            const approvalPending = approvalPendingStr ? JSON.parse(approvalPendingStr) : false
-            const approvalStatus = approvalStatusStr ? JSON.parse(approvalStatusStr) : null
+            // Use session storage first, fallback to persisted state
+            const user = userStr ? JSON.parse(userStr) : persistedState?.user
+            const firstLoginRequired = firstLoginStr ? JSON.parse(firstLoginStr) : (persistedState?.firstLoginRequired || false)
+            const approvalPending = approvalPendingStr ? JSON.parse(approvalPendingStr) : (persistedState?.approvalPending || false)
+            const approvalStatus = approvalStatusStr ? JSON.parse(approvalStatusStr) : (persistedState?.approvalStatus || null)
+            const mustChangePassword = mustChangePasswordStr ? JSON.parse(mustChangePasswordStr) : (persistedState?.mustChangePassword || false)
+            const forcePasswordReset = forcePasswordResetStr ? JSON.parse(forcePasswordResetStr) : (persistedState?.forcePasswordReset || false)
+            
+            // If we used persisted state, restore to session storage
+            if (!userStr && persistedState?.user) {
+              sessionStorage.setItem('user', JSON.stringify(user))
+              sessionStorage.setItem('firstLoginRequired', JSON.stringify(firstLoginRequired))
+              sessionStorage.setItem('approvalPending', JSON.stringify(approvalPending))
+              sessionStorage.setItem('approvalStatus', JSON.stringify(approvalStatus))
+              sessionStorage.setItem('mustChangePassword', JSON.stringify(mustChangePassword))
+              sessionStorage.setItem('forcePasswordReset', JSON.stringify(forcePasswordReset))
+            }
 
-            // Validate token with backend
+            // Set initial state from stored data
+            set({
+              user,
+              isAuthenticated: true,
+              isLoading: false,
+              firstLoginRequired,
+              approvalPending,
+              approvalStatus,
+              mustChangePassword,
+              forcePasswordReset,
+            })
+
+            // Validate token with backend in background
             try {
-              console.log('🔍 DEBUG: Validating token with backend...')
               const response = await apiClient.validateToken()
-              console.log('🔍 DEBUG: Token validation successful', response.data)
-
               // Update user data from validation response if available
               const validatedUser = response.data?.user || user
-
+              
               set({
                 user: validatedUser,
                 isAuthenticated: true,
-                isLoading: false,
-                firstLoginRequired,
-                approvalPending,
-                approvalStatus,
               })
-              console.log('🔍 DEBUG: Auth state set successfully')
             } catch (error: any) {
               // Token is invalid, clear everything
-              console.log('🔍 DEBUG: Token validation failed', error.response?.status, error.response?.data)
-              console.log('🔍 DEBUG: CLEARING AUTH STATE DUE TO TOKEN VALIDATION FAILURE')
               clearTokens()
-              localStorage.removeItem('firstLoginRequired')
-              localStorage.removeItem('approvalPending')
-              localStorage.removeItem('approvalStatus')
+              sessionStorage.clear()
               set({
                 user: null,
                 isAuthenticated: false,
@@ -194,15 +283,14 @@ export const useAuthStore = create<AuthState>()(
                 firstLoginRequired: false,
                 approvalPending: false,
                 approvalStatus: null,
+                mustChangePassword: false,
+                forcePasswordReset: false,
               })
-              console.log('🔍 DEBUG: Auth state cleared due to token validation failure')
             }
           } catch (error) {
             // Invalid stored data, clear it
             clearTokens()
-            localStorage.removeItem('firstLoginRequired')
-            localStorage.removeItem('approvalPending')
-            localStorage.removeItem('approvalStatus')
+            sessionStorage.clear()
             set({
               user: null,
               isAuthenticated: false,
@@ -210,6 +298,8 @@ export const useAuthStore = create<AuthState>()(
               firstLoginRequired: false,
               approvalPending: false,
               approvalStatus: null,
+              mustChangePassword: false,
+              forcePasswordReset: false,
             })
           }
         } else {
@@ -220,6 +310,8 @@ export const useAuthStore = create<AuthState>()(
             firstLoginRequired: false,
             approvalPending: false,
             approvalStatus: null,
+            mustChangePassword: false,
+            forcePasswordReset: false,
           })
         }
       },
@@ -229,13 +321,23 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setFirstLoginRequired: (required: boolean) => {
-        localStorage.setItem('firstLoginRequired', JSON.stringify(required))
+        sessionStorage.setItem('firstLoginRequired', JSON.stringify(required))
         set({ firstLoginRequired: required })
       },
 
       setApprovalPending: (pending: boolean) => {
-        localStorage.setItem('approvalPending', JSON.stringify(pending))
+        sessionStorage.setItem('approvalPending', JSON.stringify(pending))
         set({ approvalPending: pending })
+      },
+
+      setMustChangePassword: (required: boolean) => {
+        sessionStorage.setItem('mustChangePassword', JSON.stringify(required))
+        set({ mustChangePassword: required })
+      },
+
+      setForcePasswordReset: (required: boolean) => {
+        sessionStorage.setItem('forcePasswordReset', JSON.stringify(required))
+        set({ forcePasswordReset: required })
       },
 
       updateUser: (userData: Partial<User>) => {
@@ -243,8 +345,12 @@ export const useAuthStore = create<AuthState>()(
         if (currentUser) {
           const updatedUser = { ...currentUser, ...userData }
           set({ user: updatedUser })
-          localStorage.setItem('user', JSON.stringify(updatedUser))
+          sessionStorage.setItem('user', JSON.stringify(updatedUser))
         }
+      },
+
+      clearSecurityAlerts: () => {
+        set({ securityAlerts: [] })
       },
     }),
     {
@@ -255,6 +361,8 @@ export const useAuthStore = create<AuthState>()(
         firstLoginRequired: state.firstLoginRequired,
         approvalPending: state.approvalPending,
         approvalStatus: state.approvalStatus,
+        mustChangePassword: state.mustChangePassword,
+        forcePasswordReset: state.forcePasswordReset,
       }),
     }
   )

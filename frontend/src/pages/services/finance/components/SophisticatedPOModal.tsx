@@ -71,15 +71,15 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
     );
   }
 
-  const totalProformaAmount = proformaInvoices.reduce((sum, p) => sum + parseFloat(p.subtotal || '0'), 0);
+  const totalProformaAmount = proformaInvoices.reduce((sum, p) => sum + parseFloat(p.total_amount || '0'), 0);
   const totalProformaPaid = proformaInvoices.reduce((sum, p) => sum + parseFloat(p.paid_amount || '0'), 0);
   const totalProformaOutstanding = proformaInvoices.reduce((sum, p) => {
-    const amount = parseFloat(p.subtotal || '0');
+    const amount = parseFloat(p.total_amount || '0');
     const paid = parseFloat(p.paid_amount || '0');
     return sum + (amount - paid);
   }, 0);
   
-  const totalInvoiceAmount = taxInvoices.reduce((sum, i) => sum + parseFloat(i.subtotal || '0'), 0);
+  const totalInvoiceAmount = taxInvoices.reduce((sum, i) => sum + parseFloat(i.total_amount || '0'), 0);
   const totalInvoicePaid = taxInvoices.reduce((sum, i) => sum + parseFloat(i.paid_amount || '0'), 0);
   const totalInvoiceOutstanding = taxInvoices.reduce((sum, i) => sum + parseFloat(i.outstanding_amount || '0'), 0);
   
@@ -170,7 +170,7 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
                         <p className="text-sm text-gray-600">{new Date(proforma.proforma_date).toLocaleDateString()}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-medium">₹{parseFloat(proforma.subtotal || '0').toLocaleString()}</p>
+                        <p className="font-medium">₹{parseFloat(proforma.total_amount || '0').toLocaleString()}</p>
                         <span className={`text-xs px-2 py-1 rounded ${
                           proforma.payment_status === 'paid' ? 'bg-green-100 text-green-800' :
                           proforma.payment_status === 'partially_paid' ? 'bg-yellow-100 text-yellow-800' :
@@ -187,7 +187,7 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
                       </div>
                       <div>
                         <span className="text-gray-500">Outstanding:</span>
-                        <p className="font-medium text-red-600">₹{(parseFloat(proforma.subtotal || '0') - parseFloat(proforma.paid_amount || '0')).toLocaleString()}</p>
+                        <p className="font-medium text-red-600">₹{(parseFloat(proforma.total_amount || '0') - parseFloat(proforma.paid_amount || '0')).toLocaleString()}</p>
                       </div>
                       <div>
                         <span className="text-gray-500">TDS Deducted:</span>
@@ -233,7 +233,7 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
                         <p className="text-sm text-gray-600">{new Date(invoice.invoice_date).toLocaleDateString()}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-medium">₹{parseFloat(invoice.subtotal || '0').toLocaleString()}</p>
+                        <p className="font-medium">₹{parseFloat(invoice.total_amount || '0').toLocaleString()}</p>
                         <span className={`text-xs px-2 py-1 rounded ${
                           invoice.payment_status === 'paid' ? 'bg-green-100 text-green-800' :
                           invoice.payment_status === 'partially_paid' ? 'bg-yellow-100 text-yellow-800' :

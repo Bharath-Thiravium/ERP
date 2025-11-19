@@ -5,6 +5,8 @@ import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import InvoiceView from './InvoiceView';
 import UpdatePaymentModal from './UpdatePaymentModal';
+import SendEmailModal from './SendEmailModal';
+import DirectCreateInvoiceModal from './DirectCreateInvoiceModal';
 
 interface Invoice {
   id: number;
@@ -39,6 +41,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -47,6 +50,9 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedForPayment, setSelectedForPayment] = useState<Invoice | null>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [selectedForEmail, setSelectedForEmail] = useState<Invoice | null>(null);
+  const [showDirectCreateModal, setShowDirectCreateModal] = useState(false);
 
   const statusOptions = [
     { value: '', label: 'All Statuses' },
@@ -66,6 +72,15 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
     { value: 'overdue', label: 'Overdue' },
   ];
 
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   const fetchInvoices = async () => {
     if (!sessionKey) return;
 
@@ -76,7 +91,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
         page_size: '10',
       });
 
-      if (searchTerm) params.append('search', searchTerm);
+      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
       if (statusFilter) params.append('status', statusFilter);
       if (paymentStatusFilter) params.append('payment_status', paymentStatusFilter);
 
@@ -96,7 +111,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
 
   useEffect(() => {
     fetchInvoices();
-  }, [sessionKey, currentPage, searchTerm, statusFilter, paymentStatusFilter]);
+  }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter, paymentStatusFilter]);
 
   const handleUpdatePayment = (invoice: Invoice) => {
     setSelectedForPayment(invoice);
@@ -144,16 +159,9 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
     }
   };
 
-  const handleSendEmail = async (id: number, invoiceNumber: string) => {
-    try {
-      await api.post(`/api/finance/invoices/${id}/send-email/`, {}, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
-      });
-      toast.success(`Invoice ${invoiceNumber} sent via email successfully!`);
-    } catch (error: any) {
-      console.error('Error sending email:', error);
-      toast.error('Failed to send email');
-    }
+  const handleSendEmail = (invoice: Invoice) => {
+    setSelectedForEmail(invoice);
+    setShowEmailModal(true);
   };
 
   const getStatusBadge = (status: string) => {
@@ -194,13 +202,22 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Invoices</h1>
           <p className="text-gray-600 dark:text-gray-400">Manage your invoices and track payments</p>
         </div>
-        <button
-          onClick={onAddInvoice}
-          className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-athenas-blue to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Invoice
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onAddInvoice}
+            className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-athenas-blue to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            From Purchase Order
+          </button>
+          <button
+            onClick={() => setShowDirectCreateModal(true)}
+            className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-lg hover:shadow-xl"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Direct Creation
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -237,6 +254,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
           <button
             onClick={() => {
               setSearchTerm('');
+              setDebouncedSearchTerm('');
               setStatusFilter('');
               setPaymentStatusFilter('');
               setCurrentPage(1);
@@ -255,13 +273,22 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
             <FileText className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No invoices found</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">Get started by creating your first invoice</p>
-            <button
-              onClick={onAddInvoice}
-              className="inline-flex items-center px-4 py-2 bg-athenas-blue text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create Invoice
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={onAddInvoice}
+                className="inline-flex items-center px-4 py-2 bg-athenas-blue text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                From Purchase Order
+              </button>
+              <button
+                onClick={() => setShowDirectCreateModal(true)}
+                className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Direct Creation
+              </button>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -301,7 +328,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
                       <div className="flex items-center">
                         <User className="w-4 h-4 text-gray-400 mr-2" />
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{invoice.customer_name}</div>
+                          <div className="text-sm font-medium text-gray-900">{invoice.customer_name ? invoice.customer_name.replace(/[<>"'&]/g, '') : ''}</div>
                           <div className="text-sm text-gray-500">{invoice.customer_code}</div>
                         </div>
                       </div>
@@ -370,7 +397,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleSendEmail(invoice.id, invoice.invoice_number)}
+                          onClick={() => handleSendEmail(invoice)}
                           className="text-blue-600 hover:text-blue-800 transition-colors"
                           title="Send Email"
                         >
@@ -430,6 +457,33 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
             fetchInvoices();
           }}
           sessionKey={sessionKey}
+        />
+      )}
+
+      {/* Send Email Modal */}
+      {showEmailModal && selectedForEmail && (
+        <SendEmailModal
+          isOpen={showEmailModal}
+          onClose={() => {
+            setShowEmailModal(false);
+            setSelectedForEmail(null);
+          }}
+          invoiceId={selectedForEmail.id}
+          invoiceNumber={selectedForEmail.invoice_number}
+          invoiceType="tax_invoice"
+          customerEmail=""
+        />
+      )}
+
+      {/* Direct Create Invoice Modal */}
+      {showDirectCreateModal && (
+        <DirectCreateInvoiceModal
+          isOpen={showDirectCreateModal}
+          onClose={() => setShowDirectCreateModal(false)}
+          onSuccess={() => {
+            setShowDirectCreateModal(false)
+            fetchInvoices()
+          }}
         />
       )}
 

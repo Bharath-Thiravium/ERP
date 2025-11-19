@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { X, User, Calendar, Search, Trash2, MapPin } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
 interface Customer {
@@ -152,51 +152,67 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
 
   // Load full customer details when editing
   const loadCustomerDetails = async (customerId: number) => {
-    if (!sessionKey || !customerId) return
+    if (!sessionKey || !customerId) {
+      console.error('Missing session key or customer ID for loading customer details')
+      return
+    }
 
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/customers/${customerId}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
-
+      const response = await apiClient.getFinanceCustomer(customerId, { session_key: sessionKey })
       const fullCustomer = response.data
       setSelectedCustomer(fullCustomer)
       setCustomerSearch(fullCustomer.name)
     } catch (error) {
       console.error('Error loading customer details:', error)
+      toast.error('Failed to load customer details')
     }
   }
 
   const loadCustomers = async () => {
+    if (!sessionKey) {
+      console.error('No session key available for loading customers')
+      return
+    }
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/finance/customers/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceCustomers({ session_key: sessionKey })
       setCustomers(response.data.results || [])
     } catch (error) {
       console.error('Error loading customers:', error)
+      toast.error('Failed to load customers')
     }
   }
 
   const loadProducts = async () => {
+    if (!sessionKey) {
+      console.error('No session key available for loading products')
+      return
+    }
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/finance/products/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.searchFinanceProducts({ session_key: sessionKey, limit: 200 })
       setProducts(response.data.results || [])
     } catch (error) {
       console.error('Error loading products:', error)
+      toast.error('Failed to load products')
     }
   }
 
   const loadCompanyDetails = async () => {
+    if (!sessionKey) {
+      console.error('No session key available for loading company details')
+      return
+    }
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/auth/company-profile/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
-      setCompanyDetails(response.data)
+      const serviceUser = useServiceUserStore.getState().serviceUser
+      if (serviceUser?.company_id) {
+        const response = await apiClient.get(`/api/auth/service-user/company/${serviceUser.company_id}/`, {
+          headers: { 'Authorization': `Bearer ${sessionKey}` },
+          params: { session_key: sessionKey }
+        })
+        setCompanyDetails(response.data)
+      }
     } catch (error) {
       console.error('Error loading company details:', error)
+      // Don't show error toast for company details as it's not critical
     }
   }
 
@@ -205,13 +221,15 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
     setCustomerSearch(customer.name)
     setShowCustomerDropdown(false)
 
-    if (!sessionKey) return
+    if (!sessionKey) {
+      console.error('No session key available for customer selection')
+      setSelectedCustomer(customer)
+      setFormData(prev => ({ ...prev, customer: customer.id, shipping_address: null }))
+      return
+    }
 
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/customers/${customer.id}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
-
+      const response = await apiClient.getFinanceCustomer(customer.id, { session_key: sessionKey })
       const fullCustomer = response.data
       setSelectedCustomer(fullCustomer)
       setFormData(prev => ({
@@ -221,6 +239,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       }))
     } catch (error) {
       console.error('Error fetching customer details:', error)
+      toast.error('Failed to load customer details, using basic info')
       setSelectedCustomer(customer)
       setFormData(prev => ({ ...prev, customer: customer.id, shipping_address: null }))
     }
@@ -368,14 +387,10 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       const submitData = { ...formData }
 
       if (quotation) {
-        await axios.put(`http://127.0.0.1:8000/api/finance/quotations/${quotation.id}/`, submitData, {
-          headers: { 'Authorization': `Bearer ${sessionKey}` }
-        })
+        await apiClient.updateFinanceQuotation(quotation.id, { ...submitData, session_key: sessionKey })
         toast.success('Quotation updated successfully!')
       } else {
-        await axios.post('http://127.0.0.1:8000/api/finance/quotations/', submitData, {
-          headers: { 'Authorization': `Bearer ${sessionKey}` }
-        })
+        await apiClient.createFinanceQuotation({ ...submitData, session_key: sessionKey })
         toast.success('Quotation created successfully!')
       }
 
@@ -491,7 +506,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
           )}
 
           {/* Quotation Details */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <Calendar className="w-4 h-4 inline mr-1" />
@@ -516,18 +531,6 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
               {errors.valid_until && <p className="mt-1 text-sm text-red-600">{errors.valid_until}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Reference
-              </label>
-              <input
-                type="text"
-                value={formData.reference}
-                onChange={(e) => setFormData(prev => ({ ...prev, reference: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                placeholder="Customer PO number or reference"
-              />
             </div>
           </div>
 

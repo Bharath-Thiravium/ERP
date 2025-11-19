@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils._os import safe_join
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password, check_password
@@ -11,24 +12,26 @@ from .models import (
     MasterAdmin, Company, Service, CompanyService,
     CompanyUser, SecurityLog, CompanyServiceUser, ServiceUserSession
 )
+from .enhanced_security_models import IPRestriction, DeviceFingerprint, LoginNotification, SecuritySettings
+from .email_settings_models import MasterAdminEmailSettings
+from .ultra_security import TwoFactorAuthManager
 
 
 class MasterAdminLoginSerializer(serializers.Serializer):
-    """Master Admin login serializer"""
+    """Master Admin login serializer with 2FA support"""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    totp_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    recovery_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
     
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
-
-        print(f"🔍 DEBUG: Serializer validate called with email: {email}")
-        print(f"🔍 DEBUG: Password provided: {'Yes' if password else 'No'}")
+        totp_code = attrs.get('totp_code', '')
+        recovery_code = attrs.get('recovery_code', '')
 
         if email and password:
-            print(f"🔍 DEBUG: Attempting authentication for: {email}")
             user = authenticate(username=email, password=password)
-            print(f"🔍 DEBUG: Authentication result: {user}")
 
             if user:
                 if not user.is_active:
@@ -41,13 +44,36 @@ class MasterAdminLoginSerializer(serializers.Serializer):
                         raise serializers.ValidationError('Account is locked.')
                     if master_admin.is_password_expired():
                         raise serializers.ValidationError('Password has expired.')
+                    
+                    # Check 2FA if enabled
+                    if master_admin.two_factor_enabled:
+                        if not totp_code and not recovery_code:
+                            # First step passed, need 2FA
+                            attrs['requires_2fa'] = True
+                            attrs['user'] = user
+                            return attrs
+                        
+                        # Validate 2FA code or recovery code
+                        if totp_code:
+                            from .ultra_security import TwoFactorAuthManager
+                            if not TwoFactorAuthManager.verify_totp_code(master_admin.two_factor_secret, totp_code):
+                                raise serializers.ValidationError('Invalid 2FA code.')
+                        elif recovery_code:
+                            # Validate recovery code
+                            recovery_codes = master_admin.get_recovery_codes()
+                            if recovery_code not in recovery_codes:
+                                raise serializers.ValidationError('Invalid recovery code.')
+                            # Mark recovery code as used (implement this in model)
+                            master_admin.use_recovery_code(recovery_code)
+                        else:
+                            raise serializers.ValidationError('2FA code or recovery code required.')
+                    
                 except MasterAdmin.DoesNotExist:
                     raise serializers.ValidationError('Invalid master admin credentials.')
                 
                 attrs['user'] = user
                 return attrs
             else:
-                print(f"🔍 DEBUG: Authentication failed for: {email}")
                 raise serializers.ValidationError('Invalid credentials.')
         else:
             raise serializers.ValidationError('Must include email and password.')
@@ -74,7 +100,7 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Company
-        fields = ['name', 'email', 'phone', 'address', 'services', 
+        fields = ['name', 'company_prefix', 'email', 'phone', 'address', 'services', 
                  'user_email', 'user_password']
     
     def validate_services(self, value):
@@ -95,6 +121,23 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
             print(f'🔍 DEBUG: User with email {value} already exists (ID: {existing_user.id})')
             raise serializers.ValidationError("User with this email already exists.")
         print(f'🔍 DEBUG: Email {value} is available for new user')
+        return value
+    
+    def validate_company_prefix(self, value):
+        """Validate company prefix"""
+        from .utils import validate_company_prefix
+        
+        if not value:
+            raise serializers.ValidationError("Company prefix is required.")
+        
+        # Convert to uppercase
+        value = value.upper()
+        
+        # Validate format and uniqueness
+        is_valid, message = validate_company_prefix(value)
+        if not is_valid:
+            raise serializers.ValidationError(message)
+        
         return value
     
     def create(self, validated_data):
@@ -121,7 +164,9 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
             user=user,
             company=company,
             created_by=self.context['request'].user,
-            password_expires_at=timezone.now() + timedelta(days=90)
+            password_expires_at=timezone.now() + timedelta(days=90),
+            must_change_password=False,  # First time creation doesn't require forced password change
+            password_reset_by_admin=False
         )
 
         # Assign services to company (without credentials - company will create them)
@@ -134,6 +179,13 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
                 service_password='',  # Empty - company will create service credentials
                 password_expires_at=timezone.now() + timedelta(days=365)  # Extended expiry
             )
+
+        # Initialize auto-code settings for the company
+        from .utils import initialize_company_auto_codes
+        try:
+            initialize_company_auto_codes(company.id)
+        except Exception as e:
+            print(f'Warning: Failed to initialize auto-code settings: {str(e)}')
 
         return company
     
@@ -150,7 +202,7 @@ class CompanyListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Company
-        fields = ['id', 'name', 'email', 'phone', 'approval_status', 
+        fields = ['id', 'name', 'company_prefix', 'email', 'phone', 'approval_status', 
                  'detailed_info_submitted', 'created_at', 'created_by_name',
                  'services_count']
     
@@ -160,13 +212,25 @@ class CompanyListSerializer(serializers.ModelSerializer):
 
 class CompanyDetailSerializer(serializers.ModelSerializer):
     """Detailed company serializer"""
-    services = ServiceSerializer(source='company_services.service', many=True, read_only=True)
+    services = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     approved_by_name = serializers.CharField(source='approved_by.get_full_name', read_only=True)
     
     class Meta:
         model = Company
         fields = '__all__'
+    
+    def get_services(self, obj):
+        """Get assigned services for the company"""
+        company_services = obj.company_services.filter(is_active=True).select_related('service')
+        return [{
+            'id': cs.service.id,
+            'name': cs.service.name,
+            'service_type': cs.service.service_type,
+            'description': cs.service.description,
+            'base_price': cs.service.base_price,
+            'assigned_at': cs.assigned_at
+        } for cs in company_services]
 
 
 class CompanyDetailedInfoSerializer(serializers.ModelSerializer):
@@ -175,7 +239,7 @@ class CompanyDetailedInfoSerializer(serializers.ModelSerializer):
         model = Company
         fields = [
             'business_type', 'industry', 'employee_count', 'annual_revenue',
-            'website', 'tax_id', 'gst_number', 'registration_number', 'contact_person_name',
+            'website', 'tax_id', 'pan_number', 'gst_number', 'contact_person_name',
             'contact_person_title', 'contact_person_email', 'contact_person_phone',
             'description', 'special_requirements'
         ]
@@ -193,13 +257,17 @@ class CompanyDetailedInfoSerializer(serializers.ModelSerializer):
 
 
 class CompanyUserLoginSerializer(serializers.Serializer):
-    """Company user login serializer"""
+    """Company user login serializer with 2FA support"""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    totp_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    recovery_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
     
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
+        totp_code = attrs.get('totp_code', '')
+        recovery_code = attrs.get('recovery_code', '')
         
         if email and password:
             user = authenticate(username=email, password=password)
@@ -215,12 +283,57 @@ class CompanyUserLoginSerializer(serializers.Serializer):
                     if company_user.is_password_expired():
                         raise serializers.ValidationError('Password has expired.')
                     
+                    # Check 2FA if enabled
+                    from company_dashboard.security_models import CompanySecuritySettings
+                    try:
+                        security_settings = CompanySecuritySettings.objects.get(company=company_user.company)
+                        if security_settings.two_factor_enabled:
+                            if not totp_code and not recovery_code:
+                                # First step passed, need 2FA
+                                attrs['requires_2fa'] = True
+                                attrs['user'] = user
+                                return attrs
+                            
+                            # Validate 2FA code or recovery code
+                            if totp_code:
+                                import pyotp
+                                totp = pyotp.TOTP(security_settings.two_factor_secret)
+                                if not totp.verify(totp_code):
+                                    raise serializers.ValidationError('Invalid 2FA code.')
+                            elif recovery_code:
+                                from company_dashboard.security_models import CompanyRecoveryCode
+                                recovery_codes = CompanyRecoveryCode.objects.filter(
+                                    company=company_user.company,
+                                    is_used=False
+                                )
+                                valid_code = None
+                                for rc in recovery_codes:
+                                    if rc.check_code(recovery_code):
+                                        valid_code = rc
+                                        break
+                                
+                                if not valid_code:
+                                    raise serializers.ValidationError('Invalid recovery code.')
+                                
+                                # Mark recovery code as used
+                                valid_code.is_used = True
+                                valid_code.used_at = timezone.now()
+                                valid_code.save()
+                            else:
+                                raise serializers.ValidationError('2FA code or recovery code required.')
+                    except CompanySecuritySettings.DoesNotExist:
+                        pass  # No 2FA settings, continue with normal login
+                    
                     # Check if company is approved
                     if company_user.company.approval_status != 'approved':
                         if not company_user.first_login_completed:
                             attrs['first_login_required'] = True
                         else:
                             attrs['approval_pending'] = True
+                    
+                    # Check if password was reset by admin (only for approved companies)
+                    elif company_user.password_reset_by_admin:
+                        attrs['force_password_reset'] = True
                     
                 except CompanyUser.DoesNotExist:
                     raise serializers.ValidationError('Invalid company user credentials.')
@@ -318,12 +431,12 @@ class CompanyServiceUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CompanyServiceUser
-        fields = ['id', 'username', 'email', 'full_name', 'role', 'is_active',
+        fields = ['id', 'username', 'unique_service_id', 'email', 'full_name', 'role', 'is_active',
                  'service_name', 'service_type', 'company_name', 'created_by_email',
                  'created_at', 'updated_at', 'last_login', 'login_count',
                  'password_expires_at', 'password_changed_at', 'must_change_password',
                  'is_password_expired']
-        read_only_fields = ['id', 'created_at', 'updated_at', 'last_login',
+        read_only_fields = ['id', 'unique_service_id', 'created_at', 'updated_at', 'last_login',
                            'login_count', 'password_changed_at']
 
     def get_is_password_expired(self, obj):
@@ -378,6 +491,23 @@ class CompanyServiceUserCreateSerializer(serializers.ModelSerializer):
         # Generate random password
         password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
 
+        # Format email with domain if domain is set
+        email = validated_data.get('email', '')
+        username = validated_data.get('username', '')
+        
+        if company.domain_name and username and not email:
+            # If no email provided but domain is set, create email from username
+            email = f"{username}@{company.domain_name}"
+            validated_data['email'] = email
+        elif company.domain_name and username and email and '@' not in email:
+            # If email doesn't contain @, treat it as username and append domain
+            email = f"{email}@{company.domain_name}"
+            validated_data['email'] = email
+        elif company.domain_name and username and not email.endswith(f"@{company.domain_name}"):
+            # If domain is set but email doesn't match domain, suggest the format
+            # For now, we'll allow it but could add validation here
+            pass
+
         # Create service user
         service_user = CompanyServiceUser.objects.create(
             company=company,
@@ -388,31 +518,32 @@ class CompanyServiceUserCreateSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
-        # Store plain password for response (will be shown once)
+        # Store plain password and unique_service_id for response (will be shown once)
         service_user._plain_password = password
+        service_user._unique_service_id = service_user.unique_service_id
 
         return service_user
 
 
 class ServiceUserLoginSerializer(serializers.Serializer):
     """Service User login serializer"""
-    username = serializers.CharField()
+    unique_service_id = serializers.CharField()
     password = serializers.CharField(write_only=True)
     service_type = serializers.CharField()
 
     def validate(self, attrs):
-        username = attrs.get('username')
+        unique_service_id = attrs.get('unique_service_id')
         password = attrs.get('password')
         service_type = attrs.get('service_type')
 
-        if username and password and service_type:
+        if unique_service_id and password and service_type:
             try:
                 # Find service by type
                 service = Service.objects.get(service_type=service_type, is_active=True)
 
-                # Find service user
+                # Find service user by unique_service_id
                 service_user = CompanyServiceUser.objects.get(
-                    username=username,
+                    unique_service_id=unique_service_id,
                     service=service,
                     is_active=True
                 )
@@ -435,7 +566,7 @@ class ServiceUserLoginSerializer(serializers.Serializer):
             except (Service.DoesNotExist, CompanyServiceUser.DoesNotExist):
                 raise serializers.ValidationError('Invalid credentials.')
 
-        raise serializers.ValidationError('Must include username, password, and service_type.')
+        raise serializers.ValidationError('Must include unique_service_id, password, and service_type.')
 
 
 class CompanyUserPasswordChangeSerializer(serializers.Serializer):
@@ -471,3 +602,49 @@ class ServiceUserPasswordChangeSerializer(serializers.Serializer):
             raise serializers.ValidationError('Current password is incorrect.')
 
         return value
+
+
+class MasterAdminEmailSettingsSerializer(serializers.ModelSerializer):
+    """Master Admin Email Settings serializer"""
+    
+    class Meta:
+        model = MasterAdminEmailSettings
+        fields = ['provider', 'smtp_host', 'smtp_port', 'use_tls', 'use_ssl',
+                 'email_address', 'email_password', 'from_name', 'is_active',
+                 'emails_sent_today', 'total_emails_sent', 'last_email_sent']
+        extra_kwargs = {
+            'emails_sent_today': {'read_only': True},
+            'total_emails_sent': {'read_only': True},
+            'last_email_sent': {'read_only': True},
+        }
+    
+    def validate_email_address(self, value):
+        """Validate email address format"""
+        if not value or '@' not in value:
+            raise serializers.ValidationError('Please enter a valid email address')
+        
+        # Additional security validation
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+        try:
+            validate_email(value)
+        except ValidationError:
+            raise serializers.ValidationError('Invalid email format')
+        
+        return value
+    
+    def validate(self, attrs):
+        """Validate provider-specific settings"""
+        provider = attrs.get('provider')
+        
+        if provider == 'custom':
+            if not attrs.get('smtp_host'):
+                raise serializers.ValidationError({
+                    'smtp_host': 'SMTP host is required for custom provider'
+                })
+            if not attrs.get('smtp_port'):
+                raise serializers.ValidationError({
+                    'smtp_port': 'SMTP port is required for custom provider'
+                })
+        
+        return attrs

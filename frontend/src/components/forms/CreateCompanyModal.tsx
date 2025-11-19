@@ -14,13 +14,16 @@ const createCompanySchema = z.object({
     .min(2, 'Company name must be at least 2 characters')
     .max(100, 'Company name must be less than 100 characters')
     .regex(/^[a-zA-Z0-9\s&.-]+$/, 'Company name contains invalid characters'),
+  company_prefix: z.string()
+    .min(2, 'Company prefix must be at least 2 characters')
+    .max(10, 'Company prefix must be less than 10 characters')
+    .regex(/^[A-Za-z0-9]+$/, 'Company prefix must contain only letters and numbers')
+    .transform(val => val.toUpperCase()),
   email: z.string()
     .email('Please enter a valid email address')
     .max(255, 'Email must be less than 255 characters'),
   phone: z.string()
-    .min(10, 'Phone number must be at least 10 digits')
-    .max(20, 'Phone number must be less than 20 characters')
-    .regex(/^[\+]?[0-9\s\-\(\)]+$/, 'Please enter a valid phone number'),
+    .regex(/^[0-9]{10}$/, 'Phone number must be exactly 10 digits'),
   address: z.string()
     .min(5, 'Address must be at least 5 characters')
     .max(500, 'Address must be less than 500 characters'),
@@ -84,10 +87,17 @@ const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
 
   const createCompanyMutation = useMutation({
     mutationFn: (data: CreateCompanyFormData) => apiClient.createCompany(data),
-    onSuccess: () => {
-      toast.success('Company created successfully! Company user can now login and manage service credentials.')
+    onSuccess: (response) => {
+      const { company, user_credentials } = response.data
+      
+      // Download the actual credentials used by backend
+      if (user_credentials && company) {
+        downloadCredentials(company.name, user_credentials.email, user_credentials.password)
+      }
+      
+      toast.success('Company created successfully! Credentials downloaded.')
 
-      // Close modal immediately - no service credentials to show
+      // Close modal
       reset()
       setSelectedServices([])
       setPasswordGenerated(false)
@@ -142,7 +152,7 @@ IMPORTANT: Please keep these credentials secure and share them only with authori
   }
 
   const handleGeneratePassword = () => {
-    // Get current form values for download
+    // Get current form values
     const companyName = watch('name')
     const email = watch('user_email')
 
@@ -171,10 +181,7 @@ IMPORTANT: Please keep these credentials secure and share them only with authori
     setValue('user_password', password)
     setPasswordGenerated(true)
 
-    // Download credentials immediately
-    downloadCredentials(companyName, email, password)
-
-    toast.success('Password generated and credentials downloaded!')
+    toast.success('Password generated! Credentials will be downloaded after company creation.')
   }
 
   const calculateTotalPrice = () => {
@@ -294,6 +301,32 @@ IMPORTANT: Please keep these credentials secure and share them only with authori
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                      Company Prefix *
+                      <span className="text-xs text-gray-500 ml-2">(for auto-generated codes)</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Shield className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        {...register('company_prefix')}
+                        type="text"
+                        placeholder="ACME, TECH, COMP001"
+                        maxLength={10}
+                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 uppercase"
+                        style={{ textTransform: 'uppercase' }}
+                      />
+                    </div>
+                    {errors.company_prefix && (
+                      <p className="text-red-500 text-sm mt-1">{errors.company_prefix.message}</p>
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Used for employee IDs (e.g., ACMEEMP001), invoices (ACMEINV001), etc.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                       Company Email *
                     </label>
                     <div className="relative">
@@ -354,100 +387,7 @@ IMPORTANT: Please keep these credentials secure and share them only with authori
                 </div>
               </div>
 
-              {/* User Credentials Section */}
-              <div className="bg-gray-50/80 dark:bg-gray-700/30 rounded-2xl p-6 border border-gray-200/50 dark:border-gray-600/50">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-gradient-to-br from-green-500 to-teal-600 rounded-lg">
-                    <Key className="h-5 w-5 text-white" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    User Credentials
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      User Email *
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Mail className="h-5 w-5 text-gray-400" />
-                      </div>
-                      <input
-                        {...register('user_email')}
-                        type="email"
-                        placeholder="user@company.com"
-                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all duration-200"
-                      />
-                    </div>
-                    {errors.user_email && (
-                      <p className="text-red-500 text-sm mt-1">{errors.user_email.message}</p>
-                    )}
-                  </div>
 
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      User Password *
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Key className="h-5 w-5 text-gray-400" />
-                      </div>
-                      <input
-                        {...register('user_password')}
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="Enter secure password"
-                        className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all duration-200"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                      </button>
-                    </div>
-                    {errors.user_password && (
-                      <p className="text-red-500 text-sm mt-1">{errors.user_password.message}</p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleGeneratePassword}
-                      disabled={passwordGenerated}
-                      className={`mt-3 w-full px-6 py-3 text-sm font-bold rounded-2xl shadow-xl transition-all duration-500 flex items-center justify-center gap-3 relative overflow-hidden group ${
-                        passwordGenerated
-                          ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white cursor-not-allowed shadow-green-500/30'
-                          : 'bg-gradient-to-r from-green-600 via-teal-600 to-cyan-600 hover:from-green-700 hover:via-teal-700 hover:to-cyan-700 text-white shadow-green-500/30 hover:shadow-2xl hover:shadow-green-500/50 hover:-translate-y-1 hover:scale-105'
-                      }`}
-                    >
-                      {/* Button Background Animation */}
-                      {!passwordGenerated && (
-                        <div className="absolute inset-0 bg-gradient-to-r from-green-600 via-teal-600 to-cyan-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                      )}
-
-                      <div className="relative z-10 flex items-center gap-3">
-                        {passwordGenerated ? (
-                          <>
-                            <div className="p-1 bg-white/20 rounded-lg">
-                              <Check className="h-4 w-4 animate-bounce" />
-                            </div>
-                            <span>Password Generated & Downloaded</span>
-                            <div className="w-2 h-2 bg-white/60 rounded-full animate-pulse"></div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="p-1 bg-white/20 rounded-lg group-hover:scale-110 transition-transform">
-                              <Key className="h-4 w-4" />
-                            </div>
-                            <span>Generate Secure Password</span>
-                            <Zap className="h-4 w-4 group-hover:scale-110 transition-transform" />
-                          </>
-                        )}
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              </div>
 
               {/* Enhanced Services Selection Section */}
               <div className="bg-gradient-to-br from-gray-50/80 via-purple-50/20 to-indigo-50/30 dark:from-gray-700/30 dark:via-purple-900/10 dark:to-indigo-900/20 rounded-3xl p-8 border border-gray-200/50 dark:border-gray-600/50 relative overflow-hidden">
@@ -625,6 +565,123 @@ IMPORTANT: Please keep these credentials secure and share them only with authori
                   </div>
                 </div>
               </div>
+
+              {/* User Credentials Section - After Service Selection */}
+              {selectedServices.length > 0 && (
+                <div className="bg-gradient-to-br from-green-50/80 via-emerald-50/40 to-teal-50/30 dark:from-green-900/30 dark:via-emerald-900/10 dark:to-teal-900/20 rounded-3xl p-8 border border-green-200/50 dark:border-green-600/50 relative overflow-hidden">
+                  {/* Background Animation */}
+                  <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-green-400/10 to-teal-600/10 rounded-full blur-3xl animate-pulse delay-300"></div>
+                  </div>
+
+                  <div className="relative z-10">
+                    <div className="flex items-center gap-4 mb-8">
+                      <div className="relative group">
+                        <div className="absolute inset-0 bg-gradient-to-br from-green-500 to-teal-600 rounded-2xl blur opacity-60 group-hover:opacity-80 transition duration-300"></div>
+                        <div className="relative p-3 bg-gradient-to-br from-green-500 to-teal-600 rounded-2xl shadow-lg">
+                          <Key className="h-6 w-6 text-white" />
+                          <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center">
+                            <Zap className="h-2.5 w-2.5 text-white" />
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-bold bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 dark:from-green-400 dark:via-emerald-400 dark:to-teal-400 bg-clip-text text-transparent">
+                          Company User Credentials
+                        </h3>
+                        <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">Create login credentials for the company administrator</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                          Company Admin Email *
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Mail className="h-5 w-5 text-gray-400" />
+                          </div>
+                          <input
+                            {...register('user_email')}
+                            type="email"
+                            placeholder="admin@company.com"
+                            className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all duration-200"
+                          />
+                        </div>
+                        {errors.user_email && (
+                          <p className="text-red-500 text-sm mt-1">{errors.user_email.message}</p>
+                        )}
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          This will be the main admin account for the company
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                          Admin Password *
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Key className="h-5 w-5 text-gray-400" />
+                          </div>
+                          <input
+                            {...register('user_password')}
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Enter secure password"
+                            className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all duration-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                          >
+                            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
+                        </div>
+                        {errors.user_password && (
+                          <p className="text-red-500 text-sm mt-1">{errors.user_password.message}</p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleGeneratePassword}
+                          disabled={passwordGenerated}
+                          className={`mt-3 w-full px-6 py-3 text-sm font-bold rounded-2xl shadow-xl transition-all duration-500 flex items-center justify-center gap-3 relative overflow-hidden group ${
+                            passwordGenerated
+                              ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white cursor-not-allowed shadow-green-500/30'
+                              : 'bg-gradient-to-r from-green-600 via-teal-600 to-cyan-600 hover:from-green-700 hover:via-teal-700 hover:to-cyan-700 text-white shadow-green-500/30 hover:shadow-2xl hover:shadow-green-500/50 hover:-translate-y-1 hover:scale-105'
+                          }`}
+                        >
+                          {/* Button Background Animation */}
+                          {!passwordGenerated && (
+                            <div className="absolute inset-0 bg-gradient-to-r from-green-600 via-teal-600 to-cyan-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                          )}
+
+                          <div className="relative z-10 flex items-center gap-3">
+                            {passwordGenerated ? (
+                              <>
+                                <div className="p-1 bg-white/20 rounded-lg">
+                                  <Check className="h-4 w-4 animate-bounce" />
+                                </div>
+                                <span>Password Generated</span>
+                                <div className="w-2 h-2 bg-white/60 rounded-full animate-pulse"></div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="p-1 bg-white/20 rounded-lg group-hover:scale-110 transition-transform">
+                                  <Key className="h-4 w-4" />
+                                </div>
+                                <span>Generate Secure Password</span>
+                                <Zap className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                              </>
+                            )}
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Enhanced Action Buttons */}
               <div className="flex flex-col sm:flex-row justify-end gap-6 pt-10 border-t border-gray-200/50 dark:border-gray-700/50">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import { useWebSocket } from '../../hooks/useWebSocket'
 import {
   Building2,
   Users,
@@ -9,7 +10,6 @@ import {
   Settings,
   Plus,
   Search,
-
   MoreVertical,
   CheckCircle,
   XCircle,
@@ -30,7 +30,10 @@ import {
   Edit,
   Trash2,
   Moon,
-  Sun
+  Sun,
+  AlertCircle,
+  Key,
+
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
 import { useAuthStore } from '../../store/authStore'
@@ -38,11 +41,18 @@ import { useThemeStore } from '../../store/themeStore'
 import { Button } from '../../components/ui/Button'
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner'
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../components/ui/DropdownMenu'
+import { getStatusColor, getSeverityStyle, cardContainer } from '../../utils/styleUtils'
 import CreateCompanyModal from '../../components/forms/CreateCompanyModal'
 import CompanyViewModal from '../../components/modals/CompanyViewModal'
 import CompanyEditModal from '../../components/modals/CompanyEditModal'
 import CompanyDeleteModal from '../../components/modals/CompanyDeleteModal'
+import CompanyApprovalModal from '../../components/modals/CompanyApprovalModal'
+import CompanyPasswordResetModal from '../../components/modals/CompanyPasswordResetModal'
 import NotificationPanel from '../../components/layout/NotificationPanel'
+import { AIChat } from '../../components/ai-assistant'
+import ServicesManagement from './ServicesManagement'
+import AnalyticsMain from './analytics/AnalyticsMain'
+import ConfigurationMain from './configuration/ConfigurationMain'
 import athenasLogo from '../../assets/logo.jpeg'
 
 const EnhancedMasterAdminDashboard: React.FC = () => {
@@ -59,11 +69,13 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [activeSection, setActiveSection] = useState('overview')
+  const [realTimeData, setRealTimeData] = useState<any>(null)
+  const [, setWsConnected] = useState(false)
 
   // Handle URL parameters for section navigation
   useEffect(() => {
     const section = searchParams.get('section')
-    if (section && ['overview', 'companies', 'services', 'users', 'notifications', 'analytics', 'settings'].includes(section)) {
+    if (section && ['overview', 'companies', 'services', 'monitoring', 'ai-assistant', 'alerts', 'analytics', 'configuration'].includes(section)) {
       setActiveSection(section)
     }
   }, [searchParams])
@@ -96,6 +108,8 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const [showViewModal, setShowViewModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showApprovalModal, setShowApprovalModal] = useState(false)
+  const [showPasswordResetModal, setShowPasswordResetModal] = useState(false)
   const [selectedCompany, setSelectedCompany] = useState<any>(null)
 
   // Bulk actions
@@ -111,13 +125,19 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   // Fetch notifications
   const { data: notifications } = useQuery({
     queryKey: ['notifications'],
-    queryFn: () => apiClient.getNotifications({ is_read: false }),
+    queryFn: () => apiClient.get('/api/notifications/?is_read=false'),
   })
 
   // Fetch services
   const { data: services, isLoading: servicesLoading } = useQuery({
     queryKey: ['services'],
     queryFn: () => apiClient.getServices(),
+  })
+
+  // Fetch master admin profile for password expiry
+  const { data: masterAdminProfile } = useQuery({
+    queryKey: ['master-admin-profile'],
+    queryFn: () => apiClient.getMasterAdminProfile(),
   })
 
   const companiesData = companies?.data?.results || []
@@ -141,15 +161,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
     unreadNotifications: notificationsData.length,
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'approved': return 'text-green-600 bg-green-100 dark:bg-green-900/20'
-      case 'pending': return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/20'
-      case 'rejected': return 'text-red-600 bg-red-100 dark:bg-red-900/20'
-      case 'suspended': return 'text-gray-600 bg-gray-100 dark:bg-gray-900/20'
-      default: return 'text-gray-600 bg-gray-100 dark:bg-gray-900/20'
-    }
-  }
+
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -165,10 +177,11 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
     { id: 'overview', label: 'Overview', icon: BarChart3, description: 'Dashboard analytics and insights' },
     { id: 'companies', label: 'Companies', icon: Building2, description: 'Manage company registrations' },
     { id: 'services', label: 'Services', icon: Server, description: 'Manage available services' },
-    { id: 'users', label: 'Users', icon: Users, description: 'Manage company users' },
-    { id: 'notifications', label: 'Notifications', icon: Bell, description: 'System notifications' },
-    { id: 'analytics', label: 'Analytics', icon: PieChart, description: 'Reports and analytics' },
-    { id: 'settings', label: 'Settings', icon: Settings, description: 'System configuration' }
+    { id: 'monitoring', label: 'System Monitor', icon: Activity, description: 'Real-time system monitoring' },
+    { id: 'ai-assistant', label: 'AI Assistant', icon: Zap, description: 'AI-powered database queries' },
+    { id: 'alerts', label: 'Alert Center', icon: Bell, description: 'System alerts and notifications' },
+    { id: 'analytics', label: 'Analytics', icon: PieChart, description: 'Business intelligence and reports' },
+    { id: 'configuration', label: 'Configuration', icon: Settings, description: 'System configuration and settings' }
   ]
 
   // Handle company actions
@@ -181,6 +194,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
       console.error('Error approving company:', error)
       const message = error.response?.data?.message || 'Failed to approve company'
       toast.error(message)
+      throw error
     }
   }
 
@@ -193,18 +207,54 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
       console.error('Error rejecting company:', error)
       const message = error.response?.data?.message || 'Failed to reject company'
       toast.error(message)
+      throw error
+    }
+  }
+
+  const handleReviewCompany = async (company: any) => {
+    try {
+      const response = await apiClient.getCompany(company.id)
+      const completeCompany = response.data
+      
+      setSelectedCompany(completeCompany)
+      setShowApprovalModal(true)
+    } catch (error) {
+      // Fallback to original company data
+      setSelectedCompany(company)
+      setShowApprovalModal(true)
     }
   }
 
   // Modal handlers
-  const handleViewCompany = (company: any) => {
-    setSelectedCompany(company)
-    setShowViewModal(true)
+  const handleViewCompany = async (company: any) => {
+    try {
+      const response = await apiClient.getCompany(company.id)
+      const completeCompany = response.data
+      
+      setSelectedCompany(completeCompany)
+      setShowViewModal(true)
+    } catch (error) {
+      // Fallback to original company data
+      setSelectedCompany(company)
+      setShowViewModal(true)
+    }
   }
 
-  const handleEditCompany = (company: any) => {
-    setSelectedCompany(company)
-    setShowEditModal(true)
+  const handleEditCompany = async (company: any) => {
+    try {
+      const response = await apiClient.getCompany(company.id)
+      const companyWithServices = response.data
+      
+      setSelectedCompany(companyWithServices)
+      setShowEditModal(true)
+      // Close any open dropdowns
+      document.body.click()
+    } catch (error) {
+      // Fallback to original company data
+      setSelectedCompany(company)
+      setShowEditModal(true)
+      document.body.click()
+    }
   }
 
   const handleDeleteCompany = (company: any) => {
@@ -212,13 +262,21 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
     setShowDeleteModal(true)
   }
 
+  const handleResetPassword = (company: any) => {
+    setSelectedCompany(company)
+    setShowPasswordResetModal(true)
+  }
+
   const handleSaveCompany = async (updatedCompany: any) => {
     try {
-      await apiClient.updateCompany(updatedCompany.id, updatedCompany)
-      console.log('Successfully updated company:', updatedCompany)
+      await apiClient.updateCompany(selectedCompany.id, updatedCompany)
+      console.log('Successfully updated company')
+      toast.success('Company updated successfully!')
       refetchCompanies()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating company:', error)
+      const message = error.response?.data?.error || 'Failed to update company'
+      toast.error(message)
       throw error
     }
   }
@@ -267,7 +325,6 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const handleBulkReject = async () => {
     try {
       // await Promise.all(selectedCompanies.map(id => apiClient.rejectCompany(id)))
-      console.log('Bulk rejecting companies:', selectedCompanies)
       setSelectedCompanies([])
       refetchCompanies()
     } catch (error) {
@@ -397,7 +454,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
 
   // Companies Section
   const renderCompaniesSection = () => (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-visible">
       {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1">
@@ -463,7 +520,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
       )}
 
       {/* Companies List */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className={`${cardContainer} overflow-visible mb-20`}>
         {companiesLoading ? (
           <div className="p-8 text-center">
             <LoadingSpinner />
@@ -491,21 +548,21 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
               </label>
             </div>
 
-            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            <div className="divide-y divide-gray-200 dark:divide-gray-700 pb-4 max-h-[70vh] overflow-y-auto">
               {filteredCompanies.map((company: any) => {
                 const isHighlighted = highlightCompanyId && company.id.toString() === highlightCompanyId
                 const isSelected = selectedCompanies.includes(company.id)
 
                 return (
-                <div key={company.id} id={`company-${company.id}`} className={`p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all duration-200 border-l-4 ${
+                <div key={company.id} id={`company-${company.id}`} className={`p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all duration-200 border-l-4 relative overflow-visible ${
                   isHighlighted
                     ? 'border-orange-500 bg-orange-50/50 dark:bg-orange-900/10 ring-2 ring-orange-200 dark:ring-orange-800'
                     : isSelected
                       ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/10'
                       : 'border-transparent hover:border-blue-500'
                 }`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4 flex-1">
+                <div className="flex items-center justify-between overflow-visible">
+                  <div className="flex items-center space-x-4 flex-1 min-w-0">
                     {/* Checkbox */}
                     <input
                       type="checkbox"
@@ -552,52 +609,54 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 relative flex-shrink-0 overflow-visible">
                     {company.approval_status === 'pending' && (
-                      <>
-                        <Button
-                          size="sm"
-                          onClick={() => handleApproveCompany(company.id)}
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleRejectCompany(company.id)}
-                          className="border-red-300 text-red-600 hover:bg-red-50"
-                        >
-                          <XCircle className="h-4 w-4 mr-1" />
-                          Reject
-                        </Button>
-                      </>
-                    )}
-                    <DropdownMenu
-                      trigger={
-                        <Button size="sm" variant="ghost" className="hover:bg-gray-100 dark:hover:bg-gray-700">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      }
-                    >
-                      <DropdownMenuItem onClick={() => handleViewCompany(company)}>
-                        <Eye className="h-4 w-4" />
-                        View Details
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleEditCompany(company)}>
-                        <Edit className="h-4 w-4" />
-                        Edit Company
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => handleDeleteCompany(company)}
-                        variant="danger"
+                      <Button
+                        size="sm"
+                        onClick={() => handleReviewCompany(company)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
                       >
-                        <Trash2 className="h-4 w-4" />
-                        Delete Company
-                      </DropdownMenuItem>
-                    </DropdownMenu>
+                        <Eye className="h-4 w-4 mr-1" />
+                        Review & Approve
+                      </Button>
+                    )}
+                    <div className="relative flex-shrink-0 overflow-visible">
+                      <DropdownMenu
+                        trigger={
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="hover:bg-gray-100 dark:hover:bg-gray-700 p-2 h-8 w-8 flex items-center justify-center"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        }
+                        align="right"
+                      >
+                        <DropdownMenuItem onClick={() => handleViewCompany(company)}>
+                          <Eye className="h-4 w-4" />
+                          View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditCompany(company)}>
+                          <Edit className="h-4 w-4" />
+                          Edit Company
+                        </DropdownMenuItem>
+                        {company.approval_status === 'approved' && (
+                          <DropdownMenuItem onClick={() => handleResetPassword(company)}>
+                            <Key className="h-4 w-4" />
+                            Reset Password
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => handleDeleteCompany(company)}
+                          variant="danger"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete Company
+                        </DropdownMenuItem>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -612,43 +671,542 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
 
   // Services Section
   const renderServicesSection = () => (
+    <ServicesManagement />
+  )
+
+  // AI Assistant Section
+  const renderAIAssistantSection = () => (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {servicesData.map((service: any) => (
-          <div key={service.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
-                <Server className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                ${service.base_price}
-              </span>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{service.name}</h3>
-            <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{service.description}</p>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                Type: {service.service_type}
-              </span>
-              <Button size="sm" variant="outline">
-                Edit Service
-              </Button>
-            </div>
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-xl p-6 border border-blue-200/50 dark:border-blue-700/50">
+        <div className="flex items-center space-x-3 mb-4">
+          <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg">
+            <Zap className="h-5 w-5 text-white" />
           </div>
-        ))}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">AI Database Assistant</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">Query your database using natural language</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            <span className="text-gray-700 dark:text-gray-300">Natural Language Processing</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            <span className="text-gray-700 dark:text-gray-300">Smart Table Detection</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+            <span className="text-gray-700 dark:text-gray-300">Real-time Results</span>
+          </div>
+        </div>
+      </div>
+      <div className="w-full">
+        <AIChat />
       </div>
     </div>
   )
 
-  // Placeholder sections
-  const renderPlaceholderSection = (title: string, description: string, icon: React.ReactNode) => (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center">
-      <div className="mb-4">{icon}</div>
-      <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">{title}</h3>
-      <p className="text-gray-600 dark:text-gray-400 mb-6">{description}</p>
-      <Button variant="outline">Coming Soon</Button>
+  // Fetch system monitoring data
+  const { data: systemOverview, isLoading: systemLoading } = useQuery({
+    queryKey: ['system-overview'],
+    queryFn: () => apiClient.get('/api/analytics/system-overview/'),
+    refetchInterval: 30000, // Refresh every 30 seconds
+  })
+
+  const { data: serviceMetrics } = useQuery({
+    queryKey: ['service-metrics'],
+    queryFn: () => apiClient.get('/api/analytics/service-metrics/'),
+    refetchInterval: 60000, // Refresh every minute
+  })
+
+  const systemData = systemOverview?.data || {}
+  const serviceData = serviceMetrics?.data || {}
+
+  // WebSocket for real-time system monitoring
+  const { isConnected: systemWsConnected } = useWebSocket('system-monitor/', {
+    onMessage: (data) => {
+      if (data.type === 'system_update') {
+        setRealTimeData(data.data)
+      }
+    },
+    onOpen: () => {
+      setWsConnected(true)
+      console.log('System monitor WebSocket connected')
+    },
+    onClose: () => {
+      setWsConnected(false)
+      console.log('System monitor WebSocket disconnected')
+    },
+    onError: (error) => {
+      console.error('System monitor WebSocket error:', error)
+    }
+  })
+
+  // Use real-time data if available, fallback to API data
+  const currentSystemData = realTimeData || systemData
+
+  // System Monitoring Section
+  const renderSystemMonitoringSection = () => (
+    <div className="space-y-6">
+      {systemLoading ? (
+        <div className="text-center py-8">
+          <LoadingSpinner />
+          <p className="text-gray-600 dark:text-gray-400 mt-2">Loading system metrics...</p>
+        </div>
+      ) : (
+        <>
+          {/* Real-time Connection Status */}
+          <div className="mb-6">
+            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
+              systemWsConnected 
+                ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800'
+                : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+            }`}>
+              <div className={`w-2 h-2 rounded-full ${
+                systemWsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+              }`}></div>
+              {systemWsConnected ? 'Real-time monitoring active' : 'Real-time monitoring disconnected'}
+            </div>
+          </div>
+
+          {/* Real-time System Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-6 border border-blue-200 dark:border-blue-700">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-blue-700 dark:text-blue-300">CPU Usage</h3>
+                <Activity className={`h-5 w-5 text-blue-500 ${systemWsConnected ? 'animate-pulse' : ''}`} />
+              </div>
+              <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">
+                {currentSystemData.system_metrics?.cpu_usage?.toFixed(1) || '0.0'}%
+              </p>
+              <p className="text-sm text-blue-600 dark:text-blue-400">System load</p>
+            </div>
+            
+            <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-6 border border-green-200 dark:border-green-700">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-green-700 dark:text-green-300">Memory Usage</h3>
+                <Server className={`h-5 w-5 text-green-500 ${systemWsConnected ? 'animate-pulse' : ''}`} />
+              </div>
+              <p className="text-3xl font-bold text-green-900 dark:text-green-100">
+                {currentSystemData.system_metrics?.memory_usage?.toFixed(1) || '0.0'}%
+              </p>
+              <p className="text-sm text-green-600 dark:text-green-400">RAM utilization</p>
+            </div>
+            
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-6 border border-purple-200 dark:border-purple-700">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-purple-700 dark:text-purple-300">Active Users</h3>
+                <Users className={`h-5 w-5 text-purple-500 ${systemWsConnected ? 'animate-pulse' : ''}`} />
+              </div>
+              <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">
+                {currentSystemData.system_metrics?.active_users || 0}
+              </p>
+              <p className="text-sm text-purple-600 dark:text-purple-400">Last 24 hours</p>
+            </div>
+            
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl p-6 border border-orange-200 dark:border-orange-700">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-orange-700 dark:text-orange-300">Disk Usage</h3>
+                <div className={`w-3 h-3 bg-orange-500 rounded-full ${systemWsConnected ? 'animate-pulse' : ''}`}></div>
+              </div>
+              <p className="text-3xl font-bold text-orange-900 dark:text-orange-100">
+                {currentSystemData.system_metrics?.disk_usage?.toFixed(1) || '0.0'}%
+              </p>
+              <p className="text-sm text-orange-600 dark:text-orange-400">Storage used</p>
+            </div>
+          </div>
+
+          {/* Service Health Status */}
+          <div className={`${cardContainer} p-6`}>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Service Health Status</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {currentSystemData.services?.map((service: any, index: number) => (
+                <div key={`${service.service_name || service.name}-${index}`} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-white capitalize">{service.service_name || service.name}</h4>
+                    <div className={`w-3 h-3 rounded-full ${
+                      service.status === 'healthy' ? 'bg-green-500 animate-pulse' :
+                      service.status === 'warning' ? 'bg-yellow-500' :
+                      service.status === 'critical' ? 'bg-red-500' : 'bg-gray-500'
+                    }`}></div>
+                  </div>
+                  <p className={`text-xs font-medium mb-1 ${
+                    service.status === 'healthy' ? 'text-green-600 dark:text-green-400' :
+                    service.status === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
+                    service.status === 'critical' ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'
+                  }`}>
+                    {service.status.toUpperCase()}
+                  </p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    Response: {service.response_time?.toFixed(0) || 0}ms
+                  </p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    Uptime: {service.uptime_percentage?.toFixed(1) || 100}%
+                  </p>
+                </div>
+              )) || (
+                <div className="col-span-full text-center py-4 text-gray-500 dark:text-gray-400">
+                  No service data available
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Service Metrics - Totals */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            {/* Finance Totals */}
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl shadow-sm border border-green-200 dark:border-green-700 p-6">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
+                  <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Finance (All Companies)</h3>
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Total Invoices</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    {serviceData.totals?.finance?.total_invoices || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Pending Payments</span>
+                  <span className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
+                    {serviceData.totals?.finance?.pending_payments || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Total Revenue</span>
+                  <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                    ₹{serviceData.totals?.finance?.total_revenue?.toLocaleString() || 0}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* HR Totals */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl shadow-sm border border-blue-200 dark:border-blue-700 p-6">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+                  <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">HR (All Companies)</h3>
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Total Employees</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    {serviceData.totals?.hr?.total_employees || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Present Today</span>
+                  <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                    {serviceData.totals?.hr?.present_today || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">On Leave</span>
+                  <span className="text-sm font-medium text-orange-600 dark:text-orange-400">
+                    {serviceData.totals?.hr?.on_leave || 0}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Inventory Totals */}
+            <div className="bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 rounded-xl shadow-sm border border-purple-200 dark:border-purple-700 p-6">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
+                  <Server className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Inventory (All Companies)</h3>
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Total Products</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    {serviceData.totals?.inventory?.total_products || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Low Stock Items</span>
+                  <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                    {serviceData.totals?.inventory?.low_stock_items || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Out of Stock</span>
+                  <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                    {serviceData.totals?.inventory?.out_of_stock || 0}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Per-Company Breakdown */}
+          {serviceData.companies && serviceData.companies.length > 0 && (
+            <div className={cardContainer}>
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Company-wise Service Metrics</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Detailed breakdown for each company</p>
+              </div>
+              <div className="p-6">
+                <div className="space-y-6">
+                  {serviceData.companies.map((company: any) => (
+                    <div key={company.company_id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-lg font-medium text-gray-900 dark:text-white">{company.company_name}</h4>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">ID: {company.company_id}</div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Company Finance */}
+                        <div className="bg-green-50 dark:bg-green-900/10 rounded-lg p-4">
+                          <h5 className="text-sm font-medium text-green-800 dark:text-green-300 mb-3">Finance</h5>
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Invoices</span>
+                              <span className="font-medium">{company.finance.total_invoices}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Pending</span>
+                              <span className="font-medium text-yellow-600">{company.finance.pending_payments}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Revenue</span>
+                              <span className="font-medium text-green-600">₹{company.finance.total_revenue.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Company HR */}
+                        <div className="bg-blue-50 dark:bg-blue-900/10 rounded-lg p-4">
+                          <h5 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-3">HR</h5>
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Employees</span>
+                              <span className="font-medium">{company.hr.total_employees}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Present</span>
+                              <span className="font-medium text-green-600">{company.hr.present_today}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">On Leave</span>
+                              <span className="font-medium text-orange-600">{company.hr.on_leave}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Company Inventory */}
+                        <div className="bg-purple-50 dark:bg-purple-900/10 rounded-lg p-4">
+                          <h5 className="text-sm font-medium text-purple-800 dark:text-purple-300 mb-3">Inventory</h5>
+                          <div className="space-y-2 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Products</span>
+                              <span className="font-medium">{company.inventory.total_products}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Low Stock</span>
+                              <span className="font-medium text-red-600">{company.inventory.low_stock_items}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Out of Stock</span>
+                              <span className="font-medium text-red-600">{company.inventory.out_of_stock}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
+
+  // Fetch system alerts
+  const { data: systemAlerts, refetch: refetchAlerts } = useQuery({
+    queryKey: ['system-alerts'],
+    queryFn: () => apiClient.get('/api/analytics/system-alerts/'),
+    refetchInterval: 30000,
+  })
+
+  const [realtimeAlerts, setRealtimeAlerts] = useState<any[]>([])
+
+  // WebSocket for real-time alerts
+  const { isConnected: alertsWsConnected } = useWebSocket('alerts/', {
+    onMessage: (data) => {
+      if (data.type === 'alert') {
+        setRealtimeAlerts(prev => [data.message, ...prev.slice(0, 9)]) // Keep last 10 alerts
+        toast.error(`System Alert: ${data.message.title}`)
+      }
+    },
+    onOpen: () => {
+      // WebSocket connected
+    }
+  })
+
+  const alertsData = systemAlerts?.data?.alerts || []
+  const allAlerts = [...realtimeAlerts, ...alertsData]
+
+  // Alert Center Section
+  const renderAlertCenterSection = () => (
+    <div className="space-y-6">
+      {/* Alert Connection Status */}
+      <div className="mb-6">
+        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
+          alertsWsConnected 
+            ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800'
+            : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+        }`}>
+          <div className={`w-2 h-2 rounded-full ${
+            alertsWsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+          }`}></div>
+          {alertsWsConnected ? 'Real-time alerts active' : 'Real-time alerts disconnected'}
+        </div>
+      </div>
+
+      {/* Alert Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-6 border border-red-200 dark:border-red-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-red-700 dark:text-red-300">Critical Alerts</p>
+              <p className="text-2xl font-bold text-red-900 dark:text-red-100">
+                {allAlerts.filter(a => a.severity === 'critical').length}
+              </p>
+            </div>
+            <div className="p-2 bg-red-100 dark:bg-red-800 rounded-lg">
+              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-6 border border-yellow-200 dark:border-yellow-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Warnings</p>
+              <p className="text-2xl font-bold text-yellow-900 dark:text-yellow-100">
+                {allAlerts.filter(a => a.severity === 'warning').length}
+              </p>
+            </div>
+            <div className="p-2 bg-yellow-100 dark:bg-yellow-800 rounded-lg">
+              <Clock className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Info Alerts</p>
+              <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                {allAlerts.filter(a => a.severity === 'info').length}
+              </p>
+            </div>
+            <div className="p-2 bg-blue-100 dark:bg-blue-800 rounded-lg">
+              <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-6 border border-green-200 dark:border-green-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-green-700 dark:text-green-300">Total Alerts</p>
+              <p className="text-2xl font-bold text-green-900 dark:text-green-100">{allAlerts.length}</p>
+            </div>
+            <div className="p-2 bg-green-100 dark:bg-green-800 rounded-lg">
+              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Recent Alerts */}
+      <div className={cardContainer}>
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Alerts</h3>
+            <Button size="sm" variant="outline" onClick={() => refetchAlerts()}>
+              Refresh
+            </Button>
+          </div>
+        </div>
+        <div className="p-6">
+          {allAlerts.length === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Active Alerts</h3>
+              <p className="text-gray-600 dark:text-gray-400">All systems are running smoothly</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {allAlerts.slice(0, 10).map((alert: any, index: number) => {
+                const isRealtime = index < realtimeAlerts.length
+                
+                return (
+                  <div key={alert.id || index} className={`flex items-center space-x-4 p-4 rounded-lg border ${
+                    getSeverityStyle(alert.severity)
+                  } ${isRealtime ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}`}>
+                    <div className="flex-shrink-0">
+                      {alert.severity === 'critical' && <AlertCircle className="h-5 w-5" />}
+                      {alert.severity === 'warning' && <Clock className="h-5 w-5" />}
+                      {alert.severity === 'info' && <Bell className="h-5 w-5" />}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {alert.title}
+                        {isRealtime && <span className="ml-2 text-xs bg-blue-500 text-white px-2 py-1 rounded-full">LIVE</span>}
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">{alert.message}</p>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <span className="text-xs">
+                        {alert.created_at ? new Date(alert.created_at).toLocaleTimeString() : 'Just now'}
+                      </span>
+                      {alert.id && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-2"
+                          onClick={async () => {
+                            try {
+                              await apiClient.post(`/api/analytics/alerts/${alert.id}/resolve/`)
+                              toast.success('Alert resolved')
+                              refetchAlerts()
+                            } catch (error) {
+                              toast.error('Failed to resolve alert')
+                            }
+                          }}
+                        >
+                          Resolve
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
+  // Analytics Section
+  const renderAnalyticsSection = () => <AnalyticsMain />
+
+  // Configuration Section
+  const renderConfigurationSection = () => <ConfigurationMain />
 
   // Section content renderer
   const renderSectionContent = () => {
@@ -659,14 +1217,16 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
         return renderCompaniesSection()
       case 'services':
         return renderServicesSection()
-      case 'users':
-        return renderPlaceholderSection('User Management', 'Comprehensive user management system', <Users className="h-16 w-16 text-gray-400 mx-auto" />)
-      case 'notifications':
-        return renderPlaceholderSection('Notifications Center', 'Advanced notification management system', <Bell className="h-16 w-16 text-gray-400 mx-auto" />)
+      case 'monitoring':
+        return renderSystemMonitoringSection()
+      case 'ai-assistant':
+        return renderAIAssistantSection()
+      case 'alerts':
+        return renderAlertCenterSection()
       case 'analytics':
-        return renderPlaceholderSection('Analytics & Reports', 'Comprehensive analytics dashboard with detailed insights', <PieChart className="h-16 w-16 text-gray-400 mx-auto" />)
-      case 'settings':
-        return renderPlaceholderSection('System Settings', 'Configure system preferences and global settings', <Settings className="h-16 w-16 text-gray-400 mx-auto" />)
+        return renderAnalyticsSection()
+      case 'configuration':
+        return renderConfigurationSection()
       default:
         return renderOverviewSection()
     }
@@ -722,6 +1282,22 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
                 </div>
               </div>
 
+              {/* Password Expiry */}
+              {masterAdminProfile?.data?.days_until_expiry !== undefined && (
+                <div className={`hidden lg:flex items-center gap-2 px-4 py-2 backdrop-blur-xl rounded-2xl border shadow-lg ${
+                  masterAdminProfile.data.days_until_expiry <= 7
+                    ? 'bg-red-100/80 dark:bg-red-900/20 border-red-200/50 dark:border-red-700/50 text-red-700 dark:text-red-300'
+                    : masterAdminProfile.data.days_until_expiry <= 30
+                    ? 'bg-yellow-100/80 dark:bg-yellow-900/20 border-yellow-200/50 dark:border-yellow-700/50 text-yellow-700 dark:text-yellow-300'
+                    : 'bg-blue-100/80 dark:bg-blue-900/20 border-blue-200/50 dark:border-blue-700/50 text-blue-700 dark:text-blue-300'
+                }`}>
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Clock className="h-4 w-4" />
+                    <span>Password expires in {masterAdminProfile.data.days_until_expiry} days</span>
+                  </div>
+                </div>
+              )}
+
               {/* Notifications */}
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
@@ -748,12 +1324,18 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
                 )}
               </button>
 
-              {/* Settings */}
+              {/* Ultra-Secure Settings */}
               <Link
                 to="/master-admin/settings"
-                className="p-3 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 group"
+                className="p-3 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 backdrop-blur-xl rounded-2xl border border-red-200/50 dark:border-red-700/50 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 group"
+                title="Ultra-Secure Settings"
               >
-                <Settings className="h-5 w-5 text-gray-600 dark:text-gray-400 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors" />
+                <div className="relative">
+                  <Settings className="h-5 w-5 text-white group-hover:scale-110 transition-transform" />
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-bold text-red-600">🛡️</span>
+                  </div>
+                </div>
               </Link>
 
               {/* Enhanced User Menu */}
@@ -878,9 +1460,9 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
         </aside>
 
         {/* Enhanced Main Content Area */}
-        <main className="flex-1 ml-72 pt-20 min-h-screen relative z-10 overflow-y-auto">
-          <div className="w-full max-w-none p-8">
-            <div className="space-y-8">
+        <main className="flex-1 ml-72 pt-20 min-h-screen relative z-10">
+          <div className="w-full max-w-none p-8 overflow-visible">
+            <div className="space-y-8 overflow-visible">
               {/* Enhanced Section Header */}
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
@@ -913,7 +1495,9 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
               </div>
 
               {/* Dynamic Content Based on Active Section */}
-              {renderSectionContent()}
+              <div className="overflow-visible">
+                {renderSectionContent()}
+              </div>
             </div>
           </div>
         </main>
@@ -971,6 +1555,29 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
         company={selectedCompany}
         onDelete={handleDeleteConfirm}
       />
+
+      <CompanyApprovalModal
+        isOpen={showApprovalModal}
+        onClose={() => {
+          setShowApprovalModal(false)
+          setSelectedCompany(null)
+        }}
+        company={selectedCompany}
+        onApprove={handleApproveCompany}
+        onReject={handleRejectCompany}
+      />
+
+      {/* Password Reset Modal - Will be created next */}
+      {showPasswordResetModal && selectedCompany && (
+        <CompanyPasswordResetModal
+          isOpen={showPasswordResetModal}
+          onClose={() => {
+            setShowPasswordResetModal(false)
+            setSelectedCompany(null)
+          }}
+          company={selectedCompany}
+        />
+      )}
     </div>
   )
 }

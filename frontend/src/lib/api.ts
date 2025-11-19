@@ -1,39 +1,52 @@
 import axios, { AxiosResponse, AxiosError, AxiosInstance } from 'axios'
 import toast from 'react-hot-toast'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+
+// Helper function to get WebSocket URL
+export const getWebSocketUrl = (endpoint: string): string => {
+  // Handle both full URLs and relative paths
+  if (endpoint.startsWith('ws://') || endpoint.startsWith('wss://')) {
+    return endpoint
+  }
+  
+  // If endpoint already starts with /ws/, use it as is
+  if (endpoint.startsWith('/ws/')) {
+    return `${WS_BASE_URL}${endpoint}`
+  }
+  
+  // Otherwise, ensure endpoint starts with / and add /ws prefix
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+  return `${WS_BASE_URL}/ws${path}`
+}
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
+import tokenManager from './tokenManager'
+
 // Token management
 const getToken = (): string | null => {
-  return localStorage.getItem('access_token')
+  return tokenManager.getAccessToken()
 }
 
 const getRefreshToken = (): string | null => {
-  return localStorage.getItem('refresh_token')
+  return tokenManager.getRefreshToken()
 }
 
 const setTokens = (accessToken: string, refreshToken: string): void => {
-  console.log('🔍 DEBUG: setTokens called', { accessToken: accessToken.substring(0, 20) + '...' })
-  localStorage.setItem('access_token', accessToken)
-  localStorage.setItem('refresh_token', refreshToken)
-  console.log('🔍 DEBUG: Tokens stored in localStorage')
+  tokenManager.setTokens(accessToken, refreshToken)
 }
 
 const clearTokens = (): void => {
-  console.log('🔍 DEBUG: clearTokens called - CLEARING ALL AUTH DATA!')
-  console.trace('🔍 DEBUG: clearTokens call stack')
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
-  localStorage.removeItem('user')
+  tokenManager.clearTokens()
 }
 
 // Request interceptor to add auth token (exclude login endpoints)
@@ -45,9 +58,39 @@ api.interceptors.request.use(
                            config.url?.includes('/health/')
 
     if (!isLoginEndpoint) {
-      const token = getToken()
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`
+      // Check if this is a service user endpoint (HR, Finance, Inventory, CRM)
+      const isServiceUserEndpoint = config.url?.includes('/api/hr/') ||
+                                   config.url?.includes('/api/finance/') ||
+                                   config.url?.includes('/api/inventory/') ||
+                                   config.url?.includes('/api/crm/')
+      
+      if (isServiceUserEndpoint) {
+        // Use session key as query parameter for service user endpoints
+        let sessionKey = sessionStorage.getItem('service_session_key')
+        
+        // Fallback to store if sessionStorage is empty
+        if (!sessionKey) {
+          try {
+            const storeState = JSON.parse(localStorage.getItem('service-user-storage') || '{}')
+            sessionKey = storeState?.state?.sessionKey
+            if (sessionKey) {
+              sessionStorage.setItem('service_session_key', sessionKey)
+            }
+          } catch (error) {
+            console.warn('Failed to restore session key from store:', error)
+          }
+        }
+        
+        if (sessionKey) {
+          config.params = config.params || {}
+          config.params.session_key = sessionKey
+        }
+      } else {
+        // Use JWT token for regular endpoints
+        const token = getToken()
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`
+        }
       }
     }
 
@@ -74,25 +117,32 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
 
-      // Skip token refresh for service user endpoints (HR, Finance)
+      // Skip token refresh for service user endpoints (HR, Finance, Inventory, CRM)
       const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
-                                   originalRequest.url?.includes('/api/finance/')
+                                   originalRequest.url?.includes('/api/finance/') ||
+                                   originalRequest.url?.includes('/api/inventory/') ||
+                                   originalRequest.url?.includes('/api/crm/')
       
       if (isServiceUserEndpoint) {
-        // For service user endpoints, don't try JWT refresh, just return the error
+        // For service user endpoints, only logout if it's a real authentication failure
+        const errorData = error.response?.data as { error?: string }
+        if (errorData?.error === 'Invalid session' || errorData?.error === 'Session key required') {
+          sessionStorage.removeItem('service_session_key')
+          if (!window.location.pathname.includes('/service-login')) {
+            window.location.replace('/service-login')
+          }
+        }
         return Promise.reject(error)
       }
 
       const refreshToken = getRefreshToken()
       if (refreshToken) {
         try {
-          console.log('🔍 DEBUG: Attempting token refresh...')
           const response = await axios.post(`${API_BASE_URL}/api/token/refresh/`, {
             refresh: refreshToken,
           })
 
           const { access } = response.data
-          console.log('🔍 DEBUG: Token refresh successful')
           setTokens(access, refreshToken)
 
           // Retry original request with new token
@@ -100,26 +150,31 @@ api.interceptors.response.use(
           return api(originalRequest)
         } catch (refreshError: any) {
           // Refresh failed, redirect to login
-          console.log('🔍 DEBUG: Token refresh failed:', refreshError.response?.data)
           clearTokens()
 
           // Don't show error toast for token refresh failures
-          if (!window.location.pathname.includes('/login')) {
-            window.location.href = '/login'
+          // Only redirect if not already on login page and not during navigation
+          if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/unauthorized')) {
+            // Use history-friendly navigation instead of replace
+            clearTokens()
+            sessionStorage.clear()
+            // Let the auth store handle the redirect properly
+            return Promise.reject(refreshError)
           }
           return Promise.reject(refreshError)
         }
       } else {
         // No refresh token, redirect to login (but not for service user endpoints)
         const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
-                                     originalRequest.url?.includes('/api/finance/')
+                                     originalRequest.url?.includes('/api/finance/') ||
+                                     originalRequest.url?.includes('/api/inventory/') ||
+                                     originalRequest.url?.includes('/api/crm/')
         
-        if (!isServiceUserEndpoint) {
-          console.log('🔍 DEBUG: No refresh token available')
+        if (!isServiceUserEndpoint && !originalRequest.url?.includes('/validate-token/')) {
           clearTokens()
-          if (!window.location.pathname.includes('/login')) {
-            window.location.href = '/login'
-          }
+          sessionStorage.clear()
+          // Let the auth store and router handle redirects properly
+          // Don't force navigation here to preserve browser history
         }
       }
     }
@@ -140,36 +195,74 @@ api.interceptors.response.use(
   }
 )
 
+// URL validation for SSRF protection
+function validateUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url, API_BASE_URL)
+    // Only allow same origin requests
+    return urlObj.origin === new URL(API_BASE_URL).origin
+  } catch {
+    return false
+  }
+}
+
 // API methods
 export const apiClient = {
   // Generic methods
-  get: <T = any>(url: string, params?: any): Promise<AxiosResponse<T>> =>
-    api.get(url, { params }),
+  get: <T = any>(url: string, config?: any): Promise<AxiosResponse<T>> => {
+    if (!validateUrl(url)) {
+      throw new Error('Invalid URL: SSRF protection')
+    }
+    return api.get(url, config)
+  },
   
-  post: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> =>
-    api.post(url, data),
+  post: <T = any>(url: string, data?: any, config?: any): Promise<AxiosResponse<T>> => {
+    if (!validateUrl(url)) {
+      throw new Error('Invalid URL: SSRF protection')
+    }
+    return api.post(url, data, config)
+  },
   
-  put: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> =>
-    api.put(url, data),
+  put: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> => {
+    if (!validateUrl(url)) {
+      throw new Error('Invalid URL: SSRF protection')
+    }
+    return api.put(url, data)
+  },
   
-  patch: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> =>
-    api.patch(url, data),
+  patch: <T = any>(url: string, data?: any): Promise<AxiosResponse<T>> => {
+    if (!validateUrl(url)) {
+      throw new Error('Invalid URL: SSRF protection')
+    }
+    return api.patch(url, data)
+  },
   
-  delete: <T = any>(url: string): Promise<AxiosResponse<T>> =>
-    api.delete(url),
+  delete: <T = any>(url: string, config?: any): Promise<AxiosResponse<T>> => {
+    if (!validateUrl(url)) {
+      throw new Error('Invalid URL: SSRF protection')
+    }
+    return api.delete(url, config)
+  },
 
   // Authentication
-  masterAdminLogin: (credentials: { email: string; password: string }) =>
+  masterAdminLogin: (credentials: { email: string; password: string; totp_code?: string; recovery_code?: string }) =>
     api.post('/api/auth/master-admin/login/', credentials),
 
   companyUserLogin: (credentials: { email: string; password: string }) =>
     api.post('/api/auth/company/login/', credentials),
 
-  changeCompanyUserPassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
-    api.post('/api/auth/company/change-password/', data),
+  changeCompanyUserPassword: (data: { current_password: string; new_password: string; confirm_password: string; force_logout_all?: boolean }) =>
+    api.post('/api/company-dashboard/security/password-change/', data),
 
   uploadCompanyLogo: (formData: FormData) =>
     api.post('/api/auth/company/update-logo/', formData),
+
+  // Company Details
+  getCompanyDetails: () =>
+    api.get('/api/auth/company/details/'),
+
+  updateCompanyDetails: (data: any) =>
+    api.put('/api/auth/company/details/', data),
 
   refreshToken: (refreshToken: string) =>
     api.post('/api/token/refresh/', { refresh: refreshToken }),
@@ -184,9 +277,56 @@ export const apiClient = {
   changeMasterAdminPassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
     api.post('/api/auth/master-admin/change-password/', data),
 
+  // Ultra-Secure Master Admin Settings
+  getMasterAdminUltraSettings: () =>
+    api.get('/api/auth/master-admin/settings/'),
+
+  changeMasterAdminUltraPassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
+    api.post('/api/auth/master-admin/settings/password/', data),
+
+  getMasterAdminApiKey: () =>
+    api.get('/api/auth/master-admin/settings/api-key/'),
+
+  regenerateMasterAdminApiKey: (data: { current_password: string }) =>
+    api.post('/api/auth/master-admin/settings/api-key/', data),
+
+  getMasterAdminRecoveryCodes: () =>
+    api.get('/api/auth/master-admin/settings/recovery-codes/'),
+
+  regenerateMasterAdminRecoveryCodes: (data: { current_password: string }) =>
+    api.post('/api/auth/master-admin/settings/recovery-codes/', data),
+
+  getMasterAdminTwoFactor: () =>
+    api.get('/api/auth/master-admin/settings/two-factor/'),
+
+  toggleMasterAdminTwoFactor: (data: { action: 'enable' | 'disable' | 'reset'; current_password: string; totp_code?: string }) =>
+    api.post('/api/auth/master-admin/settings/two-factor/', data),
+
+  getMasterAdminSecurityLog: (params?: { days?: number }) =>
+    api.get('/api/auth/master-admin/settings/security-log/', { params }),
+
+  getMasterAdminSecurityStatus: () =>
+    api.get('/api/auth/master-admin/settings/security-status/'),
+
   // Services
   getServices: () =>
     api.get('/api/auth/services/'),
+
+  // Services Management (Master Admin)
+  getAllServices: () =>
+    api.get('/api/auth/master-admin/services/'),
+
+  createService: (data: any) =>
+    api.post('/api/auth/master-admin/services/create/', data),
+
+  updateService: (id: number, data: any) =>
+    api.put(`/api/auth/master-admin/services/${id}/update/`, data),
+
+  deleteService: (id: number) =>
+    api.delete(`/api/auth/master-admin/services/${id}/delete/`),
+
+  toggleServiceStatus: (id: number) =>
+    api.post(`/api/auth/master-admin/services/${id}/toggle/`),
 
   // Companies (Master Admin)
   getCompanies: (params?: any) =>
@@ -213,9 +353,16 @@ export const apiClient = {
   resetCompanyServicePasswords: (companyId: number) =>
     api.post(`/api/auth/companies/${companyId}/service-credentials/`),
 
+  resetCompanyPassword: (companyId: number) =>
+    api.post(`/api/auth/companies/${companyId}/reset-password/`),
+
   // Company Operations
-  submitDetailedInfo: (companyId: number, data: any) =>
-    api.patch(`/api/auth/companies/${companyId}/detailed-info/`, data),
+  submitDetailedInfo: (companyId: number, data: any) => {
+    const config = data instanceof FormData ? {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    } : {}
+    return api.patch(`/api/auth/companies/${companyId}/detailed-info/`, data, config)
+  },
 
   getCompanyServices: () =>
     api.get('/api/auth/company/services/'),
@@ -233,7 +380,7 @@ export const apiClient = {
     api.post(`/api/auth/services/${serviceId}/change-password/`, data),
 
   // Service Users
-  serviceUserLogin: (credentials: { username: string; password: string; service_type: string }) =>
+  serviceUserLogin: (credentials: { unique_service_id: string; password: string; service_type: string }) =>
     api.post('/api/auth/service-user/login/', credentials),
 
   serviceUserLogout: (sessionKey: string) =>
@@ -260,21 +407,21 @@ export const apiClient = {
 
   // Notifications
   getNotifications: (params?: any) =>
-    api.get('/api/notifications/notifications/', { params }),
+    api.get('/api/notifications/', { params }),
 
   getNotification: (id: number) =>
-    api.get(`/api/notifications/notifications/${id}/`),
+    api.get(`/api/notifications/${id}/`),
 
   markNotificationsAsRead: (notificationIds: number[]) =>
-    api.post('/api/notifications/notifications/mark-read/', {
+    api.post('/api/notifications/mark-read/', {
       notification_ids: notificationIds,
     }),
 
   getNotificationStats: () =>
-    api.get('/api/notifications/notifications/stats/'),
+    api.get('/api/notifications/stats/'),
 
   createNotification: (data: any) =>
-    api.post('/api/notifications/notifications/', data),
+    api.post('/api/notifications/', data),
 
   // Health check
   healthCheck: () =>
@@ -323,12 +470,35 @@ export const apiClient = {
   generateProductCode: (type: string, params?: any) =>
     api.get(`/api/finance/generate-code/?type=${type}`, { params }),
 
+  // Rate limiting helper for bulk operations
+  createFinanceProductWithDelay: async (data: any, delay: number = 500) => {
+    await new Promise(resolve => setTimeout(resolve, delay))
+    return apiClient.createFinanceProduct(data)
+  },
+
   // HSN/SAC Codes
   searchHSNCodes: (params?: any) =>
     api.get('/api/finance/hsn-codes/search/', { params }),
 
   searchSACCodes: (params?: any) =>
     api.get('/api/finance/sac-codes/search/', { params }),
+
+  createHSNCode: (data: any) =>
+    api.post('/api/finance/hsn-codes/create/', data),
+
+  createSACCode: (data: any) =>
+    api.post('/api/finance/sac-codes/create/', data),
+
+  // Units
+  searchUnits: (params?: any) =>
+    api.get('/api/finance/units/', { params }),
+
+  createUnit: (data: any) =>
+    api.post('/api/finance/units/', data),
+
+  // Product search (for quotation forms)
+  searchFinanceProducts: (params?: any) =>
+    api.get('/api/finance/products/search/', { params }),
 
   // Quotations
   getFinanceQuotations: (params?: any) =>
@@ -348,6 +518,9 @@ export const apiClient = {
 
   copyFinanceQuotation: (id: number, params?: any) =>
     api.post(`/api/finance/quotations/${id}/copy/`, {}, { params }),
+
+  sendQuotationEmail: (id: number, data?: any) =>
+    api.post(`/api/finance/quotations/${id}/send-email/`, data),
 
   // Purchase Orders
   getFinancePurchaseOrders: (params?: any) =>
@@ -386,6 +559,9 @@ export const apiClient = {
 
   sendProformaEmail: (id: number, data?: any) =>
     api.post(`/api/finance/proforma-invoices/${id}/send-email/`, data),
+
+  sendPurchaseOrderEmail: (id: number, data?: any) =>
+    api.post(`/api/finance/purchase-orders/${id}/send-email/`, data),
 
   // Tax Invoices
   getFinanceInvoices: (params?: any) =>
@@ -439,6 +615,51 @@ export const apiClient = {
   getHRAttendanceSummary: (params?: any) =>
     api.get('/api/hr/dashboard/attendance_summary/', { params }),
 
+  // Phase 3: Compliance APIs
+  getComplianceDashboard: (params?: any) =>
+    api.get('/api/hr/compliance/dashboard/', { params }),
+
+  runComplianceChecks: (params?: any) =>
+    api.post('/api/hr/compliance/run_checks/', {}, { params }),
+
+  getComplianceScorecard: (params?: any) =>
+    api.get('/api/hr/compliance/scorecard/', { params }),
+
+
+
+  // Advanced Reports APIs
+  getStatutorySummaryReport: (params?: any) =>
+    api.get('/api/hr/advanced-reports/statutory_summary/', { params }),
+
+  getAuditTrailReport: (params?: any) =>
+    api.get('/api/hr/advanced-reports/audit_trail/', { params }),
+
+  getComplianceTrends: (params?: any) =>
+    api.get('/api/hr/advanced-reports/compliance_trends/', { params }),
+
+  // Automation APIs
+  triggerECRGeneration: (params?: any) =>
+    api.post('/api/hr/automation/trigger_ecr_generation/', {}, { params }),
+
+  triggerComplianceCheck: (params?: any) =>
+    api.post('/api/hr/automation/trigger_compliance_check/', {}, { params }),
+
+  getTaskStatus: (params?: any) =>
+    api.get('/api/hr/automation/task_status/', { params }),
+
+  getScheduledTasks: (params?: any) =>
+    api.get('/api/hr/automation/scheduled_tasks/', { params }),
+
+  // Integration APIs
+  getPortalStatus: (params?: any) =>
+    api.get('/api/hr/integration/portal_status/', { params }),
+
+  syncPortal: (data: any) =>
+    api.post('/api/hr/integration/sync_portal/', data),
+
+  getSubmissionHistory: (params?: any) =>
+    api.get('/api/hr/integration/submission_history/', { params }),
+
   // Departments
   getHRDepartments: (params?: any) =>
     api.get('/api/hr/departments/', { params }),
@@ -469,8 +690,8 @@ export const apiClient = {
   createHREmployee: (data: any) =>
     api.post('/api/hr/employees/', data),
 
-  getHREmployee: (id: number) =>
-    api.get(`/api/hr/employees/${id}/`),
+  getHREmployee: (id: number, params?: any) =>
+    api.get(`/api/hr/employees/${id}/`, { params }),
 
   updateHREmployee: (id: number, data: any) =>
     api.put(`/api/hr/employees/${id}/`, data),
@@ -502,14 +723,760 @@ export const apiClient = {
   createHRLeaveApplication: (data: any) =>
     api.post('/api/hr/leave-applications/', data),
 
-  approveLeaveApplication: (id: number) =>
-    api.post(`/api/hr/leave-applications/${id}/approve/`),
+
+
+  // Enhanced HR APIs
+  // Live Attendance Dashboard
+  getLiveAttendanceDashboard: (params?: any) =>
+    api.get('/api/hr/live-attendance/live_dashboard/', { params }),
+
+  mobileCheckin: (data: any) =>
+    api.post('/api/hr/live-attendance/mobile_checkin/', data),
+
+  // Biometric Devices
+  getBiometricDevices: (params?: any) =>
+    api.get('/api/hr/biometric-devices/', { params }),
+
+  createBiometricDevice: (data: any) =>
+    api.post('/api/hr/biometric-devices/', data),
+
+  syncBiometricDevice: (id: number) =>
+    api.post(`/api/hr/biometric-devices/${id}/sync_attendance/`),
+
+  getBiometricDeviceStatus: (params?: any) =>
+    api.get('/api/hr/biometric-devices/device_status/', { params }),
+
+  // Geofence Locations
+  getGeofenceLocations: (params?: any) =>
+    api.get('/api/hr/geofence-locations/', { params }),
+
+  createGeofenceLocation: (data: any) =>
+    api.post('/api/hr/geofence-locations/', data),
+
+  // ESI Contributions
+  getESIContributions: (params?: any) =>
+    api.get('/api/hr/esi-contributions/', { params }),
+
+  generateESIContributions: (data: any) =>
+    api.post('/api/hr/esi-contributions/generate_monthly_contributions/', data),
+
+  // EPFO Contributions
+  getEPFOContributions: (params?: any) =>
+    api.get('/api/hr/epfo-contributions/', { params }),
+
+  generateEPFOContributions: (data: any) =>
+    api.post('/api/hr/epfo-contributions/generate_monthly_contributions/', data),
+
+  // Performance Reviews
+  getPerformanceReviews: (params?: any) =>
+    api.get('/api/hr/performance-reviews/', { params }),
+
+  createPerformanceReview: (data: any) =>
+    api.post('/api/hr/performance-reviews/', data),
+
+  getPerformanceReview: (id: number) =>
+    api.get(`/api/hr/performance-reviews/${id}/`),
+
+  updatePerformanceReview: (id: number, data: any) =>
+    api.put(`/api/hr/performance-reviews/${id}/`, data),
+
+  // Employee Documents
+  getEmployeeDocuments: (params?: any) =>
+    api.get('/api/hr/employee-documents/', { params }),
+
+  createEmployeeDocument: (data: any) =>
+    api.post('/api/hr/employee-documents/', data),
+
+  verifyEmployeeDocument: (id: number, data: any) =>
+    api.post(`/api/hr/employee-documents/${id}/verify_document/`, data),
+
+  // Shifts
+  getShifts: (params?: any) =>
+    api.get('/api/hr/shifts/', { params }),
+
+  createShift: (data: any) =>
+    api.post('/api/hr/shifts/', data),
+
+  // Employee Shifts
+  getEmployeeShifts: (params?: any) =>
+    api.get('/api/hr/employee-shifts/', { params }),
+
+  createEmployeeShift: (data: any) =>
+    api.post('/api/hr/employee-shifts/', data),
+
+  // Overtime Requests
+  getOvertimeRequests: (params?: any) =>
+    api.get('/api/hr/overtime-requests/', { params }),
+
+  createOvertimeRequest: (data: any) =>
+    api.post('/api/hr/overtime-requests/', data),
+
+  approveOvertimeRequest: (id: number, data: any) =>
+    api.post(`/api/hr/overtime-requests/${id}/approve/`, data),
+
+  rejectOvertimeRequest: (id: number, data: any) =>
+    api.post(`/api/hr/overtime-requests/${id}/reject/`, data),
+
+  // Leave Management APIs
+  getLeaveBalances: (params?: any) =>
+    api.get('/api/hr/leave-balances/', { params }),
+
+  getLeaveApplications: (params?: any) =>
+    api.get('/api/hr/leave-applications/', { params }),
+
+  createLeaveApplication: (data: any) =>
+    api.post('/api/hr/leave-applications/', data),
+
+  approveLeaveApplication: (id: number, data?: any) =>
+    api.post(`/api/hr/leave-applications/${id}/approve/`, data),
 
   rejectLeaveApplication: (id: number, data: any) =>
     api.post(`/api/hr/leave-applications/${id}/reject/`, data),
+
+  getHolidays: (params?: any) =>
+    api.get('/api/hr/holidays/', { params }),
+
+  createHoliday: (data: any) =>
+    api.post('/api/hr/holidays/', data),
+
+  // Banking APIs
+  verifyBankAccount: (data: any) =>
+    api.post('/api/hr/bank-verification/', data),
+
+  getSalaryPayments: (params?: any) =>
+    api.get('/api/hr/salary-payments/', { params }),
+
+  initiateSalaryPayment: (data: any) =>
+    api.post('/api/hr/salary-payments/', data),
+
+  // ESI Medical Benefits APIs
+  getESIMedicalClaims: (params?: any) =>
+    api.get('/api/hr/esi-medical-claims/', { params }),
+
+  createESIMedicalClaim: (data: any) =>
+    api.post('/api/hr/esi-medical-claims/', data),
+
+  approveESIMedicalClaim: (id: number, data?: any) =>
+    api.post(`/api/hr/esi-medical-claims/${id}/approve/`, data),
+
+  // Statutory Compliance APIs
+  getStatutoryDashboard: (params?: any) =>
+    api.get('/api/hr/statutory/dashboard/', { params }),
+
+  getStatutorySettings: (params?: any) =>
+    api.get('/api/hr/statutory-settings/', { params }),
+
+  updateStatutorySettings: (data: any) =>
+    api.post('/api/hr/statutory-settings/', data),
+
+  generatePFECR: (data: any) =>
+    api.post('/api/hr/statutory/pf-ecr/', data),
+
+  generateESIReturn: (data: any) =>
+    api.post('/api/hr/statutory/esi-return/', data),
+
+  validateCompliance: (data: any) =>
+    api.post('/api/hr/statutory/validate-compliance/', data),
+
+  getGovernmentReturns: (params?: any) =>
+    api.get('/api/hr/government-returns/', { params }),
+
+  getComplianceAlerts: (params?: any) =>
+    api.get('/api/hr/compliance-alerts/', { params }),
+
+  resolveComplianceAlert: (id: number, data?: any) =>
+    api.post(`/api/hr/compliance-alerts/${id}/resolve/`, data),
+
+  // HR Analytics
+  getAttendanceAnalytics: (params?: any) =>
+    api.get('/api/hr/analytics/attendance_analytics/', { params }),
+
+  getPayrollAnalytics: (params?: any) =>
+    api.get('/api/hr/dashboard/payroll_analytics/', { params }),
+
+  // Salary Structures
+  getSalaryStructures: (params?: any) =>
+    api.get('/api/hr/salary-structures/', { params }),
+
+  createSalaryStructure: (data: any) =>
+    api.post('/api/hr/salary-structures/', data),
+
+  getSalaryStructure: (id: number, params?: any) =>
+    api.get(`/api/hr/salary-structures/${id}/`, { params }),
+
+  updateSalaryStructure: (id: number, data: any) =>
+    api.put(`/api/hr/salary-structures/${id}/`, data),
+
+  // Work Schedules
+  getWorkSchedules: (params?: any) =>
+    api.get('/api/hr/work-schedules/', { params }),
+
+  createWorkSchedule: (data: any) =>
+    api.post('/api/hr/work-schedules/', data),
+
+  getWorkSchedule: (id: number, params?: any) =>
+    api.get(`/api/hr/work-schedules/${id}/`, { params }),
+
+  updateWorkSchedule: (id: number, data: any) =>
+    api.put(`/api/hr/work-schedules/${id}/`, data),
+
+  // Leave Types
+  getLeaveTypes: (params?: any) =>
+    api.get('/api/hr/leave-types/', { params }),
+
+  createLeaveType: (data: any) =>
+    api.post('/api/hr/leave-types/', data),
+
+  // Leave Balance Management
+  createLeaveBalance: (data: any) =>
+    api.post('/api/hr/leave-balances/', data),
+
+  // Inventory Service APIs
+  // Dashboard
+  getInventoryDashboard: (params?: any) =>
+    api.get('/api/inventory/dashboard/', { params }),
+
+  // Categories
+  getInventoryCategories: (params?: any) =>
+    api.get('/api/inventory/categories/', { params }),
+
+  createInventoryCategory: (data: any) =>
+    api.post('/api/inventory/categories/', data),
+
+  getInventoryCategory: (id: number, params?: any) =>
+    api.get(`/api/inventory/categories/${id}/`, { params }),
+
+  updateInventoryCategory: (id: number, data: any) =>
+    api.put(`/api/inventory/categories/${id}/`, data),
+
+  deleteInventoryCategory: (id: number, params?: any) =>
+    api.delete(`/api/inventory/categories/${id}/`, { params }),
+
+  // Suppliers
+  getInventorySuppliers: (params?: any) =>
+    api.get('/api/inventory/suppliers/', { params }),
+
+  createInventorySupplier: (data: any) =>
+    api.post('/api/inventory/suppliers/', data),
+
+  getInventorySupplier: (id: number, params?: any) =>
+    api.get(`/api/inventory/suppliers/${id}/`, { params }),
+
+  updateInventorySupplier: (id: number, data: any) =>
+    api.put(`/api/inventory/suppliers/${id}/`, data),
+
+  deleteInventorySupplier: (id: number, params?: any) =>
+    api.delete(`/api/inventory/suppliers/${id}/`, { params }),
+
+  // Warehouses
+  getInventoryWarehouses: (params?: any) =>
+    api.get('/api/inventory/warehouses/', { params }),
+
+  createInventoryWarehouse: (data: any) =>
+    api.post('/api/inventory/warehouses/', data),
+
+  getInventoryWarehouse: (id: number, params?: any) =>
+    api.get(`/api/inventory/warehouses/${id}/`, { params }),
+
+  updateInventoryWarehouse: (id: number, data: any) =>
+    api.put(`/api/inventory/warehouses/${id}/`, data),
+
+  deleteInventoryWarehouse: (id: number, params?: any) =>
+    api.delete(`/api/inventory/warehouses/${id}/`, { params }),
+
+  // Products
+  getInventoryProducts: (params?: any) =>
+    api.get('/api/inventory/products/', { params }),
+
+  createInventoryProduct: (data: any) =>
+    api.post('/api/inventory/products/', data),
+
+  getInventoryProduct: (id: number, params?: any) =>
+    api.get(`/api/inventory/products/${id}/`, { params }),
+
+  updateInventoryProduct: (id: number, data: any) =>
+    api.put(`/api/inventory/products/${id}/`, data),
+
+  deleteInventoryProduct: (id: number, params?: any) =>
+    api.delete(`/api/inventory/products/${id}/`, { params }),
+
+  // Stock Movements
+  getStockMovements: (params?: any) =>
+    api.get('/api/inventory/stock-movements/', { params }),
+
+  createStockMovement: (data: any) =>
+    api.post('/api/inventory/stock-movements/', data),
+
+  // Stock Alerts
+  getStockAlerts: (params?: any) =>
+    api.get('/api/inventory/stock-alerts/', { params }),
+
+  // Dropdown APIs
+  getInventoryCategoriesDropdown: (params?: any) =>
+    api.get('/api/inventory/api/categories/', { params }),
+
+  getInventorySuppliersDropdown: (params?: any) =>
+    api.get('/api/inventory/api/suppliers/', { params }),
+
+  getInventoryWarehousesDropdown: (params?: any) =>
+    api.get('/api/inventory/api/warehouses/', { params }),
+
+  // Inventory Reports
+  getInventoryLowStockReport: (params?: any) =>
+    api.get('/api/inventory/reports/low-stock/', { params }),
+
+  getInventoryStockValuationReport: (params?: any) =>
+    api.get('/api/inventory/reports/stock-valuation/', { params }),
+
+  getInventoryABCAnalysisReport: (params?: any) =>
+    api.get('/api/inventory/reports/abc-analysis/', { params }),
+
+  // Barcode Generation
+  generateInventoryProductBarcode: (productId: number, params?: any) =>
+    api.post(`/api/inventory/products/${productId}/generate-barcode/`, {}, { params }),
+
+  // Company Dashboard APIs
+  getCompanyDashboardOverview: () =>
+    api.get('/api/company-dashboard/overview/'),
+
+  getServiceUtilizationStats: () =>
+    api.get('/api/company-dashboard/service-utilization/'),
+
+  getServiceUserActivities: () =>
+    api.get('/api/company-dashboard/user-activities/'),
+
+  getCompanyActivityLogs: () =>
+    api.get('/api/company-dashboard/activity-logs/'),
+
+  logCompanyActivity: (data: any) =>
+    api.post('/api/company-dashboard/log-activity/', data),
+
+  getCompanyNotifications: () =>
+    api.get('/api/company-dashboard/notifications/'),
+
+  markCompanyNotificationRead: (notificationId: number) =>
+    api.post(`/api/company-dashboard/notifications/${notificationId}/read/`),
+
+  getCompanyAnalyticsDashboard: () =>
+    api.get('/api/company-dashboard/analytics/'),
+
+  // Company Email Settings
+  getCompanyEmailSettings: () =>
+    api.get('/api/company-dashboard/email-settings/'),
+
+  updateCompanyEmailSettings: (data: any) =>
+    api.put('/api/company-dashboard/email-settings/', data),
+
+  testCompanyEmailConfiguration: () =>
+    api.post('/api/company-dashboard/email-settings/test/'),
+
+  getEmailProviderTemplates: () =>
+    api.get('/api/company-dashboard/email-settings/providers/'),
+
+  getEmailUsageStats: () =>
+    api.get('/api/company-dashboard/email-settings/usage/'),
+
+  // Company Security Settings
+  getCompanySecurityOverview: () =>
+    api.get('/api/company-dashboard/security/overview/'),
+
+  // Two-Factor Authentication
+  setupCompany2FA: () =>
+    api.get('/api/company-dashboard/security/2fa/'),
+
+  verifyCompany2FA: (data: { code: string; secret: string }) =>
+    api.post('/api/company-dashboard/security/2fa/', data),
+
+  disableCompany2FA: () =>
+    api.delete('/api/company-dashboard/security/2fa/'),
+
+  // Recovery Codes
+  getCompanyRecoveryCodes: () =>
+    api.get('/api/company-dashboard/security/recovery-codes/'),
+
+  generateCompanyRecoveryCodes: () =>
+    api.post('/api/company-dashboard/security/recovery-codes/'),
+
+  // API Keys
+  getCompanyApiKeys: () =>
+    api.get('/api/company-dashboard/security/api-keys/'),
+
+  createCompanyApiKey: (data: { name: string; permissions: string[]; expires_at?: string }) =>
+    api.post('/api/company-dashboard/security/api-keys/', data),
+
+  deleteCompanyApiKey: (keyId: number) =>
+    api.delete(`/api/company-dashboard/security/api-keys/${keyId}/`),
+
+  // IP Restrictions
+  getCompanyIpRestrictions: () =>
+    api.get('/api/company-dashboard/security/ip-restrictions/'),
+
+  addCompanyIpRestriction: (data: { ip_address: string; restriction_type: string; description: string }) =>
+    api.post('/api/company-dashboard/security/ip-restrictions/', data),
+
+  removeCompanyIpRestriction: (restrictionId: number) =>
+    api.delete(`/api/company-dashboard/security/ip-restrictions/${restrictionId}/`),
+
+  // Sessions
+  getCompanySessions: () =>
+    api.get('/api/company-dashboard/security/sessions/'),
+
+  terminateCompanySession: (sessionId: number) =>
+    api.delete(`/api/company-dashboard/security/sessions/${sessionId}/`),
+
+  terminateAllCompanySessions: () =>
+    api.delete('/api/company-dashboard/security/sessions/'),
+
+  // Security Logs
+  getCompanySecurityLogs: (params?: { action?: string; success?: boolean; search?: string }) =>
+    api.get('/api/company-dashboard/security/audit-logs/', { params }),
+
+  // Enhanced Password Change
+  changeCompanyUserPasswordSecure: (data: { current_password: string; new_password: string; confirm_password: string; force_logout_all?: boolean }) =>
+    api.post('/api/company-dashboard/security/password-change/', data),
+
+  // Advanced Security APIs (Phase 4)
+  getCaptcha: (companyId: number) =>
+    api.get('/api/company-dashboard/advanced-security/captcha/', { params: { company_id: companyId } }),
+
+  verifyCaptcha: (data: any) =>
+    api.post('/api/company-dashboard/advanced-security/captcha/', data),
+
+  getCompanyDeviceFingerprints: () =>
+    api.get('/api/company-dashboard/advanced-security/device-fingerprinting/'),
+
+  registerDeviceFingerprint: (data: any) =>
+    api.post('/api/company-dashboard/advanced-security/device-fingerprinting/', data),
+
+  getGeolocationRules: () =>
+    api.get('/api/company-dashboard/advanced-security/geolocation-rules/'),
+
+  createGeolocationRule: (data: any) =>
+    api.post('/api/company-dashboard/advanced-security/geolocation-rules/', data),
+
+  deleteGeolocationRule: (ruleId: number) =>
+    api.delete(`/api/company-dashboard/advanced-security/geolocation-rules/${ruleId}/`),
+
+  getThreatDetections: (params?: any) =>
+    api.get('/api/company-dashboard/advanced-security/threat-detection/', { params }),
+
+  createThreatDetection: (data: any) =>
+    api.post('/api/company-dashboard/advanced-security/threat-detection/', data),
+
+  getSecurityAlerts: (params?: any) =>
+    api.get('/api/company-dashboard/advanced-security/security-alerts/', { params }),
+
+  updateSecurityAlert: (alertId: number, data: any) =>
+    api.patch(`/api/company-dashboard/advanced-security/security-alerts/${alertId}/`, data),
+
+  getAdvancedSecuritySettings: () =>
+    api.get('/api/company-dashboard/advanced-security/advanced-settings/'),
+
+  updateAdvancedSecuritySettings: (data: any) =>
+    api.patch('/api/company-dashboard/advanced-security/advanced-settings/', data),
+
+  getAdvancedSecurityDashboard: () =>
+    api.get('/api/company-dashboard/advanced-security/advanced-dashboard/'),
+
+  // CRM Service APIs
+  // Dashboard
+  getCRMDashboardStats: (params?: any) =>
+    api.get('/api/crm/dashboard/', { params }),
+
+  getCRMRecentActivities: (params?: any) =>
+    api.get('/api/crm/dashboard/recent_activities/', { params }),
+
+  getCRMSalesFunnel: (params?: any) =>
+    api.get('/api/crm/dashboard/sales_funnel/', { params }),
+
+  // Leads
+  getCRMLeads: (params?: any) =>
+    api.get('/api/crm/leads/', { params }),
+
+  createCRMLead: (data: any) =>
+    api.post('/api/crm/leads/', data),
+
+  getCRMLead: (id: number, params?: any) =>
+    api.get(`/api/crm/leads/${id}/`, { params }),
+
+  updateCRMLead: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/leads/${id}/`, updateData)
+  },
+
+  deleteCRMLead: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/leads/${data.id}/`, { params: data }),
+
+  convertCRMLeadToOpportunity: (data: { id: number; [key: string]: any }) =>
+    api.post(`/api/crm/leads/${data.id}/convert_to_opportunity/`, data),
+
+  // Contacts
+  getCRMContacts: (params?: any) =>
+    api.get('/api/crm/contacts/', { params }),
+
+  createCRMContact: (data: any) =>
+    api.post('/api/crm/contacts/', data),
+
+  getCRMContact: (id: number, params?: any) =>
+    api.get(`/api/crm/contacts/${id}/`, { params }),
+
+  updateCRMContact: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/contacts/${id}/`, updateData)
+  },
+
+  deleteCRMContact: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/contacts/${data.id}/`, { params: data }),
+
+  // Accounts
+  getCRMAccounts: (params?: any) =>
+    api.get('/api/crm/accounts/', { params }),
+
+  createCRMAccount: (data: any) =>
+    api.post('/api/crm/accounts/', data),
+
+  getCRMAccount: (id: number, params?: any) =>
+    api.get(`/api/crm/accounts/${id}/`, { params }),
+
+  updateCRMAccount: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/accounts/${id}/`, updateData)
+  },
+
+  deleteCRMAccount: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/accounts/${data.id}/`, { params: data }),
+
+  getCRMAccountOpportunities: (data: { account_id: number; [key: string]: any }) =>
+    api.get(`/api/crm/accounts/${data.account_id}/opportunities/`, { params: data }),
+
+  getCRMAccountActivities: (data: { account_id: number; [key: string]: any }) =>
+    api.get(`/api/crm/accounts/${data.account_id}/activities/`, { params: data }),
+
+  // Opportunities
+  getCRMOpportunities: (params?: any) =>
+    api.get('/api/crm/opportunities/', { params }),
+
+  createCRMOpportunity: (data: any) =>
+    api.post('/api/crm/opportunities/', data),
+
+  getCRMOpportunity: (id: number, params?: any) =>
+    api.get(`/api/crm/opportunities/${id}/`, { params }),
+
+  updateCRMOpportunity: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/opportunities/${id}/`, updateData)
+  },
+
+  deleteCRMOpportunity: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/opportunities/${data.id}/`, { params: data }),
+
+  updateCRMOpportunityStage: (data: { id: number; stage: string; [key: string]: any }) =>
+    api.post(`/api/crm/opportunities/${data.id}/update_stage/`, data),
+
+  getCRMOpportunityPipeline: (params?: any) =>
+    api.get('/api/crm/opportunities/pipeline/', { params }),
+
+  getCRMOpportunityForecast: (params?: any) =>
+    api.get('/api/crm/opportunities/forecast/', { params }),
+
+  // Activities
+  getCRMActivities: (params?: any) =>
+    api.get('/api/crm/activities/', { params }),
+
+  createCRMActivity: (data: any) =>
+    api.post('/api/crm/activities/', data),
+
+  getCRMActivity: (id: number, params?: any) =>
+    api.get(`/api/crm/activities/${id}/`, { params }),
+
+  updateCRMActivity: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/activities/${id}/`, updateData)
+  },
+
+  deleteCRMActivity: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/activities/${data.id}/`, { params: data }),
+
+  completeCRMActivity: (data: { id: number; outcome?: string; [key: string]: any }) =>
+    api.post(`/api/crm/activities/${data.id}/complete/`, data),
+
+  getCRMTodayActivities: (params?: any) =>
+    api.get('/api/crm/activities/today/', { params }),
+
+  getCRMOverdueActivities: (params?: any) =>
+    api.get('/api/crm/activities/overdue/', { params }),
+
+  // Campaigns
+  getCRMCampaigns: (params?: any) =>
+    api.get('/api/crm/campaigns/', { params }),
+
+  createCRMCampaign: (data: any) =>
+    api.post('/api/crm/campaigns/', data),
+
+  getCRMCampaign: (id: number, params?: any) =>
+    api.get(`/api/crm/campaigns/${id}/`, { params }),
+
+  updateCRMCampaign: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/campaigns/${id}/`, updateData)
+  },
+
+  deleteCRMCampaign: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/campaigns/${data.id}/`, { params: data }),
+
+  getCRMCampaignMembers: (data: { campaign_id: number; [key: string]: any }) =>
+    api.get(`/api/crm/campaigns/${data.campaign_id}/members/`, { params: data }),
+
+  addCRMCampaignMembers: (data: { campaign_id: number; [key: string]: any }) =>
+    api.post(`/api/crm/campaigns/${data.campaign_id}/add_members/`, data),
+
+  // Sales Targets
+  getCRMSalesTargets: (params?: any) =>
+    api.get('/api/crm/sales-targets/', { params }),
+
+  createCRMSalesTarget: (data: any) =>
+    api.post('/api/crm/sales-targets/', data),
+
+  getCRMSalesTarget: (id: number, params?: any) =>
+    api.get(`/api/crm/sales-targets/${id}/`, { params }),
+
+  updateCRMSalesTarget: (data: { id: number; [key: string]: any }) => {
+    const { id, ...updateData } = data
+    return api.put(`/api/crm/sales-targets/${id}/`, updateData)
+  },
+
+  deleteCRMSalesTarget: (data: { id: number; [key: string]: any }) =>
+    api.delete(`/api/crm/sales-targets/${data.id}/`, { params: data }),
+
+  getCRMCurrentPerformance: (params?: any) =>
+    api.get('/api/crm/sales-targets/current_performance/', { params }),
+
+  // Government Portal Integration (Phase 4)
+  submitToGovernmentPortal: (data: any) =>
+    api.post('/api/hr/government/submit/', data),
+
+  checkSubmissionStatus: (data: any) =>
+    api.post('/api/hr/government/check-status/', data),
+
+  generateChallan: (data: any) =>
+    api.post('/api/hr/government/generate-challan/', data),
+
+  getGovernmentSubmissionHistory: (params?: any) =>
+    api.get('/api/hr/government/submission-history/', { params }),
+
+  getGovernmentChallans: (params?: any) =>
+    api.get('/api/hr/government/challans/', { params }),
+
+  getPortalCredentials: (params?: any) =>
+    api.get('/api/hr/government/credentials/', { params }),
+
+  updatePortalCredentials: (data: any) =>
+    api.post('/api/hr/government/credentials/', data),
+
+  // Phase 3: Enhanced Security APIs
+  getSecuritySettings: () =>
+    api.get('/api/auth/master-admin/security-settings/'),
+
+  updateSecuritySettings: (data: any) =>
+    api.post('/api/auth/master-admin/security-settings/', data),
+
+  getIPRestrictions: () =>
+    api.get('/api/auth/master-admin/ip-restrictions/'),
+
+  addIPRestriction: (data: { ip_address: string; description: string }) =>
+    api.post('/api/auth/master-admin/ip-restrictions/', data),
+
+  removeIPRestriction: (id: number) =>
+    api.delete(`/api/auth/master-admin/ip-restrictions/${id}/`),
+
+  toggleIPRestriction: (id: number, data: { is_active: boolean }) =>
+    api.patch(`/api/auth/master-admin/ip-restrictions/${id}/`, data),
+
+  getDeviceFingerprints: () =>
+    api.get('/api/auth/master-admin/device-fingerprints/'),
+
+  removeDeviceFingerprint: (deviceId: string) =>
+    api.delete(`/api/auth/master-admin/device-fingerprints/${deviceId}/`),
+
+  toggleDeviceTrust: (deviceId: string, data: { is_trusted: boolean }) =>
+    api.patch(`/api/auth/master-admin/device-fingerprints/${deviceId}/`, data),
+
+  getLoginNotifications: () =>
+    api.get('/api/auth/master-admin/login-notifications/'),
+
+  testLoginNotification: () =>
+    api.post('/api/auth/master-admin/login-notifications/test/'),
+
+  getNotificationEmail: () =>
+    api.get('/api/auth/master-admin/notification-email/'),
+
+  setNotificationEmail: (data: { notification_email: string }) =>
+    api.post('/api/auth/master-admin/notification-email/', data),
+
+  // Master Admin Email Settings
+  getMasterAdminEmailSettings: () =>
+    api.get('/api/auth/master-admin/email-settings/'),
+
+  updateMasterAdminEmailSettings: (data: any) =>
+    api.post('/api/auth/master-admin/email-settings/', data),
+
+  testMasterAdminEmail: (data?: { test_email?: string }) =>
+    api.post('/api/auth/master-admin/email-settings/test/', data || {}),
+
+  getMasterAdminEmailProviders: () =>
+    api.get('/api/auth/master-admin/email-settings/providers/'),
+
+  getMasterAdminEmailUsage: () =>
+    api.get('/api/auth/master-admin/email-settings/usage/'),
+
+  // Document Numbering APIs
+  getCurrentFinancialYear: () =>
+    api.get('/api/company-dashboard/document-numbering/current-financial-year/'),
+
+  getDocumentNumberingConfigs: (params?: any) =>
+    api.get('/api/company-dashboard/document-numbering/configs/', { params }),
+
+  createDocumentNumberingConfig: (data: any) =>
+    api.post('/api/company-dashboard/document-numbering/configs/', data),
+
+  getDocumentNumberingConfig: (id: number) =>
+    api.get(`/api/company-dashboard/document-numbering/configs/${id}/`),
+
+  updateDocumentNumberingConfig: (id: number, data: any) =>
+    api.put(`/api/company-dashboard/document-numbering/configs/${id}/`, data),
+
+  deleteDocumentNumberingConfig: (id: number) =>
+    api.delete(`/api/company-dashboard/document-numbering/configs/${id}/`),
+
+  bulkSetupDocumentNumbering: (data: any) =>
+    api.post('/api/company-dashboard/document-numbering/bulk-setup/', data),
+
+  generateDocumentNumber: (data: any) =>
+    api.post('/api/company-dashboard/document-numbering/generate-number/', data),
+
+  getDocumentNumberingHistory: (params?: any) =>
+    api.get('/api/company-dashboard/document-numbering/history/', { params }),
+
+  getNumberingDashboardStats: () =>
+    api.get('/api/company-dashboard/document-numbering/dashboard-stats/'),
+
+  getFinancialYearSettings: (params?: any) =>
+    api.get('/api/company-dashboard/document-numbering/financial-year-settings/', { params }),
+
+  createFinancialYearSettings: (data: any) =>
+    api.post('/api/company-dashboard/document-numbering/financial-year-settings/', data),
+
+  // Convenience methods for backward compatibility
+  getEmployees: (params?: any) => apiClient.getHREmployees(params),
+  createEmployee: (data: any) => apiClient.createHREmployee(data),
+  getEmployee: (id: number, params?: any) => apiClient.getHREmployee(id, params),
+  updateEmployee: (id: number, data: any) => apiClient.updateHREmployee(id, data),
+  deleteEmployee: (id: number) => apiClient.deleteHREmployee(id),
+  getPayroll: (params?: any) => apiClient.getHRPayroll(params),
 }
 
-// Export token management functions
-export { getToken, getRefreshToken, setTokens, clearTokens }
+// Export token management functions and API_BASE_URL
+// Export token management functions and API_BASE_URL
+export { getToken, getRefreshToken, setTokens, clearTokens, API_BASE_URL }
 
-export default api
+export default apiClient

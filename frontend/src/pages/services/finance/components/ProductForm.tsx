@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { X, Search } from 'lucide-react'
+import { X, Search, Plus } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
+import CreateHSNCodeModal from './CreateHSNCodeModal'
+import CreateSACCodeModal from './CreateSACCodeModal'
+import CreateUnitModal from './CreateUnitModal'
 
 interface Product {
   id: number
@@ -38,6 +40,13 @@ interface SACCode {
   service_name: string
   description: string
   gst_rate: number
+}
+
+interface Unit {
+  id: number
+  code: string
+  name: string
+  is_active: boolean
 }
 
 interface ProductFormProps {
@@ -84,6 +93,17 @@ const ProductForm: React.FC<ProductFormProps> = ({
   const [selectedHsnCode, setSelectedHsnCode] = useState<HSNCode | null>(null)
   const [selectedSacCode, setSelectedSacCode] = useState<SACCode | null>(null)
   
+  // Unit search state
+  const [unitSearchTerm, setUnitSearchTerm] = useState('')
+  const [units, setUnits] = useState<Unit[]>([])
+  const [showUnitDropdown, setShowUnitDropdown] = useState(false)
+  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
+  
+  // Modal states
+  const [showCreateHSNModal, setShowCreateHSNModal] = useState(false)
+  const [showCreateSACModal, setShowCreateSACModal] = useState(false)
+  const [showCreateUnitModal, setShowCreateUnitModal] = useState(false)
+  
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -115,35 +135,42 @@ const ProductForm: React.FC<ProductFormProps> = ({
         setSacSearchTerm(product.sac_code_display)
       }
     } else if (!isEditing) {
-      // Generate code for new products/services
-      generateProductCode(formData.product_type)
+      // Clear form for new products - don't auto-generate code
+      setFormData(prev => ({
+        ...prev,
+        product_code: '', // Keep empty - will be auto-generated on save
+        hsn_code: '',
+        sac_code: '',
+        gst_rate: 0
+      }))
+      setHsnSearchTerm('')
+      setSacSearchTerm('')
+      setSelectedHsnCode(null)
+      setSelectedSacCode(null)
     }
   }, [isEditing, product])
 
-  // Generate product/service code when type changes
+  // Clear codes when product type changes for new products
   useEffect(() => {
     if (!isEditing) {
-      generateProductCode(formData.product_type)
-    }
-  }, [formData.product_type, isEditing])
-
-  const generateProductCode = async (type: 'product' | 'service') => {
-    try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/generate-code/?type=${type}`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
       setFormData(prev => ({
         ...prev,
-        product_code: response.data.code
+        product_code: '', // Keep empty - will be auto-generated on save
+        hsn_code: '',
+        sac_code: '',
+        gst_rate: 0
       }))
-    } catch (error) {
-      console.error('Error generating product code:', error)
+      setHsnSearchTerm('')
+      setSacSearchTerm('')
+      setSelectedHsnCode(null)
+      setSelectedSacCode(null)
     }
-  }
+  }, [isEditing])
+
+  // Remove auto-generation - codes will be generated on backend save
+  // const generateProductCode = async (type: 'product' | 'service') => {
+  //   // Codes are now auto-generated on backend save
+  // }
 
   // Search HSN codes
   const searchHsnCodes = async (searchTerm: string) => {
@@ -158,16 +185,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     }
 
     try {
-      const params = new URLSearchParams()
-      params.append('session_key', sessionKey)
-      params.append('search', searchTerm)
-
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/hsn-codes/search/?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const response = await apiClient.searchHSNCodes({ session_key: sessionKey, search: searchTerm })
       setHsnCodes(response.data.results || [])
     } catch (error) {
       console.error('Error searching HSN codes:', error)
@@ -188,58 +206,101 @@ const ProductForm: React.FC<ProductFormProps> = ({
     }
 
     try {
-      const params = new URLSearchParams()
-      params.append('session_key', sessionKey)
-      params.append('search', searchTerm)
-
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/sac-codes/search/?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      console.log('Searching SAC codes for:', searchTerm)
+      const response = await apiClient.searchSACCodes({ session_key: sessionKey, search: searchTerm })
+      console.log('SAC search response:', response.data)
       setSacCodes(response.data.results || [])
+      if (response.data.results && response.data.results.length > 0) {
+        setShowSacDropdown(true)
+      }
     } catch (error) {
       console.error('Error searching SAC codes:', error)
       setSacCodes([])
     }
   }
 
+  // Search Units
+  const searchUnits = async (searchTerm: string = '') => {
+    if (!sessionKey) {
+      console.error('No session key available')
+      return
+    }
+
+    try {
+      const response = await apiClient.searchUnits({ session_key: sessionKey, search: searchTerm })
+      setUnits(response.data.results || [])
+    } catch (error) {
+      console.error('Error searching units:', error)
+      setUnits([])
+    }
+  }
+
   // Handle HSN search input change
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (formData.product_type === 'product') {
+      if (formData.product_type === 'product' && hsnSearchTerm.trim()) {
         searchHsnCodes(hsnSearchTerm)
+        setShowHsnDropdown(true)
+      } else {
+        setHsnCodes([])
+        setShowHsnDropdown(false)
       }
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [hsnSearchTerm, formData.product_type])
+  }, [hsnSearchTerm, formData.product_type, sessionKey])
 
   // Handle SAC search input change
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (formData.product_type === 'service') {
+      if (formData.product_type === 'service' && sacSearchTerm.trim()) {
         searchSacCodes(sacSearchTerm)
+        setShowSacDropdown(true)
+      } else {
+        setSacCodes([])
+        setShowSacDropdown(false)
       }
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [sacSearchTerm, formData.product_type])
+  }, [sacSearchTerm, formData.product_type, sessionKey])
+
+  // Handle unit search input change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (unitSearchTerm.trim()) {
+        searchUnits(unitSearchTerm)
+        setShowUnitDropdown(true)
+      } else {
+        searchUnits('')
+        setShowUnitDropdown(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [unitSearchTerm, sessionKey])
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element
-      if (!target.closest('.hsn-sac-dropdown')) {
+      if (!target.closest('.hsn-sac-dropdown') && !target.closest('.unit-dropdown')) {
         setShowHsnDropdown(false)
         setShowSacDropdown(false)
+        setShowUnitDropdown(false)
       }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  // Load units on component mount
+  useEffect(() => {
+    if (sessionKey) {
+      searchUnits('')
+    }
+  }, [sessionKey])
 
   // Handle HSN code selection
   const handleHsnCodeSelect = (hsnCode: HSNCode) => {
@@ -265,6 +326,55 @@ const ProductForm: React.FC<ProductFormProps> = ({
     }))
     setShowSacDropdown(false)
     setSacCodes([])
+  }
+
+  // Handle successful HSN code creation
+  const handleHSNCodeCreated = (newHsnCode: HSNCode) => {
+    setSelectedHsnCode(newHsnCode)
+    setHsnSearchTerm(`${newHsnCode.code} - ${newHsnCode.description}`)
+    setFormData(prev => ({
+      ...prev,
+      hsn_code: newHsnCode.id.toString(),
+      gst_rate: newHsnCode.gst_rate
+    }))
+    setShowCreateHSNModal(false)
+  }
+
+  // Handle successful SAC code creation
+  const handleSACCodeCreated = (newSacCode: SACCode) => {
+    setSelectedSacCode(newSacCode)
+    setSacSearchTerm(`${newSacCode.code} - ${newSacCode.service_name}`)
+    setFormData(prev => ({
+      ...prev,
+      sac_code: newSacCode.id.toString(),
+      gst_rate: newSacCode.gst_rate
+    }))
+    setShowCreateSACModal(false)
+  }
+
+  // Handle unit selection
+  const handleUnitSelect = (unit: Unit) => {
+    setSelectedUnit(unit)
+    setUnitSearchTerm(unit.code)
+    setFormData(prev => ({
+      ...prev,
+      unit: unit.code
+    }))
+    setShowUnitDropdown(false)
+    setUnits([])
+  }
+
+  // Handle successful unit creation
+  const handleUnitCreated = (newUnit: Unit) => {
+    setSelectedUnit(newUnit)
+    setUnitSearchTerm(newUnit.code)
+    setFormData(prev => ({
+      ...prev,
+      unit: newUnit.code
+    }))
+    setShowCreateUnitModal(false)
+    // Refresh units list
+    searchUnits('')
   }
 
   // Handle product type change
@@ -316,9 +426,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     if (formData.product_type === 'service' && !formData.sac_code) {
       newErrors.sac_code = 'SAC code is required for services'
     }
-    if (!formData.unit.trim()) {
-      newErrors.unit = 'Unit is required'
-    }
+    // Unit is now optional - no validation needed
     // Handle selling_price validation (could be empty string or number)
     const sellingPrice = typeof formData.selling_price === 'string' && formData.selling_price === ''
       ? 0
@@ -362,9 +470,28 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
       // Keep gst_rate in submission data - it's set from HSN/SAC selection
 
-      // For new entries, remove product_code as it will be auto-generated by the backend
+      // Always remove product_code for new entries - backend will auto-generate
       if (!isEditing) {
         delete submitData.product_code
+      }
+      
+      // Rate limiting - 10 products per minute
+      if (!isEditing) {
+        const now = Date.now()
+        const rateLimitKey = 'product_creation_timestamps'
+        const timestamps = JSON.parse(localStorage.getItem(rateLimitKey) || '[]')
+        
+        // Remove timestamps older than 1 minute
+        const validTimestamps = timestamps.filter((ts: number) => now - ts < 60000)
+        
+        if (validTimestamps.length >= 10) {
+          toast.error('Rate limit: Maximum 10 products per minute. Please wait before creating more.')
+          return
+        }
+        
+        // Add current timestamp
+        validTimestamps.push(now)
+        localStorage.setItem(rateLimitKey, JSON.stringify(validTimestamps))
       }
 
       if (!sessionKey) {
@@ -373,20 +500,10 @@ const ProductForm: React.FC<ProductFormProps> = ({
       }
 
       if (isEditing && product) {
-        await axios.put(`http://127.0.0.1:8000/api/finance/products/${product.id}/`, submitData, {
-          headers: {
-            'Authorization': `Bearer ${sessionKey}`,
-            'Content-Type': 'application/json'
-          }
-        })
+        await apiClient.updateFinanceProduct(product.id, submitData)
         toast.success('Product updated successfully!')
       } else {
-        await axios.post('http://127.0.0.1:8000/api/finance/products/', submitData, {
-          headers: {
-            'Authorization': `Bearer ${sessionKey}`,
-            'Content-Type': 'application/json'
-          }
-        })
+        await apiClient.createFinanceProduct(submitData)
         toast.success('Product created successfully!')
       }
 
@@ -481,11 +598,11 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 } ${
                   errors.product_code ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                 }`}
-                placeholder={formData.product_type === 'product' ? 'Auto-generated product code' : 'Auto-generated service code'}
+                placeholder={!isEditing ? `${formData.product_type === 'product' ? 'Product' : 'Service'} code will be auto-generated` : `Enter ${formData.product_type} code`}
               />
               {!isEditing && (
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Code will be auto-generated when you save
+                <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                  ✓ Code will be auto-generated with company prefix when you save
                 </p>
               )}
               {errors.product_code && (
@@ -532,10 +649,20 @@ const ProductForm: React.FC<ProductFormProps> = ({
           {/* HSN/SAC Code Selection */}
           {formData.product_type === 'product' ? (
             <div className="relative hsn-sac-dropdown">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                HSN Code <span className="text-red-500">*</span>
-                {selectedHsnCode && <span className="text-green-600 text-xs ml-2">✓ Selected</span>}
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  HSN Code <span className="text-red-500">*</span>
+                  {selectedHsnCode && <span className="text-green-600 text-xs ml-2">✓ Selected</span>}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateHSNModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-800 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-300 rounded transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add New HSN
+                </button>
+              </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
@@ -585,10 +712,20 @@ const ProductForm: React.FC<ProductFormProps> = ({
             </div>
           ) : (
             <div className="relative hsn-sac-dropdown">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                SAC Code <span className="text-red-500">*</span>
-                {selectedSacCode && <span className="text-green-600 text-xs ml-2">✓ Selected</span>}
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  SAC Code <span className="text-red-500">*</span>
+                  {selectedSacCode && <span className="text-green-600 text-xs ml-2">✓ Selected</span>}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateSACModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-800 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-300 rounded transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add New SAC
+                </button>
+              </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
@@ -638,55 +775,131 @@ const ProductForm: React.FC<ProductFormProps> = ({
             </div>
           )}
 
-          {/* GST Rate (Auto-filled) */}
+          {/* GST Rate (Auto-filled + Editable) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                GST Rate (%) {selectedHsnCode || selectedSacCode ? <span className="text-green-600 text-xs">(Auto-filled)</span> : ''}
+                GST Rate (%) 
+                {selectedHsnCode || selectedSacCode ? (
+                  <span className="text-green-600 text-xs ml-2">(Auto-filled)</span>
+                ) : (
+                  <span className="text-blue-600 text-xs ml-2">(Manual)</span>
+                )}
               </label>
-              <input
-                type="number"
-                name="gst_rate"
-                value={formData.gst_rate}
-                onChange={handleInputChange}
-                step="0.01"
-                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-white ${
-                  selectedHsnCode || selectedSacCode 
-                    ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-600' 
-                    : 'bg-white dark:bg-gray-700'
-                }`}
-                placeholder={selectedHsnCode || selectedSacCode ? "Auto-filled from HSN/SAC" : "Enter GST rate"}
-              />
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  name="gst_rate"
+                  value={formData.gst_rate}
+                  onChange={(e) => {
+                    handleInputChange(e)
+                    // Mark as manual override if different from auto-rate
+                    const newRate = parseFloat(e.target.value) || 0
+                    const expectedRate = formData.product_type === 'product' 
+                      ? selectedHsnCode?.gst_rate 
+                      : selectedSacCode?.gst_rate
+                    
+                    if (expectedRate !== undefined && newRate !== expectedRate) {
+                      // This will be handled by backend to preserve manual changes
+                      console.log('Manual GST override detected:', newRate, 'vs expected:', expectedRate)
+                    }
+                  }}
+                  step="0.01"
+                  min="0"
+                  max="28"
+                  className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-white ${
+                    selectedHsnCode || selectedSacCode 
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-600' 
+                      : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'
+                  }`}
+                  placeholder="Enter GST rate"
+                />
+                {(selectedHsnCode || selectedSacCode) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Reset to auto-filled value
+                      const autoRate = formData.product_type === 'product' 
+                        ? selectedHsnCode?.gst_rate 
+                        : selectedSacCode?.gst_rate
+                      if (autoRate !== undefined) {
+                        setFormData(prev => ({ ...prev, gst_rate: autoRate }))
+                      }
+                    }}
+                    className="px-3 py-2 bg-green-100 hover:bg-green-200 dark:bg-green-800 dark:hover:bg-green-700 text-green-700 dark:text-green-300 rounded-lg text-sm transition-colors"
+                    title="Reset to auto-filled rate"
+                  >
+                    ↻ Reset
+                  </button>
+                )}
+              </div>
               {(selectedHsnCode || selectedSacCode) && (
                 <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                  ✓ Auto-filled from {formData.product_type === 'product' ? 'HSN' : 'SAC'} code: {formData.product_type === 'product' ? selectedHsnCode?.code : selectedSacCode?.code}
+                  ✓ Auto-rate: {formData.product_type === 'product' ? selectedHsnCode?.gst_rate : selectedSacCode?.gst_rate}% from {formData.product_type === 'product' ? 'HSN' : 'SAC'} {formData.product_type === 'product' ? selectedHsnCode?.code : selectedSacCode?.code}
                 </p>
               )}
+              <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                💡 GST rate is auto-filled from HSN/SAC but can be edited manually (0-28%)
+              </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Unit <span className="text-red-500">*</span>
-              </label>
-              <select
-                name="unit"
-                value={formData.unit}
-                onChange={handleInputChange}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${
-                  errors.unit ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-                }`}
-              >
-                <option value="">Select Unit</option>
-                <option value="PCS">Pieces (PCS)</option>
-                <option value="KG">Kilograms (KG)</option>
-                <option value="LITER">Liters (LITER)</option>
-                <option value="METER">Meters (METER)</option>
-                <option value="BOX">Box (BOX)</option>
-                <option value="HOUR">Hours (HOUR)</option>
-                <option value="DAY">Days (DAY)</option>
-                <option value="MONTH">Months (MONTH)</option>
-                <option value="YEAR">Years (YEAR)</option>
-              </select>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Unit
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateUnitModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-green-100 hover:bg-green-200 dark:bg-green-800 dark:hover:bg-green-700 text-green-700 dark:text-green-300 rounded transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add New Unit
+                </button>
+              </div>
+              <div className="relative unit-dropdown">
+                <input
+                  type="text"
+                  name="unit"
+                  value={unitSearchTerm}
+                  onChange={(e) => {
+                    setUnitSearchTerm(e.target.value)
+                    setShowUnitDropdown(true)
+                    if (!e.target.value) {
+                      setSelectedUnit(null)
+                      setFormData(prev => ({ ...prev, unit: '' }))
+                    }
+                  }}
+                  onFocus={() => {
+                    searchUnits('')
+                    setShowUnitDropdown(true)
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white ${
+                    errors.unit ? 'border-red-500' : selectedUnit ? 'border-green-300 dark:border-green-600' : 'border-gray-300 dark:border-gray-600'
+                  }`}
+                  placeholder="Type to search units or add new..."
+                />
+                
+                {/* Unit Dropdown */}
+                {showUnitDropdown && units.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {units.map((unit) => (
+                      <div
+                        key={unit.id}
+                        onClick={() => handleUnitSelect(unit)}
+                        className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-100 dark:border-gray-600 last:border-b-0"
+                      >
+                        <div className="font-medium text-gray-900 dark:text-white">
+                          {unit.code}
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                          {unit.name}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               {errors.unit && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.unit}</p>
               )}
@@ -823,6 +1036,27 @@ const ProductForm: React.FC<ProductFormProps> = ({
           </div>
         </form>
       </div>
+      
+      {/* HSN Code Creation Modal */}
+      <CreateHSNCodeModal
+        isOpen={showCreateHSNModal}
+        onClose={() => setShowCreateHSNModal(false)}
+        onSuccess={handleHSNCodeCreated}
+      />
+      
+      {/* SAC Code Creation Modal */}
+      <CreateSACCodeModal
+        isOpen={showCreateSACModal}
+        onClose={() => setShowCreateSACModal(false)}
+        onSuccess={handleSACCodeCreated}
+      />
+      
+      {/* Unit Creation Modal */}
+      <CreateUnitModal
+        isOpen={showCreateUnitModal}
+        onClose={() => setShowCreateUnitModal(false)}
+        onSuccess={handleUnitCreated}
+      />
     </div>
   )
 }

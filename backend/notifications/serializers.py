@@ -2,11 +2,8 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Notification
 
-
 class NotificationSerializer(serializers.ModelSerializer):
-    """Notification serializer"""
     sender_name = serializers.CharField(source='sender.get_full_name', read_only=True)
-    sender_email = serializers.CharField(source='sender.email', read_only=True)
     
     class Meta:
         model = Notification
@@ -14,123 +11,113 @@ class NotificationSerializer(serializers.ModelSerializer):
             'id', 'notification_type', 'priority', 'title', 'message',
             'company_id', 'service_id', 'is_read', 'is_archived',
             'read_at', 'created_at', 'expires_at', 'metadata',
-            'sender_name', 'sender_email'
+            'sender_name'
         ]
-        read_only_fields = ['id', 'created_at', 'read_at', 'sender_name', 'sender_email']
-
+        read_only_fields = ['id', 'created_at', 'read_at', 'sender_name']
 
 class NotificationCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating notifications"""
-    recipient_email = serializers.EmailField(write_only=True)
+    recipient_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False
+    )
     
     class Meta:
         model = Notification
         fields = [
-            'recipient_email', 'notification_type', 'priority', 'title', 
+            'recipient_ids', 'notification_type', 'priority', 'title',
             'message', 'company_id', 'service_id', 'expires_at', 'metadata'
         ]
     
-    def validate_recipient_email(self, value):
-        """Validate that recipient exists"""
-        try:
-            User.objects.get(email=value)
-        except User.DoesNotExist:
-            raise serializers.ValidationError("User with this email does not exist.")
-        return value
-    
     def create(self, validated_data):
-        recipient_email = validated_data.pop('recipient_email')
-        recipient = User.objects.get(email=recipient_email)
+        recipient_ids = validated_data.pop('recipient_ids', [])
+        sender = self.context['request'].user
         
-        notification = Notification.objects.create(
-            recipient=recipient,
-            sender=self.context['request'].user,
-            **validated_data
-        )
+        notifications = []
+        if recipient_ids:
+            for recipient_id in recipient_ids:
+                try:
+                    recipient = User.objects.get(id=recipient_id)
+                    notification = Notification.objects.create(
+                        recipient=recipient,
+                        sender=sender,
+                        **validated_data
+                    )
+                    notifications.append(notification)
+                except User.DoesNotExist:
+                    continue
         
-        return notification
-
+        return notifications
 
 class NotificationBulkCreateSerializer(serializers.Serializer):
-    """Serializer for creating bulk notifications"""
-    recipient_emails = serializers.ListField(
-        child=serializers.EmailField(),
-        write_only=True
-    )
-    notification_type = serializers.CharField()
-    priority = serializers.CharField(default='medium')
-    title = serializers.CharField()
+    notification_type = serializers.ChoiceField(choices=Notification.NOTIFICATION_TYPES)
+    priority = serializers.ChoiceField(choices=Notification.PRIORITY_LEVELS, default='medium')
+    title = serializers.CharField(max_length=255)
     message = serializers.CharField()
     company_id = serializers.IntegerField(required=False)
     service_id = serializers.IntegerField(required=False)
     expires_at = serializers.DateTimeField(required=False)
     metadata = serializers.JSONField(default=dict)
     
-    def validate_recipient_emails(self, value):
-        """Validate that all recipients exist"""
-        existing_users = User.objects.filter(email__in=value)
-        existing_emails = set(existing_users.values_list('email', flat=True))
-        invalid_emails = set(value) - existing_emails
-        
-        if invalid_emails:
-            raise serializers.ValidationError(
-                f"Users with these emails do not exist: {', '.join(invalid_emails)}"
-            )
-        
-        return value
+    # Target selection
+    send_to_all = serializers.BooleanField(default=False)
+    company_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False
+    )
     
     def create(self, validated_data):
-        recipient_emails = validated_data.pop('recipient_emails')
-        recipients = User.objects.filter(email__in=recipient_emails)
+        sender = self.context['request'].user
+        send_to_all = validated_data.pop('send_to_all', False)
+        company_ids = validated_data.pop('company_ids', [])
         
         notifications = []
+        
+        if send_to_all:
+            recipients = User.objects.all()
+        elif company_ids:
+            # Get users from specific companies
+            recipients = User.objects.filter(company_id__in=company_ids)
+        else:
+            recipients = []
+        
         for recipient in recipients:
-            notification = Notification(
+            notification = Notification.objects.create(
                 recipient=recipient,
-                sender=self.context['request'].user,
+                sender=sender,
                 **validated_data
             )
             notifications.append(notification)
         
-        created_notifications = Notification.objects.bulk_create(notifications)
-        return created_notifications
-
+        return notifications
 
 class NotificationMarkReadSerializer(serializers.Serializer):
-    """Serializer for marking notifications as read"""
     notification_ids = serializers.ListField(
         child=serializers.IntegerField(),
-        write_only=True
+        required=False
     )
+    mark_all = serializers.BooleanField(default=False)
     
-    def validate_notification_ids(self, value):
-        """Validate that all notifications belong to the user"""
+    def create(self, validated_data):
         user = self.context['request'].user
-        user_notifications = Notification.objects.filter(
-            id__in=value,
-            recipient=user
-        ).values_list('id', flat=True)
+        notification_ids = validated_data.get('notification_ids', [])
+        mark_all = validated_data.get('mark_all', False)
         
-        invalid_ids = set(value) - set(user_notifications)
-        if invalid_ids:
-            raise serializers.ValidationError(
-                f"Invalid notification IDs: {', '.join(map(str, invalid_ids))}"
+        if mark_all:
+            notifications = Notification.objects.filter(
+                recipient=user,
+                is_read=False
+            )
+        else:
+            notifications = Notification.objects.filter(
+                id__in=notification_ids,
+                recipient=user,
+                is_read=False
             )
         
-        return value
-    
-    def save(self):
-        """Mark notifications as read"""
-        notification_ids = self.validated_data['notification_ids']
-        user = self.context['request'].user
-        
-        notifications = Notification.objects.filter(
-            id__in=notification_ids,
-            recipient=user,
-            is_read=False
-        )
-        
+        updated_notifications = []
         for notification in notifications:
             notification.mark_as_read()
+            updated_notifications.append(notification)
         
-        return notifications
+        return updated_notifications

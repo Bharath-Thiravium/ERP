@@ -6,6 +6,10 @@ import { z } from 'zod'
 import { Eye, EyeOff, Shield, Building2, Mail, Lock, ExternalLink, Sparkles, Zap, Globe, ArrowRight, Users } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
+import SecurityAlerts from '../../components/auth/SecurityAlerts'
+import AccountLockoutWarning from '../../components/auth/AccountLockoutWarning'
+import PasswordExpiryWarning from '../../components/auth/PasswordExpiryWarning'
+import TrustedDeviceOption from '../../components/auth/TrustedDeviceOption'
 import athenasLogo from '../../assets/logo.jpeg'
 
 const loginSchema = z.object({
@@ -20,7 +24,22 @@ const LoginPage: React.FC = () => {
   const [userType, setUserType] = useState<'master' | 'company' | 'service'>('master')
   const [showPassword, setShowPassword] = useState(false)
   const [isAnimating, setIsAnimating] = useState(true)
-  const { login, isLoading, error } = useAuthStore()
+  const [rememberDevice, setRememberDevice] = useState(false)
+  const [hasFailedAttempt, setHasFailedAttempt] = useState(false)
+
+  const { 
+    login, 
+    isLoading, 
+    error, 
+    accountLocked, 
+    remainingAttempts, 
+    lockoutExpiresAt,
+    passwordExpiresInDays,
+    passwordExpiresAt,
+    securityAlerts,
+    isAuthenticated,
+    user
+  } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
 
   const {
@@ -32,29 +51,50 @@ const LoginPage: React.FC = () => {
     resolver: zodResolver(loginSchema),
   })
 
+  // Auto-redirect when authentication state changes (only for successful login, not 2FA)
+  useEffect(() => {
+    if (isAuthenticated && user && !isLoading) {
+      // Use window.location for reliable navigation after auth state change
+      setTimeout(() => {
+        if (user.is_master_admin) {
+          window.location.replace('/master-admin')
+        } else if (user.is_company_user) {
+          window.location.replace('/company')
+        }
+      }, 100)
+    }
+  }, [isAuthenticated, user, isLoading])
+
   useEffect(() => {
     setTimeout(() => setIsAnimating(false), 500)
   }, [])
 
   const onSubmit = async (data: LoginFormData) => {
-    console.log('🔍 DEBUG: Form submitted', { email: data.email, password: '***', userType })
-
-    // Handle service user login differently
     if (userType === 'service') {
-      // Navigate to service user login page
       navigate('/service-login')
       return
     }
 
-    const success = await login(data, userType)
-    console.log('🔍 DEBUG: Login result', success)
-    if (success) {
-      console.log('🔍 DEBUG: Login successful, resetting form')
+    const result = await login(data, userType as 'master' | 'company', rememberDevice)
+    
+    if (result === true) {
       reset()
+      setHasFailedAttempt(false)
+      // Navigation will be handled by useEffect when auth state updates
+    } else if (result && typeof result === 'object' && 'requires_2fa' in result && result.requires_2fa === true) {
+      setHasFailedAttempt(false)
+      sessionStorage.setItem('2fa_credentials', JSON.stringify({
+        credentials: data,
+        userType: userType as 'master' | 'company'
+      }))
+      // Force immediate navigation to 2FA page
+      window.location.replace('/2fa')
     } else {
-      console.log('🔍 DEBUG: Login failed')
+      setHasFailedAttempt(true)
     }
   }
+
+
 
   const handleServiceUserAccess = () => {
     navigate('/service-login') // This will show service selection first
@@ -259,6 +299,21 @@ const LoginPage: React.FC = () => {
                   </button>
                 </div>
 
+                {/* Phase 2: Security Components */}
+                <SecurityAlerts alerts={securityAlerts} />
+                {/* Only show lockout warning after failed attempts or if actually locked */}
+                {(hasFailedAttempt || accountLocked) && (
+                  <AccountLockoutWarning 
+                    isLocked={accountLocked}
+                    remainingAttempts={remainingAttempts || undefined}
+                    lockoutExpiresAt={lockoutExpiresAt || undefined}
+                  />
+                )}
+                <PasswordExpiryWarning 
+                  expiresInDays={passwordExpiresInDays || undefined}
+                  expiresAt={passwordExpiresAt || undefined}
+                />
+
                 {/* Error Message */}
                 {error && (
                   <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl backdrop-blur-md">
@@ -340,9 +395,18 @@ const LoginPage: React.FC = () => {
                       )}
                     </div>
 
+                    {/* Trusted Device Option - for both master admin and company users */}
+                    {(userType === 'master' || userType === 'company') && (
+                      <TrustedDeviceOption
+                        isTrustedDevice={rememberDevice}
+                        onToggleTrustedDevice={setRememberDevice}
+                        disabled={isLoading || accountLocked}
+                      />
+                    )}
+
                     <button
                       type="submit"
-                      disabled={isLoading}
+                      disabled={isLoading || accountLocked}
                       className="w-full relative group"
                     >
                       <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-2xl blur-lg opacity-75 group-hover:opacity-100 transition-opacity duration-300"></div>

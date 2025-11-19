@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { X, User, Calendar, Search, Trash2, MapPin, Upload, FileText } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
 interface Customer {
@@ -23,6 +23,7 @@ interface Customer {
 
 interface ShippingAddress {
   id: number
+  label: string
   address_line1: string
   address_line2: string
   city: string
@@ -40,6 +41,8 @@ interface Product {
   unit: string
   selling_price: number
   gst_rate: number
+  hsn_code_display: string
+  sac_code_display: string
   hsn_code?: { code: string }
   sac_code?: { code: string }
 }
@@ -71,7 +74,7 @@ interface Quotation {
 interface PurchaseOrder {
   id?: number
   internal_po_number?: string
-  quotation: number
+  quotation?: number | null
   po_number: string
   po_date: string
   po_file?: File | null
@@ -107,6 +110,27 @@ interface PurchaseOrderFormProps {
 const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, quotation, onClose, onSuccess }) => {
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
+  
+  // Debug session state
+  useEffect(() => {
+    console.log('🔍 PO Form - Session Key:', !!sessionKey)
+    console.log('🔍 PO Form - Storage Session Key:', !!sessionStorage.getItem('service_session_key'))
+    console.log('🔍 PO Form - Quotation:', !!quotation)
+  }, [sessionKey, quotation])
+
+  // Click outside handler for product dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (productSearchRef.current && !productSearchRef.current.contains(event.target as Node)) {
+        setShowProductDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -115,15 +139,17 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [existingFile, setExistingFile] = useState<string | null>(null)
+  const productSearchRef = React.useRef<HTMLDivElement>(null)
 
   const [formData, setFormData] = useState<PurchaseOrder>({
-    quotation: quotation?.id || 0,
+    quotation: quotation?.id || null,
     po_number: '',
     po_date: new Date().toISOString().split('T')[0],
     po_file: null,
     customer: quotation?.customer || 0,
-    quotation_date: quotation?.quotation_date || new Date().toISOString().split('T')[0],
-    valid_until: quotation?.valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    quotation_date: quotation?.quotation_date || '',
+    valid_until: quotation?.valid_until || '',
     reference: quotation?.reference || '',
     shipping_address: quotation?.shipping_address || null,
     discount_percentage: Number(quotation?.discount_percentage) || 0,
@@ -138,7 +164,16 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
   })
 
   useEffect(() => {
-    if (sessionKey) {
+    // Ensure session key is available
+    const storeSessionKey = useServiceUserStore.getState().sessionKey
+    const storageSessionKey = sessionStorage.getItem('service_session_key')
+    
+    if (storeSessionKey && !storageSessionKey) {
+      sessionStorage.setItem('service_session_key', storeSessionKey)
+    }
+    
+    const currentSessionKey = sessionKey || storeSessionKey
+    if (currentSessionKey) {
       loadCustomers()
       loadProducts()
       loadCompanyDetails()
@@ -152,7 +187,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       // Convert PO items from detailed format to form format
       const convertedItems = purchaseOrder.po_items ? purchaseOrder.po_items.map((item: any) => ({
         product: item.product,
-        quantity: parseFloat(item.quantity) || 0,
+        quantity: parseFloat(item.quantity) || 1,
         unit_price: parseFloat(item.unit_price) || 0,
         hsn_sac_code: item.hsn_sac_code || '',
         gst_rate: parseFloat(item.gst_rate) || 0
@@ -160,8 +195,17 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
       setFormData({
         ...purchaseOrder,
+        discount_percentage: Number(purchaseOrder.discount_percentage) || 0,
+        discount_amount: Number(purchaseOrder.discount_amount) || 0,
+        shipping_charges: Number(purchaseOrder.shipping_charges) || 0,
+        other_charges: Number(purchaseOrder.other_charges) || 0,
         po_items: convertedItems
       })
+
+      // Set existing file if available
+      if ((purchaseOrder as any).po_file) {
+        setExistingFile((purchaseOrder as any).po_file)
+      }
 
       // Set selected customer if available - use customer_details for detailed view
       const customerData = (purchaseOrder as any).customer_details || purchaseOrder.customer
@@ -212,9 +256,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
     try {
       console.log('Loading full quotation details for ID:', quotationId)
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/quotations/${quotationId}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceQuotation(quotationId, { session_key: sessionKey })
 
       const fullQuotation = response.data
       console.log('Loaded full quotation details:', fullQuotation)
@@ -282,9 +324,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
   const loadCustomers = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/finance/customers/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceCustomers({ session_key: sessionKey })
       setCustomers(response.data.results)
     } catch (error) {
       console.error('Error loading customers:', error)
@@ -293,9 +333,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
   const loadProducts = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/finance/products/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceProducts({ session_key: sessionKey })
       setProducts(response.data.results)
     } catch (error) {
       console.error('Error loading products:', error)
@@ -304,10 +342,14 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
   const loadCompanyDetails = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:8000/api/auth/company-profile/', {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
-      setCompanyDetails(response.data)
+      const serviceUser = useServiceUserStore.getState().serviceUser
+      if (serviceUser?.company_id) {
+        const response = await apiClient.get(`/api/auth/service-user/company/${serviceUser.company_id}/`, {
+          headers: { 'Authorization': `Bearer ${sessionKey}` },
+          params: { session_key: sessionKey }
+        })
+        setCompanyDetails(response.data)
+      }
     } catch (error) {
       console.error('Error loading company details:', error)
     }
@@ -318,9 +360,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
     try {
       console.log('Loading customer details for ID:', customerId)
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/customers/${customerId}/`, {
-        headers: { 'Authorization': `Bearer ${sessionKey}` }
-      })
+      const response = await apiClient.getFinanceCustomer(customerId, { session_key: sessionKey })
 
       const fullCustomer = response.data
       console.log('Loaded customer details:', fullCustomer)
@@ -355,12 +395,13 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       updatedItems[existingItemIndex].quantity += 1
       setFormData(prev => ({ ...prev, po_items: updatedItems }))
     } else {
-      // Add new item
+      // Add new item with proper HSN/SAC code
+      const hsnSacCode = product.hsn_code_display || product.sac_code_display || ''
       const newItem = {
         product: product.id,
         quantity: 1,
         unit_price: product.selling_price,
-        hsn_sac_code: product.hsn_code?.code || product.sac_code?.code || '',
+        hsn_sac_code: hsnSacCode,
         gst_rate: product.gst_rate
       }
       setFormData(prev => ({ ...prev, po_items: [...prev.po_items, newItem] }))
@@ -375,9 +416,13 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     setFormData(prev => ({ ...prev, po_items: updatedItems }))
   }
 
-  const handleItemQuantityChange = (index: number, quantity: number) => {
+  const handleItemQuantityChange = (index: number, quantity: number | string) => {
     const updatedItems = [...formData.po_items]
-    updatedItems[index].quantity = Math.max(0.01, quantity)
+    if (quantity === '') {
+      updatedItems[index].quantity = '' as any
+    } else {
+      updatedItems[index].quantity = Math.max(0.01, Number(quantity))
+    }
     setFormData(prev => ({ ...prev, po_items: updatedItems }))
   }
 
@@ -388,22 +433,25 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
   }
 
   const calculateTotals = () => {
-    const subtotal = formData.po_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
+    const subtotal = formData.po_items.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.unit_price)), 0)
     const discountAmount = formData.discount_percentage > 0 ? (subtotal * formData.discount_percentage / 100) : formData.discount_amount
     const subtotalAfterDiscount = subtotal - discountAmount
 
-    // Calculate GST
+    // Calculate GST on subtotal after discount
     const gstType = determineGSTType()
     let totalTax = 0
 
     if (gstType !== 'exempt') {
       totalTax = formData.po_items.reduce((sum, item) => {
-        const itemTotal = item.quantity * item.unit_price
-        return sum + (itemTotal * item.gst_rate / 100)
+        const itemTotal = (Number(item.quantity) * Number(item.unit_price))
+        // Apply discount proportionally to each item before calculating GST
+        const itemDiscount = discountAmount > 0 ? (itemTotal / subtotal) * discountAmount : 0
+        const itemTotalAfterDiscount = itemTotal - itemDiscount
+        return sum + (itemTotalAfterDiscount * Number(item.gst_rate) / 100)
       }, 0)
     }
 
-    const subtotalWithCharges = subtotalAfterDiscount + formData.shipping_charges + formData.other_charges
+    const subtotalWithCharges = subtotalAfterDiscount + Number(formData.shipping_charges || 0) + Number(formData.other_charges || 0)
     const totalAmount = subtotalWithCharges + totalTax
 
     return {
@@ -412,8 +460,8 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       totalAmount: Number(totalAmount) || 0,
       gstType,
       discountAmount: Number(discountAmount) || 0,
-      shippingCharges: Number(formData.shipping_charges) || 0,
-      otherCharges: Number(formData.other_charges) || 0
+      shippingCharges: Number(formData.shipping_charges || 0),
+      otherCharges: Number(formData.other_charges || 0)
     }
   }
 
@@ -446,9 +494,10 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       newErrors.customer = 'Customer is required'
     }
 
-    if (!formData.quotation) {
-      newErrors.quotation = 'Quotation is required'
-    }
+    // Quotation is now optional for direct PO creation
+    // if (!formData.quotation) {
+    //   newErrors.quotation = 'Quotation is required'
+    // }
 
     if (formData.po_items.length === 0) {
       newErrors.po_items = 'At least one item is required'
@@ -476,68 +525,82 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     setLoading(true)
     
     try {
-      console.log('Form data before sending:', formData)
-
-      const url = purchaseOrder
-        ? `http://127.0.0.1:8000/api/finance/purchase-orders/${purchaseOrder.id}/`
-        : 'http://127.0.0.1:8000/api/finance/purchase-orders/'
-
-      const method = purchaseOrder ? 'patch' : 'post'
-
-      let response;
-
-      if (selectedFile) {
-        // If there's a file, use FormData
-        const formDataToSend = new FormData()
-
-        // Add all form fields except po_items
-        Object.entries(formData).forEach(([key, value]) => {
-          if (key === 'po_items') {
-            // Don't add po_items to FormData, we'll add it separately
-            return
-          } else if (key === 'po_file') {
-            // Don't add po_file here, we'll add the selectedFile
-            return
-          } else if (value !== null && value !== undefined) {
-            formDataToSend.append(key, value.toString())
-          }
-        })
-
-        // Add po_items as JSON string for FormData
-        formDataToSend.append('po_items', JSON.stringify(formData.po_items))
-
-        // Add the file
-        formDataToSend.append('po_file', selectedFile)
-
-        // Add session key
-        formDataToSend.append('session_key', sessionKey || '')
-
-        console.log('Sending FormData with file')
-
-        response = await axios[method](url, formDataToSend, {
-          headers: {
-            'Authorization': `Bearer ${sessionKey}`,
-            'Content-Type': 'multipart/form-data'
-          }
-        })
-      } else {
-        // If no file, send JSON data
-        const jsonData = {
-          ...formData,
-          session_key: sessionKey
+      // Prepare form data and remove empty quotation fields for direct PO creation
+      let dataToSend: any = { ...formData }
+      
+      // If this is a direct PO (no quotation), remove empty quotation_date and valid_until
+      if (!formData.quotation) {
+        if (!dataToSend.quotation_date || dataToSend.quotation_date.trim() === '') {
+          const { quotation_date, ...rest } = dataToSend
+          dataToSend = rest
         }
+        if (!dataToSend.valid_until || dataToSend.valid_until.trim() === '') {
+          const { valid_until, ...rest } = dataToSend
+          dataToSend = rest
+        }
+      }
+      
+      // Sanitize form data before logging to prevent log injection
+      const sanitizedFormData = {
+        ...dataToSend,
+        po_number: dataToSend.po_number.replace(/[\r\n]/g, ''),
+        reference: dataToSend.reference.replace(/[\r\n]/g, ''),
+        notes: dataToSend.notes.replace(/[\r\n]/g, ' '),
+        terms_and_conditions: dataToSend.terms_and_conditions.replace(/[\r\n]/g, ' ')
+      }
+      console.log('Form data before sending:', sanitizedFormData)
 
-        console.log('Sending JSON data:', jsonData)
-
-        response = await axios[method](url, jsonData, {
-          headers: {
-            'Authorization': `Bearer ${sessionKey}`,
-            'Content-Type': 'application/json'
-          }
-        })
+      let response
+      // Use apiClient for PO creation/update
+      if (purchaseOrder && purchaseOrder.id) {
+        // Update existing PO
+        if (selectedFile) {
+          // Handle file upload for update
+          const formDataToSend = new FormData()
+          Object.entries(dataToSend).forEach(([key, value]) => {
+            if (key === 'po_items') {
+              formDataToSend.append('po_items', JSON.stringify(value))
+            } else if (key !== 'po_file' && value !== null && value !== undefined) {
+              formDataToSend.append(key, value.toString())
+            }
+          })
+          formDataToSend.append('po_file', selectedFile)
+          formDataToSend.append('session_key', sessionKey || '')
+          
+          response = await apiClient.put(`/api/finance/purchase-orders/${purchaseOrder.id}/`, formDataToSend)
+        } else {
+          // Remove po_file from data when no new file is selected
+          const { po_file, ...dataWithoutFile } = dataToSend
+          response = await apiClient.updateFinancePurchaseOrder(purchaseOrder.id, { ...dataWithoutFile, session_key: sessionKey })
+        }
+      } else {
+        // Create new PO
+        if (selectedFile) {
+          // Handle file upload for creation
+          const formDataToSend = new FormData()
+          Object.entries(dataToSend).forEach(([key, value]) => {
+            if (key === 'po_items') {
+              formDataToSend.append('po_items', JSON.stringify(value))
+            } else if (key !== 'po_file' && value !== null && value !== undefined) {
+              formDataToSend.append(key, value.toString())
+            }
+          })
+          formDataToSend.append('po_file', selectedFile)
+          formDataToSend.append('session_key', sessionKey || '')
+          
+          response = await apiClient.post('/api/finance/purchase-orders/', formDataToSend)
+        } else {
+          response = await apiClient.createFinancePurchaseOrder({ ...dataToSend, session_key: sessionKey })
+        }
       }
 
-      console.log('PO saved successfully:', response.data)
+      // Sanitize response data before logging
+      const sanitizedResponse = {
+        ...response.data,
+        po_number: response.data.po_number?.replace(/[\r\n]/g, '') || '',
+        reference: response.data.reference?.replace(/[\r\n]/g, '') || ''
+      }
+      console.log('PO saved successfully:', sanitizedResponse)
 
       toast.success(purchaseOrder ? 'Purchase order updated successfully!' : 'Purchase order created successfully!')
       onSuccess()
@@ -587,11 +650,16 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              {purchaseOrder ? 'Edit Purchase Order' : 'Create Purchase Order'}
+              {purchaseOrder ? 'Edit Purchase Order' : (quotation ? 'Create Purchase Order from Quotation' : 'Create Direct Purchase Order')}
             </h2>
             {quotation && (
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 From Quotation: {quotation.quotation_number}
+              </p>
+            )}
+            {!quotation && !purchaseOrder && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Creating PO directly without quotation
               </p>
             )}
           </div>
@@ -645,49 +713,87 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                 <Upload className="w-4 h-4 inline mr-1" />
                 PO File Attachment
               </label>
-              <div className="flex items-center space-x-4">
-                <input
-                  type="file"
-                  onChange={handleFileChange}
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                  className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900 dark:file:text-blue-300"
-                />
-                {selectedFile && (
-                  <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                    <FileText className="w-4 h-4 mr-1" />
-                    {selectedFile.name}
+              <div className="space-y-3">
+                {existingFile && !selectedFile && (
+                  <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center text-sm text-blue-800 dark:text-blue-200">
+                      <FileText className="w-4 h-4 mr-2" />
+                      <span>Current file: {existingFile.split('/').pop()}</span>
+                    </div>
+                    <a
+                      href={existingFile}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 text-sm font-medium"
+                    >
+                      View File
+                    </a>
                   </div>
+                )}
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="file"
+                    onChange={handleFileChange}
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900 dark:file:text-blue-300"
+                  />
+                  {selectedFile && (
+                    <div className="flex items-center text-sm text-green-600 dark:text-green-400">
+                      <FileText className="w-4 h-4 mr-1" />
+                      New: {selectedFile.name}
+                    </div>
+                  )}
+                </div>
+                {existingFile && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {selectedFile ? 'New file will replace the current file' : 'Select a new file to replace the current one (optional)'}
+                  </p>
                 )}
               </div>
             </div>
 
-            {/* Quotation Details */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  <Calendar className="w-4 h-4 inline mr-1" />
-                  Quotation Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.quotation_date}
-                  onChange={(e) => setFormData(prev => ({ ...prev, quotation_date: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  readOnly={!!quotation}
-                />
+            {/* Quotation Details - Only show for quotation-based POs */}
+            {quotation ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <Calendar className="w-4 h-4 inline mr-1" />
+                    Quotation Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.quotation_date}
+                    onChange={(e) => setFormData(prev => ({ ...prev, quotation_date: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Valid Until
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.valid_until}
+                    onChange={(e) => setFormData(prev => ({ ...prev, valid_until: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Reference
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.reference}
+                    onChange={(e) => setFormData(prev => ({ ...prev, reference: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Customer PO number or reference"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Valid Until
-                </label>
-                <input
-                  type="date"
-                  value={formData.valid_until}
-                  onChange={(e) => setFormData(prev => ({ ...prev, valid_until: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  readOnly={!!quotation}
-                />
-              </div>
+            ) : (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Reference
@@ -699,21 +805,48 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   placeholder="Customer PO number or reference"
                 />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Note: Direct POs don't require quotation dates or validity periods
+                </p>
               </div>
-            </div>
+            )}
 
-            {/* Customer Display */}
+            {/* Customer Selection/Display */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <User className="w-4 h-4 inline mr-1" />
-                Customer (From Quotation)
+                Customer {quotation ? '(From Quotation)' : '*'}
               </label>
-              <input
-                type="text"
-                value={selectedCustomer?.name || 'Loading customer...'}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white cursor-not-allowed"
-                readOnly
-              />
+              {quotation ? (
+                <input
+                  type="text"
+                  value={selectedCustomer?.name || 'Loading customer...'}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white cursor-not-allowed"
+                  readOnly
+                />
+              ) : (
+                <select
+                  value={formData.customer || ''}
+                  onChange={(e) => {
+                    const customerId = parseInt(e.target.value)
+                    setFormData(prev => ({ ...prev, customer: customerId }))
+                    if (customerId) {
+                      loadCustomerDetails(customerId)
+                    } else {
+                      setSelectedCustomer(null)
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="">Select a customer...</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name} ({customer.customer_code})
+                    </option>
+                  ))}
+                </select>
+              )}
+              {errors.customer && <p className="mt-1 text-sm text-red-600">{errors.customer}</p>}
             </div>
 
             {/* Customer Details Display */}
@@ -735,27 +868,44 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               </div>
             )}
 
-            {/* Shipping Address Display */}
+            {/* Shipping Address Selection/Display */}
             {selectedCustomer && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   <MapPin className="w-4 h-4 inline mr-1" />
-                  Shipping Address (From Quotation)
+                  Shipping Address {quotation ? '(From Quotation)' : ''}
                 </label>
-                <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white text-sm">
-                  {selectedCustomer.shipping_addresses && selectedCustomer.shipping_addresses.length > 0 ? (
-                    selectedCustomer.shipping_addresses
-                      .filter(addr => addr.id === formData.shipping_address)
-                      .map(address => (
-                        <div key={address.id}>
-                          {address.address_line1}, {address.city}, {address.state} {address.pincode}
-                          {address.is_default && ' (Default)'}
-                        </div>
-                      ))[0] || 'Same as billing address'
-                  ) : (
-                    'Same as billing address'
-                  )}
-                </div>
+                {quotation ? (
+                  <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white text-sm">
+                    {selectedCustomer.shipping_addresses && selectedCustomer.shipping_addresses.length > 0 ? (
+                      selectedCustomer.shipping_addresses
+                        .filter(addr => addr.id === formData.shipping_address)
+                        .map(address => (
+                          <div key={address.id}>
+                            <div className="font-medium">{address.label}{address.is_default && ' (Default)'}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              {address.address_line1}, {address.city}, {address.state} {address.pincode}
+                            </div>
+                          </div>
+                        ))[0] || 'Same as billing address'
+                    ) : (
+                      'Same as billing address'
+                    )}
+                  </div>
+                ) : (
+                  <select
+                    value={formData.shipping_address || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, shipping_address: e.target.value ? parseInt(e.target.value) : null }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    <option value="">Same as billing address</option>
+                    {selectedCustomer.shipping_addresses?.map((address) => (
+                      <option key={address.id} value={address.id}>
+                        {address.label}{address.is_default && ' (Default)'}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             )}
 
@@ -764,7 +914,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               {/* Left Column - Product Search */}
               <div>
                 <h4 className="font-medium text-gray-900 dark:text-white mb-3">Add Products</h4>
-                <div className="relative mb-4">
+                <div className="relative mb-4" ref={productSearchRef}>
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <input
                     type="text"
@@ -775,13 +925,14 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                     }}
                     onFocus={() => setShowProductDropdown(true)}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="Search products..."
+                    placeholder={!quotation ? "Click to select products or type to search..." : "Search products..."}
                   />
 
-                  {showProductDropdown && productSearch && (
+                  {showProductDropdown && (
                     <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                       {products
                         .filter(product =>
+                          !productSearch || 
                           product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
                           product.product_code.toLowerCase().includes(productSearch.toLowerCase())
                         )
@@ -793,11 +944,20 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                           >
                             <div className="font-medium text-gray-900 dark:text-white">{product.name}</div>
                             <div className="text-sm text-gray-500 dark:text-gray-400">
-                              {product.product_code} | ₹{product.selling_price} | GST: {product.gst_rate}%
+                              {product.product_code} | HSN/SAC: {product.hsn_code_display || product.sac_code_display || 'N/A'} | ₹{product.selling_price} | GST: {product.gst_rate}%
                             </div>
                           </div>
                         ))
                       }
+                      {products.filter(product =>
+                        !productSearch || 
+                        product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+                        product.product_code.toLowerCase().includes(productSearch.toLowerCase())
+                      ).length === 0 && (
+                        <div className="px-3 py-2 text-gray-500 dark:text-gray-400 text-center">
+                          {products.length === 0 ? 'No products available' : 'No products match your search'}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -825,7 +985,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                                 {product?.name || 'Unknown Product'}
                               </div>
                               <div className="text-sm text-gray-500 dark:text-gray-400">
-                                {product?.product_code} | HSN/SAC: {item.hsn_sac_code} | GST: {item.gst_rate}%
+                                {product?.product_code} | HSN/SAC: {item.hsn_sac_code || product?.hsn_code_display || product?.sac_code_display || 'N/A'} | GST: {item.gst_rate}%
                               </div>
                             </div>
                             <button
@@ -844,7 +1004,19 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                                 min="0.01"
                                 step="0.01"
                                 value={item.quantity}
-                                onChange={(e) => handleItemQuantityChange(index, parseFloat(e.target.value) || 0)}
+                                onChange={(e) => {
+                                  const value = e.target.value
+                                  if (value === '') {
+                                    handleItemQuantityChange(index, '')
+                                  } else {
+                                    handleItemQuantityChange(index, parseFloat(value) || 0.01)
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  if (e.target.value === '' || parseFloat(e.target.value) < 0.01) {
+                                    handleItemQuantityChange(index, 1)
+                                  }
+                                }}
                                 className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-600 text-gray-900 dark:text-white"
                               />
                             </div>
@@ -862,7 +1034,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                             <div>
                               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Total</label>
                               <div className="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-600 rounded text-gray-900 dark:text-white">
-                                ₹{(item.quantity * item.unit_price).toFixed(2)}
+                                ₹{(Number(item.quantity) * Number(item.unit_price)).toFixed(2)}
                               </div>
                             </div>
                           </div>
@@ -872,7 +1044,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                   </div>
                 ) : (
                   <div className="text-gray-500 dark:text-gray-400 text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                    <p className="mb-4">No products selected. {quotation ? 'Loading products from quotation...' : 'Search and select products from the left panel.'}</p>
+                    <p className="mb-4">No products selected. {quotation ? 'Loading products from quotation...' : (!selectedCustomer ? 'Please select a customer first.' : 'Search and select products from the left panel.')}</p>
                     {selectedCustomer && companyDetails && (
                       <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg text-sm">
                         <p className="font-medium text-gray-900 dark:text-white text-center">
@@ -887,21 +1059,105 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               </div>
             </div>
 
+            {/* Discount and Charges Section - Only for direct PO creation */}
+            {!quotation && formData.po_items.length > 0 && (
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 dark:text-white mb-3">Discount & Charges</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Discount %
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={formData.discount_percentage}
+                      onChange={(e) => {
+                        const percentage = parseFloat(e.target.value) || 0
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          discount_percentage: percentage,
+                          discount_amount: 0 // Reset amount when percentage is used
+                        }))
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Discount Amount (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.discount_amount}
+                      onChange={(e) => {
+                        const amount = parseFloat(e.target.value) || 0
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          discount_amount: amount,
+                          discount_percentage: 0 // Reset percentage when amount is used
+                        }))
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Shipping Charges (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.shipping_charges}
+                      onChange={(e) => setFormData(prev => ({ ...prev, shipping_charges: parseFloat(e.target.value) || 0 }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Other Charges (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.other_charges}
+                      onChange={(e) => setFormData(prev => ({ ...prev, other_charges: parseFloat(e.target.value) || 0 }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Summary Section */}
             {formData.po_items.length > 0 && (
               <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 dark:text-white mb-3">Order Summary</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
-                    <span className="text-gray-900 dark:text-white">₹{totals.subtotal.toFixed(2)}</span>
+                    <span className="text-gray-600 dark:text-gray-400">Items Total:</span>
+                    <span className="text-gray-900 dark:text-white">₹{formData.po_items.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.unit_price)), 0).toFixed(2)}</span>
                   </div>
                   {totals.discountAmount > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Discount:</span>
+                      <span className="text-gray-600 dark:text-gray-400">Discount {formData.discount_percentage > 0 ? `(${formData.discount_percentage}%)` : ''}:</span>
                       <span className="text-red-600">-₹{totals.discountAmount.toFixed(2)}</span>
                     </div>
                   )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
+                    <span className="text-gray-900 dark:text-white">₹{totals.subtotal.toFixed(2)}</span>
+                  </div>
                   {totals.gstType === 'cgst_sgst' && totals.totalTax > 0 && (
                     <>
                       <div className="flex justify-between">

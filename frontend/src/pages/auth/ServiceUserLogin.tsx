@@ -28,64 +28,55 @@ const ServiceUserLogin: React.FC = () => {
   const [step, setStep] = useState<'select-service' | 'login'>(preSelectedService ? 'login' : 'select-service')
   const [selectedService, setSelectedService] = useState(preSelectedService || '')
   const [formData, setFormData] = useState({
-    username: '',
+    unique_service_id: '',
     password: '',
     service_type: preSelectedService || ''
   })
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
 
-  // Available services that companies can have
-  const availableServices = [
-    {
-      id: 'finance',
-      name: 'Finance Management',
-      description: 'Financial planning, budgeting, and accounting',
-      icon: '💰',
-      color: 'blue',
-      gradient: 'from-blue-500 to-blue-700'
-    },
-    {
-      id: 'hr',
-      name: 'Human Resources',
-      description: 'Employee management and HR operations',
-      icon: '👥',
-      color: 'purple',
-      gradient: 'from-purple-500 to-purple-700'
-    },
-    {
-      id: 'inventory',
-      name: 'Inventory Management',
-      description: 'Stock control and warehouse management',
-      icon: '📦',
-      color: 'orange',
-      gradient: 'from-orange-500 to-orange-700'
-    },
-    {
-      id: 'crm',
-      name: 'Customer Relations',
-      description: 'Customer relationship management',
-      icon: '🤝',
-      color: 'green',
-      gradient: 'from-green-500 to-green-700'
-    },
-    {
-      id: 'procurement',
-      name: 'Procurement',
-      description: 'Purchase orders and supplier management',
-      icon: '🛒',
-      color: 'indigo',
-      gradient: 'from-indigo-500 to-indigo-700'
-    },
-    {
-      id: 'analytics',
-      name: 'Business Analytics',
-      description: 'Data analysis and business intelligence',
-      icon: '📊',
-      color: 'pink',
-      gradient: 'from-pink-500 to-pink-700'
+  const [availableServices, setAvailableServices] = useState<any[]>([])
+  const [servicesLoading, setServicesLoading] = useState(true)
+
+  // Service type to UI mapping
+  const serviceUIMap = {
+    finance: { icon: '💰', color: 'blue', gradient: 'from-blue-500 to-blue-700' },
+    hr: { icon: '👥', color: 'purple', gradient: 'from-purple-500 to-purple-700' },
+    inventory: { icon: '📦', color: 'orange', gradient: 'from-orange-500 to-orange-700' },
+    crm: { icon: '🤝', color: 'green', gradient: 'from-green-500 to-green-700' },
+    procurement: { icon: '🛒', color: 'indigo', gradient: 'from-indigo-500 to-indigo-700' },
+    analytics: { icon: '📊', color: 'pink', gradient: 'from-pink-500 to-pink-700' },
+    orders: { icon: '📋', color: 'yellow', gradient: 'from-yellow-500 to-yellow-700' },
+    manufacturing: { icon: '🏭', color: 'gray', gradient: 'from-gray-500 to-gray-700' },
+    quality: { icon: '✅', color: 'emerald', gradient: 'from-emerald-500 to-emerald-700' },
+    maintenance: { icon: '🔧', color: 'red', gradient: 'from-red-500 to-red-700' }
+  }
+
+  // Fetch services from API
+  React.useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const response = await fetch('/api/auth/services/active/')
+        const services = await response.json()
+        
+        const mappedServices = services.map((service: any) => ({
+          id: service.service_type,
+          name: service.name,
+          description: service.description,
+          ...serviceUIMap[service.service_type as keyof typeof serviceUIMap] || { icon: '⚙️', color: 'gray', gradient: 'from-gray-500 to-gray-700' }
+        }))
+        
+        setAvailableServices(mappedServices)
+      } catch (error) {
+        console.error('Failed to fetch services:', error)
+        toast.error('Failed to load services')
+      } finally {
+        setServicesLoading(false)
+      }
     }
-  ]
+    
+    fetchServices()
+  }, [])
 
   // Service type configurations for login
   const serviceConfigs = {
@@ -132,7 +123,7 @@ const ServiceUserLogin: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.username || !formData.password) {
+    if (!formData.unique_service_id || !formData.password) {
       toast.error('Please fill in all fields')
       return
     }
@@ -143,25 +134,25 @@ const ServiceUserLogin: React.FC = () => {
       // Navigate to appropriate service dashboard
       switch (formData.service_type) {
         case 'finance':
-          navigate('/services/finance/dashboard')
+          navigate('/services/finance/dashboard', { replace: true })
           break
         case 'hr':
-          navigate('/services/hr/dashboard')
+          navigate('/services/hr/dashboard', { replace: true })
           break
         case 'inventory':
-          navigate('/services/inventory/dashboard')
+          navigate('/services/inventory/dashboard', { replace: true })
           break
         case 'crm':
-          navigate('/services/crm/dashboard')
+          navigate('/services/crm', { replace: true })
           break
         case 'procurement':
-          navigate('/services/procurement/dashboard')
+          navigate('/services/procurement/dashboard', { replace: true })
           break
         case 'analytics':
-          navigate('/services/analytics/dashboard')
+          navigate('/services/analytics/dashboard', { replace: true })
           break
         default:
-          navigate('/services/dashboard')
+          navigate('/services/dashboard', { replace: true })
       }
     }
   }
@@ -179,24 +170,26 @@ const ServiceUserLogin: React.FC = () => {
   const handleBackToServiceSelection = () => {
     setStep('select-service')
     setSelectedService('')
-    setFormData(prev => ({ ...prev, service_type: '', username: '', password: '' }))
+    setFormData(prev => ({ ...prev, service_type: '', unique_service_id: '', password: '' }))
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Back Button */}
-        <div className="mb-6">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate('/')}
-            className="flex items-center space-x-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Back to Main</span>
-          </Button>
-        </div>
+        {/* Back Button - only show if not coming from company services */}
+        {!preSelectedService && (
+          <div className="mb-6">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/')}
+              className="flex items-center space-x-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back to Main</span>
+            </Button>
+          </div>
+        )}
 
         {/* Main Card */}
         <Card className="shadow-2xl border-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
@@ -218,27 +211,33 @@ const ServiceUserLogin: React.FC = () => {
               </CardHeader>
 
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {availableServices.map((service) => (
-                    <button
-                      key={service.id}
-                      onClick={() => handleServiceSelect(service.id)}
-                      className={`p-4 rounded-xl border-2 transition-all duration-300 hover:scale-105 bg-gradient-to-br ${service.gradient} hover:shadow-lg group`}
-                    >
-                      <div className="text-center space-y-3">
-                        <div className="text-3xl">{service.icon}</div>
-                        <div>
-                          <h3 className="font-semibold text-white group-hover:text-white/90">
-                            {service.name}
-                          </h3>
-                          <p className="text-xs text-white/80 group-hover:text-white/70">
-                            {service.description}
-                          </p>
+                {servicesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {availableServices.map((service: any) => (
+                      <button
+                        key={service.id}
+                        onClick={() => handleServiceSelect(service.id)}
+                        className={`p-4 rounded-xl border-2 transition-all duration-300 hover:scale-105 bg-gradient-to-br ${service.gradient} hover:shadow-lg group`}
+                      >
+                        <div className="text-center space-y-3">
+                          <div className="text-3xl">{service.icon}</div>
+                          <div>
+                            <h3 className="font-semibold text-white group-hover:text-white/90">
+                              {service.name}
+                            </h3>
+                            <p className="text-xs text-white/80 group-hover:text-white/70">
+                              {service.description}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </>
           ) : (
@@ -285,22 +284,25 @@ const ServiceUserLogin: React.FC = () => {
                 </div>
               </div>
 
-              {/* Username Field */}
+              {/* Unique Service ID Field */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Username
+                  Unique Service ID
                 </label>
                 <div className="relative">
                   <input
                     type="text"
-                    value={formData.username}
-                    onChange={(e) => handleInputChange('username', e.target.value)}
+                    value={formData.unique_service_id}
+                    onChange={(e) => handleInputChange('unique_service_id', e.target.value)}
                     className="w-full px-4 py-3 pl-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    placeholder="Enter your username"
+                    placeholder="e.g., COMPANY_username_001"
                     disabled={isLoading}
                   />
                   <User className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
                 </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Use the Unique Service ID provided in your credentials file
+                </p>
               </div>
 
               {/* Password Field */}

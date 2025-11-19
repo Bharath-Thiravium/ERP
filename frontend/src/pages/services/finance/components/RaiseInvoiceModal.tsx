@@ -39,7 +39,7 @@ const RaiseInvoiceModal: React.FC<RaiseInvoiceModalProps> = ({
 
   const handleGenerate = () => {
     const invoiceData = {
-      purchase_order_id: purchaseOrder.id,
+      purchase_order: purchaseOrder.id,
       claim_type: claimType,
       invoice_type: invoiceType
     }
@@ -207,7 +207,7 @@ const RaiseInvoiceModal: React.FC<RaiseInvoiceModalProps> = ({
                 )}
                 <button
                   onClick={onClose}
-                  className={`${!purchaseOrder.claim_type ? 'flex-1' : 'flex-1'} bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-3 rounded-xl font-medium transition-colors`}
+                  className="flex-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-3 rounded-xl font-medium transition-colors"
                 >
                   Cancel
                 </button>

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Search, Plus, Edit, Eye, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-
-import axios from 'axios'
+import { apiClient } from '../../../../lib/api'
 
 interface Product {
   id: number
@@ -99,12 +98,7 @@ const ProductList: React.FC<ProductListProps> = ({
       console.log('🔍 DEBUG: Fetching products with session key:', sessionKey.substring(0, 10) + '...')
       console.log('🔍 DEBUG: API URL:', `/api/finance/products/?${params.toString()}`)
 
-      const response = await axios.get(`http://127.0.0.1:8000/api/finance/products/?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const response = await apiClient.getFinanceProducts(Object.fromEntries(params))
 
       console.log('🔍 DEBUG: Products API response:', response.data)
       const data: PaginatedResponse = response.data
@@ -134,13 +128,7 @@ const ProductList: React.FC<ProductListProps> = ({
     }
 
     try {
-      await axios.delete(`http://127.0.0.1:8000/api/finance/products/${productId}/`, {
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        },
-        params: { session_key: sessionKey }
-      })
+      await apiClient.deleteFinanceProduct(productId, { session_key: sessionKey })
       fetchProducts() // Refresh the list
     } catch (error: any) {
       console.error('Error deleting product:', error)

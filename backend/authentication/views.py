@@ -1,4 +1,5 @@
 from rest_framework import status, permissions
+from django.utils._os import safe_join
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import api_view, permission_classes
@@ -19,17 +20,22 @@ from django.conf import settings
 from datetime import timedelta
 import secrets
 import string
+from .utils import safe_join, validate_filename, get_safe_scripts_path
+from .security_fixes import secure_path_join, sanitize_filename, escape_content, secure_file_write
 
 from .models import (
     MasterAdmin, Company, Service, CompanyService,
     CompanyUser, SecurityLog, CompanyServiceUser, ServiceUserSession
 )
 from .serializers import (
-    MasterAdminLoginSerializer, ServiceSerializer, CompanyCreateSerializer,
+    ServiceSerializer, CompanyCreateSerializer,
     CompanyListSerializer, CompanyDetailSerializer, CompanyDetailedInfoSerializer,
-    CompanyUserLoginSerializer, CompanyServiceSerializer,
+    CompanyServiceSerializer,
     ServicePasswordChangeSerializer, SecurityLogSerializer,
     MasterAdminPasswordChangeSerializer, MasterAdminProfileSerializer
+)
+from .optimized_serializers import (
+    FastMasterAdminLoginSerializer, FastCompanyUserLoginSerializer
 )
 from notifications.models import Notification
 from notifications.serializers import NotificationCreateSerializer
@@ -62,27 +68,69 @@ class MasterAdminLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        print(f"🔍 DEBUG: Login request received")
-        print(f"🔍 DEBUG: Request data: {request.data}")
-        print(f"🔍 DEBUG: Request headers: {dict(request.headers)}")
-
-        serializer = MasterAdminLoginSerializer(data=request.data)
-        print(f"🔍 DEBUG: Serializer created with data: {request.data}")
+        serializer = FastMasterAdminLoginSerializer(data=request.data)
 
         if serializer.is_valid():
-            print(f"🔍 DEBUG: Serializer is valid")
             user = serializer.validated_data['user']
+            master_admin = user.master_admin
+            
+            # Security check: Account lockout
+            if master_admin.is_locked and master_admin.locked_until and master_admin.locked_until > timezone.now():
+                return Response({
+                    'error': 'Account is temporarily locked due to security reasons',
+                    'locked_until': master_admin.locked_until.isoformat()
+                }, status=status.HTTP_423_LOCKED)
+            
+            # Check IP restrictions FIRST
+            from .ip_restriction_utils import is_ip_allowed, get_ip_restriction_error_message
+            if not is_ip_allowed(master_admin, request):
+                # Log blocked IP attempt
+                log_security_event(user, 'LOGIN_FAILED', request, 'IP address not authorized')
+                return Response(
+                    get_ip_restriction_error_message(master_admin, request),
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if 2FA is required
+            requires_2fa = serializer.validated_data.get('requires_2fa', False)
+            if requires_2fa is True:
+                return Response({
+                    'requires_2fa': True,
+                    'message': '2FA code required',
+                    'user_id': user.id  # Temporary identifier for 2FA step
+                })
 
-            # Generate JWT tokens
+            # Generate JWT tokens (full login)
             refresh = RefreshToken.for_user(user)
             access_token = refresh.access_token
 
             # Update master admin login info
-            master_admin = user.master_admin
             master_admin.last_login_ip = get_client_ip(request)
             master_admin.login_attempts = 0
             master_admin.save()
 
+            # Queue background security tasks (non-blocking) - optional if Redis unavailable
+            try:
+                from .async_security_tasks import (
+                    send_login_notification_async,
+                    update_device_fingerprint_async
+                )
+                
+                # Prepare request data for async tasks
+                request_data = {
+                    'META': dict(request.META),
+                    'ip_address': get_client_ip(request)
+                }
+                
+                # Queue async tasks (immediate return)
+                send_login_notification_async.delay(master_admin.id, request_data)
+                update_device_fingerprint_async.delay(
+                    master_admin.id, 'master_admin', request_data
+                )
+            except Exception as e:
+                # Fallback: continue without async tasks if Redis/Celery unavailable
+                print(f'⚠️ Async tasks unavailable: {e}')
+            
             # Log successful login
             log_security_event(user, 'LOGIN_SUCCESS', request, 'Master admin login')
 
@@ -95,37 +143,54 @@ class MasterAdminLoginView(APIView):
                     'company_name': master_admin.company_name,
                     'is_master_admin': True
                 },
-                'first_login_required': False,  # Master admin doesn't need first login
-                'approval_pending': False,      # Master admin doesn't need approval
-                'approval_status': 'approved'   # Master admin is always approved
+                'first_login_required': False,
+                'approval_pending': False,
+                'approval_status': 'approved'
             })
 
-        # Log failed login attempt
+        # Log failed login attempt and return attempt info
         email = request.data.get('email')
         if email:
             try:
                 user = User.objects.get(email=email)
                 master_admin = user.master_admin
                 master_admin.login_attempts += 1
-                if master_admin.login_attempts >= 5:
+                
+                max_attempts = 5
+                remaining_attempts = max_attempts - master_admin.login_attempts
+                
+                if master_admin.login_attempts >= max_attempts:
                     master_admin.is_locked = True
                     master_admin.locked_until = timezone.now() + timezone.timedelta(minutes=30)
+                    
                 master_admin.save()
-
                 log_security_event(user, 'LOGIN_FAILED', request, 'Failed master admin login')
+                
+                # Return detailed error with attempt info
+                if master_admin.is_locked:
+                    return Response({
+                        'error': 'Account locked due to too many failed attempts. Try again in 30 minutes.',
+                        'locked': True,
+                        'locked_until': master_admin.locked_until.isoformat() if master_admin.locked_until else None
+                    }, status=status.HTTP_423_LOCKED)
+                else:
+                    return Response({
+                        'error': f'Login failed. {remaining_attempts} attempts remaining.',
+                        'attempts_remaining': remaining_attempts,
+                        'max_attempts': max_attempts
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                    
             except (User.DoesNotExist, MasterAdmin.DoesNotExist):
                 pass
 
-        print(f"🔍 DEBUG: Serializer validation failed")
-        print(f"🔍 DEBUG: Serializer errors: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'error': 'Login failed. Please try again.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class ServiceListView(ListAPIView):
     """List all available services"""
     queryset = Service.objects.filter(is_active=True)
     serializer_class = ServiceSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]  # Public endpoint for company creation
 
 
 class CompanyListCreateView(ListCreateAPIView):
@@ -136,7 +201,7 @@ class CompanyListCreateView(ListCreateAPIView):
     def get_queryset(self):
         # Only master admins can see all companies
         if hasattr(self.request.user, 'master_admin'):
-            return Company.objects.all()
+            return Company.objects.select_related('created_by', 'approved_by').prefetch_related('users', 'company_services__service')
         return Company.objects.none()
 
     def get_serializer_class(self):
@@ -180,7 +245,11 @@ class CompanyListCreateView(ListCreateAPIView):
             if hasattr(company, '_service_credentials') and company._service_credentials:
                 self._save_service_credentials_file(company, company._service_credentials)
 
-        # Prepare response with service credentials
+        # Get the company user for credentials
+        company_user = company.users.first()
+        user_email = company_user.user.email if company_user else None
+        
+        # Prepare response with company credentials
         response_data = {
             'message': 'Company created successfully.',
             'company': {
@@ -188,29 +257,31 @@ class CompanyListCreateView(ListCreateAPIView):
                 'name': company.name,
                 'email': company.email,
                 'approval_status': company.approval_status
+            },
+            'user_credentials': {
+                'email': user_email,
+                'password': serializer.validated_data.get('user_password')
             }
         }
-
-        # Include service credentials in response for master admin
-        if hasattr(company, '_service_credentials') and company._service_credentials:
-            response_data['service_credentials'] = company._service_credentials
-            response_data['credentials_file'] = f'service_credentials_{company.name.lower().replace(" ", "_")}.txt'
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
     def _save_service_credentials_file(self, company, service_credentials):
         """Save service credentials to a file for master admin"""
-        import os
         from datetime import datetime
 
-        # Create scripts directory if it doesn't exist
-        scripts_dir = os.path.join(settings.BASE_DIR, 'scripts')
-        os.makedirs(scripts_dir, exist_ok=True)
+        # Get safe scripts directory
+        scripts_dir = get_safe_scripts_path()
 
-        # Generate filename
-        company_name_safe = company.name.lower().replace(' ', '_').replace('-', '_')
+        # Generate safe filename
+        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
         filename = f'service_credentials_{company_name_safe}.txt'
-        filepath = os.path.join(scripts_dir, filename)
+        
+        # Validate filename
+        filename = validate_filename(filename)
+        
+        # Use safe path joining
+        filepath = safe_join(scripts_dir, filename)
 
         # Get company user email
         company_user = company.users.first()
@@ -234,11 +305,13 @@ SERVICE PASSWORDS:
 Type: {cred['service_type']}
 Service ID: {cred['service_id']}
 Password: {cred['password']}
+Unique Service IDs: {', '.join(cred.get('unique_service_ids', ['N/A']))}
 
 """
 
         content += """NOTE: These passwords expire in 90 days.
 You can change them after logging into each service.
+Use the Unique Service ID for login instead of username.
 """
 
         # Write to file
@@ -259,6 +332,60 @@ class CompanyDetailView(RetrieveUpdateDestroyAPIView):
         elif hasattr(self.request.user, 'company_user'):
             return Company.objects.filter(id=self.request.user.company_user.company.id)
         return Company.objects.none()
+    
+    def update(self, request, *args, **kwargs):
+        """Update company with service management"""
+        # Only master admins can update companies
+        if not hasattr(request.user, 'master_admin'):
+            return Response(
+                {'error': 'Only master admins can update companies.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        instance = self.get_object()
+        
+        # Handle services update if provided
+        services_data = request.data.get('services')
+        if services_data is not None:
+            with transaction.atomic():
+                # Get current service IDs
+                current_service_ids = set(
+                    instance.company_services.filter(is_active=True).values_list('service_id', flat=True)
+                )
+                
+                # Get new service IDs from request
+                new_service_ids = set(services_data)
+                
+                # Services to add
+                services_to_add = new_service_ids - current_service_ids
+                # Services to remove
+                services_to_remove = current_service_ids - new_service_ids
+                
+                # Add new services
+                for service_id in services_to_add:
+                    try:
+                        service = Service.objects.get(id=service_id, is_active=True)
+                        CompanyService.objects.create(
+                            company=instance,
+                            service=service,
+                            assigned_by=request.user,
+                            service_password=make_password(''),  # Empty - company will create service credentials
+                            password_expires_at=timezone.now() + timedelta(days=365)
+                        )
+                    except Service.DoesNotExist:
+                        continue
+                
+                # Remove services
+                instance.company_services.filter(
+                    service_id__in=services_to_remove
+                ).update(is_active=False)
+        
+        # Update other company fields
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return Response(serializer.data)
 
     def perform_destroy(self, instance):
         """Custom delete logic with security logging and proper cascade deletion"""
@@ -309,32 +436,38 @@ class CompanyDetailView(RetrieveUpdateDestroyAPIView):
         """Clean up service credentials files for the deleted company"""
         import os
 
-        # Generate possible filenames
-        company_name_safe = company.name.lower().replace(' ', '_').replace('-', '_')
+        # Get safe scripts directory
+        scripts_dir = get_safe_scripts_path()
+        
+        # Generate safe filename variations
+        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
         possible_filenames = [
             f'service_credentials_{company_name_safe}.txt',
-            f'service_credentials_{company.name.lower().replace(" ", "_")}.txt'
         ]
 
-        scripts_dir = os.path.join(settings.BASE_DIR, 'scripts')
         files_deleted = 0
 
         for filename in possible_filenames:
-            filepath = os.path.join(scripts_dir, filename)
-            if os.path.exists(filepath):
-                try:
+            try:
+                # Validate filename before using
+                safe_filename = validate_filename(filename)
+                # Validate filename before using
+                safe_filename = validate_filename(filename)
+                filepath = safe_join(scripts_dir, safe_filename)
+                
+                if os.path.exists(filepath):
                     os.remove(filepath)
                     files_deleted += 1
                     print(f'🔍 DEBUG: Deleted credentials file: {filename}')
-                except Exception as e:
-                    print(f'🔍 DEBUG: Error deleting credentials file {filename}: {e}')
+            except Exception as e:
+                print(f'🔍 DEBUG: Error deleting credentials file {filename}: {e}')
 
         if files_deleted == 0:
             print(f'🔍 DEBUG: No credentials files found for company {company.name}')
 
 
 class CompanyDetailedInfoView(APIView):
-    """Company detailed information submission"""
+    """Company detailed information submission with document upload"""
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request, company_id):
@@ -353,11 +486,56 @@ class CompanyDetailedInfoView(APIView):
             )
 
         company = company_user.company
-        serializer = CompanyDetailedInfoSerializer(company, data=request.data, partial=True)
+        
+        # Handle file uploads
+        uploaded_files = {}
+        for key, file in request.FILES.items():
+            if file:
+                # Save file with secure naming
+                import os
+                from django.core.files.storage import default_storage
+                
+                # Create secure filename
+                timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"company_{company.id}_{key}_{timestamp}_{file.name}"
+                
+                # Save file
+                file_path = default_storage.save(f"company_documents/{filename}", file)
+                uploaded_files[key] = file_path
+        
+        # Prepare data for serializer (exclude files from form_data)
+        form_data = {}
+        for key, value in request.data.items():
+            if key not in request.FILES:
+                form_data[key] = value
+        
+        if uploaded_files:
+            form_data['uploaded_documents'] = uploaded_files
+        
+        serializer = CompanyDetailedInfoSerializer(company, data=form_data, partial=True)
 
         if serializer.is_valid():
             with transaction.atomic():
                 updated_company = serializer.save()
+                
+                # Store document paths in company model if needed
+                if uploaded_files:
+                    # You can add a JSONField to Company model to store document paths
+                    # For now, we'll store in special_requirements as a JSON string
+                    import json
+                    existing_docs = {}
+                    if company.special_requirements:
+                        try:
+                            existing_docs = json.loads(company.special_requirements)
+                        except:
+                            existing_docs = {}
+                    
+                    if 'documents' not in existing_docs:
+                        existing_docs['documents'] = {}
+                    
+                    existing_docs['documents'].update(uploaded_files)
+                    company.special_requirements = json.dumps(existing_docs)
+                    company.save()
 
                 # Mark first login as completed
                 if not company_user.first_login_completed:
@@ -467,9 +645,30 @@ class CompanyUserLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        serializer = CompanyUserLoginSerializer(data=request.data)
+        serializer = FastCompanyUserLoginSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
+            company_user = user.company_user
+            
+            # Check IP restrictions FIRST
+            from company_dashboard.ip_restriction_views import is_ip_allowed
+            if not is_ip_allowed(company_user.company, get_client_ip(request)):
+                # Log blocked IP attempt
+                log_security_event(user, 'LOGIN_FAILED', request, 'IP address not authorized')
+                return Response({
+                    'error': 'Access denied from this IP address. Please contact your administrator.',
+                    'ip_blocked': True
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Check if 2FA is required
+            requires_2fa = serializer.validated_data.get('requires_2fa', False)
+            if requires_2fa is True:
+                return Response({
+                    'requires_2fa': True,
+                    'message': '2FA code required',
+                    'user_id': user.id
+                })
+            
             company_user = user.company_user
 
             # Generate JWT tokens
@@ -482,6 +681,100 @@ class CompanyUserLoginView(APIView):
             company_user.login_attempts = 0
             company_user.save()
 
+            # Create session for Active Sessions tracking
+            from company_dashboard.security_models import CompanyUserSession
+            from user_agents import parse
+            import secrets
+            import string
+            
+            # Generate session key
+            session_key = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(40))
+            
+            # Parse user agent
+            user_agent_string = request.META.get('HTTP_USER_AGENT', '')
+            user_agent = parse(user_agent_string)
+            
+            # Create session
+            CompanyUserSession.objects.create(
+                user=company_user,
+                session_key=session_key,
+                device_type='mobile' if user_agent.is_mobile else 'desktop',
+                browser=f"{user_agent.browser.family} {user_agent.browser.version_string}",
+                os=f"{user_agent.os.family} {user_agent.os.version_string}",
+                ip_address=get_client_ip(request),
+                user_agent=user_agent_string,
+                is_current=True,
+                expires_at=timezone.now() + timezone.timedelta(hours=24)
+            )
+            
+            # Queue background security tasks (non-blocking) - optional if Redis unavailable
+            try:
+                from .async_security_tasks import (
+                    send_company_login_alert_async,
+                    update_device_fingerprint_async,
+                    run_threat_detection_async
+                )
+                
+                # Prepare request data for async tasks
+                request_data = {
+                    'META': dict(request.META),
+                    'ip_address': get_client_ip(request)
+                }
+                
+                # Queue async tasks (immediate return)
+                device_info = f"{user_agent.browser.family} on {user_agent.os.family}"
+                send_company_login_alert_async.delay(
+                    company_user.company.id, user.email, get_client_ip(request), device_info
+                )
+                update_device_fingerprint_async.delay(
+                    company_user.id, 'company_user', request_data
+                )
+                run_threat_detection_async.delay(
+                    company_user.company.id, user.email, get_client_ip(request),
+                    request.META.get('HTTP_USER_AGENT', ''), True
+                )
+            except Exception as e:
+                # Fallback: continue without async tasks if Redis/Celery unavailable
+                print(f'⚠️ Async tasks unavailable: {e}')
+            
+            # Only keep critical security checks (fast operations)
+            from company_dashboard.geolocation_views import check_geolocation_access
+            try:
+                # Quick geolocation check (cached results)
+                geo_result = check_geolocation_access(
+                    company_user.company,
+                    get_client_ip(request),
+                    user.email
+                )
+                
+                if not geo_result['allowed']:
+                    return Response({
+                        'error': f'Access denied from location. Contact administrator.',
+                        'location_blocked': True
+                    }, status=status.HTTP_403_FORBIDDEN)
+                
+                if geo_result['requires_2fa']:
+                    return Response({
+                        'requires_2fa': True,
+                        'message': '2FA required for this location',
+                        'user_id': user.id,
+                        'geolocation_2fa': True
+                    })
+                    
+            except Exception as e:
+                print(f'🌍 GEOLOCATION ERROR: {str(e)}')
+            
+            # Quick security log (essential only)
+            from company_dashboard.security_models import CompanySecurityLog
+            CompanySecurityLog.objects.create(
+                company=company_user.company,
+                user_email=user.email,
+                action='login',
+                ip_address=get_client_ip(request),
+                success=True,
+                details='Login successful'
+            )
+            
             # Log successful login
             log_security_event(user, 'LOGIN_SUCCESS', request, 'Company user login')
 
@@ -500,7 +793,8 @@ class CompanyUserLoginView(APIView):
                     'company_name': company_user.company.name,
                     'company_logo': logo_url,
                     'is_company_user': True
-                }
+                },
+                'must_change_password': company_user.must_change_password
             }
 
             # Check if first login is required
@@ -511,6 +805,9 @@ class CompanyUserLoginView(APIView):
                 response_data['approval_pending'] = True
                 response_data['approval_status'] = company_user.company.approval_status
                 print(f'🔍 DEBUG: Setting approval_pending=True for user {user.email}')
+            elif serializer.validated_data.get('force_password_reset'):
+                response_data['force_password_reset'] = True
+                print(f'🔍 DEBUG: Setting force_password_reset=True for user {user.email}')
             else:
                 print(f'🔍 DEBUG: No special flags set for user {user.email}')
                 print(f'🔍 DEBUG: Company status: {company_user.company.approval_status}')
@@ -519,83 +816,90 @@ class CompanyUserLoginView(APIView):
             print(f'🔍 DEBUG: Final response_data: {response_data}')
             return Response(response_data)
 
-        # Log failed login attempt
+        # Log failed login attempt and return attempt info
         email = request.data.get('email')
         if email:
             try:
                 user = User.objects.get(email=email)
-                company_user = user.company_user
+                if hasattr(user, 'company_user'):
+                    company_user = user.company_user
+                else:
+                    return Response({'error': 'Login failed. Please try again.'}, status=status.HTTP_401_UNAUTHORIZED)
                 company_user.login_attempts += 1
-                if company_user.login_attempts >= 5:
+                
+                max_attempts = 5
+                remaining_attempts = max_attempts - company_user.login_attempts
+                
+                if company_user.login_attempts >= max_attempts:
                     company_user.is_locked = True
                     company_user.locked_until = timezone.now() + timezone.timedelta(minutes=30)
+                    
                 company_user.save()
-
+                # AI-Enhanced Threat Detection for failed login
+                from company_dashboard.threat_detection_engine import threat_monitor
+                from company_dashboard.security_models import CompanySecurityLog
+                try:
+                    threats = threat_monitor.monitor_login_attempt(
+                        company_user.company,
+                        user.email,
+                        get_client_ip(request),
+                        request.META.get('HTTP_USER_AGENT', ''),
+                        success=False
+                    )
+                    if threats:
+                        print(f'🔍 THREAT DETECTION: {len(threats)} threats detected for failed login {user.email}')
+                    
+                    # Log failed login to Company Security Log
+                    CompanySecurityLog.objects.create(
+                        company=company_user.company,
+                        user_email=user.email,
+                        action='failed_login',
+                        ip_address=get_client_ip(request),
+                        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                        success=False,
+                        details=f'Failed login attempt - {remaining_attempts} attempts remaining'
+                    )
+                except Exception as e:
+                    print(f'🔍 THREAT DETECTION ERROR: {str(e)}')
+                
+                # Device Fingerprinting for failed attempts
+                try:
+                    from company_dashboard.device_management_views import DeviceManagementView
+                    device_view = DeviceManagementView()
+                    
+                    user_agent_string = request.META.get('HTTP_USER_AGENT', '')
+                    fingerprint_data = {
+                        'userAgent': user_agent_string,
+                        'screen': '',
+                        'timezone': '',
+                        'language': request.META.get('HTTP_ACCEPT_LANGUAGE', '').split(',')[0] if request.META.get('HTTP_ACCEPT_LANGUAGE') else '',
+                        'platform': ''
+                    }
+                    
+                    device_view._register_device_fingerprint(company_user, fingerprint_data, get_client_ip(request), failed_attempt=True)
+                except Exception as e:
+                    print(f'📱 Device fingerprinting error (failed login): {str(e)}')
+                
                 log_security_event(user, 'LOGIN_FAILED', request, 'Failed company user login')
+                
+                # Return detailed error with attempt info
+                if company_user.is_locked:
+                    return Response({
+                        'error': 'Account locked due to too many failed attempts. Try again in 30 minutes.',
+                        'locked': True,
+                        'locked_until': company_user.locked_until.isoformat() if company_user.locked_until else None
+                    }, status=status.HTTP_423_LOCKED)
+                else:
+                    return Response({
+                        'error': f'Login failed. {remaining_attempts} attempts remaining.',
+                        'attempts_remaining': remaining_attempts,
+                        'max_attempts': max_attempts
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                    
             except (User.DoesNotExist, CompanyUser.DoesNotExist):
                 pass
 
-        return Response(serializer.errors, status=status.HTTP_401_UNAUTHORIZED)
-
-
-class CompanyUserPasswordChangeView(APIView):
-    """Company user password change endpoint"""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        # Check if user is a company user
-        if not hasattr(request.user, 'company_user'):
-            return Response(
-                {'error': 'Only company users can change password.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        from .serializers import CompanyUserPasswordChangeSerializer
-
-        serializer = CompanyUserPasswordChangeSerializer(data=request.data)
-        if serializer.is_valid():
-            current_password = serializer.validated_data['current_password']
-            new_password = serializer.validated_data['new_password']
-
-            # Verify current password
-            if check_password(current_password, request.user.password):
-                # Update password
-                request.user.set_password(new_password)
-                request.user.save()
-
-                # Update company user password expiration
-                company_user = request.user.company_user
-                company_user.password_changed_at = timezone.now()
-                company_user.password_expires_at = timezone.now() + timezone.timedelta(days=90)
-                company_user.save()
-
-                # Log password change
-                log_security_event(
-                    request.user,
-                    'PASSWORD_CHANGED',
-                    request,
-                    'Company user password changed successfully'
-                )
-
-                return Response({
-                    'message': 'Password changed successfully',
-                    'password_expires_at': company_user.password_expires_at
-                })
-            else:
-                # Log failed password change attempt
-                log_security_event(
-                    request.user,
-                    'PASSWORD_CHANGE_FAILED',
-                    request,
-                    'Invalid current password provided'
-                )
-
-                return Response(
-                    {'error': 'Current password is incorrect.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Login failed. Please try again.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class CompanyServicesView(ListAPIView):
@@ -1040,11 +1344,21 @@ class CompanyServiceCredentialsView(APIView):
             cs.password_expires_at = timezone.now() + timezone.timedelta(days=90)
             cs.save()
 
+            # Get service users for this service to include unique_service_id
+            service_users = CompanyServiceUser.objects.filter(
+                company=company,
+                service=cs.service,
+                is_active=True
+            )
+            
+            unique_service_ids = [su.unique_service_id for su in service_users] if service_users.exists() else ['N/A']
+
             service_credentials.append({
                 'service_id': cs.service.id,
                 'service_name': cs.service.name,
                 'service_type': cs.service.service_type,
-                'password': new_password
+                'password': new_password,
+                'unique_service_ids': unique_service_ids
             })
 
         # Save credentials to file
@@ -1078,17 +1392,20 @@ class CompanyServiceCredentialsView(APIView):
 
     def _save_service_credentials_file(self, company, service_credentials):
         """Save service credentials to a file for master admin"""
-        import os
         from datetime import datetime
 
-        # Create scripts directory if it doesn't exist
-        scripts_dir = os.path.join(settings.BASE_DIR, 'scripts')
-        os.makedirs(scripts_dir, exist_ok=True)
+        # Get safe scripts directory
+        scripts_dir = get_safe_scripts_path()
 
-        # Generate filename
-        company_name_safe = company.name.lower().replace(' ', '_').replace('-', '_')
+        # Generate safe filename
+        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
         filename = f'service_credentials_{company_name_safe}.txt'
-        filepath = os.path.join(scripts_dir, filename)
+        
+        # Validate filename
+        filename = validate_filename(filename)
+        
+        # Use safe path joining
+        filepath = safe_join(scripts_dir, filename)
 
         # Get company user email
         company_user = company.users.first()
@@ -1112,11 +1429,13 @@ SERVICE PASSWORDS:
 Type: {cred['service_type']}
 Service ID: {cred['service_id']}
 Password: {cred['password']}
+Unique Service IDs: {', '.join(cred.get('unique_service_ids', ['N/A']))}
 
 """
 
         content += """NOTE: These passwords expire in 90 days.
 You can change them after logging into each service.
+Use the Unique Service ID for login instead of username.
 """
 
         # Write to file
@@ -1225,6 +1544,7 @@ class CompanyServiceUserListCreateView(ListCreateAPIView):
         if hasattr(service_user, '_plain_password'):
             self.created_credentials = {
                 'username': service_user.username,
+                'unique_service_id': service_user.unique_service_id,
                 'password': service_user._plain_password
             }
 
@@ -1463,6 +1783,128 @@ class CompanyProfileView(APIView):
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
+class CompanyDetailsView(APIView):
+    """Company details view and edit for company users"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get company details for the authenticated company user"""
+        if not hasattr(request.user, 'company_user'):
+            return Response(
+                {'error': 'Only company users can access company details.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_user = request.user.company_user
+        company = company_user.company
+
+        # Return company data
+        logo_url = None
+        if company.logo:
+            logo_url = request.build_absolute_uri(company.logo.url)
+
+        return Response({
+            'id': company.id,
+            'name': company.name,
+            'email': company.email,
+            'phone': company.phone,
+            'address': company.address,
+            'logo': logo_url,
+            'business_type': company.business_type,
+            'industry': company.industry,
+            'employee_count': company.employee_count,
+            'annual_revenue': company.annual_revenue,
+            'website': company.website,
+            'gst_number': company.gst_number,
+            'pan_number': company.pan_number,
+            'registration_number': company.registration_number,
+            'contact_person_name': company.contact_person_name,
+            'contact_person_title': company.contact_person_title,
+            'contact_person_email': company.contact_person_email,
+            'contact_person_phone': company.contact_person_phone,
+            'description': company.description,
+            'domain_name': company.domain_name,
+            'approval_status': company.approval_status,
+            'created_at': company.created_at.isoformat() if company.created_at else None,
+            'updated_at': company.updated_at.isoformat() if company.updated_at else None,
+        })
+
+    def put(self, request):
+        """Update company details"""
+        if not hasattr(request.user, 'company_user'):
+            return Response(
+                {'error': 'Only company users can update company details.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_user = request.user.company_user
+        company = company_user.company
+
+        # Fields that can be updated by company users
+        updatable_fields = [
+            'phone', 'address', 'business_type', 'industry', 'employee_count',
+            'annual_revenue', 'website', 'gst_number', 'pan_number',
+            'registration_number', 'contact_person_name', 'contact_person_title',
+            'contact_person_email', 'contact_person_phone', 'description', 'domain_name'
+        ]
+
+        # Update only the provided fields
+        updated_fields = []
+        for field in updatable_fields:
+            if field in request.data:
+                old_value = getattr(company, field)
+                new_value = request.data[field]
+                if old_value != new_value:
+                    setattr(company, field, new_value)
+                    updated_fields.append(field)
+
+        if updated_fields:
+            company.save()
+            
+            # Log the update
+            log_security_event(
+                request.user,
+                'COMPANY_DETAILS_UPDATED',
+                request,
+                f'Updated company details: {", ".join(updated_fields)}'
+            )
+
+        # Return updated company data
+        logo_url = None
+        if company.logo:
+            logo_url = request.build_absolute_uri(company.logo.url)
+
+        return Response({
+            'message': 'Company details updated successfully.',
+            'updated_fields': updated_fields,
+            'company': {
+                'id': company.id,
+                'name': company.name,
+                'email': company.email,
+                'phone': company.phone,
+                'address': company.address,
+                'logo': logo_url,
+                'business_type': company.business_type,
+                'industry': company.industry,
+                'employee_count': company.employee_count,
+                'annual_revenue': company.annual_revenue,
+                'website': company.website,
+                'gst_number': company.gst_number,
+                'pan_number': company.pan_number,
+                'registration_number': company.registration_number,
+                'contact_person_name': company.contact_person_name,
+                'contact_person_title': company.contact_person_title,
+                'contact_person_email': company.contact_person_email,
+                'contact_person_phone': company.contact_person_phone,
+                'description': company.description,
+                'domain_name': company.domain_name,
+                'approval_status': company.approval_status,
+                'created_at': company.created_at.isoformat() if company.created_at else None,
+                'updated_at': company.updated_at.isoformat() if company.updated_at else None,
+            }
+        })
+
+
 class CompanyLogoUpdateView(APIView):
     """Update company logo"""
     permission_classes = [IsAuthenticated]
@@ -1522,3 +1964,325 @@ class CompanyLogoUpdateView(APIView):
             import traceback
             traceback.print_exc()
             return Response({'error': f'Failed to update logo: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CompanyPasswordResetView(APIView):
+    """Reset company user password with enhanced security (Master Admin only)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, company_id):
+        # Only master admins can reset company passwords
+        if not hasattr(request.user, 'master_admin'):
+            return Response(
+                {'error': 'Only master admins can reset company passwords.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            company = Company.objects.get(id=company_id)
+            company_user = company.users.first()
+            
+            if not company_user:
+                return Response(
+                    {'error': 'No company user found for this company.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            with transaction.atomic():
+                # Generate new random password
+                new_password = self._generate_secure_password()
+                
+                # Save current password to history before reset
+                from company_dashboard.security_models import CompanyPasswordHistory
+                CompanyPasswordHistory.objects.create(
+                    user=company_user,
+                    password_hash=company_user.user.password
+                )
+                
+                # Update company user password
+                company_user.user.set_password(new_password)
+                company_user.user.save()
+                
+                # Enhanced security settings for admin reset
+                company_user.must_change_password = True
+                company_user.password_reset_by_admin = True
+                company_user.password_changed_at = timezone.now()
+                company_user.password_expires_at = timezone.now() + timezone.timedelta(days=90)
+                company_user.save()
+                
+                # Terminate all active sessions for security
+                from company_dashboard.security_models import CompanyUserSession
+                CompanyUserSession.objects.filter(user=company_user).delete()
+                
+                # Enhanced security logging
+                from company_dashboard.security_models import CompanySecurityLog
+                CompanySecurityLog.objects.create(
+                    company=company,
+                    user_email=company_user.user.email,
+                    action='password_change',
+                    ip_address=request.META.get('REMOTE_ADDR', ''),
+                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    success=True,
+                    details=f'Password reset by master admin for company: {company.name}'
+                )
+                
+                # Legacy security log for compatibility
+                log_security_event(
+                    request.user,
+                    'PASSWORD_RESET',
+                    request,
+                    f'Reset password for company: {company.name}'
+                )
+                
+                # Save credentials to file
+                credentials_file = self._save_reset_credentials_file(company, company_user.user.email, new_password)
+                
+                return Response({
+                    'message': 'Password reset successfully with enhanced security.',
+                    'company': {
+                        'id': company.id,
+                        'name': company.name,
+                        'email': company.email
+                    },
+                    'credentials': {
+                        'username': company_user.user.email,
+                        'password': new_password
+                    },
+                    'credentials_file': credentials_file,
+                    'security_actions': [
+                        'Password saved to history',
+                        'All active sessions terminated',
+                        'Security audit log created',
+                        'Password change required on next login'
+                    ]
+                })
+            
+        except Company.DoesNotExist:
+            return Response(
+                {'error': 'Company not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to reset password: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _generate_secure_password(self, length=12):
+        """Generate secure random password"""
+        import string
+        import secrets
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
+    
+    def _save_reset_credentials_file(self, company, username, password):
+        """Save reset credentials to file"""
+        from datetime import datetime
+        
+        # Get safe scripts directory
+        scripts_dir = get_safe_scripts_path()
+        
+        # Generate safe filename
+        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
+        filename = f'reset_credentials_{company_name_safe}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
+        
+        # Validate filename
+        filename = validate_filename(filename)
+        
+        # Use safe path joining
+        filepath = safe_join(scripts_dir, filename)
+        
+        # Create credentials file content
+        content = f"""RESET CREDENTIALS FOR {company.name.upper()}
+==================================================
+
+Company: {company.name}
+Reset Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Reset By: Master Admin
+
+LOGIN CREDENTIALS:
+--------------------
+Username/Email: {username}
+New Password: {password}
+
+IMPORTANT NOTES:
+- This is a temporary password
+- You MUST change this password after first login
+- Password expires in 90 days
+- Keep this file secure and delete after use
+
+Login URL: [Your Company Login URL]
+"""
+        
+        # Write to file securely
+        secure_file_write(filepath, content)
+        
+        return filename
+
+
+class CompanyDetailsView(APIView):
+    """Company details view and edit for company users"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get company details for the authenticated company user"""
+        if not hasattr(request.user, 'company_user'):
+            return Response(
+                {'error': 'Only company users can access company details.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_user = request.user.company_user
+        company = company_user.company
+
+        # Return company data
+        logo_url = None
+        if company.logo:
+            logo_url = request.build_absolute_uri(company.logo.url)
+
+        return Response({
+            'id': company.id,
+            'name': company.name,
+            'email': company.email,
+            'phone': company.phone,
+            'address': company.address,
+            'logo': logo_url,
+            'business_type': company.business_type,
+            'industry': company.industry,
+            'employee_count': company.employee_count,
+            'annual_revenue': company.annual_revenue,
+            'website': company.website,
+            'gst_number': company.gst_number,
+            'pan_number': company.pan_number,
+            'registration_number': company.registration_number,
+            'contact_person_name': company.contact_person_name,
+            'contact_person_title': company.contact_person_title,
+            'contact_person_email': company.contact_person_email,
+            'contact_person_phone': company.contact_person_phone,
+            'description': company.description,
+            'domain_name': company.domain_name,
+            'approval_status': company.approval_status,
+            'created_at': company.created_at.isoformat() if company.created_at else None,
+            'updated_at': company.updated_at.isoformat() if company.updated_at else None,
+        })
+
+    def put(self, request):
+        """Update company details"""
+        if not hasattr(request.user, 'company_user'):
+            return Response(
+                {'error': 'Only company users can update company details.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_user = request.user.company_user
+        company = company_user.company
+
+        # Fields that can be updated by company users
+        updatable_fields = [
+            'phone', 'address', 'business_type', 'industry', 'employee_count',
+            'annual_revenue', 'website', 'gst_number', 'pan_number',
+            'registration_number', 'contact_person_name', 'contact_person_title',
+            'contact_person_email', 'contact_person_phone', 'description', 'domain_name'
+        ]
+
+        # Update only the provided fields
+        updated_fields = []
+        for field in updatable_fields:
+            if field in request.data:
+                old_value = getattr(company, field)
+                new_value = request.data[field]
+                if old_value != new_value:
+                    setattr(company, field, new_value)
+                    updated_fields.append(field)
+
+        if updated_fields:
+            company.save()
+            
+            # Log the update
+            log_security_event(
+                request.user,
+                'COMPANY_DETAILS_UPDATED',
+                request,
+                f'Updated company details: {", ".join(updated_fields)}'
+            )
+
+        # Return updated company data
+        logo_url = None
+        if company.logo:
+            logo_url = request.build_absolute_uri(company.logo.url)
+
+        return Response({
+            'message': 'Company details updated successfully.',
+            'updated_fields': updated_fields,
+            'company': {
+                'id': company.id,
+                'name': company.name,
+                'email': company.email,
+                'phone': company.phone,
+                'address': company.address,
+                'logo': logo_url,
+                'business_type': company.business_type,
+                'industry': company.industry,
+                'employee_count': company.employee_count,
+                'annual_revenue': company.annual_revenue,
+                'website': company.website,
+                'gst_number': company.gst_number,
+                'pan_number': company.pan_number,
+                'registration_number': company.registration_number,
+                'contact_person_name': company.contact_person_name,
+                'contact_person_title': company.contact_person_title,
+                'contact_person_email': company.contact_person_email,
+                'contact_person_phone': company.contact_person_phone,
+                'description': company.description,
+                'domain_name': company.domain_name,
+                'approval_status': company.approval_status,
+                'created_at': company.created_at.isoformat() if company.created_at else None,
+                'updated_at': company.updated_at.isoformat() if company.updated_at else None,
+            }
+        })
+
+
+class GenerateAutoCodeView(APIView):
+    """Generate auto code for testing (Master Admin only)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        # Only master admins can test auto-code generation
+        if not hasattr(request.user, 'master_admin'):
+            return Response(
+                {'error': 'Only master admins can generate auto codes.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company_id = request.data.get('company_id')
+        code_type = request.data.get('code_type')
+
+        if not company_id or not code_type:
+            return Response(
+                {'error': 'company_id and code_type are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from .utils import generate_auto_code
+            auto_code = generate_auto_code(company_id, code_type)
+            
+            return Response({
+                'success': True,
+                'auto_code': auto_code,
+                'company_id': company_id,
+                'code_type': code_type
+            })
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def mobile_logout(request):
+    """Simple mobile logout endpoint"""
+    return Response({'message': 'Logged out successfully'})

@@ -1,3 +1,4 @@
+from html import escape
 from django.db import models
 from django.contrib.auth.models import AbstractUser, User
 from django.utils import timezone
@@ -22,13 +23,24 @@ class MasterAdmin(models.Model):
     two_factor_secret = models.CharField(max_length=32, blank=True)
 
     def __str__(self):
-        return f"Master Admin - {self.company_name}"
+        from html import escape
+        return escape(f"Master Admin - {self.company_name}")
 
     def is_password_expired(self):
         return timezone.now() > self.password_expires_at
 
     def get_recovery_codes(self):
         return json.loads(self.recovery_codes) if self.recovery_codes else []
+    
+    def use_recovery_code(self, code):
+        """Mark a recovery code as used"""
+        codes = self.get_recovery_codes()
+        if code in codes:
+            codes.remove(code)
+            self.recovery_codes = json.dumps(codes)
+            self.save()
+            return True
+        return False
 
 
 class Company(models.Model):
@@ -42,6 +54,7 @@ class Company(models.Model):
 
     # Basic info (filled by master admin)
     name = models.CharField(max_length=255)
+    company_prefix = models.CharField(max_length=10, unique=True, help_text="Unique prefix for auto-generated codes (e.g., ACME, TECH)")
     email = models.EmailField(validators=[EmailValidator()])
     phone = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
@@ -65,6 +78,7 @@ class Company(models.Model):
     annual_revenue = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     website = models.URLField(blank=True)
     tax_id = models.CharField(max_length=50, blank=True)
+    pan_number = models.CharField(max_length=10, blank=True, help_text="PAN Card Number")
     gst_number = models.CharField(max_length=15, blank=True, help_text="GST Registration Number")
     registration_number = models.CharField(max_length=50, blank=True)
 
@@ -80,13 +94,82 @@ class Company(models.Model):
 
     # Company branding
     logo = models.ImageField(upload_to='company_logos/', blank=True, null=True)
+    
+    # Domain settings
+    domain_name = models.CharField(max_length=255, blank=True, help_text="Company domain (e.g., athenas.co.in)")
 
     class Meta:
         verbose_name_plural = "Companies"
         ordering = ['-created_at']
 
     def __str__(self):
-        return self.name
+        from .sanitizers import sanitize_html_input
+        return sanitize_html_input(self.name)
+
+
+class CompanyAutoCodeSettings(models.Model):
+    """Auto-code generation settings for each company"""
+    CODE_TYPES = [
+        ('employee', 'Employee ID'),
+        ('product', 'Product Code'),
+        ('invoice', 'Invoice Number'),
+        ('purchase_order', 'Purchase Order'),
+        ('inventory_purchase_order', 'Inventory Purchase Order'),
+        ('quotation', 'Quotation Number'),
+        ('customer', 'Customer ID'),
+        ('vendor', 'Vendor ID'),
+        ('supplier', 'Supplier Code'),
+        ('warehouse', 'Warehouse Code'),
+        ('category', 'Category Code'),
+        ('audit', 'Audit Number'),
+        ('asset', 'Asset Code'),
+        ('proforma_invoice', 'Proforma Invoice'),
+        ('payment', 'Payment Number'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='auto_code_settings')
+    code_type = models.CharField(max_length=30, choices=CODE_TYPES)
+    current_number = models.IntegerField(default=0)
+    number_length = models.IntegerField(default=3, help_text="Number of digits (e.g., 3 for 001)")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['company', 'code_type']
+        verbose_name = 'Company Auto Code Setting'
+        verbose_name_plural = 'Company Auto Code Settings'
+
+    def __str__(self):
+        return escape(f"{self.company.name} - {self.get_code_type_display()}")
+
+    def get_next_code(self):
+        """Generate next auto code for this type"""
+        self.current_number += 1
+        self.save()
+        number_str = str(self.current_number).zfill(self.number_length)
+        
+        # Map code types to their prefixes
+        code_prefixes = {
+            'employee': 'EMP',
+            'product': 'PRD',
+            'invoice': 'INV',
+            'purchase_order': 'POU',
+            'inventory_purchase_order': 'IPO',
+            'quotation': 'QUO',
+            'customer': 'CUS',
+            'vendor': 'VEN',
+            'supplier': 'SUP',
+            'warehouse': 'WH',
+            'category': 'CAT',
+            'audit': 'AUD',
+            'asset': 'AST',
+            'proforma_invoice': 'PFI',
+            'payment': 'PAY',
+        }
+        
+        prefix = code_prefixes.get(self.code_type, self.code_type.upper()[:3])
+        return escape(f"{self.company.company_prefix}{prefix}{number_str}")
 
 
 class Service(models.Model):
@@ -116,7 +199,8 @@ class Service(models.Model):
     features = models.JSONField(default=list)  # List of features
 
     def __str__(self):
-        return self.name
+        from .sanitizers import sanitize_html_input
+        return sanitize_html_input(self.name)
 
 
 class CompanyService(models.Model):
@@ -136,7 +220,7 @@ class CompanyService(models.Model):
         unique_together = ['company', 'service']
 
     def __str__(self):
-        return f"{self.company.name} - {self.service.name}"
+        return escape(f"{self.company.name} - {self.service.name}")
 
 
 class CompanyUser(models.Model):
@@ -158,10 +242,12 @@ class CompanyUser(models.Model):
 
     # Password management
     password_expires_at = models.DateTimeField()
+    password_changed_at = models.DateTimeField(null=True, blank=True)
     must_change_password = models.BooleanField(default=True)
+    password_reset_by_admin = models.BooleanField(default=False)  # Flag for admin-initiated password reset
 
     def __str__(self):
-        return f"{self.user.email} - {self.company.name}"
+        return escape(f"{self.user.email} - {self.company.name}")
 
     def is_password_expired(self):
         return timezone.now() > self.password_expires_at
@@ -179,6 +265,7 @@ class CompanyServiceUser(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='service_users')
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='service_users')
     username = models.CharField(max_length=150)
+    unique_service_id = models.CharField(max_length=200, unique=True, help_text="Unique ID format: COMPANY_username_001")
     email = models.EmailField()
     full_name = models.CharField(max_length=255)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='user')
@@ -203,10 +290,34 @@ class CompanyServiceUser(models.Model):
         verbose_name_plural = 'Company Service Users'
 
     def __str__(self):
-        return f"{self.username} - {self.service.name} ({self.company.name})"
+        return escape(f"{self.username} - {self.service.name} ({self.company.name})")
 
     def is_password_expired(self):
         return timezone.now() > self.password_expires_at
+    
+    @classmethod
+    def generate_unique_service_id(cls, company_prefix, username):
+        """Generate unique service ID with format: COMPANY_username_001"""
+        base_id = f"{company_prefix}_{username}"
+        existing_count = cls.objects.filter(
+            unique_service_id__startswith=base_id
+        ).count()
+        return f"{base_id}_{str(existing_count + 1).zfill(3)}"
+    
+    def save(self, *args, **kwargs):
+        # Auto-generate unique_service_id if not provided
+        if not self.unique_service_id:
+            self.unique_service_id = self.generate_unique_service_id(
+                self.company.company_prefix, 
+                self.username
+            )
+        
+        # Set default password expiration if not provided
+        if not self.password_expires_at:
+            from datetime import timedelta
+            self.password_expires_at = timezone.now() + timedelta(days=90)
+        
+        super().save(*args, **kwargs)
 
 
 class ServiceUserSession(models.Model):
@@ -224,7 +335,7 @@ class ServiceUserSession(models.Model):
         verbose_name_plural = 'Service User Sessions'
 
     def __str__(self):
-        return f"{self.service_user.username} - {self.login_time}"
+        return escape(f"{self.service_user.username} - {self.login_time}")
 
 
 class SecurityLog(models.Model):
@@ -256,4 +367,4 @@ class SecurityLog(models.Model):
         ordering = ['-timestamp']
 
     def __str__(self):
-        return f"{self.event_type} - {self.timestamp}"
+        return escape(f"{self.event_type} - {self.timestamp}")

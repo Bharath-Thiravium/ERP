@@ -1,0 +1,179 @@
+/* Mobile Responsive Styles for HR System */
+
+/* Base responsive utilities */
+.mobile-hidden {
+  @apply hidden md:block;
+}
+
+.mobile-only {
+  @apply block md:hidden;
+}
+
+.tablet-hidden {
+  @apply hidden lg:block;
+}
+
+.desktop-only {
+  @apply hidden lg:block;
+}
+
+/* Mobile Navigation */
+@media (max-width: 768px) {
+  .sidebar {
+    @apply fixed inset-y-0 left-0 z-50 w-64 transform -translate-x-full transition-transform duration-300 ease-in-out;
+  }
+  
+  .sidebar.open {
+    @apply translate-x-0;
+  }
+  
+  .sidebar-overlay {
+    @apply fixed inset-0 z-40 bg-black bg-opacity-50;
+  }
+  
+  .main-content {
+    @apply ml-0;
+  }
+  
+  .mobile-header {
+    @apply flex items-center justify-between p-4 bg-white shadow-sm;
+  }
+  
+  .mobile-menu-button {
+    @apply p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100;
+  }
+}
+
+/* Mobile Tables */
+@media (max-width: 768px) {
+  .responsive-table {
+    @apply block;
+  }
+  
+  .responsive-table thead {
+    @apply hidden;
+  }
+  
+  .responsive-table tbody {
+    @apply block;
+  }
+  
+  .responsive-table tr {
+    @apply block border border-gray-200 rounded-lg mb-4 p-4 bg-white shadow-sm;
+  }
+  
+  .responsive-table td {
+    @apply block text-right border-none py-2;
+  }
+  
+  .responsive-table td:before {
+    content: attr(data-label) ": ";
+    @apply float-left font-semibold text-gray-600;
+  }
+}
+
+/* Mobile Cards */
+.mobile-card {
+  @apply bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4;
+}
+
+.mobile-card-header {
+  @apply flex items-center justify-between mb-3 pb-3 border-b border-gray-100;
+}
+
+.mobile-card-title {
+  @apply text-lg font-semibold text-gray-900;
+}
+
+.mobile-card-content {
+  @apply space-y-3;
+}
+
+.mobile-card-actions {
+  @apply flex flex-wrap gap-2 mt-4 pt-3 border-t border-gray-100;
+}
+
+/* Mobile Forms */
+@media (max-width: 768px) {
+  .form-grid {
+    @apply grid-cols-1 gap-4;
+  }
+  
+  .form-group {
+    @apply mb-4;
+  }
+  
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-2;
+  }
+  
+  .form-input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  }
+  
+  .form-select {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  }
+  
+  .form-textarea {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px];
+  }
+}
+
+/* Mobile Employee Cards */
+.employee-card-mobile {
+  @apply bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4;
+}
+
+.employee-card-mobile .employee-header {
+  @apply flex items-center space-x-3 mb-3;
+}
+
+.employee-card-mobile .employee-avatar {
+  @apply w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold;
+}
+
+.employee-card-mobile .employee-info {
+  @apply flex-1;
+}
+
+.employee-card-mobile .employee-name {
+  @apply text-lg font-semibold text-gray-900;
+}
+
+.employee-card-mobile .employee-role {
+  @apply text-sm text-gray-600;
+}
+
+.employee-card-mobile .employee-details {
+  @apply space-y-2 text-sm;
+}
+
+.employee-card-mobile .employee-actions {
+  @apply flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100;
+}
+
+/* Mobile Status Badges */
+.status-badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.status-badge.active {
+  @apply bg-green-100 text-green-800;
+}
+
+.status-badge.inactive {
+  @apply bg-gray-100 text-gray-800;
+}
+
+.status-badge.pending {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.status-badge.approved {
+  @apply bg-green-100 text-green-800;
+}
+
+.status-badge.rejected {
+  @apply bg-red-100 text-red-800;
+}

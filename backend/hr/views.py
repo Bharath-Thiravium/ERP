@@ -1,586 +1,1053 @@
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework import viewsets, status, permissions
+from django.utils._os import safe_join
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.db.models import Count, Sum, Avg, Q
-from django.utils import timezone
-from datetime import datetime, timedelta
-from decimal import Decimal
-
-from authentication.permissions import IsServiceUser
+from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
+from django.views.decorators.csrf import csrf_exempt, csrf_protect
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView, ListAPIView, RetrieveAPIView, CreateAPIView
+from rest_framework.pagination import PageNumberPagination
+from django.db.models import Q, Count, Avg
+from django.db import transaction
 from authentication.models import ServiceUserSession
-from .models import (
-    Department, Designation, Employee, SalaryStructure,
-    Attendance, LeaveType, LeaveBalance, LeaveApplication, Payroll
-)
+from .models import Employee, Department, Designation, JobPosting, JobApplication
 from .serializers import (
-    DepartmentSerializer, DesignationSerializer, EmployeeSerializer, SalaryStructureSerializer,
-    AttendanceSerializer, LeaveTypeSerializer, LeaveBalanceSerializer, 
-    LeaveApplicationSerializer, PayrollSerializer, HRStatsSerializer, AttendanceSummarySerializer
+    EmployeeListSerializer, EmployeeDetailSerializer, EmployeeCreateSerializer,
+    DepartmentSerializer, DesignationSerializer, JobPostingSerializer, JobApplicationSerializer
 )
 
-class DepartmentViewSet(viewsets.ModelViewSet):
-    serializer_class = DepartmentSerializer
-    permission_classes = [IsServiceUser]
-    
-    def get_queryset(self):
-        # Get company from service user session or company user
-        if hasattr(self.request, 'service_user'):
-            company = self.request.service_user.company
-        elif hasattr(self.request.user, 'company_user'):
-            company = self.request.user.company_user.company
-        else:
-            return Department.objects.none()
-        
-        return Department.objects.filter(company=company)
-    
-    def perform_create(self, serializer):
-        # Get company from service user session or company user
-        if hasattr(self.request, 'service_user'):
-            company = self.request.service_user.company
-        elif hasattr(self.request.user, 'company_user'):
-            company = self.request.user.company_user.company
-        else:
-            raise PermissionDenied("No company association found")
-        
-        serializer.save(company=company)
 
-class DesignationViewSet(viewsets.ModelViewSet):
-    serializer_class = DesignationSerializer
-    permission_classes = [IsServiceUser]
-    
-    def get_queryset(self):
-        # Get company from service user session or company user
-        if hasattr(self.request, 'service_user'):
-            company = self.request.service_user.company
-        elif hasattr(self.request.user, 'company_user'):
-            company = self.request.user.company_user.company
-        else:
-            return Designation.objects.none()
-        
-        return Designation.objects.filter(company=company)
-    
-    def perform_create(self, serializer):
-        # Get company from service user session or company user
-        if hasattr(self.request, 'service_user'):
-            company = self.request.service_user.company
-        elif hasattr(self.request.user, 'company_user'):
-            company = self.request.user.company_user.company
-        else:
-            raise PermissionDenied("No company association found")
-        
-        serializer.save(company=company)
+class HRPagination(PageNumberPagination):
+    """Custom pagination for HR views"""
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
-class EmployeeViewSet(viewsets.ModelViewSet):
-    serializer_class = EmployeeSerializer
-    permission_classes = [IsServiceUser]
-    
-    def get_queryset(self):
-        # Get company from service user session or company user
-        if hasattr(self.request, 'service_user'):
-            company = self.request.service_user.company
-        elif hasattr(self.request.user, 'company_user'):
-            company = self.request.user.company_user.company
-        else:
-            return Employee.objects.none()
-        
-        queryset = Employee.objects.filter(company=company)
-        
-        # Filter by department
-        department = self.request.query_params.get('department')
-        if department:
-            queryset = queryset.filter(department_id=department)
-        
-        # Filter by status
-        status_filter = self.request.query_params.get('status')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        
-        # Search by name or employee_id
-        search = self.request.query_params.get('search')
-        if search:
-            queryset = queryset.filter(
-                Q(first_name__icontains=search) |
-                Q(last_name__icontains=search) |
-                Q(employee_id__icontains=search) |
-                Q(email__icontains=search)
-            )
-        
-        return queryset.select_related('department', 'designation', 'reporting_manager')
-    
-    def perform_create(self, serializer):
-        # Get company from service user session or company user
-        if hasattr(self.request, 'service_user'):
-            company = self.request.service_user.company
-            created_by = None  # Service users don't have User objects
-        elif hasattr(self.request.user, 'company_user'):
-            company = self.request.user.company_user.company
-            created_by = self.request.user
-        else:
-            raise PermissionDenied("No company association found")
-        
-        serializer.save(company=company, created_by=created_by)
-
-class AttendanceViewSet(viewsets.ModelViewSet):
-    serializer_class = AttendanceSerializer
-    permission_classes = [IsServiceUser]
-    
-    def get_queryset(self):
-        # Get company from service user session or company user
-        if hasattr(self.request, 'service_user'):
-            company = self.request.service_user.company
-        elif hasattr(self.request.user, 'company_user'):
-            company = self.request.user.company_user.company
-        else:
-            return Attendance.objects.none()
-        
-        queryset = Attendance.objects.filter(employee__company=company)
-        
-        # Filter by date
-        date = self.request.query_params.get('date')
-        if date:
-            queryset = queryset.filter(date=date)
-        else:
-            # Default to today
-            queryset = queryset.filter(date=timezone.now().date())
-        
-        # Filter by employee
-        employee = self.request.query_params.get('employee')
-        if employee:
-            queryset = queryset.filter(employee_id=employee)
-        
-        # Filter by department
-        department = self.request.query_params.get('department')
-        if department:
-            queryset = queryset.filter(employee__department_id=department)
-        
-        return queryset.select_related('employee', 'employee__department')
-    
-    @action(detail=False, methods=['post'])
-    def mark_attendance(self, request):
-        """Mark attendance for an employee"""
-        employee_id = request.data.get('employee_id')
-        action_type = request.data.get('action')  # 'check_in' or 'check_out'
-        location = request.data.get('location', '')
-        latitude = request.data.get('latitude')
-        longitude = request.data.get('longitude')
-        
-        try:
-            # Get company from service user session or company user
-            if hasattr(request, 'service_user'):
-                company = request.service_user.company
-            elif hasattr(request.user, 'company_user'):
-                company = request.user.company_user.company
-            else:
-                return Response({
-                    'success': False,
-                    'message': 'No company association found'
-                }, status=status.HTTP_401_UNAUTHORIZED)
-            
-            employee = Employee.objects.get(
-                employee_id=employee_id,
-                company=company
-            )
-            
-            today = timezone.now().date()
-            attendance, created = Attendance.objects.get_or_create(
-                employee=employee,
-                date=today,
-                defaults={'status': 'absent'}
-            )
-            
-            if action_type == 'check_in':
-                attendance.check_in_time = timezone.now().time()
-                attendance.check_in_location = location
-                attendance.check_in_latitude = latitude
-                attendance.check_in_longitude = longitude
-                attendance.status = 'present'
-                
-            elif action_type == 'check_out':
-                attendance.check_out_time = timezone.now().time()
-                attendance.check_out_location = location
-                
-                # Calculate working hours
-                if attendance.check_in_time:
-                    check_in = datetime.combine(today, attendance.check_in_time)
-                    check_out = datetime.combine(today, attendance.check_out_time)
-                    working_hours = (check_out - check_in).total_seconds() / 3600
-                    attendance.working_hours = round(working_hours, 2)
-                    
-                    # Calculate overtime (assuming 8 hours standard)
-                    if working_hours > 8:
-                        attendance.overtime_hours = round(working_hours - 8, 2)
-            
-            attendance.save()
-            
-            return Response({
-                'success': True,
-                'message': f'Attendance {action_type} recorded successfully',
-                'data': AttendanceSerializer(attendance).data
-            })
-            
-        except Employee.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': 'Employee not found'
-            }, status=status.HTTP_404_NOT_FOUND)
-
-class PayrollViewSet(viewsets.ModelViewSet):
-    serializer_class = PayrollSerializer
-    permission_classes = [IsServiceUser]
-    
-    def get_queryset(self):
-        # Get company from service user session or company user
-        if hasattr(self.request, 'service_user'):
-            company = self.request.service_user.company
-        elif hasattr(self.request.user, 'company_user'):
-            company = self.request.user.company_user.company
-        else:
-            return Payroll.objects.none()
-        
-        queryset = Payroll.objects.filter(employee__company=company)
-        
-        # Filter by month/year
-        month = self.request.query_params.get('month')
-        year = self.request.query_params.get('year')
-        if month:
-            queryset = queryset.filter(month=month)
-        if year:
-            queryset = queryset.filter(year=year)
-        
-        # Filter by employee
-        employee = self.request.query_params.get('employee')
-        if employee:
-            queryset = queryset.filter(employee_id=employee)
-        
-        return queryset.select_related('employee', 'employee__department')
-    
-    @action(detail=False, methods=['post'])
-    def process_payroll(self, request):
-        """Process payroll for a specific month/year"""
-        month = request.data.get('month')
-        year = request.data.get('year')
-        employee_ids = request.data.get('employee_ids', [])
-        
-        if not month or not year:
-            return Response({
-                'success': False,
-                'message': 'Month and year are required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Get company from service user session or company user
-        if hasattr(request, 'service_user'):
-            company = request.service_user.company
-        elif hasattr(request.user, 'company_user'):
-            company = request.user.company_user.company
-        else:
-            return Response({
-                'success': False,
-                'message': 'No company association found'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        employees = Employee.objects.filter(company=company, status='active')
-        
-        if employee_ids:
-            employees = employees.filter(id__in=employee_ids)
-        
-        processed_count = 0
-        errors = []
-        
-        for employee in employees:
-            try:
-                # Get or create payroll record
-                payroll, created = Payroll.objects.get_or_create(
-                    employee=employee,
-                    month=month,
-                    year=year,
-                    defaults={'status': 'draft'}
-                )
-                
-                if not created and payroll.status == 'processed':
-                    continue  # Skip already processed payroll
-                
-                # Get salary structure
-                try:
-                    salary_structure = employee.salary_structure
-                except SalaryStructure.DoesNotExist:
-                    errors.append(f"No salary structure found for {employee.full_name}")
-                    continue
-                
-                # Calculate attendance data
-                start_date = datetime(year, month, 1).date()
-                if month == 12:
-                    end_date = datetime(year + 1, 1, 1).date() - timedelta(days=1)
-                else:
-                    end_date = datetime(year, month + 1, 1).date() - timedelta(days=1)
-                
-                working_days = (end_date - start_date).days + 1
-                attendance_records = Attendance.objects.filter(
-                    employee=employee,
-                    date__range=[start_date, end_date]
-                )
-                
-                present_days = attendance_records.filter(
-                    status__in=['present', 'late', 'half_day']
-                ).count()
-                
-                leave_days = attendance_records.filter(status='on_leave').count()
-                
-                # Calculate salary components
-                payroll.basic_salary = salary_structure.basic_salary
-                payroll.hra = salary_structure.hra
-                payroll.da = salary_structure.da
-                payroll.transport_allowance = salary_structure.transport_allowance
-                payroll.medical_allowance = salary_structure.medical_allowance
-                payroll.other_allowances = salary_structure.other_allowances
-                
-                # Calculate overtime
-                total_overtime = attendance_records.aggregate(
-                    total=Sum('overtime_hours')
-                )['total'] or 0
-                payroll.overtime_amount = Decimal(str(total_overtime)) * Decimal('100')  # ₹100 per hour
-                
-                # Calculate deductions
-                payroll.pf_deduction = salary_structure.pf_deduction
-                payroll.esi_deduction = salary_structure.esi_deduction
-                payroll.professional_tax = salary_structure.professional_tax
-                
-                # Calculate totals
-                payroll.gross_salary = (
-                    payroll.basic_salary + payroll.hra + payroll.da +
-                    payroll.transport_allowance + payroll.medical_allowance +
-                    payroll.other_allowances + payroll.overtime_amount
-                )
-                
-                payroll.total_deductions = (
-                    payroll.pf_deduction + payroll.esi_deduction +
-                    payroll.professional_tax + payroll.tds_deduction + payroll.other_deductions
-                )
-                
-                payroll.net_salary = payroll.gross_salary - payroll.total_deductions
-                
-                # Set attendance data
-                payroll.working_days = working_days
-                payroll.present_days = present_days
-                payroll.leave_days = leave_days
-                
-                payroll.status = 'processed'
-                payroll.processed_at = timezone.now()
-                payroll.save()
-                
-                processed_count += 1
-                
-            except Exception as e:
-                errors.append(f"Error processing {employee.full_name}: {str(e)}")
-        
-        return Response({
-            'success': True,
-            'message': f'Processed payroll for {processed_count} employees',
-            'processed_count': processed_count,
-            'errors': errors
-        })
-
-class LeaveApplicationViewSet(viewsets.ModelViewSet):
-    serializer_class = LeaveApplicationSerializer
-    permission_classes = [IsServiceUser]
-    
-    def get_queryset(self):
-        # Get company from service user session or company user
-        if hasattr(self.request, 'service_user'):
-            company = self.request.service_user.company
-        elif hasattr(self.request.user, 'company_user'):
-            company = self.request.user.company_user.company
-        else:
-            return LeaveApplication.objects.none()
-        
-        return LeaveApplication.objects.filter(
-            employee__company=company
-        ).select_related('employee', 'leave_type', 'approved_by')
-    
-    @action(detail=True, methods=['post'])
-    def approve(self, request, pk=None):
-        """Approve a leave application"""
-        leave_application = self.get_object()
-        
-        # Check if user has permission to approve (manager or HR)
-        leave_application.status = 'approved'
-        # Get service user ID
-        if hasattr(request, 'service_user'):
-            leave_application.approved_by_id = request.service_user.id
-        leave_application.approved_at = timezone.now()
-        leave_application.save()
-        
-        return Response({
-            'success': True,
-            'message': 'Leave application approved successfully'
-        })
-    
-    @action(detail=True, methods=['post'])
-    def reject(self, request, pk=None):
-        """Reject a leave application"""
-        leave_application = self.get_object()
-        rejection_reason = request.data.get('reason', '')
-        
-        leave_application.status = 'rejected'
-        leave_application.rejection_reason = rejection_reason
-        # Get service user ID
-        if hasattr(request, 'service_user'):
-            leave_application.approved_by_id = request.service_user.id
-        leave_application.approved_at = timezone.now()
-        leave_application.save()
-        
-        return Response({
-            'success': True,
-            'message': 'Leave application rejected successfully'
-        })
 
 class HRDashboardViewSet(viewsets.ViewSet):
-    """HR Dashboard statistics and analytics"""
-    permission_classes = [IsServiceUser]
-    
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        """Get HR dashboard statistics"""
-        # Get company from service user session or company user
-        if hasattr(request, 'service_user'):
-            company = request.service_user.company
-        elif hasattr(request.user, 'company_user'):
-            company = request.user.company_user.company
-        else:
-            return Response({'error': 'No company association found'}, status=status.HTTP_401_UNAUTHORIZED)
-        today = timezone.now().date()
-        current_month = today.month
-        current_year = today.year
-        
-        # Employee statistics
-        total_employees = Employee.objects.filter(company=company).count()
-        active_employees = Employee.objects.filter(company=company, status='active').count()
-        
-        # Today's attendance
-        today_attendance = Attendance.objects.filter(
-            employee__company=company,
-            date=today
-        )
-        present_today = today_attendance.filter(status__in=['present', 'late']).count()
-        on_leave = today_attendance.filter(status='on_leave').count()
-        
-        # Leave applications
-        pending_leave_approvals = LeaveApplication.objects.filter(
-            employee__company=company,
-            status='pending'
-        ).count()
-        
-        # Monthly payroll
-        monthly_payroll = Payroll.objects.filter(
-            employee__company=company,
-            month=current_month,
-            year=current_year
-        ).aggregate(total=Sum('net_salary'))['total'] or 0
-        
-        # Attendance rate
-        if active_employees > 0:
-            attendance_rate = (present_today / active_employees) * 100
-        else:
-            attendance_rate = 0
-        
-        # Departments count
-        departments_count = Department.objects.filter(company=company).count()
-        
-        # New joinees this month
-        start_of_month = today.replace(day=1)
-        new_joinees = Employee.objects.filter(
-            company=company,
-            join_date__gte=start_of_month,
-            join_date__lte=today
-        ).count()
-        
-        # Recent activity (last 5 activities)
-        recent_activity = []
-        
-        # Get recent leave applications
-        recent_leaves = LeaveApplication.objects.filter(
-            employee__company=company
-        ).order_by('-applied_at')[:3]
-        
-        for leave in recent_leaves:
-            recent_activity.append({
-                'id': f'leave_{leave.id}',
-                'type': 'leave',
-                'description': f'{leave.employee.full_name} applied for {leave.leave_type.name}',
-                'time': f'{(timezone.now() - leave.applied_at).days} days ago'
-            })
-        
-        # Get recent employee joins
-        recent_joins = Employee.objects.filter(
-            company=company,
-            join_date__gte=today - timedelta(days=30)
-        ).order_by('-join_date')[:2]
-        
-        for emp in recent_joins:
-            recent_activity.append({
-                'id': f'join_{emp.id}',
-                'type': 'join',
-                'description': f'{emp.full_name} joined as {emp.designation.title if emp.designation else "Employee"}',
-                'time': f'{(today - emp.join_date).days} days ago'
-            })
-        
-        stats_data = {
-            'total_employees': total_employees,
-            'active_employees': active_employees,
-            'present_today': present_today,
-            'on_leave': on_leave,
-            'pending_leave_approvals': pending_leave_approvals,
-            'monthly_payroll': monthly_payroll,
-            'attendance_rate': round(attendance_rate, 2),
-            'departments_count': departments_count,
-            'new_joinees': new_joinees,
-            'active_recruitments': 0,  # This would come from a recruitment module
-            'recent_activity': recent_activity[:5]  # Limit to 5 activities
-        }
-        
-        serializer = HRStatsSerializer(stats_data)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def attendance_summary(self, request):
-        """Get attendance summary for the last 30 days"""
-        # Get company from service user session or company user
-        if hasattr(request, 'service_user'):
-            company = request.service_user.company
-        elif hasattr(request.user, 'company_user'):
-            company = request.user.company_user.company
-        else:
-            return Response({'error': 'No company association found'}, status=status.HTTP_401_UNAUTHORIZED)
-        end_date = timezone.now().date()
-        start_date = end_date - timedelta(days=30)
-        
-        summary_data = []
-        current_date = start_date
-        
-        while current_date <= end_date:
-            attendance_records = Attendance.objects.filter(
-                employee__company=company,
-                date=current_date
+    """HR Dashboard ViewSet for comprehensive HR operations"""
+    authentication_classes = []  # Disable JWT authentication
+    permission_classes = [permissions.AllowAny]  # Uses session-based auth
+
+    def list(self, request):
+        """Get HR dashboard data with AI insights"""
+        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = request.query_params.get('session_key')
+
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+            company = service_user.company
+
+            # Employee statistics
+            total_employees = Employee.objects.filter(company=company).count()
+            active_employees = Employee.objects.filter(company=company, status='active').count()
+            departments_count = Department.objects.filter(company=company, is_active=True).count()
+            
+            # Performance insights
+            avg_performance = Employee.objects.filter(
+                company=company,
+                status='active'
+            ).aggregate(avg_score=Avg('performance_score'))['avg_score'] or 0
+            
+            # AI insights
+            high_retention_risk = Employee.objects.filter(
+                company=company,
+                retention_risk='high',
+                status='active'
+            ).count()
+
+            dashboard_data = {
+                'company': {
+                    'name': company.name,
+                    'logo': company.logo.url if company.logo else None,
+                },
+                'user': {
+                    'username': service_user.username,
+                    'email': service_user.email,
+                },
+                'employee_stats': {
+                    'total_employees': total_employees,
+                    'active_employees': active_employees,
+                    'departments': departments_count,
+                    'avg_performance_score': round(float(avg_performance), 2),
+                },
+                'recruitment_stats': {
+                    'active_job_postings': 0,
+                    'pending_applications': 0,
+                },
+                'attendance_stats': {
+                    'weekly_attendance': 0,
+                },
+                'ai_insights': {
+                    'high_retention_risk_employees': high_retention_risk,
+                    'performance_trend': 'stable',  # Can be enhanced with AI
+                    'recruitment_efficiency': 85,  # Can be calculated based on data
+                }
+            }
+
+            return Response(dashboard_data)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class EmployeeListCreateView(ListCreateAPIView):
+    """List and create employees"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    pagination_class = HRPagination
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return EmployeeCreateSerializer
+        return EmployeeListSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Employee.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+            
+            queryset = Employee.objects.filter(company=company).select_related(
+                'department', 'designation', 'reporting_manager'
             )
             
-            present = attendance_records.filter(status__in=['present', 'late']).count()
-            absent = attendance_records.filter(status='absent').count()
-            late = attendance_records.filter(status='late').count()
-            on_leave = attendance_records.filter(status='on_leave').count()
+            # Search functionality
+            search = self.request.query_params.get('search', '')
+            if search:
+                queryset = queryset.filter(
+                    Q(first_name__icontains=search) |
+                    Q(last_name__icontains=search) |
+                    Q(employee_id__icontains=search) |
+                    Q(email__icontains=search) |
+                    Q(department__name__icontains=search) |
+                    Q(designation__title__icontains=search)
+                )
             
-            total = present + absent + on_leave
-            attendance_rate = (present / total * 100) if total > 0 else 0
+            # Filtering
+            department_id = self.request.query_params.get('department')
+            if department_id:
+                queryset = queryset.filter(department_id=department_id)
+                
+            status_filter = self.request.query_params.get('status')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+                
+            return queryset.order_by('-created_at')
             
-            summary_data.append({
-                'date': current_date,
-                'present': present,
-                'absent': absent,
-                'late': late,
-                'on_leave': on_leave,
-                'attendance_rate': round(attendance_rate, 2)
-            })
+        except ServiceUserSession.DoesNotExist:
+            return Employee.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            service_user = session.service_user
+
+            # Create a mutable copy of request data
+            if hasattr(request.data, '_mutable'):
+                request.data._mutable = True
             
-            current_date += timedelta(days=1)
-        
-        serializer = AttendanceSummarySerializer(summary_data, many=True)
+            # Handle reporting manager service user case
+            if 'reporting_manager' in request.data:
+                manager_value = request.data['reporting_manager']
+                if isinstance(manager_value, str) and (manager_value.startswith('service_user_') or manager_value == ''):
+                    request.data['reporting_manager'] = None
+                elif manager_value == 'null' or manager_value == 'undefined':
+                    request.data['reporting_manager'] = None
+            
+            # Handle skills - remove from FormData and process separately
+            processed_skills = []
+            if 'skills' in request.data:
+                skills_value = request.data['skills']
+                print(f"DEBUG: Skills value: '{skills_value}', type: {type(skills_value)}")
+                
+                # Remove skills from request data to avoid validation error
+                del request.data['skills']
+                
+                # Process skills separately
+                if isinstance(skills_value, str):
+                    try:
+                        import json
+                        processed_skills = json.loads(skills_value)
+                    except json.JSONDecodeError:
+                        skills_str = skills_value.strip()
+                        if skills_str:
+                            processed_skills = [skill.strip() for skill in skills_str.split(',') if skill.strip()]
+                        else:
+                            processed_skills = []
+                else:
+                    processed_skills = skills_value if isinstance(skills_value, list) else []
+
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            with transaction.atomic():
+                employee = serializer.save(
+                    company=service_user.company,
+                    created_by=service_user
+                )
+                
+                # Set skills after saving
+                employee.skills = processed_skills
+                employee.save(update_fields=['skills'])
+
+            # Return detailed response with image URLs
+            response_data = {
+                'id': employee.id,
+                'employee_id': employee.employee_id,
+                'first_name': employee.first_name,
+                'last_name': employee.last_name,
+                'full_name': employee.full_name,
+                'email': employee.email,
+                'phone': employee.phone,
+                'department': employee.department_id,
+                'department_name': employee.department.name,
+                'designation': employee.designation_id,
+                'designation_title': employee.designation.title,
+                'skills': processed_skills,
+                'profile_picture': employee.profile_picture.url if employee.profile_picture else None,
+                'face_photo': employee.face_photo.url if employee.face_photo else None,
+                'status': employee.status,
+                'performance_score': employee.performance_score,
+                'retention_risk': employee.retention_risk,
+                'mobile_app_enabled': employee.mobile_app_enabled,
+                'message': 'Employee created successfully'
+            }
+            return Response(response_data, status=status.HTTP_201_CREATED)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class EmployeeDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete employee"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = EmployeeDetailSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Employee.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return Employee.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return Employee.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH']:
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def update(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            
+            # Create a mutable copy of request data
+            if hasattr(request.data, '_mutable'):
+                request.data._mutable = True
+            
+            # Handle skills - remove from FormData and process separately
+            processed_skills = None
+            if 'skills' in request.data:
+                skills_value = request.data['skills']
+                del request.data['skills']
+                
+                if isinstance(skills_value, str):
+                    try:
+                        import json
+                        processed_skills = json.loads(skills_value)
+                    except json.JSONDecodeError:
+                        skills_str = skills_value.strip()
+                        if skills_str:
+                            processed_skills = [skill.strip() for skill in skills_str.split(',') if skill.strip()]
+                        else:
+                            processed_skills = []
+                else:
+                    processed_skills = skills_value if isinstance(skills_value, list) else []
+
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            
+            # Set skills after updating if provided
+            if processed_skills is not None:
+                instance.skills = processed_skills
+                instance.save(update_fields=['skills'])
+
+            # Return detailed response with image URLs
+            response_data = {
+                'id': instance.id,
+                'employee_id': instance.employee_id,
+                'first_name': instance.first_name,
+                'last_name': instance.last_name,
+                'full_name': instance.full_name,
+                'email': instance.email,
+                'phone': instance.phone,
+                'department': instance.department_id,
+                'department_name': instance.department.name,
+                'designation': instance.designation_id,
+                'designation_title': instance.designation.title,
+                'skills': processed_skills if processed_skills is not None else instance.skills,
+                'profile_picture': instance.profile_picture.url if instance.profile_picture else None,
+                'face_photo': instance.face_photo.url if instance.face_photo else None,
+                'status': instance.status,
+                'performance_score': instance.performance_score,
+                'retention_risk': instance.retention_risk,
+                'mobile_app_enabled': instance.mobile_app_enabled,
+                'message': 'Employee updated successfully'
+            }
+            return Response(response_data)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class JobPostingListCreateView(ListCreateAPIView):
+    """List and create job postings"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = JobPostingSerializer
+    pagination_class = HRPagination
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return JobPosting.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+            
+            queryset = JobPosting.objects.filter(company=company).select_related(
+                'department', 'designation'
+            )
+            
+            # Search functionality
+            search = self.request.query_params.get('search', '')
+            if search:
+                queryset = queryset.filter(
+                    Q(title__icontains=search) |
+                    Q(description__icontains=search) |
+                    Q(department__name__icontains=search)
+                )
+            
+            # Filtering
+            status_filter = self.request.query_params.get('status')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+                
+            return queryset.order_by('-created_at')
+            
+        except ServiceUserSession.DoesNotExist:
+            return JobPosting.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            service_user = session.service_user
+
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            job_posting = serializer.save(
+                company=service_user.company,
+                created_by=service_user
+            )
+
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class JobPostingDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete job postings"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = JobPostingSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return JobPosting.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return JobPosting.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return JobPosting.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
+        return session_key
+
+    def update(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            return Response(serializer.data)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    def destroy(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class JobApplicationListCreateView(ListCreateAPIView):
+    """List and create job applications"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = JobApplicationSerializer
+    pagination_class = HRPagination
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return JobApplication.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+            
+            queryset = JobApplication.objects.filter(
+                job_posting__company=company
+            ).select_related('job_posting')
+            
+            # Search functionality
+            search = self.request.query_params.get('search', '')
+            if search:
+                queryset = queryset.filter(
+                    Q(first_name__icontains=search) |
+                    Q(last_name__icontains=search) |
+                    Q(email__icontains=search) |
+                    Q(job_posting__title__icontains=search)
+                )
+            
+            # Filtering
+            status_filter = self.request.query_params.get('status')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+                
+            job_filter = self.request.query_params.get('job_posting')
+            if job_filter:
+                queryset = queryset.filter(job_posting_id=job_filter)
+                
+            return queryset.order_by('-created_at')
+            
+        except ServiceUserSession.DoesNotExist:
+            return JobApplication.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+
+class DepartmentListCreateView(ListCreateAPIView):
+    """List and create departments"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = DepartmentSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Department.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return Department.objects.filter(company=session.service_user.company, is_active=True)
+        except ServiceUserSession.DoesNotExist:
+            return Department.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(company=session.service_user.company)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class DepartmentDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete departments"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = DepartmentSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Department.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return Department.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return Department.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
+        return session_key
+
+
+class DesignationListCreateView(ListCreateAPIView):
+    """List and create designations"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = DesignationSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Designation.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return Designation.objects.filter(company=session.service_user.company, is_active=True)
+        except ServiceUserSession.DoesNotExist:
+            return Designation.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method == 'POST':
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(company=session.service_user.company)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class DesignationDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete designations"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = DesignationSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Designation.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return Designation.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return Designation.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
+        return session_key
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def get_departments(request):
+    """Get all departments for dropdown"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.query_params.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        departments = Department.objects.filter(
+            company=session.service_user.company,
+            is_active=True
+        ).order_by('name')
+        serializer = DepartmentSerializer(departments, many=True)
         return Response(serializer.data)
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def get_designations(request):
+    """Get designations by department"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.query_params.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        department_id = request.query_params.get('department_id')
+        
+        designations = Designation.objects.filter(
+            company=session.service_user.company,
+            is_active=True
+        )
+        
+        if department_id:
+            designations = designations.filter(department_id=department_id)
+            
+        designations = designations.order_by('title')
+        serializer = DesignationSerializer(designations, many=True)
+        return Response(serializer.data)
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class PublicJobListView(ListAPIView):
+    """Public job listings for candidates (no authentication required)"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = JobPostingSerializer
+    pagination_class = HRPagination
+
+    def get_queryset(self):
+        queryset = JobPosting.objects.filter(
+            status='active'
+        ).select_related('department', 'designation', 'company')
+        
+        # Search functionality
+        search = self.request.query_params.get('search', '')
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(description__icontains=search) |
+                Q(department__name__icontains=search) |
+                Q(company__name__icontains=search)
+            )
+        
+        # Filter by company
+        company_id = self.request.query_params.get('company')
+        if company_id:
+            queryset = queryset.filter(company_id=company_id)
+            
+        return queryset.order_by('-created_at')
+
+
+class PublicJobDetailView(RetrieveAPIView):
+    """Public job detail view for candidates"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = JobPostingSerializer
+    
+    def get_queryset(self):
+        return JobPosting.objects.filter(status='active').select_related(
+            'department', 'designation', 'company'
+        )
+
+
+class JobApplicationDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, and delete job applications"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = JobApplicationSerializer
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return JobApplication.objects.none()
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return JobApplication.objects.filter(job_posting__company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return JobApplication.objects.none()
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
+        return session_key
+
+    def update(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            return Response(serializer.data)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class PublicJobApplicationView(CreateAPIView):
+    """Public job application submission"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    serializer_class = JobApplicationSerializer
+
+    def create(self, request, *args, **kwargs):
+        job_id = kwargs.get('job_id')
+        
+        try:
+            job_posting = JobPosting.objects.get(id=job_id, status='active')
+        except JobPosting.DoesNotExist:
+            return Response(
+                {'error': 'Job posting not found or not active'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        data = request.data.copy()
+        data['job_posting'] = job_posting.id
+        
+        # Determine application source from URL parameters
+        utm_source = request.query_params.get('utm_source', 'direct')
+        share_id = request.query_params.get('share_id', '')
+        
+        # Map UTM sources to application sources
+        source_mapping = {
+            'whatsapp': 'whatsapp',
+            'linkedin': 'linkedin', 
+            'gmail': 'gmail',
+            'outlook': 'outlook',
+            'facebook': 'facebook',
+            'twitter': 'twitter',
+            'instagram': 'instagram',
+            'telegram': 'telegram',
+            'other_email': 'other_email',
+            'copy_link': 'copy_link'
+        }
+        
+        data['application_source'] = source_mapping.get(utm_source, 'direct')
+        data['share_id'] = share_id
+        
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        
+        application = serializer.save(job_posting=job_posting)
+        
+        # Calculate AI score for the application
+        try:
+            from .ai_scoring import calculate_ai_score
+            ai_score, skill_match, screening_notes = calculate_ai_score(application)
+            application.ai_score = ai_score
+            application.skill_match_percentage = skill_match
+            application.ai_screening_notes = screening_notes
+            application.status = 'screening'  # Update status to screening
+            application.save()
+        except Exception as e:
+            # If AI scoring fails, continue without it
+            pass
+        
+        return Response(
+            {
+                'message': 'Application submitted successfully',
+                'application_id': application.id
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+
+
+
+
+# Mobile App Authentication APIs
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def employee_mobile_login(request):
+    """Employee login for mobile app"""
+    employee_id = request.data.get('employee_id')
+    password = request.data.get('password')
+    device_id = request.data.get('device_id', '')
+    
+    if not employee_id or not password:
+        return Response(
+            {'error': 'Employee ID and password are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        employee = Employee.objects.select_related('company', 'department', 'designation').get(
+            employee_id=employee_id,
+            status='active',
+            mobile_app_enabled=True
+        )
+        
+        # Verify password with proper hashing
+        from django.contrib.auth.hashers import check_password
+        if not check_password(password, employee.mobile_app_password):
+            return Response(
+                {'error': 'Invalid credentials'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Update last login and device
+        from django.utils import timezone
+        employee.last_mobile_login = timezone.now()
+        employee.mobile_device_id = device_id
+        employee.save()
+        
+        # Generate secure session key for mobile
+        import secrets
+        session_key = secrets.token_urlsafe(32)
+        
+        response_data = {
+            'success': True,
+            'session_key': session_key,
+            'employee': {
+                'id': employee.id,
+                'employee_id': employee.employee_id,
+                'first_name': employee.first_name,
+                'last_name': employee.last_name,
+                'email': employee.email,
+                'phone': employee.phone,
+                'department': employee.department.name,
+                'designation': employee.designation.title,
+                'profile_picture': employee.profile_picture.url if employee.profile_picture else None,
+            },
+            'company': {
+                'id': employee.company.id,
+                'name': employee.company.name,
+                'company_code': employee.company.company_prefix,
+                'logo': employee.company.logo.url if employee.company.logo else None,
+            }
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Employee.DoesNotExist:
+        return Response(
+            {'error': 'Invalid credentials or mobile access not enabled'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def set_mobile_password(request):
+    """Set mobile app password for employee"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.data.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    employee_id = request.data.get('employee_id')
+    password = request.data.get('password')
+    
+    if not employee_id or not password:
+        return Response(
+            {'error': 'Employee ID and password are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        employee = Employee.objects.get(
+            employee_id=employee_id,
+            company=session.service_user.company
+        )
+        
+        # Set mobile password with proper hashing and enable mobile access
+        from django.contrib.auth.hashers import make_password
+        employee.mobile_app_password = make_password(password)
+        employee.mobile_app_enabled = True
+        employee.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Mobile app password set successfully',
+            'employee_id': employee.employee_id,
+            'mobile_enabled': True
+        })
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Employee.DoesNotExist:
+        return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def download_mobile_credentials(request):
+    """Download mobile credentials as text file"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.query_params.get('session_key')
+    
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    employee_id = request.query_params.get('employee_id')
+    
+    if not employee_id:
+        return Response(
+            {'error': 'Employee ID is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        employee = Employee.objects.get(
+            employee_id=employee_id,
+            company=session.service_user.company,
+            mobile_app_enabled=True
+        )
+        
+        from django.http import HttpResponse
+        from django.utils import timezone
+        
+        # Create credentials text content
+        credentials_content = f"""Employee Mobile App Credentials
+========================================
+
+Company: {employee.company.name}
+Employee ID: {employee.employee_id}
+Employee Name: {employee.full_name}
+Department: {employee.department.name}
+Designation: {employee.designation.title}
+
+Mobile App Login Credentials:
+----------------------------
+Employee ID: {employee.employee_id}
+Password: {employee.mobile_app_password}
+
+App Download:
+------------
+Download the Employee Attendance App from your company's internal portal.
+
+Support:
+--------
+For technical support, contact your HR department.
+
+Generated on: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Note: Keep these credentials secure and do not share with others.
+"""
+        
+        response = HttpResponse(credentials_content, content_type='text/plain')
+        # Validate filename to prevent path traversal
+        from authentication.utils import validate_filename
+        safe_filename = validate_filename(f"{employee.employee_id}_mobile_credentials.txt")
+        response['Content-Disposition'] = f'attachment; filename="{safe_filename}"'
+        
+        return response
+        
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Employee.DoesNotExist:
+        return Response({'error': 'Employee not found or mobile access not enabled'}, status=status.HTTP_404_NOT_FOUND)

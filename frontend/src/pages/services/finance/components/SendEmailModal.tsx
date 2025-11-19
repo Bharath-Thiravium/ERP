@@ -9,8 +9,9 @@ interface SendEmailModalProps {
   onClose: () => void;
   invoiceId: number;
   invoiceNumber: string;
-  invoiceType: 'tax_invoice' | 'proforma_invoice';
+  invoiceType: 'tax_invoice' | 'proforma_invoice' | 'quotation' | 'purchase_order';
   customerEmail?: string;
+  onSuccess?: () => void;
 }
 
 const SendEmailModal: React.FC<SendEmailModalProps> = ({
@@ -19,7 +20,8 @@ const SendEmailModal: React.FC<SendEmailModalProps> = ({
   invoiceId,
   invoiceNumber,
   invoiceType,
-  customerEmail = ''
+  customerEmail = '',
+  onSuccess
 }) => {
   const { sessionKey } = useServiceUserStore();
   const [email, setEmail] = useState(customerEmail);
@@ -37,25 +39,47 @@ const SendEmailModal: React.FC<SendEmailModalProps> = ({
       return;
     }
 
+    if (!sessionKey) {
+      toast.error('Session expired. Please refresh the page.');
+      return;
+    }
+
     setLoading(true);
     try {
+      console.log('🔍 DEBUG: Sending email with:', {
+        invoiceId,
+        invoiceType,
+        email: email.trim(),
+        sessionKey: sessionKey?.substring(0, 10) + '...'
+      });
+
       const payload = {
         email: email.trim(),
         message: message.trim(),
         session_key: sessionKey
       };
 
+      let response;
       if (invoiceType === 'tax_invoice') {
-        await apiClient.sendInvoiceEmail(invoiceId, payload);
-      } else {
-        await apiClient.sendProformaEmail(invoiceId, payload);
+        response = await apiClient.sendInvoiceEmail(invoiceId, payload);
+      } else if (invoiceType === 'proforma_invoice') {
+        response = await apiClient.sendProformaEmail(invoiceId, payload);
+      } else if (invoiceType === 'quotation') {
+        response = await apiClient.sendQuotationEmail(invoiceId, payload);
+      } else if (invoiceType === 'purchase_order') {
+        response = await apiClient.sendPurchaseOrderEmail(invoiceId, payload);
       }
 
-      toast.success('Email sent successfully!');
+      console.log('✅ Email API Response:', response?.data);
+      toast.success(response?.data?.message || 'Email sent successfully!');
       onClose();
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (error: any) {
-      console.error('Error sending email:', error);
-      toast.error(error.response?.data?.error || 'Failed to send email');
+      console.error('❌ Error sending email:', error);
+      console.error('❌ Error response:', error.response?.data);
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to send email');
     } finally {
       setLoading(false);
     }
@@ -71,7 +95,7 @@ const SendEmailModal: React.FC<SendEmailModalProps> = ({
           <div className="flex items-center space-x-2">
             <Mail className="w-5 h-5 text-blue-500" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Send {invoiceType === 'tax_invoice' ? 'Invoice' : 'Proforma Invoice'}
+              Send {invoiceType === 'tax_invoice' ? 'Invoice' : invoiceType === 'proforma_invoice' ? 'Proforma Invoice' : invoiceType === 'quotation' ? 'Quotation' : 'Purchase Order'}
             </h2>
           </div>
           <button

@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 
 interface ServiceUser {
   id: number
-  username: string
+  unique_service_id: string
   email: string
   full_name: string
   role: string
@@ -28,7 +28,7 @@ interface ServiceUserState {
   lastActivity: number | null
 
   // Actions
-  login: (credentials: { username: string; password: string; service_type: string }) => Promise<boolean>
+  login: (credentials: { unique_service_id: string; password: string; service_type: string }) => Promise<boolean>
   logout: () => Promise<void>
   refreshSession: () => Promise<boolean>
   updateLastActivity: () => void
@@ -61,6 +61,9 @@ export const useServiceUserStore = create<ServiceUserState>()(
           const sessionExpiry = Date.now() + (8 * 60 * 60 * 1000)
           const lastActivity = Date.now()
 
+          // Store session key in sessionStorage for API interceptor
+          sessionStorage.setItem('service_session_key', session_key)
+          
           set({
             serviceUser: user,
             sessionKey: session_key,
@@ -73,6 +76,11 @@ export const useServiceUserStore = create<ServiceUserState>()(
 
           // Set up session monitoring (disabled for now)
           // get().startSessionMonitoring()
+
+          // Replace browser history to prevent back navigation to login
+          if (window.history.length > 1) {
+            window.history.replaceState(null, '', window.location.pathname)
+          }
 
           return true
         } catch (error: any) {
@@ -103,6 +111,9 @@ export const useServiceUserStore = create<ServiceUserState>()(
           }
         }
 
+        // Clear session key from sessionStorage
+        sessionStorage.removeItem('service_session_key')
+        
         set({
           serviceUser: null,
           sessionKey: null,
@@ -114,6 +125,14 @@ export const useServiceUserStore = create<ServiceUserState>()(
 
         // Clear session monitoring
         get().stopSessionMonitoring()
+
+        // Clear browser history to prevent back button access
+        if (window.history.length > 1) {
+          window.history.replaceState(null, '', '/service-login')
+        }
+
+        // Redirect to service login
+        window.location.replace('/service-login')
       },
 
       refreshSession: async () => {
@@ -184,16 +203,39 @@ export const useServiceUserStore = create<ServiceUserState>()(
       },
 
       checkSessionValidity: () => {
-        const { sessionExpiry, isAuthenticated } = get()
+        const { sessionExpiry, isAuthenticated, sessionKey: storeSessionKey } = get()
         
-        if (!isAuthenticated || !sessionExpiry) {
+        // Check if session key exists in sessionStorage
+        const sessionKey = sessionStorage.getItem('service_session_key')
+        
+        // If no session key in storage but we have one in store, restore it
+        if (!sessionKey && storeSessionKey) {
+          sessionStorage.setItem('service_session_key', storeSessionKey)
+          return true
+        }
+        
+        // Only logout if we have no session key anywhere AND we're authenticated
+        if (!sessionKey && !storeSessionKey && isAuthenticated) {
+          console.warn('No session key found, logging out')
+          get().logout()
           return false
+        }
+        
+        // If not authenticated, don't validate
+        if (!isAuthenticated) {
+          return false
+        }
+        
+        // If no expiry set, assume valid (for backward compatibility)
+        if (!sessionExpiry) {
+          return true
         }
 
         const now = Date.now()
         const isValid = now < sessionExpiry
 
         if (!isValid) {
+          console.warn('Session expired, logging out')
           get().logout()
           toast.error('Session expired. Please log in again.')
         }
@@ -203,8 +245,8 @@ export const useServiceUserStore = create<ServiceUserState>()(
 
       // Session monitoring methods (not persisted)
       startSessionMonitoring: () => {
-        // Disabled aggressive session monitoring that was causing auto-logouts
-        // Only check session validity on user activity, not on timer
+        // Completely disabled to prevent navigation issues
+        console.log('Session monitoring disabled to prevent navigation logout issues')
       },
 
       stopSessionMonitoring: () => {

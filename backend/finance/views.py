@@ -1,22 +1,31 @@
 from rest_framework import status, permissions
+from django.utils._os import safe_join
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
+from rest_framework.exceptions import ValidationError
 from django.db.models import Q, Sum
-from django.db import models
+from django.db import models, transaction, IntegrityError
 from django.utils import timezone
+from django.conf import settings
 from datetime import timedelta
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 from authentication.models import ServiceUserSession, CompanyServiceUser
 from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
-from .email_utils import send_invoice_email, send_proforma_email
+from .unit_models import Unit
+from .email_utils import send_invoice_email, send_proforma_email, send_quotation_email, send_purchase_order_email
 from .serializers import (
     CustomerListSerializer, CustomerDetailSerializer,
     CustomerCreateSerializer, CustomerUpdateSerializer,
     ProductListSerializer, ProductDetailSerializer,
     ProductCreateSerializer, ProductUpdateSerializer,
     HSNCodeSerializer, SACCodeSerializer,
+    HSNCodeCreateSerializer, SACCodeCreateSerializer,
     QuotationListSerializer, QuotationDetailSerializer,
     QuotationCreateSerializer, QuotationUpdateSerializer,
     PurchaseOrderListSerializer, PurchaseOrderDetailSerializer,
@@ -65,17 +74,21 @@ class CustomerListCreateView(ListCreateAPIView):
             # Return customers for this company only
             queryset = Customer.objects.filter(company=service_user.company)
 
-            # Add search functionality
-            search = self.request.query_params.get('search', '')
-            if search:
-                queryset = queryset.filter(
-                    Q(name__icontains=search) |
-                    Q(customer_code__icontains=search) |
-                    Q(email__icontains=search) |
-                    Q(phone__icontains=search) |
-                    Q(gstin__icontains=search) |
-                    Q(pan_number__icontains=search)
-                )
+            # Add search functionality with comprehensive security validation
+            search = self.request.query_params.get('search', '').strip()
+            if search and len(search) <= 100:  # Limit search length
+                # Use security validator for comprehensive sanitization
+                from .security_validators import FinanceSecurityValidator
+                search = FinanceSecurityValidator.sanitize_search_input(search)
+                if search:  # Only proceed if search term is valid after sanitization
+                    queryset = queryset.filter(
+                        Q(name__icontains=search) |
+                        Q(customer_code__icontains=search) |
+                        Q(email__icontains=search) |
+                        Q(phone__icontains=search) |
+                        Q(gstin__icontains=search) |
+                        Q(pan_number__icontains=search)
+                    )
 
             # Add filtering
             customer_type = self.request.query_params.get('customer_type', '')
@@ -93,11 +106,22 @@ class CustomerListCreateView(ListCreateAPIView):
 
     def get_session_key(self):
         """Get session key from Authorization header or query params"""
+        import re
         session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
         if not session_key:
             session_key = self.request.query_params.get('session_key')
         if not session_key and self.request.method == 'POST':
             session_key = self.request.data.get('session_key')
+        
+        # Validate session key format to prevent path traversal and injection
+        if session_key:
+            # Remove any potentially dangerous characters
+            session_key = re.sub(r'[^a-zA-Z0-9_-]', '', str(session_key))
+            # Limit length to prevent buffer overflow
+            session_key = session_key[:64] if len(session_key) > 64 else session_key
+            # Validate format
+            if not re.match(r'^[a-zA-Z0-9_-]+$', session_key):
+                return None
         return session_key
 
     def perform_create(self, serializer):
@@ -113,16 +137,24 @@ class CustomerListCreateView(ListCreateAPIView):
             )
             service_user = session.service_user
 
-            serializer.save(
-                company=service_user.company,
-                created_by=service_user
-            )
+            # Use database transaction to ensure atomicity
+            with transaction.atomic():
+                try:
+                    customer = serializer.save(
+                        company=service_user.company,
+                        created_by=service_user
+                    )
+                    logger.info(f"Customer created successfully: {customer.customer_code} for company {service_user.company.name}")
+                except Exception as e:
+                    logger.error(f"Error creating customer for company {service_user.company.name}: {str(e)}")
+                    raise e
 
         except ServiceUserSession.DoesNotExist:
+            logger.error(f"Invalid session key: {session_key}")
             raise PermissionError("Invalid session")
 
     def create(self, request, *args, **kwargs):
-        """Override create to handle session authentication"""
+        """Override create to handle session authentication with better error handling"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -135,8 +167,77 @@ class CustomerListCreateView(ListCreateAPIView):
                 session_key=session_key,
                 is_active=True
             )
+            
+            # Log the creation attempt
+            logger.info(f"Creating customer for company: {session.service_user.company.name}")
+            
             # Proceed with normal creation
-            return super().create(request, *args, **kwargs)
+            try:
+                response = super().create(request, *args, **kwargs)
+                logger.info(f"Customer creation successful for company: {session.service_user.company.name}")
+                return response
+            except ValidationError as e:
+                # Handle Django REST framework validation errors
+                logger.error(f"Customer validation failed for company {session.service_user.company.name}: {str(e)}")
+                return Response(
+                    e.detail if hasattr(e, 'detail') else {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except IntegrityError as e:
+                # Handle database integrity errors (unique constraints, etc.)
+                logger.error(f"Customer creation integrity error for company {session.service_user.company.name}: {str(e)}")
+                error_msg = str(e).lower()
+                if 'unique' in error_msg or 'duplicate' in error_msg:
+                    if 'customer_code' in error_msg:
+                        return Response(
+                            {'customer_code': ['Customer code already exists. Please try again.']},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    elif 'email' in error_msg:
+                        return Response(
+                            {'email': ['A customer with this email already exists.']},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    elif 'gstin' in error_msg:
+                        return Response(
+                            {'gstin': ['A customer with this GSTIN already exists.']},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    else:
+                        return Response(
+                            {'error': 'A customer with similar details already exists.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                else:
+                    return Response(
+                        {'error': 'Database error occurred. Please check your input and try again.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except Exception as e:
+                logger.error(f"Customer creation failed for company {session.service_user.company.name}: {str(e)}")
+                logger.error(f"Request data: {request.data}")
+                
+                # Check for specific common errors
+                error_msg = str(e).lower()
+                if 'required' in error_msg:
+                    return Response(
+                        {'error': 'Required fields are missing. Please fill all mandatory fields.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                elif 'invalid' in error_msg:
+                    return Response(
+                        {'error': 'Invalid data format. Please check your input values.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                else:
+                    return Response(
+                        {
+                            'error': 'Customer creation failed',
+                            'message': 'An unexpected error occurred. Please try again or contact support.',
+                            'details': str(e) if settings.DEBUG else None
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
         except ServiceUserSession.DoesNotExist:
             return Response(
@@ -278,16 +379,20 @@ class CustomerDetailView(RetrieveUpdateDestroyAPIView):
 
 class ProductPagination(PageNumberPagination):
     """Custom pagination for products"""
-    page_size = 5
+    page_size = 100
     page_size_query_param = 'page_size'
     max_page_size = 100
 
 
 class ProductListCreateView(ListCreateAPIView):
-    """List and create products for finance service"""
+    """List and create products for finance service with rate limiting"""
     authentication_classes = []  # Disable JWT authentication
     permission_classes = [permissions.AllowAny]  # Uses session-based auth
     pagination_class = ProductPagination
+    
+    # Rate limiting for bulk operations
+    _last_request_time = {}
+    _request_count = {}
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -347,7 +452,7 @@ class ProductListCreateView(ListCreateAPIView):
         return session_key
 
     def create(self, request, *args, **kwargs):
-        """Override create to handle session authentication"""
+        """Override create to handle session authentication and GST rate manual overrides"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -366,10 +471,41 @@ class ProductListCreateView(ListCreateAPIView):
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
-            product = serializer.save(
-                company=service_user.company,
-                created_by=service_user
-            )
+            # Check if GST rate is being manually set (different from HSN/SAC auto-rate)
+            gst_rate = request.data.get('gst_rate', 0)
+            hsn_code_id = request.data.get('hsn_code')
+            sac_code_id = request.data.get('sac_code')
+            product_type = request.data.get('product_type', 'product')
+            
+            manual_gst_override = False
+            if gst_rate and (hsn_code_id or sac_code_id):
+                try:
+                    if product_type == 'product' and hsn_code_id:
+                        hsn_code = HSNCode.objects.get(id=hsn_code_id)
+                        if float(gst_rate) != float(hsn_code.gst_rate):
+                            manual_gst_override = True
+                    elif product_type == 'service' and sac_code_id:
+                        sac_code = SACCode.objects.get(id=sac_code_id)
+                        if float(gst_rate) != float(sac_code.gst_rate):
+                            manual_gst_override = True
+                except (HSNCode.DoesNotExist, SACCode.DoesNotExist, ValueError):
+                    pass
+
+            # Set manual override flag BEFORE saving to prevent GST rate overwrite
+            if manual_gst_override:
+                # Create product instance without triggering save
+                product = Product(
+                    company=service_user.company,
+                    created_by=service_user,
+                    **{k: v for k, v in serializer.validated_data.items()}
+                )
+                product._manual_gst_override = True
+                product.save()
+            else:
+                product = serializer.save(
+                    company=service_user.company,
+                    created_by=service_user
+                )
 
             # Return detailed product data
             detail_serializer = ProductDetailSerializer(product)
@@ -467,7 +603,7 @@ class ProductDetailView(RetrieveUpdateDestroyAPIView):
             )
 
     def update(self, request, *args, **kwargs):
-        """Override update to handle session authentication"""
+        """Override update to handle session authentication and GST rate manual overrides"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -480,6 +616,23 @@ class ProductDetailView(RetrieveUpdateDestroyAPIView):
                 session_key=session_key,
                 is_active=True
             )
+            
+            # Get the product instance to check for manual GST override
+            product = self.get_object()
+            
+            # Check if GST rate is being manually overridden
+            new_gst_rate = request.data.get('gst_rate')
+            if new_gst_rate is not None:
+                expected_gst_rate = None
+                if product.product_type == 'product' and product.hsn_code:
+                    expected_gst_rate = product.hsn_code.gst_rate
+                elif product.product_type == 'service' and product.sac_code:
+                    expected_gst_rate = product.sac_code.gst_rate
+                
+                # If new GST rate differs from expected auto-rate, mark as manual override
+                if expected_gst_rate is not None and float(new_gst_rate) != float(expected_gst_rate):
+                    product._manual_gst_override = True
+            
             # Proceed with normal update
             return super().update(request, *args, **kwargs)
 
@@ -537,7 +690,12 @@ class HSNCodeSearchView(APIView):
             )
 
             search = request.query_params.get('search', '')
-            limit = int(request.query_params.get('limit', 20))
+            # Validate and sanitize limit parameter
+            try:
+                limit = int(request.query_params.get('limit', 20))
+                limit = max(1, min(limit, 100))  # Ensure limit is between 1 and 100
+            except (ValueError, TypeError):
+                limit = 20
 
             queryset = HSNCode.objects.all()
 
@@ -584,7 +742,12 @@ class SACCodeSearchView(APIView):
             )
 
             search = request.query_params.get('search', '')
-            limit = int(request.query_params.get('limit', 20))
+            # Validate and sanitize limit parameter
+            try:
+                limit = int(request.query_params.get('limit', 20))
+                limit = max(1, min(limit, 100))  # Ensure limit is between 1 and 100
+            except (ValueError, TypeError):
+                limit = 20
 
             queryset = SACCode.objects.all()
 
@@ -599,6 +762,144 @@ class SACCodeSearchView(APIView):
             queryset = queryset[:limit]
 
             serializer = SACCodeSerializer(queryset, many=True)
+            return Response({'results': serializer.data})
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class HSNCodeCreateView(APIView):
+    """Create new HSN codes manually"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        """Create a new HSN code"""
+        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = request.data.get('session_key')
+
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+
+            serializer = HSNCodeCreateSerializer(data=request.data)
+            if serializer.is_valid():
+                hsn_code = serializer.save()
+                response_serializer = HSNCodeSerializer(hsn_code)
+                return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class SACCodeCreateView(APIView):
+    """Create new SAC codes manually"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        """Create a new SAC code"""
+        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = request.data.get('session_key')
+
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+
+            serializer = SACCodeCreateSerializer(data=request.data)
+            if serializer.is_valid():
+                sac_code = serializer.save()
+                response_serializer = SACCodeSerializer(sac_code)
+                return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class ProductSearchView(APIView):
+    """Search products for quotation forms - without pagination"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        """Search products by name, code, or description"""
+        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = request.query_params.get('session_key')
+
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            service_user = session.service_user
+
+            search = request.query_params.get('search', '')
+            # Validate and sanitize limit parameter
+            try:
+                limit = int(request.query_params.get('limit', 100))
+                limit = max(1, min(limit, 200))  # Ensure limit is between 1 and 200
+            except (ValueError, TypeError):
+                limit = 100
+
+            # Get products for this company only
+            queryset = Product.objects.filter(
+                company=service_user.company,
+                is_active=True
+            )
+
+            if search:
+                queryset = queryset.filter(
+                    Q(name__icontains=search) |
+                    Q(product_code__icontains=search) |
+                    Q(description__icontains=search) |
+                    Q(hsn_code__code__icontains=search) |
+                    Q(sac_code__code__icontains=search) |
+                    Q(hsn_code__description__icontains=search) |
+                    Q(sac_code__service_name__icontains=search)
+                )
+
+            # Limit results for performance but show all company products
+            queryset = queryset.order_by('-created_at')[:limit]
+
+            serializer = ProductListSerializer(queryset, many=True)
             return Response({'results': serializer.data})
 
         except ServiceUserSession.DoesNotExist:
@@ -631,33 +932,45 @@ class GenerateProductCodeView(APIView):
                 is_active=True
             )
             service_user = session.service_user
+            company = service_user.company
 
             product_type = request.query_params.get('type', 'product')
+            company_prefix = getattr(company, 'company_prefix', 'COMP')
 
             if product_type == 'product':
-                # Generate PRD- codes for products
+                # Generate company prefix + PROD codes for products
                 last_product = Product.objects.filter(
-                    company=service_user.company,
-                    product_type='product',
-                    product_code__startswith='PRD-'
+                    company=company,
+                    product_type='product'
                 ).order_by('-id').first()
-                if last_product:
-                    last_number = int(last_product.product_code.split('-')[-1])
-                    next_code = f"PRD-{last_number + 1:06d}"
+                if last_product and last_product.product_code:
+                    # Extract number from existing code
+                    import re
+                    match = re.search(r'(\d+)$', last_product.product_code)
+                    if match:
+                        last_number = int(match.group(1))
+                        next_code = f"{company_prefix}PROD{last_number + 1:02d}"
+                    else:
+                        next_code = f"{company_prefix}PROD01"
                 else:
-                    next_code = "PRD-000001"
+                    next_code = f"{company_prefix}PROD01"
             else:
-                # Generate SER- codes for services
+                # Generate company prefix + SER codes for services
                 last_service = Product.objects.filter(
-                    company=service_user.company,
-                    product_type='service',
-                    product_code__startswith='SER-'
+                    company=company,
+                    product_type='service'
                 ).order_by('-id').first()
-                if last_service:
-                    last_number = int(last_service.product_code.split('-')[-1])
-                    next_code = f"SER-{last_number + 1:06d}"
+                if last_service and last_service.product_code:
+                    # Extract number from existing code
+                    import re
+                    match = re.search(r'(\d+)$', last_service.product_code)
+                    if match:
+                        last_number = int(match.group(1))
+                        next_code = f"{company_prefix}SER{last_number + 1:02d}"
+                    else:
+                        next_code = f"{company_prefix}SER01"
                 else:
-                    next_code = "SER-000001"
+                    next_code = f"{company_prefix}SER01"
 
             return Response({'code': next_code})
 
@@ -1096,7 +1409,7 @@ class PurchaseOrderListCreateView(ListCreateAPIView):
                 created_by=service_user
             )
 
-            # Update the related quotation status to 'approved'
+            # Update the related quotation status to 'approved' (only if PO was created from quotation)
             if purchase_order.quotation:
                 quotation = purchase_order.quotation
                 quotation.status = 'approved'
@@ -1196,8 +1509,8 @@ class PurchaseOrderDetailView(RetrieveUpdateDestroyAPIView):
             # Delete the purchase order
             response = super().destroy(request, *args, **kwargs)
 
-            # If deletion was successful, revert quotation status to 'sent'
-            if response.status_code == 204:  # HTTP 204 No Content (successful deletion)
+            # If deletion was successful and quotation exists, revert quotation status to 'sent'
+            if response.status_code == 204 and quotation:  # HTTP 204 No Content (successful deletion)
                 quotation.status = 'sent'
                 quotation.save()
 
@@ -1255,6 +1568,10 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
             if status_filter:
                 queryset = queryset.filter(status=status_filter)
 
+            payment_status_filter = self.request.query_params.get('payment_status', '')
+            if payment_status_filter:
+                queryset = queryset.filter(payment_status=payment_status_filter)
+
             customer_id = self.request.query_params.get('customer', '')
             if customer_id:
                 queryset = queryset.filter(customer_id=customer_id)
@@ -1274,7 +1591,7 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
         return session_key
 
     def create(self, request, *args, **kwargs):
-        """Override create to handle session authentication"""
+        """Override create to handle session authentication and return updated PO balance"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -1290,7 +1607,7 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
             service_user = session.service_user
 
             # Create proforma invoice with company and created_by
-            serializer = self.get_serializer(data=request.data)
+            serializer = self.get_serializer(data=request.data, context={'company': service_user.company})
             serializer.is_valid(raise_exception=True)
 
             proforma_invoice = serializer.save(
@@ -1298,9 +1615,19 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
                 created_by=service_user
             )
 
-            # Return detailed proforma invoice data
+            # Get updated PO balance data after proforma creation (only if PO exists)
+            updated_po_data = None
+            if proforma_invoice.purchase_order:
+                po_serializer = PurchaseOrderListSerializer(proforma_invoice.purchase_order)
+                updated_po_data = po_serializer.data
+
+            # Return detailed proforma invoice data with updated PO balance
             detail_serializer = ProformaInvoiceDetailSerializer(proforma_invoice)
-            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+            response_data = detail_serializer.data
+            if updated_po_data:
+                response_data['updated_purchase_order'] = updated_po_data
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:
             return Response(
@@ -1377,6 +1704,47 @@ class ProformaInvoiceDetailView(RetrieveUpdateDestroyAPIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to handle session authentication and reset claim_type if needed"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response(
+                {'error': 'Session key required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        try:
+            session = ServiceUserSession.objects.get(
+                session_key=session_key,
+                is_active=True
+            )
+            
+            # Get the proforma and its PO before deletion
+            proforma = self.get_object()
+            purchase_order = proforma.purchase_order
+            
+            # Proceed with normal deletion
+            response = super().destroy(request, *args, **kwargs)
+            
+            # If deletion was successful and PO exists, check if we need to reset claim_type
+            if response.status_code == 204 and purchase_order:
+                # Check if this PO has any remaining invoices (both proforma and tax)
+                has_proforma = purchase_order.proforma_invoices.exists()
+                has_tax_invoice = purchase_order.invoices.exists()
+                
+                # If no invoices remain, reset claim_type to null
+                if not has_proforma and not has_tax_invoice:
+                    purchase_order.claim_type = None
+                    purchase_order.save(update_fields=['claim_type'])
+            
+            return response
+
+        except ServiceUserSession.DoesNotExist:
+            return Response(
+                {'error': 'Invalid session'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
 
 # Invoice Views
 class InvoicePagination(PageNumberPagination):
@@ -1419,9 +1787,11 @@ class InvoiceListCreateView(ListCreateAPIView):
                 'invoice_items', 'payments'
             )
 
-            # Add search functionality
-            search = self.request.query_params.get('search', '')
-            if search:
+            # Add search functionality with sanitization
+            search = self.request.query_params.get('search', '').strip()
+            if search and len(search) <= 100:  # Limit search length
+                # Escape special characters to prevent SQL injection
+                from django.db.models import Q
                 queryset = queryset.filter(
                     Q(invoice_number__icontains=search) |
                     Q(customer__name__icontains=search) |
@@ -1458,7 +1828,7 @@ class InvoiceListCreateView(ListCreateAPIView):
         return session_key
 
     def create(self, request, *args, **kwargs):
-        """Override create to handle session authentication"""
+        """Override create to handle session authentication and return updated PO balance"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -1474,7 +1844,7 @@ class InvoiceListCreateView(ListCreateAPIView):
             service_user = session.service_user
 
             # Create invoice with company and created_by
-            serializer = self.get_serializer(data=request.data)
+            serializer = self.get_serializer(data=request.data, context={'company': service_user.company})
             serializer.is_valid(raise_exception=True)
 
             invoice = serializer.save(
@@ -1482,9 +1852,19 @@ class InvoiceListCreateView(ListCreateAPIView):
                 created_by=service_user
             )
 
-            # Return detailed invoice data
+            # Get updated PO balance data after invoice creation (only if PO exists)
+            updated_po_data = None
+            if hasattr(invoice, 'purchase_order') and invoice.purchase_order:
+                po_serializer = PurchaseOrderListSerializer(invoice.purchase_order)
+                updated_po_data = po_serializer.data
+
+            # Return detailed invoice data with updated PO balance
             detail_serializer = InvoiceDetailSerializer(invoice)
-            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+            response_data = detail_serializer.data
+            if updated_po_data:
+                response_data['updated_purchase_order'] = updated_po_data
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:
             return Response(
@@ -1609,7 +1989,7 @@ class InvoiceDetailView(RetrieveUpdateDestroyAPIView):
             )
 
     def destroy(self, request, *args, **kwargs):
-        """Override destroy to handle session authentication"""
+        """Override destroy to handle session authentication and reset claim_type if needed"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -1622,8 +2002,26 @@ class InvoiceDetailView(RetrieveUpdateDestroyAPIView):
                 session_key=session_key,
                 is_active=True
             )
+            
+            # Get the invoice and its PO before deletion
+            invoice = self.get_object()
+            purchase_order = invoice.purchase_order if hasattr(invoice, 'purchase_order') else None
+            
             # Proceed with normal deletion
-            return super().destroy(request, *args, **kwargs)
+            response = super().destroy(request, *args, **kwargs)
+            
+            # If deletion was successful and PO exists, check if we need to reset claim_type
+            if response.status_code == 204 and purchase_order:
+                # Check if this PO has any remaining invoices (both proforma and tax)
+                has_proforma = purchase_order.proforma_invoices.exists()
+                has_tax_invoice = purchase_order.invoices.exists()
+                
+                # If no invoices remain, reset claim_type to null
+                if not has_proforma and not has_tax_invoice:
+                    purchase_order.claim_type = None
+                    purchase_order.save(update_fields=['claim_type'])
+            
+            return response
 
         except ServiceUserSession.DoesNotExist:
             return Response(
@@ -1729,8 +2127,18 @@ class PaymentListCreateView(ListCreateAPIView):
             )
             service_user = session.service_user
 
+            # Filter request data to prevent invalid field combinations
+            data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+            
+            # If invoice is provided, remove proforma_invoice to prevent validation error
+            if data.get('invoice'):
+                data.pop('proforma_invoice', None)
+            # If proforma_invoice is provided, remove invoice to prevent validation error  
+            elif data.get('proforma_invoice'):
+                data.pop('invoice', None)
+
             # Create payment with company and created_by
-            serializer = self.get_serializer(data=request.data)
+            serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
 
             payment = serializer.save(
@@ -1923,13 +2331,13 @@ def payment_stats(request):
 
         return Response({
             'total_payments': total_payments,
-            'total_amount': float(total_amount),
+            'total_amount': float(total_amount) if str(total_amount).lower() != "nan" else 0.0,
             'pending_payments': pending_count,
-            'pending_amount': float(pending_amount),
+            'pending_amount': float(pending_amount) if str(pending_amount).lower() != "nan" else 0.0,
             'completed_payments': completed_count,
-            'completed_amount': float(completed_amount),
+            'completed_amount': float(completed_amount) if str(completed_amount).lower() != "nan" else 0.0,
             'failed_payments': failed_count,
-            'failed_amount': float(failed_amount),
+            'failed_amount': float(failed_amount) if str(failed_amount).lower() != "nan" else 0.0,
         })
 
     except ServiceUserSession.DoesNotExist:
@@ -1971,8 +2379,55 @@ def customer_ledger(request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
 
+        # Calculate period opening balance first
+        period_opening_balance = customer.opening_balance or 0
+        if start_date and customer.opening_balance_date:
+            from datetime import datetime
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+            if customer.opening_balance_date < start_dt:
+                # Calculate transactions between opening balance date and start_date
+                period_invoices = Invoice.objects.filter(
+                    customer=customer,
+                    company=service_user.company,
+                    invoice_date__gte=customer.opening_balance_date,
+                    invoice_date__lt=start_date
+                )
+                period_payments = Payment.objects.filter(
+                    customer=customer,
+                    company=service_user.company,
+                    payment_date__gte=customer.opening_balance_date,
+                    payment_date__lt=start_date
+                )
+                period_invoiced = sum(float(inv.total_amount) if str(inv.total_amount).lower() != "nan" else 0.0 for inv in period_invoices)
+                period_paid = sum(float(pay.amount) if str(pay.amount).lower() != "nan" else 0.0 for pay in period_payments if pay.status == 'completed')
+                period_opening_balance = customer.opening_balance + period_invoiced - period_paid
+
         # Build ledger entries from invoices and payments
         entries = []
+
+        # Add opening balance entry if it exists and is within date range
+        if customer.opening_balance and customer.opening_balance != 0:
+            opening_date = customer.opening_balance_date or customer.created_at.date()
+            
+            # Check if opening balance should be included based on date filter
+            include_opening = True
+            if start_date:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+                if opening_date < start_dt:
+                    include_opening = False
+            
+            if include_opening:
+                entries.append({
+                    'id': 'opening_balance',
+                    'date': opening_date.isoformat(),
+                    'document_type': 'Opening Balance',
+                    'document_number': 'OB-001',
+                    'description': 'Opening balance brought forward',
+                    'debit_amount': float(customer.opening_balance) if customer.opening_balance > 0 else 0,
+                    'credit_amount': float(abs(customer.opening_balance)) if customer.opening_balance < 0 else 0,
+                    'balance': 0,  # Will be calculated later
+                    'status': 'confirmed',
+                })
 
         # Get invoices for this customer
         invoices = Invoice.objects.filter(
@@ -1993,7 +2448,7 @@ def customer_ledger(request):
                 'document_type': 'Invoice',
                 'document_number': invoice.invoice_number,
                 'description': f'Invoice for services/products',
-                'debit_amount': float(invoice.total_amount),
+                'debit_amount': float(invoice.total_amount) if str(invoice.total_amount).lower() != "nan" else 0.0,
                 'credit_amount': 0,
                 'balance': 0,  # Will be calculated later
                 'status': invoice.payment_status,
@@ -2019,7 +2474,7 @@ def customer_ledger(request):
                 'document_number': payment.payment_number,
                 'description': f'Payment received - {payment.payment_method}',
                 'debit_amount': 0,
-                'credit_amount': float(payment.amount),
+                'credit_amount': float(payment.amount) if str(payment.amount).lower() != "nan" else 0.0,
                 'balance': 0,  # Will be calculated later
                 'status': payment.status,
             })
@@ -2027,19 +2482,31 @@ def customer_ledger(request):
         # Sort entries by date
         entries.sort(key=lambda x: x['date'])
 
-        # Calculate running balance
-        balance = 0
-        for entry in entries:
+        # Calculate running balance starting with opening balance
+        balance = float(period_opening_balance) if period_opening_balance else 0
+        
+        # If opening balance entry exists, set its balance
+        if entries and entries[0]['id'] == 'opening_balance':
+            entries[0]['balance'] = balance
+            # Start from second entry for remaining calculations
+            start_index = 1
+        else:
+            start_index = 0
+        
+        # Calculate running balance for remaining entries
+        for entry in entries[start_index:]:
             balance += entry['debit_amount'] - entry['credit_amount']
             entry['balance'] = balance
 
         # Calculate summary statistics
-        total_invoiced = sum(float(inv.total_amount) for inv in invoices)
-        total_paid = sum(float(pay.amount) for pay in payments if pay.status == 'completed')
+        total_invoiced = sum(float(inv.total_amount) if str(inv.total_amount).lower() != "nan" else 0.0 for inv in invoices)
+        total_paid = sum(float(pay.amount) if str(pay.amount).lower() != "nan" else 0.0 for pay in payments if pay.status == 'completed')
         outstanding_amount = total_invoiced - total_paid
 
         # Get customer credit limit (default to 100000 if not set)
         credit_limit = getattr(customer, 'credit_limit', 100000)
+
+
 
         return Response({
             'customer': {
@@ -2049,7 +2516,8 @@ def customer_ledger(request):
                 'email': customer.email,
                 'phone': customer.phone,
             },
-            'opening_balance': 0,  # Could be calculated from previous periods
+            'opening_balance': float(period_opening_balance),
+            'opening_balance_date': customer.opening_balance_date.isoformat() if customer.opening_balance_date else None,
             'total_invoiced': total_invoiced,
             'total_paid': total_paid,
             'outstanding_amount': outstanding_amount,
@@ -2072,13 +2540,14 @@ def generate_invoice_pdf(request, invoice_id):
     """Generate PDF for an invoice"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not session_key:
-        session_key = request.query_params.get('session_key')
+        session_key = request.GET.get('session_key')
 
     if not session_key:
         return Response({'error': 'Session key required'}, status=400)
 
     try:
-        from .pdf_utils import generate_invoice_pdf, create_pdf_response
+        from .email_utils import generate_invoice_pdf_content
+        from django.http import HttpResponse
 
         session = ServiceUserSession.objects.get(
             session_key=session_key,
@@ -2092,14 +2561,16 @@ def generate_invoice_pdf(request, invoice_id):
             company=service_user.company
         )
 
-        # Generate PDF
-        pdf_data = generate_invoice_pdf(invoice)
+        # Generate PDF using same function as email (with logo and from address)
+        pdf_buffer = generate_invoice_pdf_content(invoice)
 
         # Create filename
         filename = f"Invoice_{invoice.invoice_number}.pdf"
 
         # Return PDF response
-        return create_pdf_response(pdf_data, filename)
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
     except ServiceUserSession.DoesNotExist:
         return Response({'error': 'Invalid session'}, status=404)
@@ -2112,8 +2583,8 @@ def generate_invoice_pdf(request, invoice_id):
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([])
-def generate_proforma_pdf(request, proforma_id):
-    """Generate PDF for a proforma invoice"""
+def generate_quotation_pdf(request, quotation_id):
+    """Generate PDF for a quotation"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not session_key:
         session_key = request.query_params.get('session_key')
@@ -2122,7 +2593,52 @@ def generate_proforma_pdf(request, proforma_id):
         return Response({'error': 'Session key required'}, status=400)
 
     try:
-        from .pdf_utils import generate_invoice_pdf, create_pdf_response
+        from .email_utils import generate_quotation_pdf_content
+        from django.http import HttpResponse
+
+        session = ServiceUserSession.objects.get(
+            session_key=session_key,
+            is_active=True
+        )
+        service_user = session.service_user
+
+        # Get quotation
+        quotation = Quotation.objects.select_related('customer', 'company').prefetch_related('quotation_items').get(
+            id=quotation_id,
+            company=service_user.company
+        )
+
+        # Generate PDF using the same function as email (which has logo and from address)
+        pdf_buffer = generate_quotation_pdf_content(quotation)
+
+        # Create filename
+        filename = f"Quotation_{quotation.quotation_number}.pdf"
+
+        # Return PDF response
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=404)
+    except Quotation.DoesNotExist:
+        return Response({'error': 'Quotation not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+def generate_proforma_pdf(request, proforma_id):
+    """Generate PDF for a proforma invoice"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.GET.get('session_key')
+
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    try:
+        from .email_utils import generate_proforma_pdf_content
+        from django.http import HttpResponse
 
         session = ServiceUserSession.objects.get(
             session_key=session_key,
@@ -2136,36 +2652,16 @@ def generate_proforma_pdf(request, proforma_id):
             company=service_user.company
         )
 
-        # Convert proforma to invoice-like object for PDF generation
-        # This is a temporary solution - ideally we'd have a separate ProformaPDFGenerator
-        class ProformaWrapper:
-            def __init__(self, proforma):
-                self.invoice_number = proforma.proforma_number
-                self.invoice_date = proforma.proforma_date
-                self.due_date = proforma.due_date
-                self.payment_status = proforma.status
-                self.customer_details = proforma.customer_details
-                self.company = proforma.company
-                self.subtotal = proforma.subtotal
-                self.total_tax = proforma.total_tax
-                self.total_amount = proforma.total_amount
-                self.paid_amount = 0
-                self.outstanding_amount = proforma.total_amount
-
-            def invoice_items(self):
-                return proforma.proforma_items
-
-        wrapped_proforma = ProformaWrapper(proforma)
-        wrapped_proforma.invoice_items = proforma.proforma_items
-
-        # Generate PDF
-        pdf_data = generate_invoice_pdf(wrapped_proforma)
+        # Generate PDF using same function as email (with logo and from address)
+        pdf_buffer = generate_proforma_pdf_content(proforma)
 
         # Create filename
         filename = f"Proforma_{proforma.proforma_number}.pdf"
 
         # Return PDF response
-        return create_pdf_response(pdf_data, filename)
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
     except ServiceUserSession.DoesNotExist:
         return Response({'error': 'Invalid session'}, status=404)
@@ -2268,10 +2764,10 @@ def purchase_order_payment_details(request, po_id):
                 payments.append({
                     'payment_number': payment.payment_number,
                     'payment_date': payment.payment_date.strftime('%Y-%m-%d'),
-                    'amount': float(payment.amount),
-                    'net_amount_received': float(payment.net_amount_received),
-                    'tds_amount': float(payment.tds_amount),
-                    'tds_percentage': float(payment.tds_percentage),
+                    'amount': float(payment.amount) if str(payment.amount).lower() != "nan" else 0.0,
+                    'net_amount_received': float(payment.net_amount_received) if str(payment.net_amount_received).lower() != "nan" else 0.0,
+                    'tds_amount': float(payment.tds_amount) if str(payment.tds_amount).lower() != "nan" else 0.0,
+                    'tds_percentage': float(payment.tds_percentage) if str(payment.tds_percentage).lower() != "nan" else 0.0,
                     'tds_section': payment.tds_section,
                     'is_tds_received': payment.is_tds_received,
                     'payment_method': payment.payment_method,
@@ -2282,9 +2778,9 @@ def purchase_order_payment_details(request, po_id):
                 'id': pf.id,
                 'proforma_number': pf.proforma_number,
                 'proforma_date': pf.proforma_date.strftime('%Y-%m-%d'),
-                'total_amount': float(pf.total_amount),
-                'paid_amount': float(pf.paid_amount),
-                'outstanding_amount': float(pf.outstanding_amount),
+                'total_amount': float(pf.total_amount) if str(pf.total_amount).lower() != "nan" else 0.0,
+                'paid_amount': float(pf.paid_amount) if str(pf.paid_amount).lower() != "nan" else 0.0,
+                'outstanding_amount': float(pf.outstanding_amount) if str(pf.outstanding_amount).lower() != "nan" else 0.0,
                 'payment_status': pf.payment_status,
                 'payments': payments,
                 'total_tds_deducted': sum(p['tds_amount'] for p in payments),
@@ -2299,10 +2795,10 @@ def purchase_order_payment_details(request, po_id):
                 payments.append({
                     'payment_number': payment.payment_number,
                     'payment_date': payment.payment_date.strftime('%Y-%m-%d'),
-                    'amount': float(payment.amount),
-                    'net_amount_received': float(payment.net_amount_received),
-                    'tds_amount': float(payment.tds_amount),
-                    'tds_percentage': float(payment.tds_percentage),
+                    'amount': float(payment.amount) if str(payment.amount).lower() != "nan" else 0.0,
+                    'net_amount_received': float(payment.net_amount_received) if str(payment.net_amount_received).lower() != "nan" else 0.0,
+                    'tds_amount': float(payment.tds_amount) if str(payment.tds_amount).lower() != "nan" else 0.0,
+                    'tds_percentage': float(payment.tds_percentage) if str(payment.tds_percentage).lower() != "nan" else 0.0,
                     'tds_section': payment.tds_section,
                     'is_tds_received': payment.is_tds_received,
                     'payment_method': payment.payment_method,
@@ -2313,9 +2809,9 @@ def purchase_order_payment_details(request, po_id):
                 'id': inv.id,
                 'invoice_number': inv.invoice_number,
                 'invoice_date': inv.invoice_date.strftime('%Y-%m-%d'),
-                'total_amount': float(inv.total_amount),
-                'paid_amount': float(inv.paid_amount),
-                'outstanding_amount': float(inv.outstanding_amount),
+                'total_amount': float(inv.total_amount) if str(inv.total_amount).lower() != "nan" else 0.0,
+                'paid_amount': float(inv.paid_amount) if str(inv.paid_amount).lower() != "nan" else 0.0,
+                'outstanding_amount': float(inv.outstanding_amount) if str(inv.outstanding_amount).lower() != "nan" else 0.0,
                 'payment_status': inv.payment_status,
                 'payments': payments,
                 'total_tds_deducted': sum(p['tds_amount'] for p in payments),
@@ -2334,7 +2830,7 @@ def purchase_order_payment_details(request, po_id):
                 'internal_po_number': po.internal_po_number,
                 'po_number': po.po_number,
                 'customer_name': po.customer.name,
-                'total_po_amount': float(po.total_amount),
+                'total_po_amount': float(po.total_amount) if str(po.total_amount).lower() != "nan" else 0.0,
             },
             'proforma_invoices': proforma_invoices,
             'tax_invoices': tax_invoices,
@@ -2528,8 +3024,8 @@ def world_class_po_payment_dashboard(request, po_id):
             'tax_invoices': invoices,
             'world_class_insights': {
                 'total_invoices_created': len(proformas) + len(invoices),
-                'advance_payment_percentage': float((payment_summary['proforma_payments'] / po.subtotal) * 100) if po.subtotal > 0 else 0,
-                'tax_payment_percentage': float((payment_summary['invoice_payments'] / po.total_tax) * 100) if po.total_tax > 0 else 0,
+                'advance_payment_percentage': float((payment_summary['proforma_payments'] / po.subtotal) * 100) if po.subtotal > 0 else 0.0,
+                'tax_payment_percentage': float((payment_summary['invoice_payments'] / po.total_tax) * 100) if po.total_tax > 0 else 0.0,
                 'overall_completion': payment_summary['payment_completion_percentage'],
                 'next_action': 'Create more invoices' if payment_summary['total_outstanding'] > 0 else 'PO fully paid'
             }
@@ -2573,7 +3069,7 @@ def sophisticated_po_claiming_status(request, po_id):
                 'proforma_date': pf.proforma_date,
                 'subtotal': pf.subtotal,
                 'total_amount': pf.total_amount,
-                'percentage_of_original': float((pf.subtotal / po.subtotal) * 100) if po.subtotal > 0 else 0,
+                'percentage_of_original': float((pf.subtotal / po.subtotal) * 100) if po.subtotal > 0 else 0.0,
                 'payment_status': pf.payment_status,
                 'paid_amount': pf.paid_amount,
                 'outstanding_amount': pf.outstanding_amount
@@ -2586,7 +3082,7 @@ def sophisticated_po_claiming_status(request, po_id):
                 'invoice_date': inv.invoice_date,
                 'subtotal': inv.subtotal,
                 'total_amount': inv.total_amount,
-                'percentage_of_original': float((inv.total_amount / po.total_amount) * 100) if po.total_amount > 0 else 0,
+                'percentage_of_original': float((inv.total_amount / po.total_amount) * 100) if po.total_amount > 0 else 0.0,
                 'payment_status': inv.payment_status,
                 'paid_amount': inv.paid_amount,
                 'outstanding_amount': inv.outstanding_amount
@@ -2611,12 +3107,12 @@ def sophisticated_po_claiming_status(request, po_id):
                 'total_generated_bills': total_generated_bills,
                 'total_received_payments': total_received_payments,
                 'total_receivable_amount': total_receivable,
-                'receivable_percentage': float((total_receivable / total_generated_bills) * 100) if total_generated_bills > 0 else 0
+                'receivable_percentage': float((total_receivable / total_generated_bills) * 100) if total_generated_bills > 0 else 0.0
             },
             'world_class_insights': {
                 'proforma_vs_tax_invoice_ratio': f"{len(proforma_invoices)}:{len(tax_invoices)}",
                 'claiming_efficiency': claiming_status['po_completion_percentage'],
-                'payment_efficiency': float((total_received_payments / total_generated_bills) * 100) if total_generated_bills > 0 else 0,
+                'payment_efficiency': float((total_received_payments / total_generated_bills) * 100) if total_generated_bills > 0 else 0.0,
                 'next_recommended_action': _get_next_action_recommendation(claiming_status, total_receivable)
             }
         })
@@ -2687,6 +3183,49 @@ def send_invoice_email_view(request, invoice_id):
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([])
+def send_quotation_email_view(request, quotation_id):
+    """Send quotation via email"""
+    session_key = request.data.get('session_key') or request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    recipient_email = request.data.get('email')
+    if not recipient_email:
+        return Response({'error': 'Recipient email required'}, status=400)
+
+    message = request.data.get('message', '')
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+
+        # Get quotation
+        quotation = Quotation.objects.select_related('customer', 'company').prefetch_related('quotation_items').get(
+            id=quotation_id,
+            company=service_user.company
+        )
+
+        # Send email
+        success, result_message = send_quotation_email(quotation, recipient_email, message)
+        
+        if success:
+            # Update quotation status to 'sent'
+            quotation.status = 'sent'
+            quotation.save()
+            return Response({'message': result_message})
+        else:
+            return Response({'error': result_message}, status=500)
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except Quotation.DoesNotExist:
+        return Response({'error': 'Quotation not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
 def send_proforma_email_view(request, proforma_id):
     """Send proforma invoice via email"""
     session_key = request.data.get('session_key') or request.query_params.get('session_key')
@@ -2721,5 +3260,45 @@ def send_proforma_email_view(request, proforma_id):
         return Response({'error': 'Invalid session'}, status=401)
     except ProformaInvoice.DoesNotExist:
         return Response({'error': 'Proforma invoice not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
+def send_purchase_order_email_view(request, purchase_order_id):
+    """Send purchase order via email"""
+    session_key = request.data.get('session_key') or request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    recipient_email = request.data.get('email')
+    if not recipient_email:
+        return Response({'error': 'Recipient email required'}, status=400)
+
+    message = request.data.get('message', '')
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+
+        # Get purchase order
+        purchase_order = PurchaseOrder.objects.select_related('customer', 'company').prefetch_related('po_items').get(
+            id=purchase_order_id,
+            company=service_user.company
+        )
+
+        # Send email
+        success, result_message = send_purchase_order_email(purchase_order, recipient_email, message)
+        
+        if success:
+            return Response({'message': result_message})
+        else:
+            return Response({'error': result_message}, status=500)
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except PurchaseOrder.DoesNotExist:
+        return Response({'error': 'Purchase order not found'}, status=404)
     except Exception as e:
         return Response({'error': str(e)}, status=500)

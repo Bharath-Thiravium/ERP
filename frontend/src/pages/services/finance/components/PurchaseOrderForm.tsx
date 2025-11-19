@@ -186,7 +186,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       // Convert PO items from detailed format to form format
       const convertedItems = purchaseOrder.po_items ? purchaseOrder.po_items.map((item: any) => ({
         product: item.product,
-        quantity: parseFloat(item.quantity) || 0,
+        quantity: parseFloat(item.quantity) || 1,
         unit_price: parseFloat(item.unit_price) || 0,
         hsn_sac_code: item.hsn_sac_code || '',
         gst_rate: parseFloat(item.gst_rate) || 0
@@ -194,6 +194,10 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
       setFormData({
         ...purchaseOrder,
+        discount_percentage: Number(purchaseOrder.discount_percentage) || 0,
+        discount_amount: Number(purchaseOrder.discount_amount) || 0,
+        shipping_charges: Number(purchaseOrder.shipping_charges) || 0,
+        other_charges: Number(purchaseOrder.other_charges) || 0,
         po_items: convertedItems
       })
 
@@ -423,7 +427,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
   }
 
   const calculateTotals = () => {
-    const subtotal = formData.po_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
+    const subtotal = formData.po_items.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.unit_price)), 0)
     const discountAmount = formData.discount_percentage > 0 ? (subtotal * formData.discount_percentage / 100) : formData.discount_amount
     const subtotalAfterDiscount = subtotal - discountAmount
 
@@ -433,15 +437,15 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
     if (gstType !== 'exempt') {
       totalTax = formData.po_items.reduce((sum, item) => {
-        const itemTotal = (item.quantity * item.unit_price)
+        const itemTotal = (Number(item.quantity) * Number(item.unit_price))
         // Apply discount proportionally to each item before calculating GST
         const itemDiscount = discountAmount > 0 ? (itemTotal / subtotal) * discountAmount : 0
         const itemTotalAfterDiscount = itemTotal - itemDiscount
-        return sum + (itemTotalAfterDiscount * item.gst_rate / 100)
+        return sum + (itemTotalAfterDiscount * Number(item.gst_rate) / 100)
       }, 0)
     }
 
-    const subtotalWithCharges = subtotalAfterDiscount + formData.shipping_charges + formData.other_charges
+    const subtotalWithCharges = subtotalAfterDiscount + Number(formData.shipping_charges || 0) + Number(formData.other_charges || 0)
     const totalAmount = subtotalWithCharges + totalTax
 
     return {
@@ -450,8 +454,8 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       totalAmount: Number(totalAmount) || 0,
       gstType,
       discountAmount: Number(discountAmount) || 0,
-      shippingCharges: Number(formData.shipping_charges) || 0,
-      otherCharges: Number(formData.other_charges) || 0
+      shippingCharges: Number(formData.shipping_charges || 0),
+      otherCharges: Number(formData.other_charges || 0)
     }
   }
 
@@ -999,7 +1003,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                             <div>
                               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Total</label>
                               <div className="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-600 rounded text-gray-900 dark:text-white">
-                                ₹{(item.quantity * item.unit_price).toFixed(2)}
+                                ₹{(Number(item.quantity) * Number(item.unit_price)).toFixed(2)}
                               </div>
                             </div>
                           </div>
@@ -1111,7 +1115,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Items Total:</span>
-                    <span className="text-gray-900 dark:text-white">₹{formData.po_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0).toFixed(2)}</span>
+                    <span className="text-gray-900 dark:text-white">₹{formData.po_items.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.unit_price)), 0).toFixed(2)}</span>
                   </div>
                   {totals.discountAmount > 0 && (
                     <div className="flex justify-between">

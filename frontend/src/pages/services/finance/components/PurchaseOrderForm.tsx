@@ -839,8 +839,10 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                         .filter(addr => addr.id === formData.shipping_address)
                         .map(address => (
                           <div key={address.id}>
-                            {address.address_line1}, {address.city}, {address.state} {address.pincode}
-                            {address.is_default && ' (Default)'}
+                            <div className="font-medium">{address.label}{address.is_default && ' (Default)'}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              {address.address_line1}, {address.city}, {address.state} {address.pincode}
+                            </div>
                           </div>
                         ))[0] || 'Same as billing address'
                     ) : (
@@ -856,8 +858,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                     <option value="">Same as billing address</option>
                     {selectedCustomer.shipping_addresses?.map((address) => (
                       <option key={address.id} value={address.id}>
-                        {address.address_line1}, {address.city}, {address.state} {address.pincode}
-                        {address.is_default && ' (Default)'}
+                        {address.label}{address.is_default && ' (Default)'}
                       </option>
                     ))}
                   </select>

@@ -23,6 +23,7 @@ interface Customer {
 
 interface ShippingAddress {
   id: number
+  label: string
   address_line1: string
   address_line2: string
   city: string

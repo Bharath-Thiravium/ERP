@@ -41,6 +41,8 @@ interface Product {
   unit: string
   selling_price: number
   gst_rate: number
+  hsn_code_display: string
+  sac_code_display: string
   hsn_code?: { code: string }
   sac_code?: { code: string }
 }
@@ -383,12 +385,13 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       updatedItems[existingItemIndex].quantity += 1
       setFormData(prev => ({ ...prev, po_items: updatedItems }))
     } else {
-      // Add new item
+      // Add new item with proper HSN/SAC code
+      const hsnSacCode = product.hsn_code_display || product.sac_code_display || ''
       const newItem = {
         product: product.id,
         quantity: 1,
         unit_price: product.selling_price,
-        hsn_sac_code: product.hsn_code?.code || product.sac_code?.code || '',
+        hsn_sac_code: hsnSacCode,
         gst_rate: product.gst_rate
       }
       setFormData(prev => ({ ...prev, po_items: [...prev.po_items, newItem] }))
@@ -902,7 +905,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                           >
                             <div className="font-medium text-gray-900 dark:text-white">{product.name}</div>
                             <div className="text-sm text-gray-500 dark:text-gray-400">
-                              {product.product_code} | ₹{product.selling_price} | GST: {product.gst_rate}%
+                              {product.product_code} | HSN/SAC: {product.hsn_code_display || product.sac_code_display || 'N/A'} | ₹{product.selling_price} | GST: {product.gst_rate}%
                             </div>
                           </div>
                         ))
@@ -943,7 +946,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                                 {product?.name || 'Unknown Product'}
                               </div>
                               <div className="text-sm text-gray-500 dark:text-gray-400">
-                                {product?.product_code} | HSN/SAC: {item.hsn_sac_code} | GST: {item.gst_rate}%
+                                {product?.product_code} | HSN/SAC: {item.hsn_sac_code || product?.hsn_code_display || product?.sac_code_display || 'N/A'} | GST: {item.gst_rate}%
                               </div>
                             </div>
                             <button

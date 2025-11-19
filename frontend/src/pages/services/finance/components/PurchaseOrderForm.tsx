@@ -569,7 +569,9 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
           
           response = await apiClient.put(`/api/finance/purchase-orders/${purchaseOrder.id}/`, formDataToSend)
         } else {
-          response = await apiClient.updateFinancePurchaseOrder(purchaseOrder.id, { ...dataToSend, session_key: sessionKey })
+          // Remove po_file from data when no new file is selected
+          const { po_file, ...dataWithoutFile } = dataToSend
+          response = await apiClient.updateFinancePurchaseOrder(purchaseOrder.id, { ...dataWithoutFile, session_key: sessionKey })
         }
       } else {
         // Create new PO

@@ -165,7 +165,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
       setSelectedHsnCode(null)
       setSelectedSacCode(null)
     }
-  }, [formData.product_type, isEditing])
+  }, [isEditing])
 
   // Remove auto-generation - codes will be generated on backend save
   // const generateProductCode = async (type: 'product' | 'service') => {

@@ -491,15 +491,21 @@ class ProductListCreateView(ListCreateAPIView):
                 except (HSNCode.DoesNotExist, SACCode.DoesNotExist, ValueError):
                     pass
 
-            product = serializer.save(
-                company=service_user.company,
-                created_by=service_user
-            )
-            
-            # Set manual override flag if needed
+            # Set manual override flag BEFORE saving to prevent GST rate overwrite
             if manual_gst_override:
+                # Create product instance without triggering save
+                product = Product(
+                    company=service_user.company,
+                    created_by=service_user,
+                    **{k: v for k, v in serializer.validated_data.items()}
+                )
                 product._manual_gst_override = True
                 product.save()
+            else:
+                product = serializer.save(
+                    company=service_user.company,
+                    created_by=service_user
+                )
 
             # Return detailed product data
             detail_serializer = ProductDetailSerializer(product)

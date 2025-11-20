@@ -600,6 +600,8 @@ def service_wise_bulk_setup(request):
                         'allow_manual_override': config_data.get('allow_manual_override', False)
                     }
                     
+
+                    
                     config, created = DocumentNumberingConfig.objects.get_or_create(
                         service=service,
                         company=company,
@@ -610,12 +612,15 @@ def service_wise_bulk_setup(request):
                     
                     if created:
                         created_configs.append(config)
+
                     else:
+                        # Update existing configuration with new settings
                         for key, value in defaults.items():
-                            if key != 'current_counter':
+                            if key != 'current_counter':  # Don't reset counter
                                 setattr(config, key, value)
                         config.save()
                         updated_configs.append(config)
+
         
         return Response({
             'message': f'Successfully configured {len(created_configs)} new and {len(updated_configs)} existing configurations',
@@ -656,7 +661,7 @@ def preview_numbering_pattern(request):
         # Override the _get_year_string method for preview
         def get_preview_year_string():
             if config_data['year_format'] == 'YY':
-                return config_data['financial_year'].split('-')[0][-2:]
+                return config_data['financial_year'].split('-')[1]
             elif config_data['year_format'] == 'YYYY':
                 return config_data['financial_year'].split('-')[0]
             elif config_data['year_format'] == 'FY':
@@ -674,7 +679,7 @@ def preview_numbering_pattern(request):
             pattern = temp_config.custom_pattern
             replacements = {
                 '{PREFIX}': temp_config.prefix,
-                '{COMPANY}': company.company_prefix if hasattr(company, 'company_prefix') else 'EXMTS',
+                '{COMPANY}': company.company_prefix,
                 '{YEAR}': get_preview_year_string(),
                 '{FY}': config_data['financial_year'],
                 '{NUMBER}': str(temp_config.current_counter).zfill(temp_config.number_padding),
@@ -692,9 +697,17 @@ def preview_numbering_pattern(request):
         for i in range(1, 6):
             temp_config.current_counter = i
             if temp_config.custom_pattern:
-                preview_number = temp_config._generate_custom_pattern()
+                preview_number = generate_custom_pattern_preview()
             else:
-                preview_number = temp_config._generate_default_pattern()
+                # Generate default pattern preview
+                parts = []
+                if temp_config.include_company_prefix:
+                    parts.append(company.company_prefix)
+                parts.append(temp_config.prefix)
+                if temp_config.year_format != 'NONE':
+                    parts.append(get_preview_year_string())
+                parts.append(str(i).zfill(temp_config.number_padding))
+                preview_number = temp_config.separator.join(parts)
             previews.append(preview_number)
         
         return Response({
@@ -758,6 +771,26 @@ def get_company_current_configurations(request):
             'current_financial_year': current_fy,
             'services': list(services_config.values()),
             'use_document_numbering': company.use_document_numbering
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def fix_company_prefix_configs(request):
+    """Fix existing configurations to include company prefix"""
+    try:
+        company = request.user.company_user.company
+        
+        updated_count = DocumentNumberingConfig.objects.filter(
+            company=company
+        ).update(include_company_prefix=True)
+        
+        return Response({
+            'message': f'Updated {updated_count} configurations to include company prefix',
+            'updated_count': updated_count
         })
         
     except Exception as e:

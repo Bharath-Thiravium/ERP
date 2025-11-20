@@ -12,8 +12,7 @@ from .models import Company, CompanyAutoCodeSettings
 
 def generate_auto_code(company_id, code_type):
     """
-    Generate auto code for a company and code type
-    Enhanced to support new document numbering system with fallback
+    Generate auto code for a company and code type with company isolation
     
     Args:
         company_id: ID of the company
@@ -31,6 +30,8 @@ def generate_auto_code(company_id, code_type):
         company = Company.objects.get(id=company_id)
         if not company.use_document_numbering:
             raise Exception("Document numbering not enabled")
+        
+
         
         # Get current financial year
         today = datetime.now().date()
@@ -51,10 +52,10 @@ def generate_auto_code(company_id, code_type):
         except Service.DoesNotExist:
             raise Exception(f"Service not found for document type: {code_type}")
         
-        # Try to find active configuration
+        # Company-isolated configuration lookup and creation
         with transaction.atomic():
             config = DocumentNumberingConfig.objects.select_for_update().filter(
-                company_id=company_id,
+                company=company,  # Ensure company isolation
                 service=service,
                 document_type=code_type,
                 financial_year=financial_year,
@@ -62,10 +63,11 @@ def generate_auto_code(company_id, code_type):
             ).first()
             
             if config:
-                # Use new numbering system
+                # Use existing company-specific configuration
+
                 return config.get_next_number()
             else:
-                # Auto-create configuration if not exists
+                # Auto-create company-specific configuration
                 config = DocumentNumberingConfig.objects.create(
                     company=company,
                     service=service,
@@ -75,8 +77,10 @@ def generate_auto_code(company_id, code_type):
                     starting_number=1,
                     current_counter=0,
                     number_padding=3,
+                    include_company_prefix=True,  # Default to True for auto-created configs
                     is_active=True
                 )
+
                 return config.get_next_number()
     except Exception:
         # Fall through to old system

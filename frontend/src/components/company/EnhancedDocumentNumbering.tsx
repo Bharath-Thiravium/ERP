@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Hash, Settings, Eye, AlertCircle, RefreshCw, 
-  FileText, Calendar, Zap,
+  FileText, Calendar, Zap, RotateCcw,
   ChevronDown, ChevronRight
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
@@ -45,6 +45,33 @@ const EnhancedDocumentNumbering: React.FC = () => {
     include_company_prefix: false,
     custom_pattern: ''
   })
+  
+  // Persist global settings and selected services in localStorage
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('document-numbering-global-settings')
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings)
+        setGlobalSettings(prev => ({ ...prev, ...parsed }))
+      } catch (error) {
+        console.warn('Failed to parse saved settings:', error)
+      }
+    }
+    
+    const savedServices = localStorage.getItem('document-numbering-selected-services')
+    if (savedServices) {
+      try {
+        const parsed = JSON.parse(savedServices)
+        setSelectedServices(parsed)
+      } catch (error) {
+        console.warn('Failed to parse saved services:', error)
+      }
+    }
+  }, [])
+  
+  useEffect(() => {
+    localStorage.setItem('document-numbering-global-settings', JSON.stringify(globalSettings))
+  }, [globalSettings])
   const [serviceConfigurations] = useState<Record<string, any>>({})
   const [documentConfigurations] = useState<Record<string, any>>({})
   const [patternPreview, setPatternPreview] = useState<PatternPreview | null>(null)
@@ -94,6 +121,8 @@ const EnhancedDocumentNumbering: React.FC = () => {
       toast.success(`Successfully configured ${response.data.created_count + response.data.updated_count} document types`)
       queryClient.invalidateQueries({ queryKey: ['current-document-configurations'] })
       queryClient.invalidateQueries({ queryKey: ['document-numbering-status'] })
+      // Keep selected services in localStorage so user can see what was configured
+      // Don't reset global settings after successful setup
     },
     onError: () => {
       toast.error('Failed to setup document numbering')
@@ -124,16 +153,44 @@ const EnhancedDocumentNumbering: React.FC = () => {
     }
   })
 
+  // Reset counters mutation
+  const resetCountersMutation = useMutation({
+    mutationFn: () => apiClient.post('/api/company-dashboard/document-numbering/reset-all-counters/'),
+    onSuccess: (response) => {
+      toast.success(`Reset ${response.data.reset_count} counters successfully!`)
+      queryClient.invalidateQueries({ queryKey: ['current-document-configurations'] })
+    },
+    onError: () => {
+      toast.error('Failed to reset counters')
+    }
+  })
+
+  // Fix company prefix mutation
+  const fixCompanyPrefixMutation = useMutation({
+    mutationFn: () => apiClient.post('/api/company-dashboard/document-numbering/fix-company-prefix/'),
+    onSuccess: (response) => {
+      toast.success(`Fixed ${response.data.updated_count} configurations to include company prefix!`)
+      queryClient.invalidateQueries({ queryKey: ['current-document-configurations'] })
+    },
+    onError: () => {
+      toast.error('Failed to fix company prefix')
+    }
+  })
+
   const services = servicesData?.data?.services || []
   const configs = currentConfigs?.data || {}
   const isSystemEnabled = systemStatus?.data?.use_document_numbering || false
 
   const handleServiceToggle = (serviceType: string) => {
-    setSelectedServices(prev => 
-      prev.includes(serviceType) 
+    setSelectedServices(prev => {
+      const newServices = prev.includes(serviceType) 
         ? prev.filter(s => s !== serviceType)
         : [...prev, serviceType]
-    )
+      
+      // Save to localStorage
+      localStorage.setItem('document-numbering-selected-services', JSON.stringify(newServices))
+      return newServices
+    })
   }
 
   const handleServiceExpand = (serviceType: string) => {
@@ -145,7 +202,12 @@ const EnhancedDocumentNumbering: React.FC = () => {
   }
 
   const handleGlobalSettingChange = (key: string, value: any) => {
-    setGlobalSettings(prev => ({ ...prev, [key]: value }))
+    setGlobalSettings(prev => {
+      const newSettings = { ...prev, [key]: value }
+      // Save to localStorage immediately
+      localStorage.setItem('document-numbering-global-settings', JSON.stringify(newSettings))
+      return newSettings
+    })
   }
 
 
@@ -156,9 +218,9 @@ const EnhancedDocumentNumbering: React.FC = () => {
     let pattern = globalSettings.custom_pattern
     if (!pattern) {
       if (globalSettings.include_company_prefix) {
-        pattern = '{COMPANY}-{PREFIX}-{FY}-{NUMBER}'
+        pattern = '{COMPANY}-{PREFIX}-{YEAR}-{NUMBER}'
       } else {
-        pattern = '{PREFIX}-{FY}-{NUMBER}'
+        pattern = '{PREFIX}-{YEAR}-{NUMBER}'
       }
     }
 
@@ -169,8 +231,7 @@ const EnhancedDocumentNumbering: React.FC = () => {
       year_format: globalSettings.year_format,
       separator: globalSettings.separator,
       number_padding: globalSettings.number_padding,
-      financial_year: financialYear,
-      company_prefix: 'EXMTS'
+      financial_year: financialYear
     }
 
     previewMutation.mutate(previewData)
@@ -197,8 +258,13 @@ const EnhancedDocumentNumbering: React.FC = () => {
 
   const PatternBuilder = ({ config, onChange }: { config: any, onChange: (key: string, value: any) => void }) => {
     const [patternType, setPatternType] = useState<'simple' | 'custom'>(
-      config.custom_pattern ? 'custom' : 'simple'
+      config.custom_pattern && config.custom_pattern.trim() !== '' ? 'custom' : 'simple'
     )
+    
+    // Update pattern type when config changes
+    useEffect(() => {
+      setPatternType(config.custom_pattern && config.custom_pattern.trim() !== '' ? 'custom' : 'simple')
+    }, [config.custom_pattern])
 
     const patternTemplates = [
       { name: 'Standard', pattern: '{PREFIX}-{YEAR}-{NUMBER}', example: 'INV-25-001' },
@@ -212,13 +278,18 @@ const EnhancedDocumentNumbering: React.FC = () => {
       setPatternType(type)
       if (type === 'simple') {
         onChange('custom_pattern', '')
+      } else if (type === 'custom' && !config.custom_pattern) {
+        // Set a default custom pattern when switching to custom
+        onChange('custom_pattern', '{PREFIX}-{YEAR}-{NUMBER}')
       }
     }
 
     const handleCustomPatternChange = (value: string) => {
       onChange('custom_pattern', value)
-      if (value && patternType !== 'custom') {
+      if (value && value.trim() !== '' && patternType !== 'custom') {
         setPatternType('custom')
+      } else if (!value || value.trim() === '') {
+        setPatternType('simple')
       }
     }
 
@@ -331,6 +402,45 @@ const EnhancedDocumentNumbering: React.FC = () => {
           }`}>
             {isSystemEnabled ? 'Enabled' : 'Disabled'}
           </div>
+          
+          {isSystemEnabled && (
+            <>
+              <Button
+                onClick={() => {
+                  if (confirm('Fix existing configurations to include company prefix? This will update all document types to include EXMTS prefix.')) {
+                    fixCompanyPrefixMutation.mutate()
+                  }
+                }}
+                variant="outline"
+                disabled={fixCompanyPrefixMutation.isPending}
+                className="border-blue-300 text-blue-600 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-400 dark:hover:bg-blue-900/20"
+              >
+                {fixCompanyPrefixMutation.isPending ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Settings className="h-4 w-4 mr-2" />
+                )}
+                Fix Company Prefix
+              </Button>
+              <Button
+                onClick={() => {
+                  if (confirm('Are you sure you want to reset all document counters? This will make all new documents start from 001.')) {
+                    resetCountersMutation.mutate()
+                  }
+                }}
+                variant="outline"
+                disabled={resetCountersMutation.isPending}
+                className="border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+              >
+                {resetCountersMutation.isPending ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                )}
+                Reset Counters
+              </Button>
+            </>
+          )}
           
           <Button
             onClick={() => toggleSystemMutation.mutate(isSystemEnabled ? 'disable' : 'enable')}

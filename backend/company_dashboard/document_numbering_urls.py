@@ -1,5 +1,6 @@
 from django.urls import path
 from . import document_numbering_views
+from . import reset_views
 
 urlpatterns = [
     # Financial Year Management
@@ -31,4 +32,11 @@ urlpatterns = [
     # System Control
     path('toggle-system/', document_numbering_views.toggle_document_numbering_system, name='toggle_document_numbering_system'),
     path('system-status/', document_numbering_views.get_document_numbering_status, name='get_document_numbering_status'),
+    
+    # Counter Reset
+    path('reset-counter/', reset_views.reset_document_counter, name='reset_document_counter'),
+    path('reset-all-counters/', reset_views.reset_all_counters, name='reset_all_counters'),
+    
+    # Fix Company Prefix
+    path('fix-company-prefix/', document_numbering_views.fix_company_prefix_configs, name='fix_company_prefix_configs'),
 ]

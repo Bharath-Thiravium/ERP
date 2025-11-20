@@ -126,12 +126,21 @@ class DocumentNumberingConfig(models.Model):
         return f"{self.company.name} - {self.service.name} - {self.get_document_type_display()} ({self.financial_year})"
     
     def get_next_number(self):
-        """Generate next document number atomically with custom patterns"""
+        """Generate next document number atomically with company isolation"""
         from django.db import transaction
         
         with transaction.atomic():
-            # Lock the row for update to prevent race conditions
-            config = DocumentNumberingConfig.objects.select_for_update().get(pk=self.pk)
+            # Lock the specific company-service-document type configuration
+            config = DocumentNumberingConfig.objects.select_for_update().filter(
+                company=self.company,
+                service=self.service,
+                document_type=self.document_type,
+                financial_year=self.financial_year
+            ).first()
+            
+            if not config:
+                raise ValueError(f"Configuration not found for {self.company.name} - {self.document_type}")
+            
             config.current_counter += 1
             config.save(update_fields=['current_counter'])
             
@@ -148,7 +157,7 @@ class DocumentNumberingConfig(models.Model):
         # Replace placeholders
         replacements = {
             '{PREFIX}': self.prefix,
-            '{COMPANY}': self.company.company_prefix if hasattr(self.company, 'company_prefix') else 'COMP',
+            '{COMPANY}': self.company.company_prefix,
             '{YEAR}': self._get_year_string(),
             '{FY}': self.financial_year,
             '{NUMBER}': str(self.current_counter).zfill(self.number_padding),
@@ -166,7 +175,7 @@ class DocumentNumberingConfig(models.Model):
         
         # Add company prefix if enabled
         if self.include_company_prefix:
-            parts.append(self.company.company_prefix if hasattr(self.company, 'company_prefix') else 'COMP')
+            parts.append(self.company.company_prefix)
         
         # Add document prefix
         parts.append(self.prefix)
@@ -183,7 +192,7 @@ class DocumentNumberingConfig(models.Model):
     def _get_year_string(self):
         """Get year string based on format"""
         if self.year_format == 'YY':
-            return self.financial_year.split('-')[0][-2:]
+            return self.financial_year.split('-')[1]
         elif self.year_format == 'YYYY':
             return self.financial_year.split('-')[0]
         elif self.year_format == 'FY':
@@ -203,7 +212,7 @@ class DocumentNumberingConfig(models.Model):
             pattern = self.custom_pattern
             replacements = {
                 '{PREFIX}': self.prefix,
-                '{COMPANY}': self.company.company_prefix if hasattr(self.company, 'company_prefix') else 'COMP',
+                '{COMPANY}': self.company.company_prefix,
                 '{YEAR}': self._get_year_string(),
                 '{FY}': self.financial_year,
                 '{NUMBER}': str(temp_counter).zfill(self.number_padding),
@@ -218,7 +227,7 @@ class DocumentNumberingConfig(models.Model):
             parts = []
             
             if self.include_company_prefix:
-                parts.append(self.company.company_prefix if hasattr(self.company, 'company_prefix') else 'COMP')
+                parts.append(self.company.company_prefix)
             
             parts.append(self.prefix)
             

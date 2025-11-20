@@ -147,32 +147,37 @@ class CompanyAutoCodeSettings(models.Model):
         return escape(f"{self.company.name} - {self.get_code_type_display()}")
 
     def get_next_code(self):
-        """Generate next auto code for this type"""
-        self.current_number += 1
-        self.save()
-        number_str = str(self.current_number).zfill(self.number_length)
-        
-        # Map code types to their prefixes
-        code_prefixes = {
-            'employee': 'EMP',
-            'product': 'PRD',
-            'invoice': 'INV',
-            'purchase_order': 'POU',
-            'inventory_purchase_order': 'IPO',
-            'quotation': 'QUO',
-            'customer': 'CUS',
-            'vendor': 'VEN',
-            'supplier': 'SUP',
-            'warehouse': 'WH',
-            'category': 'CAT',
-            'audit': 'AUD',
-            'asset': 'AST',
-            'proforma_invoice': 'PFI',
-            'payment': 'PAY',
-        }
-        
-        prefix = code_prefixes.get(self.code_type, self.code_type.upper()[:3])
-        return escape(f"{self.company.company_prefix}{prefix}{number_str}")
+        """Generate next auto code for this company and type with isolation"""
+        from django.db import transaction
+        with transaction.atomic():
+            # Refresh from database to get latest counter for this company
+            self.refresh_from_db()
+            self.current_number += 1
+            self.save(update_fields=['current_number'])
+            
+            number_str = str(self.current_number).zfill(self.number_length)
+            
+            # Map code types to their prefixes
+            code_prefixes = {
+                'employee': 'EMP',
+                'product': 'PRD',
+                'invoice': 'INV',
+                'purchase_order': 'POU',
+                'inventory_purchase_order': 'IPO',
+                'quotation': 'QUO',
+                'customer': 'CUS',
+                'vendor': 'VEN',
+                'supplier': 'SUP',
+                'warehouse': 'WH',
+                'category': 'CAT',
+                'audit': 'AUD',
+                'asset': 'AST',
+                'proforma_invoice': 'PFI',
+                'payment': 'PAY',
+            }
+            
+            prefix = code_prefixes.get(self.code_type, self.code_type.upper()[:3])
+            return escape(f"{self.company.company_prefix}{prefix}{number_str}")
 
 
 class Service(models.Model):

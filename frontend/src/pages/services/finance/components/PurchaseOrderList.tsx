@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '../../../../lib/api'
 
 import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, MapPin, Package, ShoppingCart, Receipt, Mail } from 'lucide-react'
@@ -44,6 +44,7 @@ interface PurchaseOrderListProps {
 const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCreateNew, onEdit, onView, onViewDetails, onRaiseInvoice, onSendEmail, onDelete }) => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -53,21 +54,25 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
 
   // Debounce search term
   useEffect(() => {
+    if (searchTerm !== debouncedSearchTerm) {
+      setSearching(true)
+    }
+    
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm)
-    }, 300)
+      setSearching(false)
+    }, 500)
 
     return () => clearTimeout(timer)
-  }, [searchTerm])
+  }, [searchTerm, debouncedSearchTerm])
 
-  useEffect(() => {
-    fetchPurchaseOrders(currentPage)
-  }, [currentPage, debouncedSearchTerm, statusFilter])
-
-  const fetchPurchaseOrders = async (page: number) => {
+  const fetchPurchaseOrders = useCallback(async (page: number) => {
     if (!sessionKey) return
 
-    setLoading(true)
+    // Only show loading for initial load and pagination, not for search
+    if (purchaseOrders.length === 0) {
+      setLoading(true)
+    }
     try {
       const params = new URLSearchParams({
         page: page.toString(),
@@ -86,7 +91,11 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
     } finally {
       setLoading(false)
     }
-  }
+  }, [sessionKey, debouncedSearchTerm, statusFilter, currentPage])
+
+  useEffect(() => {
+    fetchPurchaseOrders(currentPage)
+  }, [currentPage, fetchPurchaseOrders])
 
   const handleDelete = async (po: PurchaseOrder) => {
     if (!confirm(`Are you sure you want to delete PO ${po.internal_po_number}?`)) {
@@ -166,7 +175,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
     }).format(parseFloat(amount))
   }
 
-  if (loading) {
+  if (loading && purchaseOrders.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -200,6 +209,11 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300/50 dark:border-gray-600/50 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 backdrop-blur-sm transition-all duration-200"
             />
+            {searching && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              </div>
+            )}
           </div>
 
           {/* Status Filter */}

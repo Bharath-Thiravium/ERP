@@ -1527,8 +1527,28 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         if claim_type == 'percentage':
             from decimal import Decimal
             
+            # Fix balance tracking if needed before validation
+            purchase_order.fix_balance_tracking()
+            
+            # Ensure PO totals are calculated
+            if purchase_order.total_amount == 0 and purchase_order.po_items.exists():
+                purchase_order.calculate_totals()
+                purchase_order.refresh_from_db()
+            
             # Get available percentage for tax invoices
             available_percentage = purchase_order.get_available_invoice_percentage()
+            
+            # If available percentage is 0 but PO has amounts, this might be a new PO
+            # Allow 100% claiming for the first invoice on a new PO
+            if available_percentage == 0 and purchase_order.total_amount > 0:
+                # Check if this is truly the first invoice (no existing invoices)
+                existing_invoices = purchase_order.invoices.count()
+                if existing_invoices == 0:
+                    # This is the first invoice on this PO, allow up to 100%
+                    available_percentage = Decimal('100')
+                    # Also fix the balance tracking immediately
+                    purchase_order.remaining_invoice_balance = purchase_order.total_amount
+                    purchase_order.save(update_fields=['remaining_invoice_balance'])
             
             # Check item percentages if provided
             item_percentages = data.get('item_percentages', {})

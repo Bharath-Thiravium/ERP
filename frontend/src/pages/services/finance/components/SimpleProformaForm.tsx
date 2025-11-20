@@ -144,7 +144,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
         proforma_items: proformaItems,
         proforma_amount: proformaAmount,
         proforma_date: formData.proforma_date,
-        due_date: formData.due_date,
+        ...(formData.due_date && { due_date: formData.due_date }),
         reference: formData.reference,
         notes: formData.notes,
         is_advance_bill: true,
@@ -443,7 +443,6 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                   value={formData.due_date}
                   onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  required
                 />
               </div>
             </div>

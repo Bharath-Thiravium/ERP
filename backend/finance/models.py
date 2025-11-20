@@ -1082,19 +1082,11 @@ class PurchaseOrder(models.Model):
             self.invoice_claimed_amount = Decimal('0')
             self.proforma_status = 'not_started'
             self.invoice_status = 'not_started'
-            # Note: remaining balances will be set after totals are calculated
+            # Initialize remaining balances to 0 - they will be set properly after calculate_totals()
+            self.remaining_proforma_balance = Decimal('0')
+            self.remaining_invoice_balance = Decimal('0')
 
         super().save(*args, **kwargs)
-
-        # Set remaining balances after save (when totals are available)
-        if is_new:
-            self.remaining_proforma_balance = self.subtotal
-            self.remaining_invoice_balance = self.total_amount
-            # Use update to avoid triggering save() again
-            PurchaseOrder.objects.filter(pk=self.pk).update(
-                remaining_proforma_balance=self.subtotal,
-                remaining_invoice_balance=self.total_amount
-            )
 
     def calculate_totals(self):
         """Calculate all totals for this PO"""
@@ -1143,9 +1135,15 @@ class PurchaseOrder(models.Model):
         # Calculate final total
         self.total_amount = self.subtotal + self.total_tax
 
+        # Initialize remaining balances for new POs or fix existing ones
+        if self.remaining_proforma_balance == 0 and self.remaining_invoice_balance == 0 and self.subtotal > 0:
+            self.remaining_proforma_balance = self.subtotal
+            self.remaining_invoice_balance = self.total_amount
+
         self.save(update_fields=[
             'subtotal', 'total_tax', 'total_amount', 'discount_amount',
-            'cgst_amount', 'sgst_amount', 'igst_amount'
+            'cgst_amount', 'sgst_amount', 'igst_amount',
+            'remaining_proforma_balance', 'remaining_invoice_balance'
         ])
 
     def update_balance_tracking(self):
@@ -1308,15 +1306,38 @@ class PurchaseOrder(models.Model):
         """Fix balance tracking for POs that have incorrect balances"""
         from decimal import Decimal
 
-        # Only fix if balances are zero but PO has amounts
+        # Fix if balances are zero but PO has amounts (common for new POs)
         if (self.remaining_proforma_balance == 0 and self.remaining_invoice_balance == 0 and
-            self.proforma_claimed_amount == 0 and self.invoice_claimed_amount == 0 and
-            self.subtotal > 0):
-
-            self.remaining_proforma_balance = self.subtotal
-            self.remaining_invoice_balance = self.total_amount
-            self.save(update_fields=['remaining_proforma_balance', 'remaining_invoice_balance'])
+            self.subtotal > 0 and self.total_amount > 0):
+            
+            # Check if there are actually no invoices created yet
+            existing_proformas = self.proforma_invoices.count()
+            existing_invoices = self.invoices.count()
+            
+            if existing_proformas == 0 and existing_invoices == 0:
+                # This is a new PO with no invoices, set full balances
+                self.remaining_proforma_balance = self.subtotal
+                self.remaining_invoice_balance = self.total_amount
+                self.proforma_claimed_amount = Decimal('0')
+                self.invoice_claimed_amount = Decimal('0')
+                self.proforma_status = 'not_started'
+                self.invoice_status = 'not_started'
+                self.save(update_fields=[
+                    'remaining_proforma_balance', 'remaining_invoice_balance',
+                    'proforma_claimed_amount', 'invoice_claimed_amount',
+                    'proforma_status', 'invoice_status'
+                ])
+                return True
+            else:
+                # There are existing invoices, recalculate properly
+                self.update_balance_tracking()
+                return True
+        
+        # Also fix if PO has zero totals but items exist (recalculate totals)
+        if self.subtotal == 0 and self.total_amount == 0 and self.po_items.exists():
+            self.calculate_totals()
             return True
+            
         return False
 
     @property
@@ -1350,6 +1371,10 @@ class PurchaseOrder(models.Model):
         if self.subtotal <= 0:
             return Decimal('0')
         
+        # If remaining balance is 0 but no proforma invoices exist, this is a new PO - allow 100%
+        if self.remaining_proforma_balance == 0 and self.proforma_invoices.count() == 0:
+            return Decimal('100')
+        
         # Calculate the percentage of remaining proforma balance
         return (self.remaining_proforma_balance / self.subtotal) * Decimal('100')
 
@@ -1359,6 +1384,10 @@ class PurchaseOrder(models.Model):
         
         if self.total_amount <= 0:
             return Decimal('0')
+        
+        # If remaining balance is 0 but no invoices exist, this is a new PO - allow 100%
+        if self.remaining_invoice_balance == 0 and self.invoices.count() == 0:
+            return Decimal('100')
         
         # Calculate the percentage of remaining invoice balance
         return (self.remaining_invoice_balance / self.total_amount) * Decimal('100')
@@ -1798,7 +1827,7 @@ class Invoice(models.Model):
     # Invoice Details
     invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
     invoice_date = models.DateField()
-    due_date = models.DateField()
+    due_date = models.DateField(null=True, blank=True)
     reference = models.CharField(max_length=100, blank=True)
 
     # Customer and Shipping Information
@@ -1929,8 +1958,8 @@ class Invoice(models.Model):
         else:
             self.payment_status = 'partially_paid'
 
-        # Check if overdue
-        if self.payment_status != 'paid' and self.due_date < timezone.now().date():
+        # Check if overdue (only if due_date is set)
+        if self.payment_status != 'paid' and self.due_date and self.due_date < timezone.now().date():
             self.payment_status = 'overdue'
 
         super().save(*args, **kwargs)

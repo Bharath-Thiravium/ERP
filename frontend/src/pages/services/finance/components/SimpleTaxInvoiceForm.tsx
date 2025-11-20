@@ -133,7 +133,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
         selected_items: invoiceData.claim_type === 'quantity' ? selectedItems : undefined,
         item_percentages: invoiceData.claim_type === 'percentage' ? itemPercentages : undefined,
         invoice_date: formData.invoice_date,
-        due_date: formData.due_date,
+        ...(formData.due_date && { due_date: formData.due_date }),
         reference: formData.reference,
         notes: formData.notes,
         invoice_type: 'tax_invoice',
@@ -469,7 +469,6 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
                   value={formData.due_date}
                   onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  required
                 />
               </div>
             </div>

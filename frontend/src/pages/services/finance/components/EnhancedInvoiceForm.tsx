@@ -98,7 +98,8 @@ const EnhancedInvoiceForm: React.FC<EnhancedInvoiceFormProps> = ({
       const payload = {
         ...formData,
         purchase_order: purchaseOrder.id,
-        session_key: sessionKey
+        session_key: sessionKey,
+        ...(formData.due_date && { due_date: formData.due_date })
       }
 
       await apiClient.createFinanceInvoice(payload)

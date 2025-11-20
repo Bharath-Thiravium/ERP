@@ -7,11 +7,11 @@ interface PurchaseOrder {
   po_number: string
   po_date: string
   po_file?: string
-  quotation_details: {
+  quotation_details?: {
     quotation_number: string
     quotation_date: string
     valid_until: string
-  }
+  } | null
   customer_details: {
     name: string
     customer_code: string
@@ -192,18 +192,26 @@ const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, on
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
               <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Quotation Reference</h3>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Quotation Number:</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{purchaseOrder.quotation_details.quotation_number}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Quotation Date:</span>
-                  <span className="text-gray-900 dark:text-white">{formatDate(purchaseOrder.quotation_details.quotation_date)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Valid Until:</span>
-                  <span className="text-gray-900 dark:text-white">{formatDate(purchaseOrder.quotation_details.valid_until)}</span>
-                </div>
+                {purchaseOrder.quotation_details ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Quotation Number:</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{purchaseOrder.quotation_details.quotation_number}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Quotation Date:</span>
+                      <span className="text-gray-900 dark:text-white">{formatDate(purchaseOrder.quotation_details.quotation_date)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Valid Until:</span>
+                      <span className="text-gray-900 dark:text-white">{formatDate(purchaseOrder.quotation_details.valid_until)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-4">
+                    <span className="text-gray-500 dark:text-gray-400 italic">Direct PO - No Quotation Reference</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

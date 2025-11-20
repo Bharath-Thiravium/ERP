@@ -24,7 +24,13 @@ def generate_auto_code(company_id, code_type):
     """
     # First try the new document numbering system
     try:
-        from company_dashboard.document_numbering_models import DocumentNumberingConfig
+        from company_dashboard.document_numbering_models import DocumentNumberingConfig, ServiceDocumentTypes
+        from authentication.models import Service
+        
+        # Check if company has document numbering enabled
+        company = Company.objects.get(id=company_id)
+        if not company.use_document_numbering:
+            raise Exception("Document numbering not enabled")
         
         # Get current financial year
         today = datetime.now().date()
@@ -37,10 +43,19 @@ def generate_auto_code(company_id, code_type):
         
         financial_year = f"{start_year}-{str(end_year)[-2:]}"
         
+        # Get service for this document type
+        service_type = ServiceDocumentTypes.get_service_for_document_type(code_type)
+        
+        try:
+            service = Service.objects.get(service_type=service_type)
+        except Service.DoesNotExist:
+            raise Exception(f"Service not found for document type: {code_type}")
+        
         # Try to find active configuration
         with transaction.atomic():
             config = DocumentNumberingConfig.objects.select_for_update().filter(
                 company_id=company_id,
+                service=service,
                 document_type=code_type,
                 financial_year=financial_year,
                 is_active=True
@@ -48,6 +63,20 @@ def generate_auto_code(company_id, code_type):
             
             if config:
                 # Use new numbering system
+                return config.get_next_number()
+            else:
+                # Auto-create configuration if not exists
+                config = DocumentNumberingConfig.objects.create(
+                    company=company,
+                    service=service,
+                    document_type=code_type,
+                    financial_year=financial_year,
+                    prefix=ServiceDocumentTypes.get_default_prefix(code_type),
+                    starting_number=1,
+                    current_counter=0,
+                    number_padding=3,
+                    is_active=True
+                )
                 return config.get_next_number()
     except Exception:
         # Fall through to old system
@@ -158,30 +187,21 @@ def initialize_company_auto_codes(company_id):
     try:
         company = Company.objects.get(id=company_id)
         
-        default_code_types = [
-            'employee',
-            'product', 
-            'invoice',
-            'purchase_order',
-            'quotation',
-            'customer',
-            'vendor',
-            'supplier',
-            'warehouse',
-            'category',
-            'audit',
-            'asset',
-            'proforma_invoice',
-            'payment',
-            'department',
-            'designation',
-            'lead',
-            'contact',
-            'account',
-            'opportunity',
-            'activity',
-            'campaign'
-        ]
+        # Get all document types from enhanced system
+        try:
+            from company_dashboard.document_numbering_models import ServiceDocumentTypes
+            default_code_types = []
+            for service_types in ServiceDocumentTypes.SERVICE_DOCUMENT_MAPPING.values():
+                default_code_types.extend(service_types)
+        except ImportError:
+            # Fallback to original list
+            default_code_types = [
+                'employee', 'product', 'invoice', 'purchase_order', 'quotation',
+                'customer', 'vendor', 'supplier', 'warehouse', 'category',
+                'audit', 'asset', 'proforma_invoice', 'payment', 'department',
+                'designation', 'lead', 'contact', 'account', 'opportunity',
+                'activity', 'campaign'
+            ]
         
         for code_type in default_code_types:
             CompanyAutoCodeSettings.objects.get_or_create(

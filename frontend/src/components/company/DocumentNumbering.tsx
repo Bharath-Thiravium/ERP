@@ -1,23 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Settings,
-  FileText,
-  Calendar,
-  Hash,
-  Plus,
-  Edit,
-  Save,
-  X,
-  CheckCircle,
-  History,
-  RefreshCw,
-  Shield
+  Hash, Settings, CheckCircle, 
+  Plus, Edit, Save, X, RefreshCw, 
+  FileText, Calendar, Shield, History
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
 import { Button } from '../ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card'
 import toast from 'react-hot-toast'
+import EnhancedDocumentNumbering from './EnhancedDocumentNumbering'
 
 interface DocumentNumberingProps {
   onNavigateToTab?: (tab: string) => void
@@ -31,6 +23,7 @@ const DocumentNumbering: React.FC<DocumentNumberingProps> = () => {
   const [showSetupModal, setShowSetupModal] = useState(false)
   const [showConfigModal, setShowConfigModal] = useState(false)
   const [selectedConfig, setSelectedConfig] = useState<any>(null)
+
   const [setupForm, setSetupForm] = useState({
     financial_year: '',
     start_date: '',
@@ -74,6 +67,12 @@ const DocumentNumbering: React.FC<DocumentNumberingProps> = () => {
     })
   })
 
+  // Fetch system status
+  const { data: systemStatusData } = useQuery({
+    queryKey: ['document-numbering-status'],
+    queryFn: () => apiClient.get('/api/company-dashboard/document-numbering/system-status/')
+  })
+
   // Initialize form with current financial year
   useEffect(() => {
     if (currentFY?.data) {
@@ -114,6 +113,19 @@ const DocumentNumbering: React.FC<DocumentNumberingProps> = () => {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to update configuration')
+    }
+  })
+
+  // Toggle system mutation
+  const toggleSystemMutation = useMutation({
+    mutationFn: (action: 'enable' | 'disable') => 
+      apiClient.post('/api/company-dashboard/document-numbering/toggle-system/', { action }),
+    onSuccess: (data) => {
+      toast.success(data.data.message)
+      queryClient.invalidateQueries({ queryKey: ['document-numbering-status'] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to toggle system')
     }
   })
 
@@ -167,6 +179,14 @@ const DocumentNumbering: React.FC<DocumentNumberingProps> = () => {
     { id: 'history', label: 'History', icon: History }
   ]
 
+  // Check if enhanced system should be used
+  const useEnhancedSystem = systemStatusData?.data?.use_document_numbering
+  
+  // If enhanced system is enabled, use the new component
+  if (useEnhancedSystem) {
+    return <EnhancedDocumentNumbering />
+  }
+  
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -175,18 +195,59 @@ const DocumentNumbering: React.FC<DocumentNumberingProps> = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
             <Hash className="h-6 w-6 text-blue-600 dark:text-blue-400" />
             <span>Document Numbering System</span>
+            {systemStatusData?.data && (
+              <span className={`px-2 py-1 text-xs rounded-full ${
+                systemStatusData.data.use_document_numbering 
+                  ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                  : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+              }`}>
+                {systemStatusData.data.status.toUpperCase()}
+              </span>
+            )}
           </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             Configure auto-generated document numbers with company prefixes and financial year management
           </p>
         </div>
-        <Button
-          onClick={() => setShowSetupModal(true)}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Setup Numbering
-        </Button>
+        <div className="flex items-center space-x-3">
+          {systemStatusData?.data?.use_document_numbering && (
+            <Button
+              onClick={() => toggleSystemMutation.mutate('disable')}
+              disabled={toggleSystemMutation.isPending}
+              variant="outline"
+              className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20"
+            >
+              {toggleSystemMutation.isPending ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <X className="h-4 w-4 mr-2" />
+              )}
+              Disable System
+            </Button>
+          )}
+          {!systemStatusData?.data?.use_document_numbering && (
+            <Button
+              onClick={() => toggleSystemMutation.mutate('enable')}
+              disabled={toggleSystemMutation.isPending}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {toggleSystemMutation.isPending ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle className="h-4 w-4 mr-2" />
+              )}
+              Enable System
+            </Button>
+          )}
+          <Button
+            onClick={() => setShowSetupModal(true)}
+            className="bg-blue-600 hover:bg-blue-700"
+            disabled={!systemStatusData?.data?.use_document_numbering}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Setup Numbering
+          </Button>
+        </div>
       </div>
 
       {/* Navigation Tabs */}
@@ -211,6 +272,22 @@ const DocumentNumbering: React.FC<DocumentNumberingProps> = () => {
           })}
         </nav>
       </div>
+
+      {/* System Disabled Warning */}
+      {!systemStatusData?.data?.use_document_numbering && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <Shield className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+            <h3 className="font-medium text-yellow-800 dark:text-yellow-200">
+              Document Numbering System Disabled
+            </h3>
+          </div>
+          <p className="text-yellow-700 dark:text-yellow-300 mt-1 text-sm">
+            The centralized document numbering system is currently disabled. Your modules are using the old numbering system. 
+            Enable the system to use centralized numbering with financial year management.
+          </p>
+        </div>
+      )}
 
       {/* Overview Tab */}
       {activeTab === 'overview' && (
@@ -546,29 +623,102 @@ const DocumentNumbering: React.FC<DocumentNumberingProps> = () => {
               <div>
                 <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Document Prefixes</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[
-                    { key: 'quotation_prefix', label: 'Quotation', icon: '📋' },
-                    { key: 'purchase_order_prefix', label: 'Purchase Order', icon: '🛒' },
-                    { key: 'invoice_prefix', label: 'Invoice', icon: '🧾' },
-                    { key: 'proforma_invoice_prefix', label: 'Proforma Invoice', icon: '📄' },
-                    { key: 'payment_prefix', label: 'Payment', icon: '💳' },
-                    { key: 'customer_prefix', label: 'Customer', icon: '👤' },
-                    { key: 'vendor_prefix', label: 'Vendor', icon: '🏢' },
-                    { key: 'product_prefix', label: 'Product', icon: '📦' }
-                  ].map((item) => (
-                    <div key={item.key}>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        {item.icon} {item.label}
-                      </label>
-                      <input
-                        type="text"
-                        value={setupForm[item.key as keyof typeof setupForm] as string}
-                        onChange={(e) => setSetupForm(prev => ({ ...prev, [item.key]: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        placeholder={item.key.split('_')[0].toUpperCase()}
-                      />
-                    </div>
-                  ))}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      📋 Quotation
+                    </label>
+                    <input
+                      type="text"
+                      value={setupForm.quotation_prefix}
+                      onChange={(e) => setSetupForm(prev => ({ ...prev, quotation_prefix: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="QT"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      🛒 Purchase Order
+                    </label>
+                    <input
+                      type="text"
+                      value={setupForm.purchase_order_prefix}
+                      onChange={(e) => setSetupForm(prev => ({ ...prev, purchase_order_prefix: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="PO"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      🧾 Invoice
+                    </label>
+                    <input
+                      type="text"
+                      value={setupForm.invoice_prefix}
+                      onChange={(e) => setSetupForm(prev => ({ ...prev, invoice_prefix: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="INV"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      📄 Proforma Invoice
+                    </label>
+                    <input
+                      type="text"
+                      value={setupForm.proforma_invoice_prefix}
+                      onChange={(e) => setSetupForm(prev => ({ ...prev, proforma_invoice_prefix: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="PI"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      💳 Payment
+                    </label>
+                    <input
+                      type="text"
+                      value={setupForm.payment_prefix}
+                      onChange={(e) => setSetupForm(prev => ({ ...prev, payment_prefix: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="PAY"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      👤 Customer
+                    </label>
+                    <input
+                      type="text"
+                      value={setupForm.customer_prefix}
+                      onChange={(e) => setSetupForm(prev => ({ ...prev, customer_prefix: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="CUST"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      🏢 Vendor
+                    </label>
+                    <input
+                      type="text"
+                      value={setupForm.vendor_prefix}
+                      onChange={(e) => setSetupForm(prev => ({ ...prev, vendor_prefix: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="VEN"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      📦 Product
+                    </label>
+                    <input
+                      type="text"
+                      value={setupForm.product_prefix}
+                      onChange={(e) => setSetupForm(prev => ({ ...prev, product_prefix: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="PRD"
+                    />
+                  </div>
                 </div>
               </div>
 

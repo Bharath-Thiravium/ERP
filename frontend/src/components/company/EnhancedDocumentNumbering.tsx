@@ -1,0 +1,704 @@
+import React, { useState, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  Hash, Settings, Eye, AlertCircle, RefreshCw, 
+  FileText, Calendar, Zap,
+  ChevronDown, ChevronRight
+} from 'lucide-react'
+import { apiClient } from '../../lib/api'
+import { Button } from '../ui/Button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card'
+import toast from 'react-hot-toast'
+
+interface ServiceDocumentType {
+  type: string
+  name: string
+  default_prefix: string
+}
+
+interface ServiceData {
+  service: string
+  service_name: string
+  document_types: ServiceDocumentType[]
+}
+
+
+
+interface PatternPreview {
+  previews: string[]
+  configuration: any
+}
+
+const EnhancedDocumentNumbering: React.FC = () => {
+  const queryClient = useQueryClient()
+  
+  // State management
+  const [activeTab, setActiveTab] = useState<'setup' | 'configure' | 'history'>('setup')
+  const [selectedServices, setSelectedServices] = useState<string[]>([])
+  const [expandedServices, setExpandedServices] = useState<string[]>([])
+  const [globalSettings, setGlobalSettings] = useState({
+    year_format: 'YY',
+    separator: '-',
+    starting_number: 1,
+    number_padding: 3,
+    allow_manual_override: false,
+    include_company_prefix: false,
+    custom_pattern: ''
+  })
+  const [serviceConfigurations] = useState<Record<string, any>>({})
+  const [documentConfigurations] = useState<Record<string, any>>({})
+  const [patternPreview, setPatternPreview] = useState<PatternPreview | null>(null)
+  const [financialYear, setFinancialYear] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+
+  // Fetch service document types
+  const { data: servicesData, isLoading: servicesLoading } = useQuery({
+    queryKey: ['service-document-types'],
+    queryFn: () => apiClient.get('/api/company-dashboard/document-numbering/service-document-types/')
+  })
+
+  // Fetch current configurations
+  const { data: currentConfigs, isLoading: configsLoading } = useQuery({
+    queryKey: ['current-document-configurations'],
+    queryFn: () => apiClient.get('/api/company-dashboard/document-numbering/current-configurations/')
+  })
+
+  // Fetch system status
+  const { data: systemStatus } = useQuery({
+    queryKey: ['document-numbering-status'],
+    queryFn: () => apiClient.get('/api/company-dashboard/document-numbering/system-status/')
+  })
+
+  // Initialize financial year
+  useEffect(() => {
+    const today = new Date()
+    const currentYear = today.getFullYear()
+    const isAfterApril = today.getMonth() >= 3 // April is month 3 (0-indexed)
+    
+    if (isAfterApril) {
+      setFinancialYear(`${currentYear}-${String(currentYear + 1).slice(-2)}`)
+      setStartDate(`${currentYear}-04-01`)
+      setEndDate(`${currentYear + 1}-03-31`)
+    } else {
+      setFinancialYear(`${currentYear - 1}-${String(currentYear).slice(-2)}`)
+      setStartDate(`${currentYear - 1}-04-01`)
+      setEndDate(`${currentYear}-03-31`)
+    }
+  }, [])
+
+  // Service-wise bulk setup mutation
+  const setupMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post('/api/company-dashboard/document-numbering/service-wise-setup/', data),
+    onSuccess: (response) => {
+      toast.success(`Successfully configured ${response.data.created_count + response.data.updated_count} document types`)
+      queryClient.invalidateQueries({ queryKey: ['current-document-configurations'] })
+      queryClient.invalidateQueries({ queryKey: ['document-numbering-status'] })
+    },
+    onError: () => {
+      toast.error('Failed to setup document numbering')
+    }
+  })
+
+  // Pattern preview mutation
+  const previewMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post('/api/company-dashboard/document-numbering/preview-pattern/', data),
+    onSuccess: (response) => {
+      setPatternPreview(response.data)
+    },
+    onError: () => {
+      toast.error('Failed to generate preview')
+    }
+  })
+
+  // Toggle system mutation
+  const toggleSystemMutation = useMutation({
+    mutationFn: (action: 'enable' | 'disable') => 
+      apiClient.post('/api/company-dashboard/document-numbering/toggle-system/', { action }),
+    onSuccess: (response) => {
+      toast.success(response.data.message)
+      queryClient.invalidateQueries({ queryKey: ['document-numbering-status'] })
+    },
+    onError: () => {
+      toast.error('Failed to toggle system')
+    }
+  })
+
+  const services = servicesData?.data?.services || []
+  const configs = currentConfigs?.data || {}
+  const isSystemEnabled = systemStatus?.data?.use_document_numbering || false
+
+  const handleServiceToggle = (serviceType: string) => {
+    setSelectedServices(prev => 
+      prev.includes(serviceType) 
+        ? prev.filter(s => s !== serviceType)
+        : [...prev, serviceType]
+    )
+  }
+
+  const handleServiceExpand = (serviceType: string) => {
+    setExpandedServices(prev => 
+      prev.includes(serviceType)
+        ? prev.filter(s => s !== serviceType)
+        : [...prev, serviceType]
+    )
+  }
+
+  const handleGlobalSettingChange = (key: string, value: any) => {
+    setGlobalSettings(prev => ({ ...prev, [key]: value }))
+  }
+
+
+
+  const generatePreview = () => {
+    if (selectedServices.length === 0) return
+
+    let pattern = globalSettings.custom_pattern
+    if (!pattern) {
+      if (globalSettings.include_company_prefix) {
+        pattern = '{COMPANY}-{PREFIX}-{FY}-{NUMBER}'
+      } else {
+        pattern = '{PREFIX}-{FY}-{NUMBER}'
+      }
+    }
+
+    const previewData = {
+      prefix: 'DOC',
+      custom_pattern: pattern,
+      include_company_prefix: globalSettings.include_company_prefix,
+      year_format: globalSettings.year_format,
+      separator: globalSettings.separator,
+      number_padding: globalSettings.number_padding,
+      financial_year: financialYear,
+      company_prefix: 'EXMTS'
+    }
+
+    previewMutation.mutate(previewData)
+  }
+
+  const handleBulkSetup = () => {
+    if (selectedServices.length === 0) {
+      toast.error('Please select at least one service')
+      return
+    }
+
+    const setupData = {
+      financial_year: financialYear,
+      start_date: startDate,
+      end_date: endDate,
+      services: selectedServices,
+      global_settings: globalSettings,
+      service_configurations: serviceConfigurations,
+      document_configurations: documentConfigurations
+    }
+
+    setupMutation.mutate(setupData)
+  }
+
+  const PatternBuilder = ({ config, onChange }: { config: any, onChange: (key: string, value: any) => void }) => {
+    const [patternType, setPatternType] = useState<'simple' | 'custom'>(
+      config.custom_pattern ? 'custom' : 'simple'
+    )
+
+    const patternTemplates = [
+      { name: 'Standard', pattern: '{PREFIX}-{YEAR}-{NUMBER}', example: 'INV-25-001' },
+      { name: 'With Company', pattern: '{COMPANY}-{PREFIX}-{YEAR}-{NUMBER}', example: 'ACME-INV-25-001' },
+      { name: 'Full Year', pattern: '{PREFIX}-{YYYY}-{NUMBER}', example: 'INV-2025-001' },
+      { name: 'Financial Year', pattern: '{PREFIX}-{FY}-{NUMBER}', example: 'INV-2024-25-001' },
+      { name: 'No Year', pattern: '{PREFIX}-{NUMBER}', example: 'INV-001' },
+    ]
+
+    const handlePatternTypeChange = (type: 'simple' | 'custom') => {
+      setPatternType(type)
+      if (type === 'simple') {
+        onChange('custom_pattern', '')
+      }
+    }
+
+    const handleCustomPatternChange = (value: string) => {
+      onChange('custom_pattern', value)
+      if (value && patternType !== 'custom') {
+        setPatternType('custom')
+      }
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex space-x-4">
+          <label className="flex items-center space-x-2">
+            <input
+              type="radio"
+              checked={patternType === 'simple'}
+              onChange={() => handlePatternTypeChange('simple')}
+              className="text-blue-600"
+            />
+            <span>Simple Configuration</span>
+          </label>
+          <label className="flex items-center space-x-2">
+            <input
+              type="radio"
+              checked={patternType === 'custom'}
+              onChange={() => handlePatternTypeChange('custom')}
+              className="text-blue-600"
+            />
+            <span>Custom Pattern</span>
+          </label>
+        </div>
+
+        {patternType === 'simple' ? (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Year Format</label>
+              <select
+                value={config.year_format || 'YY'}
+                onChange={(e) => onChange('year_format', e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option value="YY">2-digit (25)</option>
+                <option value="YYYY">4-digit (2025)</option>
+                <option value="FY">Financial Year (2024-25)</option>
+                <option value="FY_SHORT">Short FY (24-25)</option>
+                <option value="NONE">No Year</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Separator</label>
+              <input
+                type="text"
+                value={config.separator || '-'}
+                onChange={(e) => onChange('separator', e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+                maxLength={5}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Pattern Templates</label>
+              <div className="grid grid-cols-1 gap-2">
+                {patternTemplates.map((template) => (
+                  <button
+                    key={template.name}
+                    onClick={() => handleCustomPatternChange(template.pattern)}
+                    className="text-left p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="font-medium">{template.name}</div>
+                    <div className="text-sm text-gray-500">{template.pattern}</div>
+                    <div className="text-xs text-blue-600">Example: {template.example}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Custom Pattern</label>
+              <input
+                type="text"
+                value={config.custom_pattern || ''}
+                onChange={(e) => handleCustomPatternChange(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg font-mono"
+                placeholder="{PREFIX}-{YEAR}-{NUMBER}"
+              />
+              <div className="text-xs text-gray-500 mt-1">
+                Available placeholders: {'{PREFIX}'}, {'{COMPANY}'}, {'{YEAR}'}, {'{FY}'}, {'{NUMBER}'}, {'{SEP}'}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
+            <Hash className="h-6 w-6 text-blue-600" />
+            <span>Enhanced Document Numbering</span>
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400">
+            Configure comprehensive document numbering across all services
+          </p>
+        </div>
+        
+        <div className="flex items-center space-x-3">
+          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+            isSystemEnabled 
+              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+              : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+          }`}>
+            {isSystemEnabled ? 'Enabled' : 'Disabled'}
+          </div>
+          
+          <Button
+            onClick={() => toggleSystemMutation.mutate(isSystemEnabled ? 'disable' : 'enable')}
+            variant={isSystemEnabled ? 'outline' : 'primary'}
+            disabled={toggleSystemMutation.isPending}
+          >
+            {toggleSystemMutation.isPending ? (
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Zap className="h-4 w-4 mr-2" />
+            )}
+            {isSystemEnabled ? 'Disable System' : 'Enable System'}
+          </Button>
+        </div>
+      </div>
+
+      {/* System Status Alert */}
+      {!isSystemEnabled && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+            <div>
+              <h4 className="font-medium text-yellow-800 dark:text-yellow-200">
+                Document Numbering System Disabled
+              </h4>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                The system is currently using the legacy company prefix system. Enable the enhanced system to access advanced features.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation Tabs */}
+      <div className="border-b border-gray-200 dark:border-gray-700">
+        <nav className="flex space-x-8">
+          {[
+            { id: 'setup', label: 'Service Setup', icon: Settings },
+            { id: 'configure', label: 'Current Configurations', icon: FileText },
+            { id: 'history', label: 'History & Analytics', icon: Calendar }
+          ].map((tab) => {
+            const Icon = tab.icon
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                <span>{tab.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'setup' && (
+        <div className="space-y-6">
+          {/* Financial Year Setup */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Calendar className="h-5 w-5" />
+                <span>Financial Year Configuration</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Financial Year</label>
+                  <input
+                    type="text"
+                    value={financialYear}
+                    onChange={(e) => setFinancialYear(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder="2024-25"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Start Date</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">End Date</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Global Settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Global Settings</CardTitle>
+              <CardDescription>
+                These settings will be applied to all selected document types unless overridden
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PatternBuilder 
+                config={globalSettings} 
+                onChange={handleGlobalSettingChange}
+              />
+              
+              <div className="mt-6 grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Starting Number</label>
+                  <input
+                    type="number"
+                    value={globalSettings.starting_number}
+                    onChange={(e) => handleGlobalSettingChange('starting_number', parseInt(e.target.value))}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    min="1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Number Padding</label>
+                  <input
+                    type="number"
+                    value={globalSettings.number_padding}
+                    onChange={(e) => handleGlobalSettingChange('number_padding', parseInt(e.target.value))}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    min="1"
+                    max="10"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={globalSettings.include_company_prefix}
+                    onChange={(e) => handleGlobalSettingChange('include_company_prefix', e.target.checked)}
+                    className="text-blue-600"
+                  />
+                  <span>Include Company Prefix</span>
+                </label>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={globalSettings.allow_manual_override}
+                    onChange={(e) => handleGlobalSettingChange('allow_manual_override', e.target.checked)}
+                    className="text-blue-600"
+                  />
+                  <span>Allow Manual Override</span>
+                </label>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Service Selection */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Service Configuration</CardTitle>
+              <CardDescription>
+                Select services and configure document types for each service
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {servicesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="h-6 w-6 animate-spin" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {services.map((service: ServiceData) => (
+                    <div key={service.service} className="border rounded-lg">
+                      <div className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedServices.includes(service.service)}
+                              onChange={() => handleServiceToggle(service.service)}
+                              className="text-blue-600"
+                            />
+                            <div>
+                              <h4 className="font-medium">{service.service_name}</h4>
+                              <p className="text-sm text-gray-500">
+                                {service.document_types.length} document types
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleServiceExpand(service.service)}
+                            className="p-1 hover:bg-gray-100 rounded"
+                          >
+                            {expandedServices.includes(service.service) ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+
+                        {expandedServices.includes(service.service) && (
+                          <div className="mt-4 space-y-3">
+                            <h5 className="font-medium text-sm">Document Types:</h5>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                              {service.document_types.map((docType) => (
+                                <div key={docType.type} className="p-2 bg-gray-50 rounded text-sm">
+                                  <div className="font-medium">{docType.name}</div>
+                                  <div className="text-gray-500">Default: {docType.default_prefix}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Pattern Preview */}
+          {patternPreview && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Eye className="h-5 w-5" />
+                  <span>Pattern Preview</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div>
+                    <h4 className="font-medium mb-2">Sample Numbers:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {patternPreview.previews.map((preview, index) => (
+                        <span
+                          key={index}
+                          className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-mono text-sm"
+                        >
+                          {preview}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Setup Actions */}
+          <div className="flex justify-end space-x-3">
+            <Button
+              variant="outline"
+              onClick={generatePreview}
+              disabled={selectedServices.length === 0}
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              Preview Pattern
+            </Button>
+            <Button
+              onClick={handleBulkSetup}
+              disabled={selectedServices.length === 0 || setupMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {setupMutation.isPending ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Settings className="h-4 w-4 mr-2" />
+              )}
+              Setup Numbering System
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'configure' && (
+        <div className="space-y-6">
+          {configsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-6 w-6 animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {configs.services?.map((service: any) => (
+                <Card key={service.service_type}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <span>{service.service_name}</span>
+                      <span className="text-sm font-normal text-gray-500">
+                        {service.configurations.length} configurations
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2">Document Type</th>
+                            <th className="text-left py-2">Prefix</th>
+                            <th className="text-left py-2">Pattern</th>
+                            <th className="text-left py-2">Next Number</th>
+                            <th className="text-left py-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {service.configurations.map((config: any) => (
+                            <tr key={config.id} className="border-b">
+                              <td className="py-2 font-medium">{config.document_type_display}</td>
+                              <td className="py-2 font-mono">{config.prefix}</td>
+                              <td className="py-2 font-mono text-xs">
+                                {config.custom_pattern || 'Default Pattern'}
+                              </td>
+                              <td className="py-2">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded font-mono text-xs">
+                                  {config.next_number_preview}
+                                </span>
+                              </td>
+                              <td className="py-2">
+                                <span className={`px-2 py-1 rounded-full text-xs ${
+                                  config.is_active 
+                                    ? 'bg-green-100 text-green-800' 
+                                    : 'bg-red-100 text-red-800'
+                                }`}>
+                                  {config.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Coming Soon</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600">
+                Document numbering history and analytics will be available in the next update.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default EnhancedDocumentNumbering

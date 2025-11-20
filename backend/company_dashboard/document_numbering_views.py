@@ -9,9 +9,11 @@ from .document_numbering_models import DocumentNumberingConfig, DocumentNumberin
 from .document_numbering_serializers import (
     DocumentNumberingConfigSerializer, DocumentNumberingHistorySerializer,
     FinancialYearSettingsSerializer, DocumentNumberingSetupSerializer,
-    ManualOverrideSerializer
+    ManualOverrideSerializer, ServiceWiseSetupSerializer, PatternPreviewSerializer,
+    ServiceDocumentTypesSerializer
 )
 from authentication.models import Service
+from .document_numbering_models import ServiceDocumentTypes
 
 
 @api_view(['GET'])
@@ -146,7 +148,7 @@ def document_numbering_config_detail(request, config_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def bulk_setup_numbering(request):
+def bulk_setup_numbering_legacy(request):
     """Bulk setup document numbering for all document types"""
     try:
         company = request.user.company_user.company
@@ -476,3 +478,287 @@ def numbering_dashboard_stats(request):
             {'error': str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def toggle_document_numbering_system(request):
+    """Enable or disable document numbering system for company"""
+    try:
+        company = request.user.company_user.company
+        
+        action = request.data.get('action')  # 'enable' or 'disable'
+        
+        if action not in ['enable', 'disable']:
+            return Response(
+                {'error': 'Action must be either "enable" or "disable"'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if action == 'enable':
+            company.use_document_numbering = True
+            message = 'Document numbering system enabled successfully'
+        else:
+            company.use_document_numbering = False
+            message = 'Document numbering system disabled successfully'
+        
+        company.save(update_fields=['use_document_numbering'])
+        
+        return Response({
+            'message': message,
+            'use_document_numbering': company.use_document_numbering,
+            'status': 'enabled' if company.use_document_numbering else 'disabled'
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_document_numbering_status(request):
+    """Get current status of document numbering system for company"""
+    try:
+        company = request.user.company_user.company
+        
+        return Response({
+            'use_document_numbering': company.use_document_numbering,
+            'status': 'enabled' if company.use_document_numbering else 'disabled',
+            'company_name': company.name
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def service_wise_bulk_setup(request):
+    """Setup document numbering for specific services with custom configurations"""
+    try:
+        company = request.user.company_user.company
+        
+        serializer = ServiceWiseSetupSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        data = serializer.validated_data
+        services_to_setup = data['services']
+        global_settings = data.get('global_settings', {})
+        service_configurations = data.get('service_configurations', {})
+        document_configurations = data.get('document_configurations', {})
+        
+        created_configs = []
+        updated_configs = []
+        
+        with transaction.atomic():
+            for service_type in services_to_setup:
+                try:
+                    service = Service.objects.get(service_type=service_type)
+                except Service.DoesNotExist:
+                    continue
+                
+                financial_year_setting, created = FinancialYearSettings.objects.get_or_create(
+                    company=company,
+                    service=service,
+                    financial_year=data['financial_year'],
+                    defaults={
+                        'start_date': data['start_date'],
+                        'end_date': data['end_date'],
+                        'is_active': True,
+                        'is_current': True
+                    }
+                )
+                
+                document_types = ServiceDocumentTypes.get_service_document_types(service_type)
+                
+                for doc_type in document_types:
+                    config_data = {}
+                    config_data.update(global_settings)
+                    
+                    if service_type in service_configurations:
+                        config_data.update(service_configurations[service_type])
+                    
+                    if doc_type in document_configurations:
+                        config_data.update(document_configurations[doc_type])
+                    
+                    defaults = {
+                        'prefix': config_data.get('prefix', ServiceDocumentTypes.get_default_prefix(doc_type)),
+                        'starting_number': int(config_data.get('starting_number', 1)),
+                        'current_counter': 0,
+                        'number_padding': int(config_data.get('number_padding', 3)),
+                        'custom_pattern': config_data.get('custom_pattern', ''),
+                        'include_company_prefix': config_data.get('include_company_prefix', False),
+                        'year_format': config_data.get('year_format', 'YY'),
+                        'separator': config_data.get('separator', '-'),
+                        'is_active': True,
+                        'allow_manual_override': config_data.get('allow_manual_override', False)
+                    }
+                    
+                    config, created = DocumentNumberingConfig.objects.get_or_create(
+                        service=service,
+                        company=company,
+                        document_type=doc_type,
+                        financial_year=data['financial_year'],
+                        defaults=defaults
+                    )
+                    
+                    if created:
+                        created_configs.append(config)
+                    else:
+                        for key, value in defaults.items():
+                            if key != 'current_counter':
+                                setattr(config, key, value)
+                        config.save()
+                        updated_configs.append(config)
+        
+        return Response({
+            'message': f'Successfully configured {len(created_configs)} new and {len(updated_configs)} existing configurations',
+            'created_count': len(created_configs),
+            'updated_count': len(updated_configs),
+            'services_configured': services_to_setup
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def preview_numbering_pattern(request):
+    """Preview how numbers will look with given configuration"""
+    try:
+        company = request.user.company_user.company
+        
+        serializer = PatternPreviewSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        config_data = serializer.validated_data
+        
+        temp_config = DocumentNumberingConfig(
+            prefix=config_data['prefix'],
+            custom_pattern=config_data['custom_pattern'],
+            include_company_prefix=config_data['include_company_prefix'],
+            year_format=config_data['year_format'],
+            separator=config_data['separator'],
+            number_padding=config_data['number_padding'],
+            financial_year=config_data['financial_year'],
+            current_counter=0,
+            company=company
+        )
+        
+        # Override the _get_year_string method for preview
+        def get_preview_year_string():
+            if config_data['year_format'] == 'YY':
+                return config_data['financial_year'].split('-')[0][-2:]
+            elif config_data['year_format'] == 'YYYY':
+                return config_data['financial_year'].split('-')[0]
+            elif config_data['year_format'] == 'FY':
+                return config_data['financial_year']
+            elif config_data['year_format'] == 'FY_SHORT':
+                years = config_data['financial_year'].split('-')
+                return f"{years[0][-2:]}-{years[1]}"
+            else:
+                return ''
+        
+        temp_config._get_year_string = get_preview_year_string
+        
+        # Override custom pattern generation to handle {FY}
+        def generate_custom_pattern_preview():
+            pattern = temp_config.custom_pattern
+            replacements = {
+                '{PREFIX}': temp_config.prefix,
+                '{COMPANY}': company.company_prefix if hasattr(company, 'company_prefix') else 'EXMTS',
+                '{YEAR}': get_preview_year_string(),
+                '{FY}': config_data['financial_year'],
+                '{NUMBER}': str(temp_config.current_counter).zfill(temp_config.number_padding),
+                '{SEP}': temp_config.separator,
+            }
+            
+            for placeholder, value in replacements.items():
+                pattern = pattern.replace(placeholder, value)
+            
+            return pattern
+        
+        temp_config._generate_custom_pattern = generate_custom_pattern_preview
+        
+        previews = []
+        for i in range(1, 6):
+            temp_config.current_counter = i
+            if temp_config.custom_pattern:
+                preview_number = temp_config._generate_custom_pattern()
+            else:
+                preview_number = temp_config._generate_default_pattern()
+            previews.append(preview_number)
+        
+        return Response({
+            'previews': previews,
+            'configuration': config_data
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_service_document_types(request):
+    """Get all services with their document types"""
+    try:
+        services_data = []
+        
+        for service_type in ServiceDocumentTypes.SERVICE_DOCUMENT_MAPPING.keys():
+            serializer = ServiceDocumentTypesSerializer(service_type)
+            services_data.append(serializer.data)
+        
+        return Response({'services': services_data})
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_company_current_configurations(request):
+    """Get current document numbering configurations for company"""
+    try:
+        company = request.user.company_user.company
+        
+        today = timezone.now().date()
+        if today.month >= 4:
+            current_fy = f"{today.year}-{str(today.year + 1)[-2:]}"
+        else:
+            current_fy = f"{today.year - 1}-{str(today.year)[-2:]}"
+        
+        configs = DocumentNumberingConfig.objects.filter(
+            company=company,
+            financial_year=current_fy
+        ).select_related('service').order_by('service__service_type', 'document_type')
+        
+        services_config = {}
+        for config in configs:
+            service_type = config.service.service_type
+            if service_type not in services_config:
+                services_config[service_type] = {
+                    'service_name': config.service.name,
+                    'service_type': service_type,
+                    'configurations': []
+                }
+            
+            config_data = DocumentNumberingConfigSerializer(config).data
+            services_config[service_type]['configurations'].append(config_data)
+        
+        return Response({
+            'current_financial_year': current_fy,
+            'services': list(services_config.values()),
+            'use_document_numbering': company.use_document_numbering
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

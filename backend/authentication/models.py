@@ -97,6 +97,9 @@ class Company(models.Model):
     
     # Domain settings
     domain_name = models.CharField(max_length=255, blank=True, help_text="Company domain (e.g., athenas.co.in)")
+    
+    # Document numbering system control
+    use_document_numbering = models.BooleanField(default=False, help_text="Enable centralized document numbering system")
 
     class Meta:
         verbose_name_plural = "Companies"

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .document_numbering_models import DocumentNumberingConfig, DocumentNumberingHistory, FinancialYearSettings
+from .document_numbering_models import DocumentNumberingConfig, DocumentNumberingHistory, FinancialYearSettings, ServiceDocumentTypes
 from authentication.models import Service
 
 
@@ -16,6 +16,7 @@ class DocumentNumberingConfigSerializer(serializers.ModelSerializer):
             'id', 'service', 'service_name', 'company', 'document_type', 
             'document_type_display', 'financial_year', 'prefix', 'starting_number', 
             'current_counter', 'number_padding', 'is_active', 'allow_manual_override',
+            'custom_pattern', 'include_company_prefix', 'year_format', 'separator',
             'next_number_preview', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'service', 'company', 'current_counter', 'created_at', 'updated_at']
@@ -64,6 +65,28 @@ class DocumentNumberingConfigSerializer(serializers.ModelSerializer):
         """Validate number padding"""
         if value < 1 or value > 10:
             raise serializers.ValidationError('Number padding must be between 1 and 10')
+        return value
+    
+    def validate_custom_pattern(self, value):
+        """Validate custom pattern"""
+        if value:
+            valid_placeholders = ['{PREFIX}', '{COMPANY}', '{YEAR}', '{FY}', '{NUMBER}', '{SEP}']
+            if '{NUMBER}' not in value:
+                raise serializers.ValidationError('Custom pattern must include {NUMBER} placeholder')
+            
+            # Check for invalid placeholders
+            import re
+            placeholders = re.findall(r'\{[^}]+\}', value)
+            invalid_placeholders = [p for p in placeholders if p not in valid_placeholders]
+            if invalid_placeholders:
+                raise serializers.ValidationError(f'Invalid placeholders: {invalid_placeholders}. Valid: {valid_placeholders}')
+        
+        return value
+    
+    def validate_separator(self, value):
+        """Validate separator"""
+        if len(value) > 5:
+            raise serializers.ValidationError('Separator cannot be longer than 5 characters')
         return value
 
 
@@ -197,3 +220,139 @@ class ManualOverrideSerializer(serializers.Serializer):
             raise serializers.ValidationError('Override reason must be at least 10 characters')
         
         return value.strip()
+
+
+class ServiceWiseSetupSerializer(serializers.Serializer):
+    """Serializer for service-wise document numbering setup"""
+    
+    financial_year = serializers.CharField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    
+    # Services to configure
+    services = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="List of service types to configure (finance, hr, crm, inventory)"
+    )
+    
+    # Global settings
+    global_settings = serializers.DictField(
+        required=False,
+        help_text="Global settings to apply to all document types"
+    )
+    
+    # Service-specific configurations
+    service_configurations = serializers.DictField(
+        child=serializers.DictField(),
+        required=False,
+        help_text="Service-specific configurations"
+    )
+    
+    # Document-specific configurations
+    document_configurations = serializers.DictField(
+        child=serializers.DictField(),
+        required=False,
+        help_text="Document-specific configurations"
+    )
+    
+    def validate_financial_year(self, value):
+        """Validate financial year format"""
+        try:
+            years = value.split('-')
+            if len(years) != 2:
+                raise ValueError
+            start_year = int(years[0])
+            end_year_short = int(years[1])
+            
+            if len(years[0]) != 4 or len(years[1]) != 2:
+                raise ValueError
+            
+            end_year_full = start_year + 1
+            expected_end_year_short = end_year_full % 100
+            
+            if end_year_short != expected_end_year_short:
+                raise ValueError
+        except (ValueError, IndexError):
+            raise serializers.ValidationError('Financial year must be in format YYYY-YY (e.g., 2024-25)')
+        return value
+    
+    def validate_services(self, value):
+        """Validate service types"""
+        from .document_numbering_models import ServiceDocumentTypes
+        
+        valid_services = list(ServiceDocumentTypes.SERVICE_DOCUMENT_MAPPING.keys())
+        invalid_services = [s for s in value if s not in valid_services]
+        
+        if invalid_services:
+            raise serializers.ValidationError(f'Invalid services: {invalid_services}. Valid: {valid_services}')
+        
+        return value
+    
+    def validate(self, data):
+        """Validate start and end dates"""
+        if data['start_date'] >= data['end_date']:
+            raise serializers.ValidationError('Start date must be before end date')
+        return data
+
+
+class PatternPreviewSerializer(serializers.Serializer):
+    """Serializer for pattern preview"""
+    
+    prefix = serializers.CharField(max_length=20, default='DOC')
+    custom_pattern = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    include_company_prefix = serializers.BooleanField(default=False)
+    year_format = serializers.ChoiceField(
+        choices=[('YY', 'YY'), ('YYYY', 'YYYY'), ('FY', 'FY'), ('FY_SHORT', 'FY_SHORT'), ('NONE', 'NONE')],
+        default='YY'
+    )
+    separator = serializers.CharField(max_length=5, default='-')
+    number_padding = serializers.IntegerField(min_value=1, max_value=10, default=3)
+    financial_year = serializers.CharField(default='2025-26')
+    company_prefix = serializers.CharField(max_length=10, default='COMP')
+    
+    def validate_custom_pattern(self, value):
+        """Validate custom pattern"""
+        if value:
+            valid_placeholders = ['{PREFIX}', '{COMPANY}', '{YEAR}', '{FY}', '{NUMBER}', '{SEP}']
+            if '{NUMBER}' not in value:
+                raise serializers.ValidationError('Custom pattern must include {NUMBER} placeholder')
+        return value
+
+
+class ServiceDocumentTypesSerializer(serializers.Serializer):
+    """Serializer for service document types"""
+    
+    service = serializers.CharField()
+    service_name = serializers.CharField()
+    document_types = serializers.ListField(
+        child=serializers.DictField()
+    )
+    
+    def to_representation(self, instance):
+        from .document_numbering_models import ServiceDocumentTypes
+        from authentication.models import Service
+        
+        service_type = instance
+        document_types = ServiceDocumentTypes.get_service_document_types(service_type)
+        
+        # Get service name
+        try:
+            service_obj = Service.objects.get(service_type=service_type)
+            service_name = service_obj.name
+        except Service.DoesNotExist:
+            service_name = service_type.title()
+        
+        # Format document types
+        formatted_doc_types = []
+        for doc_type in document_types:
+            formatted_doc_types.append({
+                'type': doc_type,
+                'name': doc_type.replace('_', ' ').title(),
+                'default_prefix': ServiceDocumentTypes.get_default_prefix(doc_type)
+            })
+        
+        return {
+            'service': service_type,
+            'service_name': service_name,
+            'document_types': formatted_doc_types
+        }

@@ -819,12 +819,18 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         """Validate PO creation data"""
         quotation = attrs.get('quotation')
+        customer = attrs.get('customer')
         
-        # If no quotation is provided (direct PO), remove quotation-specific fields
+        # If no quotation is provided (direct PO), customer is required
         if not quotation:
-            # Remove quotation_date and valid_until for direct PO creation
+            if not customer:
+                raise serializers.ValidationError("Customer is required for direct PO creation")
+            # Remove quotation-specific fields for direct PO creation
             attrs.pop('quotation_date', None)
             attrs.pop('valid_until', None)
+        else:
+            # If quotation is provided, set customer from quotation
+            attrs['customer'] = quotation.customer
         
         return attrs
 
@@ -833,14 +839,16 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
 
         # Get quotation to copy GST information (if provided)
         quotation = validated_data.get('quotation')
+        customer = validated_data.get('customer')
 
         if quotation:
-            # Set GST information from quotation
+            # Set customer and GST information from quotation
+            validated_data['customer'] = quotation.customer
             validated_data['gst_type'] = quotation.gst_type
             validated_data['customer_gstin'] = quotation.customer_gstin
             validated_data['company_gstin'] = quotation.company_gstin
         else:
-            # For direct PO creation, GST info will be set in model's save method
+            # For direct PO creation, customer is already validated and GST info will be set in model's save method
             pass
 
         # Create the purchase order
@@ -912,6 +920,9 @@ class PurchaseOrderUpdateSerializer(serializers.ModelSerializer):
             'status', 'po_items'
         ]
         read_only_fields = ['internal_po_number', 'quotation', 'company', 'created_by', 'created_at']
+        extra_kwargs = {
+            'customer': {'required': False}  # Customer can be updated for direct POs
+        }
 
     def update(self, instance, validated_data):
         po_items_data = validated_data.pop('po_items', None)
@@ -922,6 +933,22 @@ class PurchaseOrderUpdateSerializer(serializers.ModelSerializer):
                 validated_data.pop('quotation_date', None)
             if not validated_data.get('valid_until'):
                 validated_data.pop('valid_until', None)
+            
+            # If customer is being updated for direct PO, recalculate GST information
+            if 'customer' in validated_data and validated_data['customer'] != instance.customer:
+                customer = validated_data['customer']
+                company = instance.company
+                
+                # Recalculate GST type and GSTIN information
+                if customer.gstin and hasattr(company, 'gst_number') and company.gst_number:
+                    customer_state_code = customer.gstin[:2]
+                    company_state_code = company.gst_number[:2]
+                    validated_data['gst_type'] = 'cgst_sgst' if customer_state_code == company_state_code else 'igst'
+                else:
+                    validated_data['gst_type'] = 'exempt'
+                
+                validated_data['customer_gstin'] = customer.gstin or ''
+                validated_data['company_gstin'] = getattr(company, 'gst_number', '') or ''
 
         # Update PO fields
         for attr, value in validated_data.items():
@@ -1468,6 +1495,9 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
             'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions', 'status',
             'claim_type', 'claim_percentage', 'selected_items', 'item_percentages', 'invoice_items'
         ]
+        extra_kwargs = {
+            'customer': {'required': False}  # Make customer optional since it's populated from PO
+        }
 
     def validate(self, data):
         """World-Class validation - Purchase Order or direct creation"""
@@ -1477,17 +1507,21 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         claim_type = data.get('claim_type')
         claim_percentage = data.get('claim_percentage', 0)
 
-        # For direct creation, customer and items are required
-        if not purchase_order:
+        # For PO-based creation, automatically set customer from PO BEFORE validation
+        if purchase_order:
+            data['customer'] = purchase_order.customer
+            customer = purchase_order.customer
+            
+            # For PO-based creation, claim type is required
+            if not claim_type:
+                raise serializers.ValidationError("Claim type is required for PO-based invoice creation")
+        else:
+            # For direct creation, customer and items are required
             if not customer:
                 raise serializers.ValidationError("Customer is required for direct invoice creation")
             if not invoice_items:
                 raise serializers.ValidationError("Items are required for direct invoice creation")
             return data
-        
-        # For PO-based creation, claim type is required
-        if not claim_type:
-            raise serializers.ValidationError("Claim type is required for PO-based invoice creation")
 
         # Validate percentage-based claiming for PO
         if claim_type == 'percentage':

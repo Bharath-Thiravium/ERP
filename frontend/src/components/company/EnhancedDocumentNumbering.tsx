@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Hash, Settings, Eye, AlertCircle, RefreshCw, 
   FileText, Calendar, Zap, RotateCcw,
-  ChevronDown, ChevronRight
+  ChevronDown, ChevronRight, X
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
 import { Button } from '../ui/Button'
@@ -46,7 +46,7 @@ const EnhancedDocumentNumbering: React.FC = () => {
     custom_pattern: ''
   })
   
-  // Persist global settings and selected services in localStorage
+  // Load saved settings and check for existing configurations
   useEffect(() => {
     const savedSettings = localStorage.getItem('document-numbering-global-settings')
     if (savedSettings) {
@@ -55,6 +55,7 @@ const EnhancedDocumentNumbering: React.FC = () => {
         setGlobalSettings(prev => ({ ...prev, ...parsed }))
       } catch (error) {
         console.warn('Failed to parse saved settings:', error)
+        localStorage.removeItem('document-numbering-global-settings')
       }
     }
     
@@ -62,16 +63,20 @@ const EnhancedDocumentNumbering: React.FC = () => {
     if (savedServices) {
       try {
         const parsed = JSON.parse(savedServices)
-        setSelectedServices(parsed)
+        // Filter out invalid services
+        const validServices = ['finance', 'hr', 'inventory', 'crm']
+        const filteredServices = parsed.filter((service: string) => validServices.includes(service))
+        setSelectedServices(filteredServices)
+        if (filteredServices.length !== parsed.length) {
+          localStorage.setItem('document-numbering-selected-services', JSON.stringify(filteredServices))
+        }
       } catch (error) {
         console.warn('Failed to parse saved services:', error)
+        localStorage.removeItem('document-numbering-selected-services')
       }
     }
   }, [])
   
-  useEffect(() => {
-    localStorage.setItem('document-numbering-global-settings', JSON.stringify(globalSettings))
-  }, [globalSettings])
   const [serviceConfigurations] = useState<Record<string, any>>({})
   const [documentConfigurations] = useState<Record<string, any>>({})
   const [patternPreview, setPatternPreview] = useState<PatternPreview | null>(null)
@@ -90,6 +95,38 @@ const EnhancedDocumentNumbering: React.FC = () => {
     queryKey: ['current-document-configurations'],
     queryFn: () => apiClient.get('/api/company-dashboard/document-numbering/current-configurations/')
   })
+  
+  // Load existing configurations and update UI state
+  useEffect(() => {
+    if (currentConfigs?.data?.services) {
+      const configuredServices = currentConfigs.data.services.map((s: any) => s.service_type)
+      if (configuredServices.length > 0) {
+        // Filter out invalid services
+        const validServices = ['finance', 'hr', 'inventory', 'crm']
+        const filteredServices = configuredServices.filter((service: string) => validServices.includes(service))
+        
+        setSelectedServices(filteredServices)
+        localStorage.setItem('document-numbering-selected-services', JSON.stringify(filteredServices))
+        
+        // Check if any configuration has company prefix enabled
+        const hasCompanyPrefix = currentConfigs.data.services.some((service: any) => 
+          service.configurations.some((config: any) => config.include_company_prefix)
+        )
+        
+        if (hasCompanyPrefix) {
+          setGlobalSettings(prev => {
+            const newSettings = { ...prev, include_company_prefix: true }
+            localStorage.setItem('document-numbering-global-settings', JSON.stringify(newSettings))
+            return newSettings
+          })
+        }
+      }
+    }
+  }, [currentConfigs])
+  
+  useEffect(() => {
+    localStorage.setItem('document-numbering-global-settings', JSON.stringify(globalSettings))
+  }, [globalSettings])
 
   // Fetch system status
   const { data: systemStatus } = useQuery({
@@ -121,11 +158,16 @@ const EnhancedDocumentNumbering: React.FC = () => {
       toast.success(`Successfully configured ${response.data.created_count + response.data.updated_count} document types`)
       queryClient.invalidateQueries({ queryKey: ['current-document-configurations'] })
       queryClient.invalidateQueries({ queryKey: ['document-numbering-status'] })
-      // Keep selected services in localStorage so user can see what was configured
-      // Don't reset global settings after successful setup
+      
+      // Switch to configurations tab to show results
+      setActiveTab('configure')
+      
+      // Keep settings in localStorage for future use
+      localStorage.setItem('document-numbering-global-settings', JSON.stringify(globalSettings))
+      localStorage.setItem('document-numbering-selected-services', JSON.stringify(selectedServices))
     },
-    onError: () => {
-      toast.error('Failed to setup document numbering')
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to setup document numbering')
     }
   })
 
@@ -159,6 +201,21 @@ const EnhancedDocumentNumbering: React.FC = () => {
     onSuccess: (response) => {
       toast.success(`Reset ${response.data.reset_count} counters successfully!`)
       queryClient.invalidateQueries({ queryKey: ['current-document-configurations'] })
+      
+      // Clear any invalid services from localStorage
+      const validServices = ['finance', 'hr', 'inventory', 'crm']
+      const savedServices = localStorage.getItem('document-numbering-selected-services')
+      if (savedServices) {
+        try {
+          const parsed = JSON.parse(savedServices)
+          const filteredServices = parsed.filter((service: string) => validServices.includes(service))
+          localStorage.setItem('document-numbering-selected-services', JSON.stringify(filteredServices))
+          setSelectedServices(filteredServices)
+        } catch (error) {
+          localStorage.removeItem('document-numbering-selected-services')
+          setSelectedServices([])
+        }
+      }
     },
     onError: () => {
       toast.error('Failed to reset counters')
@@ -171,9 +228,34 @@ const EnhancedDocumentNumbering: React.FC = () => {
     onSuccess: (response) => {
       toast.success(`Fixed ${response.data.updated_count} configurations to include company prefix!`)
       queryClient.invalidateQueries({ queryKey: ['current-document-configurations'] })
+      
+      // Update global settings to reflect the change
+      setGlobalSettings(prev => {
+        const newSettings = { ...prev, include_company_prefix: true }
+        localStorage.setItem('document-numbering-global-settings', JSON.stringify(newSettings))
+        return newSettings
+      })
+      
+      // Clear any invalid services from localStorage
+      const validServices = ['finance', 'hr', 'inventory', 'crm']
+      const savedServices = localStorage.getItem('document-numbering-selected-services')
+      if (savedServices) {
+        try {
+          const parsed = JSON.parse(savedServices)
+          const filteredServices = parsed.filter((service: string) => validServices.includes(service))
+          localStorage.setItem('document-numbering-selected-services', JSON.stringify(filteredServices))
+          setSelectedServices(filteredServices)
+        } catch (error) {
+          localStorage.removeItem('document-numbering-selected-services')
+          setSelectedServices([])
+        }
+      }
+      
+      // Switch to configurations tab to show updated results
+      setActiveTab('configure')
     },
-    onError: () => {
-      toast.error('Failed to fix company prefix')
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to fix company prefix')
     }
   })
 
@@ -182,6 +264,13 @@ const EnhancedDocumentNumbering: React.FC = () => {
   const isSystemEnabled = systemStatus?.data?.use_document_numbering || false
 
   const handleServiceToggle = (serviceType: string) => {
+    // Only allow valid services
+    const validServices = ['finance', 'hr', 'inventory', 'crm']
+    if (!validServices.includes(serviceType)) {
+      toast.error(`Service ${serviceType} is not supported for document numbering`)
+      return
+    }
+    
     setSelectedServices(prev => {
       const newServices = prev.includes(serviceType) 
         ? prev.filter(s => s !== serviceType)
@@ -209,11 +298,58 @@ const EnhancedDocumentNumbering: React.FC = () => {
       return newSettings
     })
   }
+  
+  const clearConfiguration = () => {
+    localStorage.removeItem('document-numbering-global-settings')
+    localStorage.removeItem('document-numbering-selected-services')
+    setSelectedServices([])
+    setGlobalSettings({
+      year_format: 'YY',
+      separator: '-',
+      starting_number: 1,
+      number_padding: 3,
+      allow_manual_override: false,
+      include_company_prefix: false,
+      custom_pattern: ''
+    })
+    toast.success('Configuration cleared')
+  }
+  
+  // Clear invalid data on mount
+  useEffect(() => {
+    const validServices = ['finance', 'hr', 'inventory', 'crm']
+    const savedServices = localStorage.getItem('document-numbering-selected-services')
+    if (savedServices) {
+      try {
+        const parsed = JSON.parse(savedServices)
+        const hasInvalidServices = parsed.some((service: string) => !validServices.includes(service))
+        if (hasInvalidServices) {
+          console.log('Clearing invalid services from localStorage:', parsed)
+          const filteredServices = parsed.filter((service: string) => validServices.includes(service))
+          localStorage.setItem('document-numbering-selected-services', JSON.stringify(filteredServices))
+          setSelectedServices(filteredServices)
+          toast.success('Removed invalid services from configuration')
+        }
+      } catch (error) {
+        console.error('Error parsing saved services:', error)
+        localStorage.removeItem('document-numbering-selected-services')
+        setSelectedServices([])
+      }
+    }
+  }, [])
+  
+  // Add debug logging for selectedServices changes
+  useEffect(() => {
+    console.log('Selected services changed:', selectedServices)
+  }, [selectedServices])
 
 
 
   const generatePreview = () => {
-    if (selectedServices.length === 0) return
+    if (selectedServices.length === 0) {
+      toast.error('Please select at least one service to preview')
+      return
+    }
 
     let pattern = globalSettings.custom_pattern
     if (!pattern) {
@@ -222,6 +358,9 @@ const EnhancedDocumentNumbering: React.FC = () => {
       } else {
         pattern = '{PREFIX}-{YEAR}-{NUMBER}'
       }
+    } else if (globalSettings.include_company_prefix && !pattern.includes('{COMPANY}')) {
+      // Add company prefix to custom pattern if not present
+      pattern = `{COMPANY}-${pattern}`
     }
 
     const previewData = {
@@ -243,6 +382,20 @@ const EnhancedDocumentNumbering: React.FC = () => {
       return
     }
 
+    // Validate services before sending
+    const validServices = ['finance', 'hr', 'inventory', 'crm']
+    const invalidServices = selectedServices.filter(service => !validServices.includes(service))
+    
+    if (invalidServices.length > 0) {
+      console.error('Invalid services detected:', invalidServices)
+      toast.error(`Invalid services detected: ${invalidServices.join(', ')}. Please clear configuration and try again.`)
+      return
+    }
+
+    // Ensure global settings are properly saved before setup
+    localStorage.setItem('document-numbering-global-settings', JSON.stringify(globalSettings))
+    localStorage.setItem('document-numbering-selected-services', JSON.stringify(selectedServices))
+
     const setupData = {
       financial_year: financialYear,
       start_date: startDate,
@@ -253,6 +406,7 @@ const EnhancedDocumentNumbering: React.FC = () => {
       document_configurations: documentConfigurations
     }
 
+    console.log('Sending setup data:', setupData)
     setupMutation.mutate(setupData)
   }
 
@@ -703,27 +857,38 @@ const EnhancedDocumentNumbering: React.FC = () => {
           )}
 
           {/* Setup Actions */}
-          <div className="flex justify-end space-x-3">
+          <div className="flex justify-between items-center">
             <Button
               variant="outline"
-              onClick={generatePreview}
-              disabled={selectedServices.length === 0}
+              onClick={clearConfiguration}
+              className="border-gray-300 text-gray-600 hover:bg-gray-50"
             >
-              <Eye className="h-4 w-4 mr-2" />
-              Preview Pattern
+              <X className="h-4 w-4 mr-2" />
+              Clear Configuration
             </Button>
-            <Button
-              onClick={handleBulkSetup}
-              disabled={selectedServices.length === 0 || setupMutation.isPending}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {setupMutation.isPending ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Settings className="h-4 w-4 mr-2" />
-              )}
-              Setup Numbering System
-            </Button>
+            
+            <div className="flex space-x-3">
+              <Button
+                variant="outline"
+                onClick={generatePreview}
+                disabled={selectedServices.length === 0}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Preview Pattern
+              </Button>
+              <Button
+                onClick={handleBulkSetup}
+                disabled={selectedServices.length === 0 || setupMutation.isPending}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {setupMutation.isPending ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Settings className="h-4 w-4 mr-2" />
+                )}
+                Setup Numbering System
+              </Button>
+            </div>
           </div>
         </div>
       )}

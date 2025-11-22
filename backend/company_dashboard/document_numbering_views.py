@@ -587,20 +587,29 @@ def service_wise_bulk_setup(request):
                     if doc_type in document_configurations:
                         config_data.update(document_configurations[doc_type])
                     
+                    # Handle custom pattern with company prefix
+                    custom_pattern = config_data.get('custom_pattern', '')
+                    include_company_prefix = config_data.get('include_company_prefix', False)
+                    
+                    # If include_company_prefix is True and custom_pattern doesn't have {COMPANY}, add it
+                    if include_company_prefix and custom_pattern and '{COMPANY}' not in custom_pattern:
+                        custom_pattern = f'{{COMPANY}}-{custom_pattern}'
+                    elif include_company_prefix and not custom_pattern:
+                        # Use default pattern with company prefix
+                        custom_pattern = ''
+                    
                     defaults = {
                         'prefix': config_data.get('prefix', ServiceDocumentTypes.get_default_prefix(doc_type)),
                         'starting_number': int(config_data.get('starting_number', 1)),
                         'current_counter': 0,
                         'number_padding': int(config_data.get('number_padding', 3)),
-                        'custom_pattern': config_data.get('custom_pattern', ''),
-                        'include_company_prefix': config_data.get('include_company_prefix', False),
+                        'custom_pattern': custom_pattern,
+                        'include_company_prefix': include_company_prefix,
                         'year_format': config_data.get('year_format', 'YY'),
                         'separator': config_data.get('separator', '-'),
                         'is_active': True,
                         'allow_manual_override': config_data.get('allow_manual_override', False)
                     }
-                    
-
                     
                     config, created = DocumentNumberingConfig.objects.get_or_create(
                         service=service,
@@ -612,7 +621,6 @@ def service_wise_bulk_setup(request):
                     
                     if created:
                         created_configs.append(config)
-
                     else:
                         # Update existing configuration with new settings
                         for key, value in defaults.items():
@@ -784,9 +792,26 @@ def fix_company_prefix_configs(request):
     try:
         company = request.user.company_user.company
         
-        updated_count = DocumentNumberingConfig.objects.filter(
-            company=company
-        ).update(include_company_prefix=True)
+        with transaction.atomic():
+            configs = DocumentNumberingConfig.objects.filter(company=company)
+            updated_count = 0
+            
+            for config in configs:
+                # Set include_company_prefix to True
+                config.include_company_prefix = True
+                
+                # If no custom pattern, ensure default pattern includes company prefix
+                if not config.custom_pattern:
+                    # Default pattern will automatically include company prefix when include_company_prefix=True
+                    pass
+                else:
+                    # If custom pattern exists but doesn't include {COMPANY}, update it
+                    if '{COMPANY}' not in config.custom_pattern:
+                        # Add company prefix to existing custom pattern
+                        config.custom_pattern = f'{{COMPANY}}-{config.custom_pattern}'
+                
+                config.save()
+                updated_count += 1
         
         return Response({
             'message': f'Updated {updated_count} configurations to include company prefix',

@@ -123,6 +123,30 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
     }
   }
 
+  const handleReject = async (po: PurchaseOrder) => {
+    if (!confirm(`Are you sure you want to reject PO ${po.internal_po_number}? This will mark it as rejected but keep it in the database for records.`)) {
+      return
+    }
+
+    if (!sessionKey) {
+      alert('Session expired. Please login again.')
+      return
+    }
+
+    try {
+      await apiClient.updateFinancePurchaseOrder(po.id, {
+        status: 'cancelled',
+        session_key: sessionKey
+      })
+
+      toast.success('Purchase order rejected successfully!')
+      fetchPurchaseOrders(currentPage)
+    } catch (error) {
+      console.error('Error rejecting purchase order:', error)
+      toast.error('Failed to reject purchase order')
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     const statusColors = {
       draft: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
@@ -413,13 +437,24 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleDelete(po)}
-                            className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {/* Show delete only for quotation-based POs, reject for direct POs */}
+                          {po.quotation_number ? (
+                            <button
+                              onClick={() => handleDelete(po)}
+                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                              title="Delete PO"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleReject(po)}
+                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                              title="Reject PO"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

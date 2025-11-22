@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
 import { X, CreditCard, User, MapPin, Calculator, Package } from 'lucide-react'
-import { apiClient } from '../../../../lib/api'
+
 import toast from 'react-hot-toast'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 
 interface SimpleTaxInvoiceFormProps {
-  purchaseOrder: any
+  purchaseOrder?: any
+  quotation?: any
   invoiceData: any
   onClose: () => void
   onSuccess: () => void
@@ -13,10 +14,15 @@ interface SimpleTaxInvoiceFormProps {
 
 const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
   purchaseOrder,
+  quotation,
   invoiceData,
   onClose,
   onSuccess
 }) => {
+  // Use either PO or Quotation data
+  const sourceData = purchaseOrder || quotation
+  const isFromQuotation = !!quotation
+  
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({})
@@ -29,8 +35,8 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
   })
 
   // Calculate amounts
-  const baseAmount = parseFloat(purchaseOrder.subtotal || '0')
-  const totalAmount = parseFloat(purchaseOrder.total_amount || '0')
+  const baseAmount = parseFloat(sourceData.subtotal || '0')
+  const totalAmount = parseFloat(sourceData.total_amount || '0')
   const taxAmount = totalAmount - baseAmount
 
   
@@ -38,7 +44,8 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
     if (invoiceData.claim_type === 'quantity') {
       // Calculate based on selected items and quantities
       const selectedBaseAmount = Object.entries(selectedItems).reduce((total, [itemId, quantity]) => {
-        const item = purchaseOrder.po_items?.find((item: any) => item.id === parseInt(itemId))
+        const items = isFromQuotation ? sourceData.quotation_items : sourceData.po_items
+        const item = items?.find((item: any) => item.id === parseInt(itemId))
         if (item && quantity > 0) {
           return total + (parseFloat(item.unit_price) * quantity)
         }
@@ -46,7 +53,8 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
       }, 0)
       
       const selectedTaxAmount = Object.entries(selectedItems).reduce((total, [itemId, quantity]) => {
-        const item = purchaseOrder.po_items?.find((item: any) => item.id === parseInt(itemId))
+        const items = isFromQuotation ? sourceData.quotation_items : sourceData.po_items
+        const item = items?.find((item: any) => item.id === parseInt(itemId))
         if (item && quantity > 0) {
           const itemBaseAmount = parseFloat(item.unit_price) * quantity
           return total + (itemBaseAmount * parseFloat(item.gst_rate) / 100)
@@ -62,7 +70,8 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
     } else {
       // Percentage-based calculation - sum of individual item percentages
       const selectedBaseAmount = Object.entries(itemPercentages).reduce((total, [itemId, percentage]) => {
-        const item = purchaseOrder.po_items?.find((item: any) => item.id === parseInt(itemId))
+        const items = isFromQuotation ? sourceData.quotation_items : sourceData.po_items
+        const item = items?.find((item: any) => item.id === parseInt(itemId))
         if (item && percentage > 0) {
           const itemTotal = parseFloat(item.unit_price) * item.quantity
           return total + (itemTotal * percentage) / 100
@@ -71,7 +80,8 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
       }, 0)
       
       const selectedTaxAmount = Object.entries(itemPercentages).reduce((total, [itemId, percentage]) => {
-        const item = purchaseOrder.po_items?.find((item: any) => item.id === parseInt(itemId))
+        const items = isFromQuotation ? sourceData.quotation_items : sourceData.po_items
+        const item = items?.find((item: any) => item.id === parseInt(itemId))
         if (item && percentage > 0) {
           const itemTotal = parseFloat(item.unit_price) * item.quantity
           const itemBaseAmount = (itemTotal * percentage) / 100
@@ -94,10 +104,12 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
     e.preventDefault()
     
     if (loading) {
+      console.log('Form already submitting, preventing double submission')
       return // Prevent double submission
     }
     
     setLoading(true)
+    console.log('Starting tax invoice creation...')
 
     try {
       // Validate that at least some items are selected
@@ -111,7 +123,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
         
         // Validate that percentages don't exceed available amount
         const maxPercentage = Math.max(...Object.values(itemPercentages))
-        const availablePercentage = parseFloat(purchaseOrder.available_invoice_percentage || '100')
+        const availablePercentage = parseFloat(sourceData.available_invoice_percentage || '100')
         if (maxPercentage > availablePercentage) {
           toast.error(`Maximum percentage (${maxPercentage.toFixed(1)}%) exceeds available tax invoice percentage (${availablePercentage.toFixed(1)}%)`)
           setLoading(false)
@@ -127,7 +139,9 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
       }
 
       const dataToSend = {
-        purchase_order: purchaseOrder.id,
+        customer: sourceData.customer_details.id || sourceData.customer,
+        ...(purchaseOrder && { purchase_order: purchaseOrder.id }),
+        ...(quotation && { quotation: quotation.id }),
         claim_type: invoiceData.claim_type,
         claim_percentage: invoiceData.claim_percentage,
         selected_items: invoiceData.claim_type === 'quantity' ? selectedItems : undefined,
@@ -140,7 +154,22 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
         status: 'draft'
       }
 
-      await apiClient.createFinanceInvoice({ ...dataToSend, session_key: sessionKey })
+      // Use the specific quotation-based endpoint
+      const response = await fetch('/api/finance/invoices/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionKey}`
+        },
+        body: JSON.stringify({ ...dataToSend, session_key: sessionKey })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create tax invoice')
+      }
+      
+      await response.json()
       
       toast.success('Tax Invoice created successfully!')
       onSuccess()
@@ -179,10 +208,10 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
         <form onSubmit={handleSubmit} className="flex flex-col max-h-[calc(90vh-80px)]">
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             
-            {/* PO Reference */}
+            {/* Source Reference */}
             <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl">
-              <h3 className="font-medium text-green-900 dark:text-green-100 mb-2">Purchase Order</h3>
-              <p className="text-green-700 dark:text-green-300">{purchaseOrder.internal_po_number}</p>
+              <h3 className="font-medium text-green-900 dark:text-green-100 mb-2">{isFromQuotation ? 'Quotation' : 'Purchase Order'}</h3>
+              <p className="text-green-700 dark:text-green-300">{isFromQuotation ? sourceData.quotation_number : sourceData.internal_po_number}</p>
             </div>
 
             {/* Customer Details - Read Only */}
@@ -194,28 +223,28 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-500">Name:</span>
-                  <p className="font-medium">{purchaseOrder.customer_details.name}</p>
+                  <p className="font-medium">{sourceData.customer_details.name}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">Code:</span>
-                  <p className="font-medium">{purchaseOrder.customer_details.customer_code}</p>
+                  <p className="font-medium">{sourceData.customer_details.customer_code}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">Email:</span>
-                  <p className="font-medium">{purchaseOrder.customer_details.email}</p>
+                  <p className="font-medium">{sourceData.customer_details.email}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">Phone:</span>
-                  <p className="font-medium">{purchaseOrder.customer_details.phone}</p>
+                  <p className="font-medium">{sourceData.customer_details.phone}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">GSTIN:</span>
-                  <p className="font-medium">{purchaseOrder.customer_details.gstin || 'N/A'}</p>
+                  <p className="font-medium">{sourceData.customer_details.gstin || 'N/A'}</p>
                 </div>
-                {purchaseOrder.customer_details.project_area && (
+                {sourceData.customer_details.project_area && (
                   <div>
                     <span className="text-gray-500">Project:</span>
-                    <p className="font-medium">{purchaseOrder.customer_details.project_area}</p>
+                    <p className="font-medium">{sourceData.customer_details.project_area}</p>
                   </div>
                 )}
               </div>
@@ -230,12 +259,12 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
                   Billing Address
                 </h3>
                 <div className="text-sm text-gray-700 dark:text-gray-300">
-                  <p>{purchaseOrder.customer_details.billing_address_line1}</p>
-                  {purchaseOrder.customer_details.billing_address_line2 && (
-                    <p>{purchaseOrder.customer_details.billing_address_line2}</p>
+                  <p>{sourceData.customer_details.billing_address_line1}</p>
+                  {sourceData.customer_details.billing_address_line2 && (
+                    <p>{sourceData.customer_details.billing_address_line2}</p>
                   )}
-                  <p>{purchaseOrder.customer_details.billing_city}, {purchaseOrder.customer_details.billing_state} {purchaseOrder.customer_details.billing_pincode}</p>
-                  <p>{purchaseOrder.customer_details.billing_country}</p>
+                  <p>{sourceData.customer_details.billing_city}, {sourceData.customer_details.billing_state} {sourceData.customer_details.billing_pincode}</p>
+                  <p>{sourceData.customer_details.billing_country}</p>
                 </div>
               </div>
               
@@ -246,14 +275,14 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
                   Shipping Address
                 </h3>
                 <div className="text-sm text-gray-700 dark:text-gray-300">
-                  {purchaseOrder.shipping_address_details ? (
+                  {sourceData.shipping_address_details ? (
                     <>
-                      <p>{purchaseOrder.shipping_address_details.address_line1}</p>
-                      {purchaseOrder.shipping_address_details.address_line2 && (
-                        <p>{purchaseOrder.shipping_address_details.address_line2}</p>
+                      <p>{sourceData.shipping_address_details.address_line1}</p>
+                      {sourceData.shipping_address_details.address_line2 && (
+                        <p>{sourceData.shipping_address_details.address_line2}</p>
                       )}
-                      <p>{purchaseOrder.shipping_address_details.city}, {purchaseOrder.shipping_address_details.state} {purchaseOrder.shipping_address_details.pincode}</p>
-                      <p>{purchaseOrder.shipping_address_details.country}</p>
+                      <p>{sourceData.shipping_address_details.city}, {sourceData.shipping_address_details.state} {sourceData.shipping_address_details.pincode}</p>
+                      <p>{sourceData.shipping_address_details.country}</p>
                     </>
                   ) : (
                     <p className="text-gray-500">Same as billing address</p>
@@ -263,14 +292,14 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
             </div>
 
             {/* Item Selection */}
-            {purchaseOrder.po_items && (
+            {(sourceData.po_items || sourceData.quotation_items) && (
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
                 <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-3 flex items-center">
                   <Package className="w-4 h-4 mr-2" />
                   {invoiceData.claim_type === 'quantity' ? 'Select Items & Quantities' : 'Select Items & Percentages'}
                 </h3>
                 <div className="space-y-3">
-                  {purchaseOrder.po_items.map((item: any) => (
+                  {(isFromQuotation ? sourceData.quotation_items : sourceData.po_items).map((item: any) => (
                     <div key={item.id} className="bg-white dark:bg-gray-800 p-3 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex-1">
@@ -281,7 +310,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
                               <>
                                 <span className="ml-2">Total: ₹{(parseFloat(item.unit_price) * item.quantity).toFixed(2)}</span>
                                 <span className="ml-2 text-green-600 font-medium">
-                                  Available: {parseFloat(purchaseOrder.available_invoice_percentage || '100').toFixed(1)}%
+                                  Available: {parseFloat(sourceData.available_invoice_percentage || '100').toFixed(1)}%
                                 </span>
                               </>
                             )}
@@ -307,11 +336,11 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
                               <input
                                 type="number"
                                 min="0"
-                                max={parseFloat(purchaseOrder.available_invoice_percentage || '100')}
+                                max={parseFloat(sourceData.available_invoice_percentage || '100')}
                                 step="0.01"
                                 value={itemPercentages[item.id] || 0}
                                 onChange={(e) => {
-                                  const maxAvailable = parseFloat(purchaseOrder.available_invoice_percentage || '100')
+                                  const maxAvailable = parseFloat(sourceData.available_invoice_percentage || '100')
                                   const value = Math.min(parseFloat(e.target.value) || 0, maxAvailable)
                                   setItemPercentages(prev => ({ ...prev, [item.id]: value }))
                                 }}
@@ -359,19 +388,19 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
 
             {/* Balance Status */}
             <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-xl">
-              <h3 className="font-medium text-orange-900 dark:text-orange-100 mb-3">PO Balance Status</h3>
+              <h3 className="font-medium text-orange-900 dark:text-orange-100 mb-3">{isFromQuotation ? 'Quotation' : 'PO'} Balance Status</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span>Total PO Amount:</span>
-                  <span className="font-medium">₹{parseFloat(purchaseOrder.total_amount || '0').toLocaleString()}</span>
+                  <span>Total {isFromQuotation ? 'Quotation' : 'PO'} Amount:</span>
+                  <span className="font-medium">₹{parseFloat(sourceData.total_amount || '0').toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Proforma Available:</span>
-                  <span className="font-medium">₹{parseFloat(purchaseOrder.remaining_proforma_balance || purchaseOrder.subtotal || '0').toLocaleString()}</span>
+                  <span className="font-medium">₹{parseFloat(sourceData.remaining_proforma_balance || sourceData.subtotal || '0').toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Invoice Available:</span>
-                  <span className="font-medium">₹{parseFloat(purchaseOrder.remaining_invoice_balance || purchaseOrder.total_amount || '0').toLocaleString()}</span>
+                  <span className="font-medium">₹{parseFloat(sourceData.remaining_invoice_balance || sourceData.total_amount || '0').toLocaleString()}</span>
                 </div>
               </div>
               
@@ -380,12 +409,10 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
                 <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
                   <div 
                     className="h-2 rounded-full transition-all duration-300 bg-orange-500"
-                    style={{ width: `${Math.max(0, Math.min(100, ((parseFloat(purchaseOrder.proforma_claimed_amount || '0') + parseFloat(purchaseOrder.invoice_claimed_amount || '0')) / parseFloat(purchaseOrder.total_amount || '1')) * 100))}%` }}
+                    style={{ width: `${Math.max(0, Math.min(100, ((parseFloat(sourceData.proforma_claimed_amount || '0') + parseFloat(sourceData.invoice_claimed_amount || '0')) / parseFloat(sourceData.total_amount || '1')) * 100))}%` }}
                   ></div>
                 </div>
               </div>
-              
-
             </div>
 
             {/* Available Percentage Info */}
@@ -394,8 +421,8 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
                 📊 Available for Tax Invoice
               </h3>
               <div className="text-sm text-green-800 dark:text-green-200">
-                <p><strong>{parseFloat(purchaseOrder.available_invoice_percentage || '100').toFixed(1)}%</strong> of total amount is available for tax invoicing</p>
-                {parseFloat(purchaseOrder.available_invoice_percentage || '100') < 100 && (
+                <p><strong>{parseFloat(sourceData.available_invoice_percentage || '100').toFixed(1)}%</strong> of total amount is available for tax invoicing</p>
+                {parseFloat(sourceData.available_invoice_percentage || '100') < 100 && (
                   <p className="text-xs mt-1 text-green-600 dark:text-green-300">
                     ⚠️ Reduced due to existing tax invoices
                   </p>
@@ -411,7 +438,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
               </h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span>PO Total Amount:</span>
+                  <span>{isFromQuotation ? 'Quotation' : 'PO'} Total Amount:</span>
                   <span className="font-medium">₹{(baseAmount + taxAmount).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
@@ -433,7 +460,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
                   </div>
                   <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
                     <span>After this claim:</span>
-                    <span>{((invoiceTotalAmount / parseFloat(purchaseOrder.total_amount || '1')) * 100).toFixed(1)}% of total</span>
+                    <span>{((invoiceTotalAmount / parseFloat(sourceData.total_amount || '1')) * 100).toFixed(1)}% of total</span>
                   </div>
                 </div>
               </div>
@@ -511,7 +538,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || invoiceTotalAmount <= 0}
               className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Creating...' : 'Create Tax Invoice'}

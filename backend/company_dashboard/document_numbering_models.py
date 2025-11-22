@@ -372,12 +372,6 @@ class ServiceDocumentTypes(models.Model):
         'crm': [
             'lead', 'contact', 'account', 'opportunity', 'campaign',
             'activity', 'support_ticket', 'follow_up', 'meeting', 'call_log'
-        ],
-        'analytics': [
-            'audit', 'project', 'task', 'document'
-        ],
-        'general': [
-            'asset'
         ]
     }
     

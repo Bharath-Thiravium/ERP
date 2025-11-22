@@ -70,7 +70,26 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     skills: Array.isArray(employee?.skills) ? employee.skills : [],
     profile_picture: undefined,
     face_photo: undefined,
-    capture_face_photo: false
+    capture_face_photo: false,
+    
+    // Form XIII Required Fields
+    father_husband_name: employee?.father_husband_name || '',
+    nature_of_employment: employee?.nature_of_employment || '',
+    employee_signature: undefined,
+    termination_reason: employee?.termination_reason || '',
+    employee_remarks: employee?.employee_remarks || '',
+    permanent_address_line1: employee?.permanent_address_line1 || employee?.address_line1 || '',
+    permanent_address_line2: employee?.permanent_address_line2 || employee?.address_line2 || '',
+    permanent_city: employee?.permanent_city || employee?.city || '',
+    permanent_state: employee?.permanent_state || employee?.state || '',
+    permanent_pincode: employee?.permanent_pincode || employee?.pincode || '',
+    permanent_country: employee?.permanent_country || employee?.country || 'India',
+    local_address_line1: employee?.local_address_line1 || '',
+    local_address_line2: employee?.local_address_line2 || '',
+    local_city: employee?.local_city || '',
+    local_state: employee?.local_state || '',
+    local_pincode: employee?.local_pincode || '',
+    local_country: employee?.local_country || 'India'
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -117,7 +136,26 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
         skills: Array.isArray(employee.skills) ? employee.skills : [],
         profile_picture: undefined,
         face_photo: undefined,
-        capture_face_photo: false
+        capture_face_photo: false,
+        
+        // Form XIII Required Fields
+        father_husband_name: employee.father_husband_name || '',
+        nature_of_employment: employee.nature_of_employment || '',
+        employee_signature: undefined,
+        termination_reason: employee.termination_reason || '',
+        employee_remarks: employee.employee_remarks || '',
+        permanent_address_line1: employee.permanent_address_line1 || employee.address_line1 || '',
+        permanent_address_line2: employee.permanent_address_line2 || employee.address_line2 || '',
+        permanent_city: employee.permanent_city || employee.city || '',
+        permanent_state: employee.permanent_state || employee.state || '',
+        permanent_pincode: employee.permanent_pincode || employee.pincode || '',
+        permanent_country: employee.permanent_country || employee.country || 'India',
+        local_address_line1: employee.local_address_line1 || '',
+        local_address_line2: employee.local_address_line2 || '',
+        local_city: employee.local_city || '',
+        local_state: employee.local_state || '',
+        local_pincode: employee.local_pincode || '',
+        local_country: employee.local_country || 'India'
       })
       
       // Construct URLs only if images exist and are not null/empty
@@ -229,6 +267,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     if (!formData.last_name.trim()) newErrors.last_name = 'Last name is required'
     if (!formData.email.trim()) newErrors.email = 'Email is required'
     if (!formData.phone?.trim()) newErrors.phone = 'Phone number is required'
+    if (!formData.gender?.trim()) newErrors.gender = 'Gender is required'
     if (!formData.department) newErrors.department = 'Department is required'
     if (!formData.designation) newErrors.designation = 'Designation is required'
     if (!formData.date_of_joining) newErrors.date_of_joining = 'Joining date is required'
@@ -300,7 +339,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
           // Send skills as JSON array
           const skillsArray = Array.isArray(value) ? value : []
           submitData.append(key, JSON.stringify(skillsArray))
-        } else if (key === 'profile_picture' || key === 'face_photo') {
+        } else if (key === 'profile_picture' || key === 'face_photo' || key === 'employee_signature') {
           if (value instanceof File) {
             submitData.append(key, value)
           }
@@ -770,18 +809,48 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Gender
+                  Gender *
                 </label>
                 <select
                   value={formData.gender}
                   onChange={(e) => handleInputChange('gender', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${
+                    errors.gender ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                  }`}
                 >
                   <option value="">Select Gender</option>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                   <option value="other">Other</option>
                 </select>
+                {errors.gender && <p className="text-red-500 text-xs mt-1">{errors.gender}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Father's/Husband's Name
+                  <span className="text-xs text-gray-500 block mt-1">Required for Form XIII compliance</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.father_husband_name}
+                  onChange={(e) => handleInputChange('father_husband_name', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Nature of Employment
+                  <span className="text-xs text-gray-500 block mt-1">Detailed work description</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.nature_of_employment}
+                  onChange={(e) => handleInputChange('nature_of_employment', e.target.value)}
+                  placeholder="e.g., Software Development, Data Analysis, etc."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
               </div>
             </CardContent>
           </Card>
@@ -935,84 +1004,188 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
               <CardTitle className="flex items-center space-x-2">
                 <MapPin className="h-5 w-5 text-purple-500" />
                 <span>Address Information</span>
+                <span className="text-xs text-gray-500">(Form XIII Compliance)</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Address Line 1
-                </label>
-                <input
-                  type="text"
-                  value={formData.address_line1}
-                  onChange={(e) => handleInputChange('address_line1', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Address Line 2
-                </label>
-                <input
-                  type="text"
-                  value={formData.address_line2}
-                  onChange={(e) => handleInputChange('address_line2', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                />
-              </div>
-
+            <CardContent className="space-y-6">
+              {/* Permanent Address */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  City
-                </label>
-                <input
-                  type="text"
-                  value={formData.city}
-                  onChange={(e) => handleInputChange('city', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                />
+                <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Permanent Address</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Address Line 1
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.permanent_address_line1}
+                      onChange={(e) => handleInputChange('permanent_address_line1', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Address Line 2
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.permanent_address_line2}
+                      onChange={(e) => handleInputChange('permanent_address_line2', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      City
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.permanent_city}
+                      onChange={(e) => handleInputChange('permanent_city', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      State
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.permanent_state}
+                      onChange={(e) => handleInputChange('permanent_state', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      PIN Code
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.permanent_pincode}
+                      onChange={(e) => handleInputChange('permanent_pincode', e.target.value.replace(/\D/g, ''))}
+                      placeholder="400001"
+                      maxLength={6}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Country
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.permanent_country}
+                      onChange={(e) => handleInputChange('permanent_country', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
               </div>
 
+              {/* Local Address */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  State
-                </label>
-                <input
-                  type="text"
-                  value={formData.state}
-                  onChange={(e) => handleInputChange('state', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                />
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-md font-medium text-gray-900 dark:text-white">Local/Current Address</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        local_address_line1: prev.permanent_address_line1,
+                        local_address_line2: prev.permanent_address_line2,
+                        local_city: prev.permanent_city,
+                        local_state: prev.permanent_state,
+                        local_pincode: prev.permanent_pincode,
+                        local_country: prev.permanent_country
+                      }))
+                    }}
+                  >
+                    Copy from Permanent
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Address Line 1
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.local_address_line1}
+                      onChange={(e) => handleInputChange('local_address_line1', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Address Line 2
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.local_address_line2}
+                      onChange={(e) => handleInputChange('local_address_line2', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      City
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.local_city}
+                      onChange={(e) => handleInputChange('local_city', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      State
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.local_state}
+                      onChange={(e) => handleInputChange('local_state', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      PIN Code
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.local_pincode}
+                      onChange={(e) => handleInputChange('local_pincode', e.target.value.replace(/\D/g, ''))}
+                      placeholder="400001"
+                      maxLength={6}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Country
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.local_country}
+                      onChange={(e) => handleInputChange('local_country', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  PIN Code
-                </label>
-                <input
-                  type="text"
-                  value={formData.pincode}
-                  onChange={(e) => handleInputChange('pincode', e.target.value.replace(/\D/g, ''))}
-                  placeholder="400001"
-                  maxLength={6}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${
-                    errors.pincode ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-                  }`}
-                />
-                {errors.pincode && <p className="text-red-500 text-xs mt-1">{errors.pincode}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Country
-                </label>
-                <input
-                  type="text"
-                  value={formData.country}
-                  onChange={(e) => handleInputChange('country', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                />
+              {/* Legacy Address Fields (Hidden but maintained for backward compatibility) */}
+              <div className="hidden">
+                <input type="hidden" value={formData.address_line1} onChange={(e) => handleInputChange('address_line1', e.target.value)} />
+                <input type="hidden" value={formData.address_line2} onChange={(e) => handleInputChange('address_line2', e.target.value)} />
+                <input type="hidden" value={formData.city} onChange={(e) => handleInputChange('city', e.target.value)} />
+                <input type="hidden" value={formData.state} onChange={(e) => handleInputChange('state', e.target.value)} />
+                <input type="hidden" value={formData.pincode} onChange={(e) => handleInputChange('pincode', e.target.value)} />
+                <input type="hidden" value={formData.country} onChange={(e) => handleInputChange('country', e.target.value)} />
               </div>
             </CardContent>
           </Card>
@@ -1275,6 +1448,21 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Employee Remarks */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Employee Remarks
+                  <span className="text-xs text-gray-500 block mt-1">General remarks for Form XIII</span>
+                </label>
+                <textarea
+                  value={formData.employee_remarks}
+                  onChange={(e) => handleInputChange('employee_remarks', e.target.value)}
+                  placeholder="Any additional remarks about the employee"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
+                />
               </div>
             </CardContent>
           </Card>

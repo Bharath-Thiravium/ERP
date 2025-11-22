@@ -89,6 +89,8 @@ urlpatterns = [
     path('proforma-invoices/<int:proforma_id>/send-email/', views.send_proforma_email_view, name='send_proforma_email'),
     path('purchase-orders/<int:purchase_order_id>/send-email/', views.send_purchase_order_email_view, name='send_purchase_order_email'),
     
+
+    
     # Indian Compliance endpoints
     path('gst/calculate/', indian_compliance_views.GSTCalculatorView.as_view(), name='gst_calculate'),
     path('gst/validate-gstin/', indian_compliance_views.GSTINValidatorView.as_view(), name='validate_gstin'),

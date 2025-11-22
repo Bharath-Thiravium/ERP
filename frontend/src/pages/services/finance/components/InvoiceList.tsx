@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import InvoiceView from './InvoiceView';
 import UpdatePaymentModal from './UpdatePaymentModal';
 import SendEmailModal from './SendEmailModal';
-import DirectCreateInvoiceModal from './DirectCreateInvoiceModal';
+
 
 interface Invoice {
   id: number;
@@ -52,7 +52,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
   const [selectedForPayment, setSelectedForPayment] = useState<Invoice | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [selectedForEmail, setSelectedForEmail] = useState<Invoice | null>(null);
-  const [showDirectCreateModal, setShowDirectCreateModal] = useState(false);
+
 
   const statusOptions = [
     { value: '', label: 'All Statuses' },
@@ -210,13 +210,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
             <Plus className="w-4 h-4 mr-2" />
             From Purchase Order
           </button>
-          <button
-            onClick={() => setShowDirectCreateModal(true)}
-            className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-lg hover:shadow-xl"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Direct Creation
-          </button>
+
         </div>
       </div>
 
@@ -281,13 +275,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
                 <Plus className="w-4 h-4 mr-2" />
                 From Purchase Order
               </button>
-              <button
-                onClick={() => setShowDirectCreateModal(true)}
-                className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Direct Creation
-              </button>
+
             </div>
           </div>
         ) : (
@@ -475,17 +463,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
         />
       )}
 
-      {/* Direct Create Invoice Modal */}
-      {showDirectCreateModal && (
-        <DirectCreateInvoiceModal
-          isOpen={showDirectCreateModal}
-          onClose={() => setShowDirectCreateModal(false)}
-          onSuccess={() => {
-            setShowDirectCreateModal(false)
-            fetchInvoices()
-          }}
-        />
-      )}
+
 
       {/* Pagination */}
       {totalPages > 1 && (

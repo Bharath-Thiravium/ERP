@@ -1,15 +1,21 @@
 import React, { useState } from 'react'
-import { Shield, BarChart3, Settings, Link } from 'lucide-react'
+import { Shield, BarChart3, Settings, Link, FileText, History } from 'lucide-react'
 import ComplianceDashboard from '../components/compliance/ComplianceDashboard'
 import AdvancedReports from '../components/compliance/AdvancedReports'
 import AutomationCenter from '../components/compliance/AutomationCenter'
 import IntegrationHub from '../components/compliance/IntegrationHub'
+import MonthlyForms from '../components/compliance/MonthlyForms'
+import Configuration from '../components/compliance/Configuration'
+import FormHistory from '../components/compliance/FormHistory'
 
 const Compliance: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard')
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: Shield },
+    { id: 'configuration', label: 'Configuration', icon: Settings },
+    { id: 'monthly-forms', label: 'Monthly Forms', icon: FileText },
+    { id: 'form-history', label: 'Form History', icon: History },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'automation', label: 'Automation', icon: Settings },
     { id: 'integration', label: 'Integration', icon: Link }
@@ -62,6 +68,9 @@ const Compliance: React.FC = () => {
       <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 shadow-xl overflow-hidden">
         <div className="p-6">
           {activeView === 'dashboard' && <ComplianceDashboard />}
+          {activeView === 'configuration' && <Configuration />}
+          {activeView === 'monthly-forms' && <MonthlyForms />}
+          {activeView === 'form-history' && <FormHistory />}
           {activeView === 'reports' && <AdvancedReports />}
           {activeView === 'automation' && <AutomationCenter />}
           {activeView === 'integration' && <IntegrationHub />}

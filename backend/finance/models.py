@@ -620,6 +620,53 @@ class Quotation(models.Model):
     revised_at = models.DateTimeField(null=True, blank=True, help_text="When this quotation was last revised")
     revised_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='revised_quotations')
 
+    # Invoice Creation Tracking - NEW FIELDS
+    invoice_created = models.BooleanField(default=False, help_text="Whether invoice has been created from this quotation")
+    po_created = models.BooleanField(default=False, help_text="Whether PO has been created from this quotation")
+    proforma_created = models.BooleanField(default=False, help_text="Whether proforma invoice has been created from this quotation")
+    invoice_created_at = models.DateTimeField(null=True, blank=True, help_text="When invoice was created from this quotation")
+    po_created_at = models.DateTimeField(null=True, blank=True, help_text="When PO was created from this quotation")
+
+    # Quotation-based Invoice Balance Tracking - NEW FIELDS
+    claim_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('percentage', 'Percentage-based Claiming'),
+            ('quantity', 'Quantity-based Claiming'),
+        ],
+        blank=True,
+        null=True,
+        help_text="How invoices will be claimed from this quotation (set on first invoice creation)"
+    )
+
+    proforma_claimed_amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0.00,
+        help_text="Total amount claimed through proforma invoices from this quotation"
+    )
+
+    invoice_claimed_amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0.00,
+        help_text="Total amount invoiced (final invoices with tax) from this quotation"
+    )
+
+    remaining_proforma_balance = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0.00,
+        help_text="Remaining amount available for proforma claiming from quotation"
+    )
+
+    remaining_invoice_balance = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0.00,
+        help_text="Remaining amount to be invoiced (with tax) from quotation"
+    )
+
     # Audit fields
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_quotations')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -671,6 +718,16 @@ class Quotation(models.Model):
         self.company_gstin = getattr(self.company, 'gst_number', '') or ''
 
         super().save(*args, **kwargs)
+        
+        # Initialize balance tracking for new quotations
+        if self.pk and self.subtotal > 0 and self.remaining_proforma_balance == 0 and self.remaining_invoice_balance == 0:
+            from decimal import Decimal
+            self.remaining_proforma_balance = self.subtotal
+            self.remaining_invoice_balance = self.total_amount
+            # Mark flags as False initially
+            self.invoice_created = False
+            self.proforma_created = False
+            super().save(update_fields=['remaining_proforma_balance', 'remaining_invoice_balance', 'invoice_created', 'proforma_created'])
 
     def calculate_totals(self):
         """Calculate quotation totals from line items"""
@@ -752,6 +809,91 @@ class Quotation(models.Model):
             'subtotal', 'discount_amount', 'total_tax', 'cgst_amount',
             'sgst_amount', 'igst_amount', 'total_amount'
         ])
+
+    def update_balance_tracking(self):
+        """Update quotation balance tracking after invoice creation"""
+        from decimal import Decimal
+
+        # Calculate total proforma claimed amount (subtotal only)
+        proforma_subtotal_total = sum(
+            proforma.subtotal for proforma in self.proforma_invoices.all()
+        ) or Decimal('0')
+
+        # Calculate total tax invoice claimed amount (with tax)
+        invoice_total = sum(
+            invoice.total_amount for invoice in self.invoices.all()
+        ) or Decimal('0')
+
+        # Calculate tax invoice subtotal impact (for cross-impact calculation)
+        invoice_subtotal_total = sum(
+            invoice.subtotal for invoice in self.invoices.all()
+        ) or Decimal('0')
+
+        # Update claimed amounts
+        self.proforma_claimed_amount = proforma_subtotal_total
+        self.invoice_claimed_amount = invoice_total
+
+        # Cross-impact logic: Tax invoice claiming reduces proforma claimable base
+        reduced_proforma_base = self.subtotal - invoice_subtotal_total
+        remaining_proforma = max(Decimal('0'), reduced_proforma_base - proforma_subtotal_total)
+        
+        # Handle rounding precision
+        if remaining_proforma < Decimal('5.00'):
+            self.remaining_proforma_balance = Decimal('0.00')
+        else:
+            self.remaining_proforma_balance = remaining_proforma
+
+        # For tax invoice: remaining from total amount (with tax) minus what's already invoiced
+        remaining_balance = self.total_amount - invoice_total
+        
+        # Handle rounding precision
+        if remaining_balance < Decimal('5.00'):
+            self.remaining_invoice_balance = Decimal('0.00')
+        else:
+            self.remaining_invoice_balance = remaining_balance
+
+        self.save(update_fields=[
+            'proforma_claimed_amount', 'invoice_claimed_amount',
+            'remaining_proforma_balance', 'remaining_invoice_balance'
+        ])
+
+    def get_available_proforma_percentage(self):
+        """Get available percentage for proforma invoice creation based on remaining balance"""
+        from decimal import Decimal
+        
+        if self.subtotal <= 0:
+            return Decimal('0')
+        
+        # If remaining balance is 0 but no proforma invoices exist, this is a new quotation - allow 100%
+        if self.remaining_proforma_balance == 0 and self.proforma_invoices.count() == 0:
+            return Decimal('100')
+        
+        # Calculate the percentage of remaining proforma balance
+        return (self.remaining_proforma_balance / self.subtotal) * Decimal('100')
+
+    def get_available_invoice_percentage(self):
+        """Get available percentage for tax invoice creation based on remaining balance"""
+        from decimal import Decimal
+        
+        if self.total_amount <= 0:
+            return Decimal('0')
+        
+        # If remaining balance is 0 but no invoices exist, this is a new quotation - allow 100%
+        if self.remaining_invoice_balance == 0 and self.invoices.count() == 0:
+            return Decimal('100')
+        
+        # Calculate the percentage of remaining invoice balance
+        return (self.remaining_invoice_balance / self.total_amount) * Decimal('100')
+
+    @property
+    def can_create_proforma(self):
+        """Check if more proforma invoices can be created from this quotation"""
+        return self.remaining_proforma_balance > 0
+
+    @property
+    def can_create_invoice(self):
+        """Check if more invoices can be created from this quotation"""
+        return self.remaining_invoice_balance > 0
 
 
 class QuotationItem(models.Model):
@@ -1516,6 +1658,7 @@ class ProformaInvoice(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='proforma_invoices', null=True, blank=True)
+    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='proforma_invoices', null=True, blank=True, help_text="Quotation this proforma is created from (if not from PO)")
 
     # Proforma Invoice Details
     proforma_number = models.CharField(max_length=50, unique=True, db_index=True)
@@ -1663,6 +1806,10 @@ class ProformaInvoice(models.Model):
         # Update PO balance tracking after save
         if self.purchase_order:
             self.purchase_order.update_balance_tracking()
+        
+        # Update quotation balance tracking after save
+        if self.quotation:
+            self.quotation.update_balance_tracking()
 
     def calculate_totals(self):
         """Calculate all totals for this proforma invoice - NO TAX for proforma invoices"""
@@ -1823,6 +1970,7 @@ class Invoice(models.Model):
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
     proforma_invoice = models.ForeignKey(ProformaInvoice, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
+    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True, help_text="Quotation this invoice is created from (if not from PO)")
 
     # Invoice Details
     invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
@@ -1967,6 +2115,10 @@ class Invoice(models.Model):
         # Update PO balance tracking after save
         if self.purchase_order:
             self.purchase_order.update_balance_tracking()
+        
+        # Update quotation balance tracking after save
+        if self.quotation:
+            self.quotation.update_balance_tracking()
 
     def calculate_totals(self):
         """Calculate all totals for this invoice"""

@@ -14,6 +14,7 @@ from . import leave_views
 from . import interview_views
 from . import offer_views
 from . import share_analytics_views
+from . import form_automation_views
 
 router = DefaultRouter()
 router.register(r'dashboard', views.HRDashboardViewSet, basename='hr-dashboard')
@@ -37,6 +38,11 @@ router.register(r'integration', advanced_views.IntegrationViewSet, basename='int
 # Share Analytics Routes (Phase 3)
 router.register(r'share-analytics', share_analytics_views.ShareAnalyticsViewSet, basename='share-analytics')
 router.register(r'message-templates', share_analytics_views.MessageTemplateViewSet, basename='message-templates')
+
+# Form Automation Routes
+router.register(r'form-templates', form_automation_views.ComplianceFormTemplateViewSet, basename='form-templates')
+router.register(r'monthly-forms', form_automation_views.MonthlyComplianceFormViewSet, basename='monthly-forms')
+router.register(r'employee-form-entries', form_automation_views.EmployeeFormEntryViewSet, basename='employee-form-entries')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -151,4 +157,7 @@ urlpatterns = [
     path('share-analytics/track-share/', share_analytics_views.ShareAnalyticsViewSet.as_view({'post': 'track_share'}), name='track-share'),
     path('share-analytics/track-click/', share_analytics_views.track_click, name='track-click'),
     path('share-analytics/track-application/', share_analytics_views.track_application_from_share, name='track-application'),
+    
+    # Direct PDF Export (bypasses DRF)
+    path('monthly-forms/<uuid:form_id>/export-pdf/', form_automation_views.export_monthly_form_pdf, name='export-monthly-form-pdf'),
 ]

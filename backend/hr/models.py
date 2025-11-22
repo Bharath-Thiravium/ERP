@@ -156,6 +156,14 @@ class Employee(models.Model):
         ('female', 'Female'),
         ('other', 'Other')
     ], blank=True)
+    
+    # Register of Workmen Required Fields
+    father_husband_name = models.CharField(max_length=100, blank=True, help_text="Father's or Husband's name as per Form XIII")
+    nature_of_employment = models.CharField(max_length=100, blank=True, help_text="Nature of employment/work description")
+    employee_signature = models.ImageField(upload_to='employee_signatures/', null=True, blank=True, help_text="Digital signature of employee")
+    termination_reason = models.TextField(blank=True, help_text="Reason for termination if applicable")
+    termination_date = models.DateField(null=True, blank=True, help_text="Date of termination if applicable")
+    employee_remarks = models.TextField(blank=True, help_text="General remarks about employee")
 
     # Employment Details
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='employees')
@@ -171,13 +179,29 @@ class Employee(models.Model):
     base_salary = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     currency = models.CharField(max_length=3, default='INR')
 
-    # Contact Information
-    address_line1 = models.CharField(max_length=255, blank=True)
-    address_line2 = models.CharField(max_length=255, blank=True)
-    city = models.CharField(max_length=100, blank=True)
-    state = models.CharField(max_length=100, blank=True)
-    pincode = models.CharField(max_length=10, blank=True)
-    country = models.CharField(max_length=100, default='India')
+    # Contact Information - Permanent Address
+    permanent_address_line1 = models.CharField(max_length=255, blank=True, help_text="Permanent address line 1")
+    permanent_address_line2 = models.CharField(max_length=255, blank=True, help_text="Permanent address line 2")
+    permanent_city = models.CharField(max_length=100, blank=True)
+    permanent_state = models.CharField(max_length=100, blank=True)
+    permanent_pincode = models.CharField(max_length=10, blank=True)
+    permanent_country = models.CharField(max_length=100, default='India')
+    
+    # Local/Current Address
+    local_address_line1 = models.CharField(max_length=255, blank=True, help_text="Local/current address line 1")
+    local_address_line2 = models.CharField(max_length=255, blank=True, help_text="Local/current address line 2")
+    local_city = models.CharField(max_length=100, blank=True)
+    local_state = models.CharField(max_length=100, blank=True)
+    local_pincode = models.CharField(max_length=10, blank=True)
+    local_country = models.CharField(max_length=100, default='India')
+    
+    # Legacy fields for backward compatibility
+    address_line1 = models.CharField(max_length=255, blank=True, help_text="Deprecated: Use permanent_address_line1")
+    address_line2 = models.CharField(max_length=255, blank=True, help_text="Deprecated: Use permanent_address_line2")
+    city = models.CharField(max_length=100, blank=True, help_text="Deprecated: Use permanent_city")
+    state = models.CharField(max_length=100, blank=True, help_text="Deprecated: Use permanent_state")
+    pincode = models.CharField(max_length=10, blank=True, help_text="Deprecated: Use permanent_pincode")
+    country = models.CharField(max_length=100, default='India', help_text="Deprecated: Use permanent_country")
 
     # Government IDs & Statutory Information
     aadhar_number = models.CharField(max_length=12, blank=True, validators=[

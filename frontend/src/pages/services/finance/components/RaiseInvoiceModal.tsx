@@ -16,8 +16,23 @@ interface PurchaseOrder {
   total_claimed_percentage: number
 }
 
+interface Quotation {
+  id: number
+  quotation_number: string
+  customer_name: string
+  subtotal: string
+  total_amount: string
+  claim_type?: string
+  remaining_proforma_balance: string
+  remaining_invoice_balance: string
+  proforma_claimed_amount: string
+  invoice_claimed_amount: string
+  total_claimed_percentage: number
+}
+
 interface RaiseInvoiceModalProps {
-  purchaseOrder: PurchaseOrder
+  purchaseOrder?: PurchaseOrder
+  quotation?: Quotation
   onClose: () => void
   onCreateProforma: (data: any) => void
   onCreateTaxInvoice: (data: any) => void
@@ -25,21 +40,33 @@ interface RaiseInvoiceModalProps {
 
 const RaiseInvoiceModal: React.FC<RaiseInvoiceModalProps> = ({
   purchaseOrder,
+  quotation,
   onClose,
   onCreateProforma,
   onCreateTaxInvoice
 }) => {
-  const [step, setStep] = useState(purchaseOrder.claim_type ? 1 : 0)
-  const [claimType, setClaimType] = useState(purchaseOrder.claim_type || 'percentage')
+  // Use either PO or Quotation data
+  const sourceData = purchaseOrder || quotation
+  const [step, setStep] = useState(sourceData?.claim_type ? 1 : 0)
+  const [claimType, setClaimType] = useState(sourceData?.claim_type || 'percentage')
   const [invoiceType, setInvoiceType] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleClaimTypeNext = () => {
     setStep(1)
   }
 
   const handleGenerate = () => {
+    if (loading) {
+      console.log('Already processing, preventing double click')
+      return
+    }
+    
+    setLoading(true)
+    
     const invoiceData = {
-      purchase_order: purchaseOrder.id,
+      ...(purchaseOrder && { purchase_order: purchaseOrder.id }),
+      ...(quotation && { quotation: quotation.id }),
       claim_type: claimType,
       invoice_type: invoiceType
     }
@@ -49,6 +76,9 @@ const RaiseInvoiceModal: React.FC<RaiseInvoiceModalProps> = ({
     } else {
       onCreateTaxInvoice(invoiceData)
     }
+    
+    // Reset loading after a short delay to allow modal transition
+    setTimeout(() => setLoading(false), 1000)
   }
 
 
@@ -67,7 +97,7 @@ const RaiseInvoiceModal: React.FC<RaiseInvoiceModalProps> = ({
                 Raise Invoice
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {purchaseOrder.internal_po_number}
+                {purchaseOrder?.internal_po_number || quotation?.quotation_number}
               </p>
             </div>
           </div>
@@ -81,7 +111,7 @@ const RaiseInvoiceModal: React.FC<RaiseInvoiceModalProps> = ({
 
         <div className="p-6">
           {/* Step 0: Claim Type Selection - Only if not already set */}
-          {step === 0 && !purchaseOrder.claim_type && (
+          {step === 0 && !sourceData?.claim_type && (
             <div className="space-y-4">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white">
                 Select Claim Type (First Time)
@@ -142,10 +172,10 @@ const RaiseInvoiceModal: React.FC<RaiseInvoiceModalProps> = ({
           {/* Step 1: Invoice Type Selection */}
           {step === 1 && (
             <div className="space-y-4">
-              {purchaseOrder.claim_type && (
+              {sourceData?.claim_type && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
                   <p className="text-sm text-blue-800 dark:text-blue-200">
-                    Using {purchaseOrder.claim_type === 'percentage' ? 'Percentage-wise' : 'Quantity-wise'} claiming for this PO
+                    Using {sourceData.claim_type === 'percentage' ? 'Percentage-wise' : 'Quantity-wise'} claiming for this {purchaseOrder ? 'PO' : 'Quotation'}
                   </p>
                 </div>
               )}
@@ -197,7 +227,7 @@ const RaiseInvoiceModal: React.FC<RaiseInvoiceModalProps> = ({
                 </label>
               </div>
               <div className="flex space-x-3">
-                {!purchaseOrder.claim_type && (
+                {!sourceData?.claim_type && (
                   <button
                     onClick={() => setStep(0)}
                     className="flex-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-3 rounded-xl font-medium transition-colors"
@@ -213,10 +243,10 @@ const RaiseInvoiceModal: React.FC<RaiseInvoiceModalProps> = ({
                 </button>
                 <button
                   onClick={handleGenerate}
-                  disabled={!invoiceType}
+                  disabled={!invoiceType || loading}
                   className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 rounded-xl font-medium transition-colors"
                 >
-                  Create {invoiceType === 'proforma' ? 'Proforma' : 'Tax Invoice'}
+                  {loading ? 'Processing...' : `Create ${invoiceType === 'proforma' ? 'Proforma' : 'Tax Invoice'}`}
                 </button>
               </div>
             </div>

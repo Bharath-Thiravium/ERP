@@ -1,7 +1,8 @@
 from celery import shared_task
 from django.utils import timezone
 from datetime import datetime, timedelta
-from .models import Company, Employee
+from authentication.models import Company
+from .models import Employee
 from .compliance_engine import ComplianceEngine, AutomatedReporting
 from .government_integration import GovernmentPortalIntegration
 import logging
@@ -227,3 +228,81 @@ def update_statutory_rates():
         logger.info("Updated statutory rates for all companies")
     except Exception as e:
         logger.error(f"Error updating statutory rates: {str(e)}")
+
+# Form Automation Tasks
+@shared_task
+def generate_monthly_forms_task(company_id=None, month_date=None):
+    """
+    Celery task to generate monthly compliance forms
+    """
+    from .form_automation_service import FormAutomationService
+    
+    try:
+        if month_date is None:
+            month_date = timezone.now().date().replace(day=1)
+        elif isinstance(month_date, str):
+            month_date = datetime.strptime(month_date, '%Y-%m-%d').date()
+        
+        if company_id:
+            companies = Company.objects.filter(id=company_id, is_active=True)
+        else:
+            companies = Company.objects.filter(is_active=True)
+        
+        total_generated = 0
+        
+        for company in companies:
+            try:
+                # Setup default templates if not exists
+                FormAutomationService.setup_default_templates(company)
+                
+                # Generate forms
+                generated_forms = FormAutomationService.generate_monthly_forms(
+                    company.id, 
+                    month_date
+                )
+                
+                total_generated += len(generated_forms)
+                
+                logger.info(f'Generated {len(generated_forms)} forms for company {company.name}')
+                
+            except Exception as e:
+                logger.error(f'Error generating forms for company {company.id}: {str(e)}')
+        
+        logger.info(f'Monthly forms generation completed. Total generated: {total_generated}')
+        return {
+            'success': True,
+            'total_generated': total_generated,
+            'companies_processed': companies.count()
+        }
+        
+    except Exception as e:
+        logger.error(f'Error in generate_monthly_forms_task: {str(e)}')
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+@shared_task
+def setup_company_form_templates_task(company_id):
+    """
+    Setup default form templates for a new company
+    """
+    from .form_automation_service import FormAutomationService
+    
+    try:
+        company = Company.objects.get(id=company_id)
+        templates = FormAutomationService.setup_default_templates(company)
+        
+        logger.info(f'Setup {len(templates)} form templates for company {company.name}')
+        
+        return {
+            'success': True,
+            'templates_created': len(templates)
+        }
+        
+    except Exception as e:
+        logger.error(f'Error setting up templates for company {company_id}: {str(e)}')
+        return {
+            'success': False,
+            'error': str(e)
+        }

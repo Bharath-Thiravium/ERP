@@ -1409,10 +1409,12 @@ class PurchaseOrderListCreateView(ListCreateAPIView):
                 created_by=service_user
             )
 
-            # Update the related quotation status to 'approved' (only if PO was created from quotation)
+            # Update the related quotation status to 'approved' and mark PO as created (only if PO was created from quotation)
             if purchase_order.quotation:
                 quotation = purchase_order.quotation
                 quotation.status = 'approved'
+                quotation.po_created = True
+                quotation.po_created_at = timezone.now()
                 quotation.save()
 
             # Return detailed purchase order data
@@ -1614,6 +1616,14 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
                 company=service_user.company,
                 created_by=service_user
             )
+            
+            # Update the related quotation to mark proforma as created (if proforma was created directly from quotation)
+            if proforma_invoice.quotation:
+                quotation = proforma_invoice.quotation
+                quotation.proforma_created = True
+                quotation.invoice_created = True  # Proforma is also a type of invoice
+                quotation.invoice_created_at = timezone.now()
+                quotation.save()
 
             # Get updated PO balance data after proforma creation (only if PO exists)
             updated_po_data = None
@@ -1851,6 +1861,13 @@ class InvoiceListCreateView(ListCreateAPIView):
                 company=service_user.company,
                 created_by=service_user
             )
+            
+            # Update the related quotation to mark invoice as created (if invoice was created directly from quotation)
+            if hasattr(invoice, 'quotation') and invoice.quotation:
+                quotation = invoice.quotation
+                quotation.invoice_created = True
+                quotation.invoice_created_at = timezone.now()
+                quotation.save()
 
             # Get updated PO balance data after invoice creation (only if PO exists)
             updated_po_data = None
@@ -3302,3 +3319,6 @@ def send_purchase_order_email_view(request, purchase_order_id):
         return Response({'error': 'Purchase order not found'}, status=404)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
+
+
+

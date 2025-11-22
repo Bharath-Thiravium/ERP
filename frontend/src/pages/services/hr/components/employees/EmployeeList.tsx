@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Filter, Plus, Edit, Eye, Trash2, Users, Building, Mail, Phone } from 'lucide-react'
+import { Search, Filter, Plus, Edit, Eye, Trash2, Users, Building, Mail, Phone, UserX } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { Employee, EmployeeFilters } from '../../types/hrTypes'
@@ -33,9 +33,8 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
       if (filters.department) params.append('department', filters.department.toString())
       if (filters.status) params.append('status', filters.status)
       
-      const response = await api.get(`/api/hr/employees/?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
+      const response = await api.get(`/api/hr/employees/?${params.toString()}&session_key=${sessionKey}`, {
+        headers: { Authorization: `Bearer ${sessionKey}` }
       })
       
       setEmployees(response.data.results || [])
@@ -55,9 +54,8 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     }
     
     try {
-      await api.delete(`/api/hr/employees/${employee.id}/`, {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
+      await api.delete(`/api/hr/employees/${employee.id}/?session_key=${sessionKey}`, {
+        headers: { Authorization: `Bearer ${sessionKey}` }
       })
       
       toast.success('Employee deleted successfully')
@@ -65,6 +63,32 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     } catch (error) {
       console.error('Error deleting employee:', error)
       toast.error('Failed to delete employee')
+    }
+  }
+
+  const handleTerminateEmployee = async (employee: Employee) => {
+    if (!sessionKey) return
+    
+    const reason = prompt(`Enter termination reason for ${employee.full_name}:`)
+    if (!reason) return
+    
+    const terminationDate = prompt('Enter termination date (YYYY-MM-DD):', new Date().toISOString().split('T')[0])
+    if (!terminationDate) return
+    
+    try {
+      await api.patch(`/api/hr/employees/${employee.id}/?session_key=${sessionKey}`, {
+        status: 'terminated',
+        termination_reason: reason,
+        termination_date: terminationDate
+      }, {
+        headers: { Authorization: `Bearer ${sessionKey}` }
+      })
+      
+      toast.success('Employee terminated successfully')
+      fetchEmployees() // Refresh the list
+    } catch (error) {
+      console.error('Error terminating employee:', error)
+      toast.error('Failed to terminate employee')
     }
   }
 
@@ -212,6 +236,17 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
+                      {employee.status !== 'terminated' && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleTerminateEmployee(employee)}
+                          className="text-orange-500 hover:text-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900"
+                          title="Terminate Employee"
+                        >
+                          <UserX className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button 
                         variant="ghost" 
                         size="sm" 

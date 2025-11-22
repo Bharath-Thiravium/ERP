@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
 import { X, FileText, User, MapPin, Calculator, Package } from 'lucide-react'
-import { apiClient } from '../../../../lib/api'
+
 import toast from 'react-hot-toast'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 
 interface SimpleProformaFormProps {
-  purchaseOrder: any
+  purchaseOrder?: any
+  quotation?: any
   invoiceData: any
   onClose: () => void
   onSuccess: () => void
@@ -13,10 +14,15 @@ interface SimpleProformaFormProps {
 
 const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
   purchaseOrder,
+  quotation,
   invoiceData,
   onClose,
   onSuccess
 }) => {
+  // Use either PO or Quotation data
+  const sourceData = purchaseOrder || quotation
+  const isFromQuotation = !!quotation
+  
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({})
@@ -29,14 +35,15 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
   })
 
   // Calculate amounts
-  const baseAmount = parseFloat(purchaseOrder.subtotal || '0')
+  const baseAmount = parseFloat(sourceData.subtotal || '0')
 
   
   const calculateProformaAmount = () => {
     if (invoiceData.claim_type === 'quantity') {
       // Calculate based on selected items and quantities
       return Object.entries(selectedItems).reduce((total, [itemId, quantity]) => {
-        const item = purchaseOrder.po_items?.find((item: any) => item.id === parseInt(itemId))
+        const items = isFromQuotation ? sourceData.quotation_items : sourceData.po_items
+        const item = items?.find((item: any) => item.id === parseInt(itemId))
         if (item && quantity > 0) {
           return total + (parseFloat(item.unit_price) * quantity)
         }
@@ -45,7 +52,8 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
     } else {
       // Percentage-based calculation - sum of individual item percentages
       return Object.entries(itemPercentages).reduce((total, [itemId, percentage]) => {
-        const item = purchaseOrder.po_items?.find((item: any) => item.id === parseInt(itemId))
+        const items = isFromQuotation ? sourceData.quotation_items : sourceData.po_items
+        const item = items?.find((item: any) => item.id === parseInt(itemId))
         if (item && percentage > 0) {
           const itemTotal = parseFloat(item.unit_price) * item.quantity
           return total + (itemTotal * percentage) / 100
@@ -61,10 +69,12 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
     e.preventDefault()
     
     if (loading) {
+      console.log('Form already submitting, preventing double submission')
       return // Prevent double submission
     }
     
     setLoading(true)
+    console.log('Starting proforma creation...')
 
     try {
       // Validate that at least some items are selected
@@ -78,7 +88,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
         
         // Validate that percentages don't exceed available amount
         const maxPercentage = Math.max(...Object.values(itemPercentages))
-        const availablePercentage = parseFloat(purchaseOrder.available_proforma_percentage || '100')
+        const availablePercentage = parseFloat(sourceData.available_proforma_percentage || '100')
         if (maxPercentage > availablePercentage) {
           toast.error(`Maximum percentage (${maxPercentage.toFixed(1)}%) exceeds available proforma percentage (${availablePercentage.toFixed(1)}%)`)
           setLoading(false)
@@ -100,7 +110,8 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
         // For percentage-based, create items with calculated amounts
         Object.entries(itemPercentages).forEach(([itemId, percentage]) => {
           if (percentage > 0) {
-            const item = purchaseOrder.po_items?.find((item: any) => item.id === parseInt(itemId))
+            const items = isFromQuotation ? sourceData.quotation_items : sourceData.po_items
+            const item = items?.find((item: any) => item.id === parseInt(itemId))
             if (item) {
               const itemTotal = parseFloat(item.unit_price) * item.quantity
               const claimedAmount = (itemTotal * percentage) / 100
@@ -120,7 +131,8 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
         // For quantity-based, create items with selected quantities
         Object.entries(selectedItems).forEach(([itemId, quantity]) => {
           if (quantity > 0) {
-            const item = purchaseOrder.po_items?.find((item: any) => item.id === parseInt(itemId))
+            const items = isFromQuotation ? sourceData.quotation_items : sourceData.po_items
+            const item = items?.find((item: any) => item.id === parseInt(itemId))
             if (item) {
               proformaItems.push({
                 product: item.product,
@@ -136,7 +148,9 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
       }
 
       const dataToSend = {
-        purchase_order: purchaseOrder.id,
+        customer: sourceData.customer_details.id || sourceData.customer,
+        ...(purchaseOrder && { purchase_order: purchaseOrder.id }),
+        ...(quotation && { quotation: quotation.id }),
         claim_type: invoiceData.claim_type,
         claim_percentage: invoiceData.claim_percentage,
         selected_items: invoiceData.claim_type === 'quantity' ? selectedItems : undefined,
@@ -151,7 +165,22 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
         status: 'draft'
       }
 
-      await apiClient.createFinanceProformaInvoice({ ...dataToSend, session_key: sessionKey })
+      // Use the specific quotation-based endpoint
+      const response = await fetch('/api/finance/proforma-invoices/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionKey}`
+        },
+        body: JSON.stringify({ ...dataToSend, session_key: sessionKey })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create proforma invoice')
+      }
+      
+      await response.json()
       
       toast.success('Proforma Invoice created successfully!')
       onSuccess()
@@ -189,10 +218,10 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
         <form onSubmit={handleSubmit} className="flex flex-col max-h-[calc(90vh-80px)]">
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             
-            {/* PO Reference */}
+            {/* Source Reference */}
             <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
-              <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-2">Purchase Order</h3>
-              <p className="text-blue-700 dark:text-blue-300">{purchaseOrder.internal_po_number}</p>
+              <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-2">{isFromQuotation ? 'Quotation' : 'Purchase Order'}</h3>
+              <p className="text-blue-700 dark:text-blue-300">{isFromQuotation ? sourceData.quotation_number : sourceData.internal_po_number}</p>
             </div>
 
             {/* Customer Details - Read Only */}
@@ -204,28 +233,28 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-500">Name:</span>
-                  <p className="font-medium">{purchaseOrder.customer_details.name}</p>
+                  <p className="font-medium">{sourceData.customer_details.name}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">Code:</span>
-                  <p className="font-medium">{purchaseOrder.customer_details.customer_code}</p>
+                  <p className="font-medium">{sourceData.customer_details.customer_code}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">Email:</span>
-                  <p className="font-medium">{purchaseOrder.customer_details.email}</p>
+                  <p className="font-medium">{sourceData.customer_details.email}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">Phone:</span>
-                  <p className="font-medium">{purchaseOrder.customer_details.phone}</p>
+                  <p className="font-medium">{sourceData.customer_details.phone}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">GSTIN:</span>
-                  <p className="font-medium">{purchaseOrder.customer_details.gstin || 'N/A'}</p>
+                  <p className="font-medium">{sourceData.customer_details.gstin || 'N/A'}</p>
                 </div>
-                {purchaseOrder.customer_details.project_area && (
+                {sourceData.customer_details.project_area && (
                   <div>
                     <span className="text-gray-500">Project:</span>
-                    <p className="font-medium">{purchaseOrder.customer_details.project_area}</p>
+                    <p className="font-medium">{sourceData.customer_details.project_area}</p>
                   </div>
                 )}
               </div>
@@ -240,12 +269,12 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                   Billing Address
                 </h3>
                 <div className="text-sm text-gray-700 dark:text-gray-300">
-                  <p>{purchaseOrder.customer_details.billing_address_line1}</p>
-                  {purchaseOrder.customer_details.billing_address_line2 && (
-                    <p>{purchaseOrder.customer_details.billing_address_line2}</p>
+                  <p>{sourceData.customer_details.billing_address_line1}</p>
+                  {sourceData.customer_details.billing_address_line2 && (
+                    <p>{sourceData.customer_details.billing_address_line2}</p>
                   )}
-                  <p>{purchaseOrder.customer_details.billing_city}, {purchaseOrder.customer_details.billing_state} {purchaseOrder.customer_details.billing_pincode}</p>
-                  <p>{purchaseOrder.customer_details.billing_country}</p>
+                  <p>{sourceData.customer_details.billing_city}, {sourceData.customer_details.billing_state} {sourceData.customer_details.billing_pincode}</p>
+                  <p>{sourceData.customer_details.billing_country}</p>
                 </div>
               </div>
               
@@ -256,14 +285,14 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                   Shipping Address
                 </h3>
                 <div className="text-sm text-gray-700 dark:text-gray-300">
-                  {purchaseOrder.shipping_address_details ? (
+                  {sourceData.shipping_address_details ? (
                     <>
-                      <p>{purchaseOrder.shipping_address_details.address_line1}</p>
-                      {purchaseOrder.shipping_address_details.address_line2 && (
-                        <p>{purchaseOrder.shipping_address_details.address_line2}</p>
+                      <p>{sourceData.shipping_address_details.address_line1}</p>
+                      {sourceData.shipping_address_details.address_line2 && (
+                        <p>{sourceData.shipping_address_details.address_line2}</p>
                       )}
-                      <p>{purchaseOrder.shipping_address_details.city}, {purchaseOrder.shipping_address_details.state} {purchaseOrder.shipping_address_details.pincode}</p>
-                      <p>{purchaseOrder.shipping_address_details.country}</p>
+                      <p>{sourceData.shipping_address_details.city}, {sourceData.shipping_address_details.state} {sourceData.shipping_address_details.pincode}</p>
+                      <p>{sourceData.shipping_address_details.country}</p>
                     </>
                   ) : (
                     <p className="text-gray-500">Same as billing address</p>
@@ -273,14 +302,14 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
             </div>
 
             {/* Item Selection */}
-            {purchaseOrder.po_items && (
+            {(sourceData.po_items || sourceData.quotation_items) && (
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
                 <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-3 flex items-center">
                   <Package className="w-4 h-4 mr-2" />
                   {invoiceData.claim_type === 'quantity' ? 'Select Items & Quantities' : 'Select Items & Percentages'}
                 </h3>
                 <div className="space-y-3">
-                  {purchaseOrder.po_items.map((item: any) => (
+                  {(isFromQuotation ? sourceData.quotation_items : sourceData.po_items).map((item: any) => (
                     <div key={item.id} className="bg-white dark:bg-gray-800 p-3 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex-1">
@@ -291,7 +320,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                               <>
                                 <span className="ml-2">Total: ₹{(parseFloat(item.unit_price) * item.quantity).toFixed(2)}</span>
                                 <span className="ml-2 text-blue-600 font-medium">
-                                  Available: {parseFloat(purchaseOrder.available_proforma_percentage || '100').toFixed(1)}%
+                                  Available: {parseFloat(sourceData.available_proforma_percentage || '100').toFixed(1)}%
                                 </span>
                               </>
                             )}
@@ -317,11 +346,11 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                               <input
                                 type="number"
                                 min="0"
-                                max={parseFloat(purchaseOrder.available_proforma_percentage || '100')}
+                                max={parseFloat(sourceData.available_proforma_percentage || '100')}
                                 step="0.01"
                                 value={itemPercentages[item.id] || 0}
                                 onChange={(e) => {
-                                  const maxAvailable = parseFloat(purchaseOrder.available_proforma_percentage || '100')
+                                  const maxAvailable = parseFloat(sourceData.available_proforma_percentage || '100')
                                   const value = Math.min(parseFloat(e.target.value) || 0, maxAvailable)
                                   setItemPercentages(prev => ({ ...prev, [item.id]: value }))
                                 }}
@@ -350,19 +379,19 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
 
             {/* Balance Status */}
             <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
-              <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-3">PO Balance Status</h3>
+              <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-3">{isFromQuotation ? 'Quotation' : 'PO'} Balance Status</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span>Total PO Amount:</span>
-                  <span className="font-medium">₹{parseFloat(purchaseOrder.total_amount || '0').toLocaleString()}</span>
+                  <span>Total {isFromQuotation ? 'Quotation' : 'PO'} Amount:</span>
+                  <span className="font-medium">₹{parseFloat(sourceData.total_amount || '0').toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Proforma Available:</span>
-                  <span className="font-medium">₹{parseFloat(purchaseOrder.remaining_proforma_balance || purchaseOrder.subtotal || '0').toLocaleString()}</span>
+                  <span className="font-medium">₹{parseFloat(sourceData.remaining_proforma_balance || sourceData.subtotal || '0').toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Invoice Available:</span>
-                  <span className="font-medium">₹{parseFloat(purchaseOrder.remaining_invoice_balance || purchaseOrder.total_amount || '0').toLocaleString()}</span>
+                  <span className="font-medium">₹{parseFloat(sourceData.remaining_invoice_balance || sourceData.total_amount || '0').toLocaleString()}</span>
                 </div>
               </div>
               
@@ -371,12 +400,10 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                 <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
                   <div 
                     className="h-2 rounded-full transition-all duration-300 bg-blue-500"
-                    style={{ width: `${Math.max(0, Math.min(100, ((parseFloat(purchaseOrder.proforma_claimed_amount || '0') + parseFloat(purchaseOrder.invoice_claimed_amount || '0')) / parseFloat(purchaseOrder.total_amount || '1')) * 100))}%` }}
+                    style={{ width: `${Math.max(0, Math.min(100, ((parseFloat(sourceData.proforma_claimed_amount || '0') + parseFloat(sourceData.invoice_claimed_amount || '0')) / parseFloat(sourceData.total_amount || '1')) * 100))}%` }}
                   ></div>
                 </div>
               </div>
-              
-
             </div>
 
             {/* Available Percentage Info */}
@@ -385,8 +412,8 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                 📊 Available for Proforma Invoice
               </h3>
               <div className="text-sm text-blue-800 dark:text-blue-200">
-                <p><strong>{parseFloat(purchaseOrder.available_proforma_percentage || '100').toFixed(1)}%</strong> of base amount is available for proforma claiming</p>
-                {parseFloat(purchaseOrder.available_proforma_percentage || '100') < 100 && (
+                <p><strong>{parseFloat(sourceData.available_proforma_percentage || '100').toFixed(1)}%</strong> of base amount is available for proforma claiming</p>
+                {parseFloat(sourceData.available_proforma_percentage || '100') < 100 && (
                   <p className="text-xs mt-1 text-blue-600 dark:text-blue-300">
                     ⚠️ Reduced due to existing tax invoices
                   </p>
@@ -402,7 +429,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
               </h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span>PO Base Amount:</span>
+                  <span>{isFromQuotation ? 'Quotation' : 'PO'} Base Amount:</span>
                   <span className="font-medium">₹{baseAmount.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
@@ -414,8 +441,8 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                   <span className="font-bold text-green-600">₹{proformaAmount.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                  <span>Claiming from PO:</span>
-                  <span>{((proformaAmount / parseFloat(purchaseOrder.subtotal || '1')) * 100).toFixed(1)}% of base amount</span>
+                  <span>Claiming from {isFromQuotation ? 'Quotation' : 'PO'}:</span>
+                  <span>{((proformaAmount / parseFloat(sourceData.subtotal || '1')) * 100).toFixed(1)}% of base amount</span>
                 </div>
               </div>
             </div>
@@ -485,7 +512,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || proformaAmount <= 0}
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Creating...' : 'Create Proforma Invoice'}

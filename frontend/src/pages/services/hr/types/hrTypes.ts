@@ -87,6 +87,26 @@ export interface Employee {
   mobile_device_id?: string;
   created_at: string;
   updated_at: string;
+  
+  // Form XIII Required Fields
+  father_husband_name?: string;
+  nature_of_employment?: string;
+  employee_signature?: string;
+  termination_reason?: string;
+  termination_date?: string;
+  employee_remarks?: string;
+  permanent_address_line1?: string;
+  permanent_address_line2?: string;
+  permanent_city?: string;
+  permanent_state?: string;
+  permanent_pincode?: string;
+  permanent_country?: string;
+  local_address_line1?: string;
+  local_address_line2?: string;
+  local_city?: string;
+  local_state?: string;
+  local_pincode?: string;
+  local_country?: string;
 }
 
 export interface JobPosting {
@@ -318,6 +338,26 @@ export interface EmployeeFormData {
   profile_picture?: File;
   face_photo?: File;
   capture_face_photo?: boolean;
+  
+  // Form XIII Required Fields
+  father_husband_name?: string;
+  nature_of_employment?: string;
+  employee_signature?: File;
+  termination_reason?: string;
+  termination_date?: string;
+  employee_remarks?: string;
+  permanent_address_line1?: string;
+  permanent_address_line2?: string;
+  permanent_city?: string;
+  permanent_state?: string;
+  permanent_pincode?: string;
+  permanent_country?: string;
+  local_address_line1?: string;
+  local_address_line2?: string;
+  local_city?: string;
+  local_state?: string;
+  local_pincode?: string;
+  local_country?: string;
 }
 
 export interface JobPostingFormData {

@@ -4,6 +4,12 @@ import QuotationList from '../components/QuotationList'
 import QuotationForm from '../components/QuotationForm'
 import QuotationDetail from '../components/QuotationDetail'
 import QuotationEdit from '../components/QuotationEdit'
+import RaiseInvoiceModal from '../components/RaiseInvoiceModal'
+import SimpleProformaForm from '../components/SimpleProformaForm'
+import SimpleTaxInvoiceForm from '../components/SimpleTaxInvoiceForm'
+
+import { useServiceUserStore } from '../../../../store/serviceUserStore'
+import toast from 'react-hot-toast'
 
 interface Quotation {
   id: number
@@ -20,6 +26,11 @@ interface Quotation {
   item_count: number
   created_at: string
   created_by_name: string
+  po_created?: boolean
+  po_created_at?: string
+  invoice_created?: boolean
+  invoice_created_at?: string
+  proforma_created?: boolean
 }
 
 interface QuotationsProps {
@@ -28,9 +39,17 @@ interface QuotationsProps {
 
 const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
   const navigate = useNavigate()
+  const { sessionKey } = useServiceUserStore()
   const [currentView, setCurrentView] = useState<'list' | 'form' | 'detail' | 'edit'>('list')
   const [selectedQuotation, setSelectedQuotation] = useState<Quotation | null>(null)
   const [refreshList, setRefreshList] = useState(0)
+  
+  // Invoice creation states
+  const [showRaiseInvoiceModal, setShowRaiseInvoiceModal] = useState(false)
+  const [showProformaForm, setShowProformaForm] = useState(false)
+  const [showTaxInvoiceForm, setShowTaxInvoiceForm] = useState(false)
+  const [invoiceQuotation, setInvoiceQuotation] = useState<any>(null)
+  const [invoiceData, setInvoiceData] = useState<any>(null)
 
   // Check for refresh flag after PO creation or deletion
   React.useEffect(() => {
@@ -95,6 +114,71 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
     }
   }
 
+  const handleRaiseInvoice = async (quotation: Quotation) => {
+    try {
+      // Fetch full quotation details with items
+      const params = new URLSearchParams({ session_key: sessionKey || '' })
+      const response = await fetch(`/api/finance/quotations/${quotation.id}/?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${sessionKey}` }
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch quotation details')
+      }
+      
+      const fullQuotationData = await response.json()
+      
+      // Add balance tracking fields if not present
+      if (!fullQuotationData.available_proforma_percentage) {
+        fullQuotationData.available_proforma_percentage = '100'
+      }
+      if (!fullQuotationData.available_invoice_percentage) {
+        fullQuotationData.available_invoice_percentage = '100'
+      }
+      if (!fullQuotationData.remaining_proforma_balance) {
+        fullQuotationData.remaining_proforma_balance = fullQuotationData.subtotal
+      }
+      if (!fullQuotationData.remaining_invoice_balance) {
+        fullQuotationData.remaining_invoice_balance = fullQuotationData.total_amount
+      }
+      
+      setInvoiceQuotation(fullQuotationData)
+      setShowRaiseInvoiceModal(true)
+    } catch (error) {
+      console.error('Error fetching quotation details:', error)
+      toast.error('Failed to load quotation details')
+    }
+  }
+
+  const handleCreateProforma = (data: any) => {
+    setInvoiceData(data)
+    setShowRaiseInvoiceModal(false)
+    setShowProformaForm(true)
+  }
+
+  const handleCreateTaxInvoice = (data: any) => {
+    setInvoiceData(data)
+    setShowRaiseInvoiceModal(false)
+    setShowTaxInvoiceForm(true)
+  }
+
+  const handleInvoiceSuccess = () => {
+    setShowProformaForm(false)
+    setShowTaxInvoiceForm(false)
+    setInvoiceQuotation(null)
+    setInvoiceData(null)
+    setRefreshList(prev => prev + 1)
+    // Success message is already shown by the individual forms
+  }
+
+  const handleInvoiceClose = () => {
+    setShowRaiseInvoiceModal(false)
+    setShowProformaForm(false)
+    setShowTaxInvoiceForm(false)
+    setInvoiceQuotation(null)
+    setInvoiceData(null)
+  }
+
   return (
     <div className="space-y-6">
       {currentView === 'list' && (
@@ -104,6 +188,7 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
           onEdit={handleEdit}
           onView={handleView}
           onCreatePO={handleCreatePO}
+          onRaiseInvoice={handleRaiseInvoice}
         />
       )}
 
@@ -134,6 +219,36 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
             setCurrentView('list')
             setRefreshList(prev => prev + 1)
           }}
+        />
+      )}
+      
+      {/* Raise Invoice Modal */}
+      {showRaiseInvoiceModal && invoiceQuotation && (
+        <RaiseInvoiceModal
+          quotation={invoiceQuotation}
+          onClose={handleInvoiceClose}
+          onCreateProforma={handleCreateProforma}
+          onCreateTaxInvoice={handleCreateTaxInvoice}
+        />
+      )}
+      
+      {/* Proforma Form */}
+      {showProformaForm && invoiceQuotation && invoiceData && (
+        <SimpleProformaForm
+          quotation={invoiceQuotation}
+          invoiceData={invoiceData}
+          onClose={handleInvoiceClose}
+          onSuccess={handleInvoiceSuccess}
+        />
+      )}
+      
+      {/* Tax Invoice Form */}
+      {showTaxInvoiceForm && invoiceQuotation && invoiceData && (
+        <SimpleTaxInvoiceForm
+          quotation={invoiceQuotation}
+          invoiceData={invoiceData}
+          onClose={handleInvoiceClose}
+          onSuccess={handleInvoiceSuccess}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Department, Designation, Employee, JobPosting, JobApplication, AttendanceSystem, Attendance, AttendanceDevice, AttendanceLog, PerformanceReview
+from .form_automation_models import ComplianceFormTemplate, MonthlyComplianceForm, EmployeeFormEntry
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -37,14 +38,17 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'employee_id', 'first_name', 'last_name', 'full_name', 'email', 
             'phone', 'date_of_birth', 'gender', 'department', 'department_name', 'designation', 'designation_title',
-            'employment_type', 'work_mode', 'status', 'date_of_joining', 
+            'employment_type', 'work_mode', 'status', 'date_of_joining', 'date_of_leaving',
             'base_salary', 'address_line1', 'address_line2',
             'city', 'state', 'pincode', 'country', 'aadhar_number', 'pan_number',
             'pf_number', 'uan_number', 'esi_number', 'bank_name', 'bank_account_number',
             'bank_ifsc_code', 'bank_branch', 'emergency_contact_name', 'emergency_contact_relationship',
             'emergency_contact_phone', 'emergency_contact_address', 'skills', 'performance_score', 
             'engagement_score', 'retention_risk', 'profile_picture', 'face_photo', 
-            'mobile_app_enabled', 'last_mobile_login', 'mobile_device_id', 'created_at'
+            'mobile_app_enabled', 'last_mobile_login', 'mobile_device_id', 'created_at',
+            'father_husband_name', 'nature_of_employment', 'employee_signature', 'termination_reason', 'termination_date', 'employee_remarks',
+            'permanent_address_line1', 'permanent_address_line2', 'permanent_city', 'permanent_state', 'permanent_pincode', 'permanent_country',
+            'local_address_line1', 'local_address_line2', 'local_city', 'local_state', 'local_pincode', 'local_country'
         ]
         read_only_fields = ['id', 'employee_id', 'full_name', 'created_at']
     
@@ -84,7 +88,10 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'bank_ifsc_code', 'bank_branch', 'emergency_contact_name', 'emergency_contact_relationship',
             'emergency_contact_phone', 'emergency_contact_address', 'skills', 'performance_score', 
             'engagement_score', 'retention_risk', 'profile_picture', 'face_photo', 'face_encoding',
-            'mobile_app_enabled', 'last_mobile_login', 'mobile_device_id', 'created_at', 'updated_at'
+            'mobile_app_enabled', 'last_mobile_login', 'mobile_device_id', 'created_at', 'updated_at',
+            'father_husband_name', 'nature_of_employment', 'employee_signature', 'termination_reason', 'termination_date', 'employee_remarks',
+            'permanent_address_line1', 'permanent_address_line2', 'permanent_city', 'permanent_state', 'permanent_pincode', 'permanent_country',
+            'local_address_line1', 'local_address_line2', 'local_city', 'local_state', 'local_pincode', 'local_country'
         ]
         read_only_fields = ['id', 'employee_id', 'full_name', 'created_at', 'updated_at']
     
@@ -130,7 +137,10 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
             'city', 'state', 'pincode', 'country', 'aadhar_number', 'pan_number',
             'pf_number', 'uan_number', 'esi_number', 'bank_name', 'bank_account_number',
             'bank_ifsc_code', 'bank_branch', 'emergency_contact_name', 'emergency_contact_relationship',
-            'emergency_contact_phone', 'emergency_contact_address', 'skills', 'profile_picture', 'face_photo'
+            'emergency_contact_phone', 'emergency_contact_address', 'skills', 'profile_picture', 'face_photo',
+            'father_husband_name', 'nature_of_employment', 'employee_signature', 'termination_reason', 'termination_date', 'employee_remarks',
+            'permanent_address_line1', 'permanent_address_line2', 'permanent_city', 'permanent_state', 'permanent_pincode', 'permanent_country',
+            'local_address_line1', 'local_address_line2', 'local_city', 'local_state', 'local_pincode', 'local_country'
         ]
     
     def validate_email(self, value):
@@ -212,3 +222,105 @@ class PerformanceReviewSerializer(serializers.ModelSerializer):
             'status', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ComplianceFormTemplateSerializer(serializers.ModelSerializer):
+    can_generate_today = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ComplianceFormTemplate
+        fields = [
+            'id', 'form_type', 'template_name', 'template_file', 'file_type',
+            'is_monthly_auto_generate', 'generation_day', 'is_active', 
+            'template_structure', 'can_generate_today', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'template_structure', 'created_at', 'updated_at']
+    
+    def get_can_generate_today(self, obj):
+        return obj.can_generate_today()
+
+class ComplianceFormTemplateCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ComplianceFormTemplate
+        fields = [
+            'form_type', 'template_name', 'template_file', 'file_type',
+            'is_monthly_auto_generate', 'generation_day', 'is_active'
+        ]
+    
+    def validate_template_file(self, value):
+        if value:
+            # Validate file size (max 10MB)
+            if value.size > 10 * 1024 * 1024:
+                raise serializers.ValidationError('File size cannot exceed 10MB')
+            
+            # Validate file type
+            allowed_types = [
+                'application/vnd.ms-excel', 
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/pdf',
+                'application/msword',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            ]
+            if value.content_type not in allowed_types:
+                raise serializers.ValidationError('Only Excel, PDF, and Word files are allowed')
+        
+        return value
+    
+    def create(self, validated_data):
+        instance = super().create(validated_data)
+        
+        # Parse template structure after file upload
+        if instance.template_file and instance.file_type:
+            try:
+                from .template_parser import TemplateParser
+                structure = TemplateParser.parse_template(
+                    instance.template_file.path, 
+                    instance.file_type
+                )
+                instance.template_structure = structure
+                instance.save(update_fields=['template_structure'])
+            except Exception as e:
+                # Continue without parsing if it fails
+                pass
+        
+        return instance
+
+
+class EmployeeFormEntrySerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
+    
+    class Meta:
+        model = EmployeeFormEntry
+        fields = [
+            'id', 'employee', 'employee_name', 'employee_id',
+            'fine_amount', 'fine_reason', 'fine_date',
+            'designation', 'department', 'joining_date', 'basic_wage',
+            'father_husband_name', 'nature_of_employment', 'permanent_address', 'local_address',
+            'termination_date', 'termination_reason', 'remarks', 'dynamic_data',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class MonthlyComplianceFormSerializer(serializers.ModelSerializer):
+    template_name = serializers.CharField(source='template.template_name', read_only=True)
+    form_type = serializers.CharField(source='template.form_type', read_only=True)
+    approved_by_name = serializers.CharField(source='approved_by.username', read_only=True)
+    employee_entries = EmployeeFormEntrySerializer(many=True, read_only=True)
+    is_current_month = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MonthlyComplianceForm
+        fields = [
+            'id', 'template', 'template_name', 'form_type', 'month',
+            'status', 'total_employees', 'auto_generated', 'is_current_month',
+            'generated_at', 'approved_by', 'approved_by_name', 'approved_at',
+            'employee_entries'
+        ]
+        read_only_fields = [
+            'id', 'generated_at', 'approved_by', 'approved_by_name', 'approved_at'
+        ]
+    
+    def get_is_current_month(self, obj):
+        return obj.is_current_month()

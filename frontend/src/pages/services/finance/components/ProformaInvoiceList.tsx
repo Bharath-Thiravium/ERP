@@ -23,7 +23,7 @@ import {
 import ProformaInvoiceView from './ProformaInvoiceView'
 import UpdatePaymentModal from './UpdatePaymentModal'
 import SendEmailModal from './SendEmailModal'
-import DirectCreateProformaInvoiceModal from './DirectCreateProformaInvoiceModal'
+
 
 interface ProformaInvoice {
   id: number
@@ -137,7 +137,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
   const [selectedForPayment, setSelectedForPayment] = useState<ProformaInvoice | null>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [selectedForEmail, setSelectedForEmail] = useState<ProformaInvoice | null>(null)
-  const [showDirectCreateModal, setShowDirectCreateModal] = useState(false)
+
   
   const handleUpdatePayment = (proformaInvoice: ProformaInvoice) => {
     setSelectedForPayment(proformaInvoice)
@@ -224,13 +224,6 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
           >
             <Plus className="w-4 h-4 mr-2" />
             From Purchase Order
-          </button>
-          <button
-            onClick={() => setShowDirectCreateModal(true)}
-            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Direct Creation
           </button>
         </div>
       </div>
@@ -477,17 +470,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
         />
       )}
 
-      {/* Direct Create Proforma Invoice Modal */}
-      {showDirectCreateModal && (
-        <DirectCreateProformaInvoiceModal
-          isOpen={showDirectCreateModal}
-          onClose={() => setShowDirectCreateModal(false)}
-          onSuccess={() => {
-            setShowDirectCreateModal(false)
-            fetchProformaInvoices()
-          }}
-        />
-      )}
+
     </div>
   )
 }

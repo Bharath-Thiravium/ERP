@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, RotateCcw, X, ShoppingCart } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, RotateCcw, X, ShoppingCart, Receipt } from 'lucide-react'
 import QuotationEdit from './QuotationEdit'
 import SendEmailModal from './SendEmailModal'
 import toast from 'react-hot-toast'
@@ -34,6 +34,19 @@ interface Quotation {
   revision_count?: number
   revised_at?: string
   revised_by_name?: string
+  po_created?: boolean
+  po_created_at?: string
+  invoice_created?: boolean
+  invoice_created_at?: string
+  proforma_created?: boolean
+  // Balance tracking fields
+  claim_type?: string
+  proforma_claimed_amount?: number
+  invoice_claimed_amount?: number
+  remaining_proforma_balance?: number
+  remaining_invoice_balance?: number
+  available_proforma_percentage?: number
+  available_invoice_percentage?: number
 }
 
 interface QuotationListProps {
@@ -41,9 +54,10 @@ interface QuotationListProps {
   onEdit: (quotation: Quotation) => void
   onView: (quotation: Quotation) => void
   onCreatePO: (quotation: Quotation) => void
+  onRaiseInvoice?: (quotation: Quotation) => void
 }
 
-const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCreatePO }) => {
+const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCreatePO, onRaiseInvoice }) => {
   const { sessionKey } = useServiceUserStore()
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [loading, setLoading] = useState(true)
@@ -194,7 +208,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
   }
 
   const handleRejectQuotation = async (quotation: Quotation) => {
-    if (!confirm(`Are you sure you want to reject and delete quotation ${quotation.quotation_number}? This action cannot be undone and will permanently remove the quotation from the database.`)) {
+    if (!confirm(`Are you sure you want to reject quotation ${quotation.quotation_number}? This will mark it as rejected but keep it in the database for records.`)) {
       return
     }
 
@@ -204,10 +218,13 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
     }
 
     try {
-      // Delete the quotation from database instead of marking as rejected
-      await apiClient.deleteFinanceQuotation(quotation.id, { session_key: sessionKey })
+      // Update quotation status to rejected instead of deleting
+      await apiClient.updateFinanceQuotation(quotation.id, {
+        status: 'rejected',
+        session_key: sessionKey
+      })
 
-      toast.success('Quotation rejected and removed from database!')
+      toast.success('Quotation rejected successfully!')
       fetchQuotations(currentPage)
     } catch (error) {
       console.error('Error rejecting quotation:', error)
@@ -510,34 +527,57 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                           {/* Sent status buttons */}
                           {quotation.status === 'sent' && (
                             <>
-                              <button
-                                onClick={() => {
-                                  // Import and use session manager
-                                  import('../../../../utils/sessionManager').then(({ SessionManager }) => {
-                                    SessionManager.preserveSession()
-                                    onCreatePO(quotation)
-                                  }).catch(() => {
-                                    // Fallback if import fails
-                                    const sessionKey = sessionStorage.getItem('service_session_key')
-                                    if (!sessionKey) {
-                                      try {
-                                        const storeState = JSON.parse(localStorage.getItem('service-user-storage') || '{}')
-                                        const storeSessionKey = storeState?.state?.sessionKey
-                                        if (storeSessionKey) {
-                                          sessionStorage.setItem('service_session_key', storeSessionKey)
+                              {/* Show Create PO button only if no PO created AND no invoices created from this quotation */}
+                              {!quotation.po_created && !quotation.invoice_created && !quotation.proforma_created && (
+                                <button
+                                  onClick={() => {
+                                    // Import and use session manager
+                                    import('../../../../utils/sessionManager').then(({ SessionManager }) => {
+                                      SessionManager.preserveSession()
+                                      onCreatePO(quotation)
+                                    }).catch(() => {
+                                      // Fallback if import fails
+                                      const sessionKey = sessionStorage.getItem('service_session_key')
+                                      if (!sessionKey) {
+                                        try {
+                                          const storeState = JSON.parse(localStorage.getItem('service-user-storage') || '{}')
+                                          const storeSessionKey = storeState?.state?.sessionKey
+                                          if (storeSessionKey) {
+                                            sessionStorage.setItem('service_session_key', storeSessionKey)
+                                          }
+                                        } catch (e) {
+                                          console.warn('Session restoration failed:', e)
                                         }
-                                      } catch (e) {
-                                        console.warn('Session restoration failed:', e)
                                       }
-                                    }
-                                    onCreatePO(quotation)
-                                  })
-                                }}
-                                className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                                title="Create PO/WO"
-                              >
-                                <ShoppingCart className="w-4 h-4" />
-                              </button>
+                                      onCreatePO(quotation)
+                                    })
+                                  }}
+                                  className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                                  title="Create PO/WO"
+                                >
+                                  <ShoppingCart className="w-4 h-4" />
+                                </button>
+                              )}
+                              {/* Show Raise Invoice button if no PO created AND available percentage > 0 */}
+                              {onRaiseInvoice && !quotation.po_created && (
+                                (quotation.available_invoice_percentage || 0) > 0 || (quotation.available_proforma_percentage || 0) > 0 || 
+                                (!quotation.invoice_created && !quotation.proforma_created)
+                              ) && (
+                                <button
+                                  onClick={() => onRaiseInvoice(quotation)}
+                                  className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
+                                  title="Raise Invoice"
+                                >
+                                  <Receipt className="w-4 h-4" />
+                                </button>
+                              )}
+                              {/* Show status indicators when actions are taken */}
+                              {quotation.po_created && (
+                                <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium flex items-center">
+                                  <ShoppingCart className="w-3 h-3 mr-1" />
+                                  PO Created
+                                </span>
+                              )}
                               <button
                                 onClick={() => handleCopyQuotation(quotation)}
                                 className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
@@ -545,8 +585,8 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                               >
                                 <Copy className="w-4 h-4" />
                               </button>
-                              {/* Only allow reverse if not already revised */}
-                              {!quotation.is_revised && (
+                              {/* Only allow reverse if not already revised AND no business transactions */}
+                              {!quotation.is_revised && !quotation.po_created && !quotation.invoice_created && !quotation.proforma_created && (
                                 <button
                                   onClick={() => handleReverseQuotation(quotation)}
                                   className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
@@ -555,13 +595,16 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                                   <RotateCcw className="w-4 h-4" />
                                 </button>
                               )}
-                              <button
-                                onClick={() => handleRejectQuotation(quotation)}
-                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                                title="Reject & Delete"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
+                              {/* Only show reject if no PO or invoices created */}
+                              {!quotation.po_created && !quotation.invoice_created && !quotation.proforma_created && (
+                                <button
+                                  onClick={() => handleRejectQuotation(quotation)}
+                                  className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                                  title="Reject Quotation"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
                             </>
                           )}
 
@@ -575,18 +618,20 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                               >
                                 <Copy className="w-4 h-4" />
                               </button>
-                              <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                              <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium flex items-center">
+                                <ShoppingCart className="w-3 h-3 mr-1" />
                                 PO Created ✓
                               </span>
                             </>
                           )}
 
-                          {/* Other status buttons */}
-                          {(quotation.status === 'accepted' || quotation.status === 'rejected' || quotation.status === 'expired' || quotation.status === 'converted') && (
+                          {/* Other status buttons - only show reject if no business transactions */}
+                          {(quotation.status === 'accepted' || quotation.status === 'expired' || quotation.status === 'converted') && 
+                           !quotation.po_created && !quotation.invoice_created && !quotation.proforma_created && (
                             <button
                               onClick={() => handleRejectQuotation(quotation)}
                               className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                              title="Reject & Delete"
+                              title="Reject Quotation"
                             >
                               <X className="w-4 h-4" />
                             </button>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '../../../../lib/api'
 
-import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, MapPin, Package, ShoppingCart, Receipt, Mail } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, MapPin, Package, ShoppingCart, Receipt, Mail, CheckCircle, TrendingUp, XCircle } from 'lucide-react'
+import MetricCard from './MetricCard'
 import toast from 'react-hot-toast'
 
 interface PurchaseOrder {
@@ -51,6 +52,14 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [hoveredPO, setHoveredPO] = useState<number | null>(null)
+  const [metrics, setMetrics] = useState({
+    total: 0,
+    draft: 0,
+    confirmed: 0,
+    cancelled: 0,
+    totalValue: 0,
+    avgDealSize: 0
+  })
 
   // Debounce search term
   useEffect(() => {
@@ -83,8 +92,19 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
 
       const response = await apiClient.getFinancePurchaseOrders(Object.fromEntries(new URLSearchParams(params)))
 
-      setPurchaseOrders(response.data.results)
+      const pos = response.data.results
+      setPurchaseOrders(pos)
       setTotalPages(Math.ceil(response.data.count / 5))
+      
+      // Calculate metrics
+      const total = pos.length
+      const draft = pos.filter((po: PurchaseOrder) => po.status === 'draft').length
+      const confirmed = pos.filter((po: PurchaseOrder) => po.status === 'confirmed').length
+      const cancelled = pos.filter((po: PurchaseOrder) => po.status === 'cancelled').length
+      const totalValue = pos.reduce((sum: number, po: PurchaseOrder) => sum + parseFloat(po.total_amount || '0'), 0)
+      const avgDealSize = total > 0 ? (totalValue / total) : 0
+      
+      setMetrics({ total, draft, confirmed, cancelled, totalValue, avgDealSize })
     } catch (error) {
       console.error('Error fetching purchase orders:', error)
       toast.error('Failed to fetch purchase orders')
@@ -209,8 +229,12 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
 
   return (
     <div className="space-y-6">
-      {/* Action Header */}
-      <div className="flex justify-end">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Purchase Orders / Work Orders</h2>
+          <p className="text-gray-600 dark:text-gray-400">Manage your purchase and work orders</p>
+        </div>
         <button
           onClick={onCreateNew}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
@@ -218,6 +242,45 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
           <Plus className="w-4 h-4" />
           New PO/WO
         </button>
+      </div>
+
+      {/* Dashboard Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <MetricCard
+          title="Total PO/WO"
+          value={metrics.total}
+          subtitle={`${metrics.total} orders created`}
+          icon={ShoppingCart}
+          color="blue"
+        />
+        <MetricCard
+          title="Draft"
+          value={metrics.draft}
+          subtitle={`${metrics.draft} in draft status`}
+          icon={Edit}
+          color="orange"
+        />
+        <MetricCard
+          title="Confirmed"
+          value={metrics.confirmed}
+          subtitle={`${metrics.confirmed} orders confirmed`}
+          icon={CheckCircle}
+          color="green"
+        />
+        <MetricCard
+          title="Cancelled"
+          value={metrics.cancelled}
+          subtitle={`${metrics.cancelled} orders cancelled`}
+          icon={XCircle}
+          color="red"
+        />
+        <MetricCard
+          title="Avg Deal Size"
+          value={`₹${metrics.avgDealSize.toLocaleString()}`}
+          subtitle={`₹${metrics.totalValue.toLocaleString()} total value`}
+          icon={TrendingUp}
+          color="purple"
+        />
       </div>
 
       {/* Search and Filters */}

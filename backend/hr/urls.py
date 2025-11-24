@@ -158,6 +158,5 @@ urlpatterns = [
     path('share-analytics/track-click/', share_analytics_views.track_click, name='track-click'),
     path('share-analytics/track-application/', share_analytics_views.track_application_from_share, name='track-application'),
     
-    # Direct PDF Export (bypasses DRF)
-    path('monthly-forms/<uuid:form_id>/export-pdf/', form_automation_views.export_monthly_form_pdf, name='export-monthly-form-pdf'),
+
 ]

@@ -1,10 +1,12 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
+import { Users, Building2, CreditCard } from 'lucide-react'
 import toast from 'react-hot-toast'
 import CustomerList from '../components/CustomerList'
 import CustomerForm from '../components/CustomerForm'
 import CustomerDetail from '../components/CustomerDetail'
+import MetricCard from '../components/MetricCard'
 
 interface Customer {
   id: number
@@ -44,6 +46,12 @@ const Customers: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
   const [refreshList, setRefreshList] = useState(0)
+  const [metrics, setMetrics] = useState({
+    total: 0,
+    active: 0,
+    business: 0,
+    totalCreditLimit: 0
+  })
 
   const handleAddCustomer = () => {
     setSelectedCustomer(null)
@@ -104,6 +112,30 @@ const Customers: React.FC = () => {
     }
   }
 
+  // Fetch customer metrics
+  const fetchMetrics = async () => {
+    try {
+      const sessionKey = useServiceUserStore.getState().sessionKey
+      if (!sessionKey) return
+
+      const response = await apiClient.getFinanceCustomers({ session_key: sessionKey, page_size: 1000 })
+      const customers = response.data.results || []
+      
+      const total = customers.length
+      const active = customers.filter((c: any) => c.is_active).length
+      const business = customers.filter((c: any) => c.customer_type === 'business').length
+      const totalCreditLimit = customers.reduce((sum: number, c: any) => sum + (c.credit_limit || 0), 0)
+      
+      setMetrics({ total, active, business, totalCreditLimit })
+    } catch (error) {
+      console.error('Error fetching customer metrics:', error)
+    }
+  }
+
+  useEffect(() => {
+    fetchMetrics()
+  }, [refreshList])
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -114,6 +146,38 @@ const Customers: React.FC = () => {
         <p className="text-gray-600 dark:text-gray-400 mt-2">
           Manage your customer database and relationships
         </p>
+      </div>
+
+      {/* Dashboard Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard
+          title="Total Customers"
+          value={metrics.total}
+          subtitle={`${metrics.total} customers in database`}
+          icon={Users}
+          color="blue"
+        />
+        <MetricCard
+          title="Active Customers"
+          value={metrics.active}
+          subtitle={`${metrics.active} active customers`}
+          icon={Users}
+          color="green"
+        />
+        <MetricCard
+          title="Business Customers"
+          value={metrics.business}
+          subtitle={`${metrics.business} business accounts`}
+          icon={Building2}
+          color="purple"
+        />
+        <MetricCard
+          title="Total Credit Limit"
+          value={`₹${metrics.totalCreditLimit.toLocaleString()}`}
+          subtitle="Combined credit limits"
+          icon={CreditCard}
+          color="orange"
+        />
       </div>
 
       <CustomerList

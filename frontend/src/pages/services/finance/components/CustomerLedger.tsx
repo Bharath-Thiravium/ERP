@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, User, Calendar, DollarSign, TrendingUp, TrendingDown, FileText, CreditCard, AlertCircle } from 'lucide-react';
-;
+import { Search, User, Calendar, DollarSign, TrendingUp, TrendingDown, FileText, CreditCard, AlertCircle, Users } from 'lucide-react';
 import api from '../../../../lib/api';
+import MetricCard from './MetricCard';
 import toast from 'react-hot-toast';
 
 interface Customer {
@@ -50,8 +50,14 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
     start_date: '',
     end_date: ''
   });
+  const [overallMetrics, setOverallMetrics] = useState({
+    totalCustomers: 0,
+    activeCustomers: 0,
+    totalOutstanding: 0,
+    totalCreditLimit: 0
+  });
 
-  // Fetch customers
+  // Fetch customers and overall metrics
   const fetchCustomers = async () => {
     if (!sessionKey) return;
 
@@ -61,7 +67,20 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
         params: { page_size: 1000 }
       });
 
-      setCustomers(response.data.results || []);
+      const customerData = response.data.results || [];
+      setCustomers(customerData);
+      
+      // Calculate overall metrics
+      const totalCustomers = customerData.length;
+      const activeCustomers = customerData.filter((c: any) => c.is_active).length;
+      const totalCreditLimit = customerData.reduce((sum: number, c: any) => sum + (c.credit_limit || 0), 0);
+      
+      setOverallMetrics({
+        totalCustomers,
+        activeCustomers,
+        totalOutstanding: 0, // Will be updated when ledger data is fetched
+        totalCreditLimit
+      });
     } catch (error: any) {
       console.error('Error fetching customers:', error);
       toast.error('Failed to fetch customers');
@@ -146,6 +165,38 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
         <p className="text-gray-600 dark:text-gray-400 mt-2">
           View customer account statements and transaction history
         </p>
+      </div>
+
+      {/* Overall Dashboard Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard
+          title="Total Customers"
+          value={overallMetrics.totalCustomers}
+          subtitle={`${overallMetrics.totalCustomers} customers in system`}
+          icon={Users}
+          color="blue"
+        />
+        <MetricCard
+          title="Active Customers"
+          value={overallMetrics.activeCustomers}
+          subtitle={`${overallMetrics.activeCustomers} active accounts`}
+          icon={User}
+          color="green"
+        />
+        <MetricCard
+          title="Total Credit Limit"
+          value={`₹${overallMetrics.totalCreditLimit.toLocaleString()}`}
+          subtitle="Combined credit limits"
+          icon={CreditCard}
+          color="purple"
+        />
+        <MetricCard
+          title="Outstanding Amount"
+          value={ledgerData ? `₹${ledgerData.outstanding_amount.toLocaleString()}` : '₹0'}
+          subtitle={ledgerData ? 'Selected customer' : 'Select customer to view'}
+          icon={AlertCircle}
+          color="orange"
+        />
       </div>
 
       {/* Customer Selection and Filters */}

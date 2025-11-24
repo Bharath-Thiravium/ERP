@@ -1,0 +1,7 @@
+# WeasyPrint PDF Generation
+weasyprint==62.3
+# Dependencies for WeasyPrint
+cffi>=1.15.0
+cairocffi>=1.4.0
+Pillow>=9.0.0
+fonttools>=4.0.0

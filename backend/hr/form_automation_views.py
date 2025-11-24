@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from authentication.models import ServiceUserSession
 from .form_automation_models import ComplianceFormTemplate, MonthlyComplianceForm, EmployeeFormEntry
 from .form_automation_service import FormAutomationService
+
 from .serializers import (
     ComplianceFormTemplateSerializer, 
     MonthlyComplianceFormSerializer, 
@@ -98,6 +99,52 @@ class ComplianceFormTemplateViewSet(viewsets.ModelViewSet):
             
             serializer = self.get_serializer(available_templates, many=True)
             return Response(serializer.data)
+            
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    @action(detail=False, methods=['post'])
+    def create_common_templates(self, request):
+        """Create common templates for current company"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            
+            # Create Form XIII template
+            template, created = ComplianceFormTemplate.objects.get_or_create(
+                company=session.service_user.company,
+                template_name='Form XIII - Register of Workmen',
+                defaults={
+                    'form_type': 'register_of_workmen',
+                    'template_structure': {
+                        'fields': [
+                            {'name': 'Employee ID', 'type': 'text'},
+                            {'name': 'Name and surname of workmen', 'type': 'text'},
+                            {'name': 'Date of Birth mm/dd/yyyy', 'type': 'date'},
+                            {'name': 'Sex', 'type': 'text'},
+                            {'name': "Father's/Husband's Name", 'type': 'text'},
+                            {'name': 'Nature of Employment/Designation', 'type': 'text'},
+                            {'name': 'Permanent Address', 'type': 'text'},
+                            {'name': 'Local Address', 'type': 'text'},
+                            {'name': 'Date of Commencement of Employment', 'type': 'date'},
+                            {'name': 'Signature of workmen', 'type': 'text'},
+                            {'name': 'Date of termination of employment', 'type': 'date'},
+                            {'name': 'Reasons for termination', 'type': 'text'},
+                            {'name': 'Remarks', 'type': 'text'}
+                        ]
+                    },
+                    'generation_day': 1,
+                    'is_active': True
+                }
+            )
+            
+            return Response({
+                'message': 'Common templates created successfully',
+                'created': created
+            })
             
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -272,29 +319,7 @@ class MonthlyComplianceFormViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
     
-    @action(detail=False, methods=['post'])
-    def setup_templates(self, request):
-        """Setup default form templates for company"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-        
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            templates = FormAutomationService.setup_default_templates(session.service_user.company)
-            
-            return Response({
-                'message': f'Setup {len(templates)} form templates successfully',
-                'templates_created': len(templates)
-            })
-            
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
-        except Exception as e:
-            return Response(
-                {'error': str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+
     
     @action(detail=True, methods=['get'], renderer_classes=[PDFRenderer])
     def export_pdf(self, request, pk=None):
@@ -308,13 +333,14 @@ class MonthlyComplianceFormViewSet(viewsets.ModelViewSet):
             form = self.get_object()
             
             from django.http import HttpResponse
-            from .optimized_pdf_export import generate_optimized_pdf
+            
+            from .weasyprint_pdf_export import generate_weasyprint_pdf
             
             # Get employee entries
             entries = EmployeeFormEntry.objects.filter(monthly_form=form)
             
-            # Generate optimized PDF
-            pdf_data = generate_optimized_pdf(form, session, entries)
+            # Generate PDF using WeasyPrint
+            pdf_data = generate_weasyprint_pdf(form, session, entries)
             
             # Return PDF data directly for DRF renderer
             filename = f"{form.template.template_name.replace(' ', '_')}_{form.month.strftime('%Y_%m')}.pdf"
@@ -324,9 +350,7 @@ class MonthlyComplianceFormViewSet(viewsets.ModelViewSet):
             
             return response
             
-        except ImportError:
-            # Fallback to simple HTML if reportlab is not available
-            return self._export_html_fallback(session, form)
+
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
@@ -336,117 +360,7 @@ class MonthlyComplianceFormViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
-    def _export_html_fallback(self, session, form):
-        """Fallback HTML export if PDF library is not available"""
-        from django.http import HttpResponse
-        
-        entries = EmployeeFormEntry.objects.filter(monthly_form=form)
-        
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>{form.template.template_name}</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                th {{ background-color: #f2f2f2; font-weight: bold; }}
-                .header {{ text-align: center; margin-bottom: 30px; }}
-                .info {{ margin-bottom: 20px; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>{session.service_user.company.name}</h1>
-                <h2>{form.template.template_name}</h2>
-            </div>
-            
-            <div class="info">
-                <p><strong>Month:</strong> {form.month.strftime('%B %Y')}</p>
-                <p><strong>Generated on:</strong> {form.generated_at.strftime('%d/%m/%Y')}</p>
-                <p><strong>Status:</strong> {form.status.title()}</p>
-                <p><strong>Total Employees:</strong> {form.total_employees}</p>
-            </div>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th>S.No.</th>
-                        <th>Employee Name</th>
-                        <th>Employee ID</th>
-        """
-        
-        if form.template.form_type == 'register_of_fines':
-            html_content += """
-                        <th>Fine Amount (₹)</th>
-                        <th>Reason</th>
-                        <th>Date</th>
-            """
-        else:
-            html_content += """
-                        <th>Date of Birth</th>
-                        <th>Sex</th>
-                        <th>Father's/Husband's Name</th>
-                        <th>Nature of Employment</th>
-                        <th>Permanent Address</th>
-                        <th>Local Address</th>
-                        <th>Date of Commencement</th>
-                        <th>Date of Termination</th>
-                        <th>Reasons for Termination</th>
-                        <th>Remarks</th>
-            """
-        
-        html_content += """
-                    </tr>
-                </thead>
-                <tbody>
-        """
-        
-        for i, entry in enumerate(entries, 1):
-            html_content += f"""
-                    <tr>
-                        <td>{i}</td>
-                        <td>{entry.employee.full_name}</td>
-                        <td>{entry.employee.employee_id}</td>
-            """
-            
-            if form.template.form_type == 'register_of_fines':
-                html_content += f"""
-                        <td>₹{entry.fine_amount or '0.00'}</td>
-                        <td>{entry.fine_reason or 'No fine'}</td>
-                        <td>{entry.fine_date.strftime('%d/%m/%Y') if entry.fine_date else '-'}</td>
-                """
-            else:
-                html_content += f"""
-                        <td>{entry.employee.date_of_birth.strftime('%d/%m/%Y') if entry.employee.date_of_birth else '-'}</td>
-                        <td>{entry.employee.gender.title() if entry.employee.gender else '-'}</td>
-                        <td>{entry.father_husband_name or '-'}</td>
-                        <td>{entry.nature_of_employment or entry.designation or '-'}</td>
-                        <td>{entry.permanent_address or '-'}</td>
-                        <td>{entry.local_address or '-'}</td>
-                        <td>{entry.joining_date.strftime('%d/%m/%Y') if entry.joining_date else '-'}</td>
-                        <td>{entry.termination_date.strftime('%d/%m/%Y') if entry.termination_date else '-'}</td>
-                        <td>{entry.termination_reason or '-'}</td>
-                        <td>{entry.remarks or '-'}</td>
-                """
-            
-            html_content += "</tr>"
-        
-        html_content += """
-                </tbody>
-            </table>
-        </body>
-        </html>
-        """
-        
-        from django.http import HttpResponse
-        response = HttpResponse(html_content, content_type='text/html')
-        filename = f"{form.template.template_name.replace(' ', '_')}_{form.month.strftime('%Y_%m')}.html"
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        response['Access-Control-Allow-Origin'] = '*'
-        
-        return response
+
 
 class EmployeeFormEntryViewSet(viewsets.ModelViewSet):
     """ViewSet for managing employee form entries"""
@@ -492,288 +406,3 @@ class EmployeeFormEntryViewSet(viewsets.ModelViewSet):
             return EmployeeFormEntry.objects.none()
 
 
-def export_monthly_form_pdf(request, form_id):
-    """Direct PDF export function that bypasses DRF"""
-    session_key = request.GET.get('session_key')
-    if not session_key:
-        return HttpResponse('Session key required', status=401)
-    
-    try:
-        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        form = get_object_or_404(MonthlyComplianceForm, id=form_id, company=session.service_user.company)
-        
-        try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib import colors
-            import io
-            
-            # Get employee entries
-            entries = EmployeeFormEntry.objects.filter(monthly_form=form).select_related('employee')
-            
-            # Create PDF buffer
-            buffer = io.BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
-            
-            # Container for the 'Flowable' objects
-            elements = []
-            
-            # Define styles
-            styles = getSampleStyleSheet()
-            title_style = ParagraphStyle(
-                'CustomTitle',
-                parent=styles['Heading1'],
-                fontSize=18,
-                spaceAfter=30,
-                alignment=1  # Center alignment
-            )
-            
-            # Add title and header info
-            elements.append(Paragraph(session.service_user.company.name, title_style))
-            elements.append(Paragraph(form.template.template_name, title_style))
-            elements.append(Spacer(1, 12))
-            
-            # Add form details
-            form_info = f"""<b>Month:</b> {form.month.strftime('%B %Y')}<br/>
-                           <b>Generated on:</b> {form.generated_at.strftime('%d/%m/%Y')}<br/>
-                           <b>Status:</b> {form.status.title()}<br/>
-                           <b>Total Employees:</b> {form.total_employees}"""
-            elements.append(Paragraph(form_info, styles['Normal']))
-            elements.append(Spacer(1, 20))
-            
-            # Create table data based on template structure
-            if hasattr(form.template, 'template_structure') and form.template.template_structure and form.template.template_structure.get('fields'):
-                # Dynamic template - use parsed structure
-                fields = form.template.template_structure['fields']
-                headers = ['S.No.'] + [field['name'] for field in fields]
-                table_data = [headers]
-                
-                for i, entry in enumerate(entries, 1):
-                    row = [str(i)]
-                    for field in fields:
-                        field_name = field['name']
-                        # Check dynamic_data first, then fallback to legacy fields
-                        if hasattr(entry, 'dynamic_data') and entry.dynamic_data and field_name in entry.dynamic_data:
-                            value = entry.dynamic_data[field_name]
-                        else:
-                            # Fallback to legacy field mapping
-                            field_lower = field_name.lower().strip()
-                            if 'employee id' in field_lower:
-                                value = entry.employee.employee_id
-                            elif 'name' in field_lower and 'surname' in field_lower:
-                                value = entry.employee.full_name
-                            elif field_lower in ['name', 'employee name']:
-                                value = entry.employee.full_name
-                            elif 'department' in field_lower:
-                                value = entry.employee.department.name if entry.employee.department else ''
-                            elif 'designation' in field_lower:
-                                value = entry.employee.designation.title if entry.employee.designation else ''
-                            elif 'date of birth' in field_lower:
-                                value = entry.employee.date_of_birth.strftime('%d/%m/%Y') if entry.employee.date_of_birth else ''
-                            elif field_lower in ['sex', 'gender']:
-                                value = entry.employee.gender.title() if entry.employee.gender else ''
-                            elif 'father' in field_lower or 'husband' in field_lower:
-                                value = getattr(entry.employee, 'father_husband_name', '') or ''
-                            elif 'nature of employment' in field_lower:
-                                value = getattr(entry.employee, 'nature_of_employment', '') or (entry.employee.designation.title if entry.employee.designation else '')
-                            elif 'permanent address' in field_lower:
-                                value = getattr(entry, 'permanent_address', '') or ''
-                            elif 'local address' in field_lower:
-                                value = getattr(entry, 'local_address', '') or ''
-                            elif 'date of joining' in field_lower or 'date of commencement' in field_lower:
-                                value = entry.employee.date_of_joining.strftime('%d/%m/%Y') if entry.employee.date_of_joining else ''
-                            elif 'date of termination' in field_lower:
-                                value = getattr(entry.employee, 'termination_date', None)
-                                value = value.strftime('%d/%m/%Y') if value else ''
-                            elif 'basic wage' in field_lower or 'basic salary' in field_lower:
-                                value = str(entry.employee.base_salary) if entry.employee.base_salary else '0'
-                            elif 'fine amount' in field_lower:
-                                value = str(getattr(entry, 'fine_amount', 0) or 0)
-                            elif 'advance amount' in field_lower:
-                                value = '0'  # Default for advance
-                            elif 'purpose' in field_lower:
-                                value = getattr(entry, 'purpose', '') or ''
-                            elif 'installment' in field_lower:
-                                value = getattr(entry, 'installments', '') or ''
-                            elif 'monthly deduction' in field_lower:
-                                value = getattr(entry, 'monthly_deduction', '') or ''
-                            elif 'balance outstanding' in field_lower:
-                                value = getattr(entry, 'balance_outstanding', '') or ''
-                            elif 'remarks' in field_lower:
-                                value = getattr(entry, 'remarks', '') or getattr(entry.employee, 'employee_remarks', '') or ''
-                            else:
-                                value = '-'
-                        
-                        row.append(str(value) if value else '-')
-                    table_data.append(row)
-            elif form.template.form_type == 'register_of_fines':
-                # Legacy fines template
-                table_data = [['S.No.', 'Employee Name', 'Employee ID', 'Fine Amount (₹)', 'Reason', 'Date']]
-                for i, entry in enumerate(entries, 1):
-                    table_data.append([
-                        str(i),
-                        f"{entry.employee.first_name} {entry.employee.last_name}",
-                        entry.employee.employee_id,
-                        f"₹{entry.fine_amount or '0.00'}",
-                        entry.fine_reason or 'No fine',
-                        entry.fine_date.strftime('%d/%m/%Y') if entry.fine_date else '-'
-                    ])
-            else:
-                # Legacy workmen template
-                table_data = [[
-                    'S.No.', 'Employee ID', 'Name & Surname', 'Date of Birth', 'Sex', 
-                    "Father's/Husband's Name", 'Nature of Employment', 'Permanent Address', 
-                    'Local Address', 'Date of Commencement', 'Date of Termination', 
-                    'Reasons for Termination', 'Remarks'
-                ]]
-                for i, entry in enumerate(entries, 1):
-                    table_data.append([
-                        str(i),
-                        entry.employee.employee_id,
-                        f"{entry.employee.first_name} {entry.employee.last_name}",
-                        entry.employee.date_of_birth.strftime('%d/%m/%Y') if entry.employee.date_of_birth else '-',
-                        entry.employee.gender.title() if entry.employee.gender else '-',
-                        entry.father_husband_name or '-',
-                        entry.nature_of_employment or entry.designation or '-',
-                        entry.permanent_address or '-',
-                        entry.local_address or '-',
-                        entry.joining_date.strftime('%d/%m/%Y') if entry.joining_date else '-',
-                        entry.termination_date.strftime('%d/%m/%Y') if entry.termination_date else '-',
-                        entry.termination_reason or '-',
-                        entry.remarks or '-'
-                    ])
-            
-            # Create table
-            table = Table(table_data)
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 8),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-            
-            elements.append(table)
-            
-            # Build PDF
-            doc.build(elements)
-            
-            # Get PDF data
-            pdf_data = buffer.getvalue()
-            buffer.close()
-            
-            # Create response
-            response = HttpResponse(pdf_data, content_type='application/pdf')
-            filename = f"{form.template.template_name.replace(' ', '_')}_{form.month.strftime('%Y_%m')}.pdf"
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            response['Content-Length'] = len(pdf_data)
-            
-            return response
-            
-        except ImportError:
-            # Fallback to HTML if reportlab is not available
-            entries = EmployeeFormEntry.objects.filter(monthly_form=form).select_related('employee')
-            
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>{form.template.template_name}</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-                    th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                    th {{ background-color: #f2f2f2; font-weight: bold; }}
-                    .header {{ text-align: center; margin-bottom: 30px; }}
-                    .info {{ margin-bottom: 20px; }}
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h1>{session.service_user.company.name}</h1>
-                    <h2>{form.template.template_name}</h2>
-                </div>
-                
-                <div class="info">
-                    <p><strong>Month:</strong> {form.month.strftime('%B %Y')}</p>
-                    <p><strong>Generated on:</strong> {form.generated_at.strftime('%d/%m/%Y')}</p>
-                    <p><strong>Status:</strong> {form.status.title()}</p>
-                    <p><strong>Total Employees:</strong> {form.total_employees}</p>
-                </div>
-                
-                <table>
-                    <thead>
-                        <tr>
-                            <th>S.No.</th>
-                            <th>Employee Name</th>
-                            <th>Employee ID</th>
-            """
-            
-            if form.template.form_type == 'register_of_fines':
-                html_content += """
-                            <th>Fine Amount (₹)</th>
-                            <th>Reason</th>
-                            <th>Date</th>
-                """
-            else:
-                html_content += """
-                            <th>Department</th>
-                            <th>Designation</th>
-                            <th>Basic Wage (₹)</th>
-                            <th>Joining Date</th>
-                """
-            
-            html_content += """
-                        </tr>
-                    </thead>
-                    <tbody>
-            """
-            
-            for i, entry in enumerate(entries, 1):
-                html_content += f"""
-                        <tr>
-                            <td>{i}</td>
-                            <td>{entry.employee.first_name} {entry.employee.last_name}</td>
-                            <td>{entry.employee.employee_id}</td>
-                """
-                
-                if form.template.form_type == 'register_of_fines':
-                    html_content += f"""
-                            <td>₹{entry.fine_amount or '0.00'}</td>
-                            <td>{entry.fine_reason or 'No fine'}</td>
-                            <td>{entry.fine_date.strftime('%d/%m/%Y') if entry.fine_date else '-'}</td>
-                    """
-                else:
-                    html_content += f"""
-                            <td>{entry.department or '-'}</td>
-                            <td>{entry.designation or '-'}</td>
-                            <td>₹{entry.basic_wage or '0.00'}</td>
-                            <td>{entry.joining_date.strftime('%d/%m/%Y') if entry.joining_date else '-'}</td>
-                    """
-                
-                html_content += "</tr>"
-            
-            html_content += """
-                    </tbody>
-                </table>
-            </body>
-            </html>
-            """
-            
-            response = HttpResponse(html_content, content_type='text/html')
-            filename = f"{form.template.template_name.replace(' ', '_')}_{form.month.strftime('%Y_%m')}.html"
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            return response
-            
-    except ServiceUserSession.DoesNotExist:
-        return HttpResponse('Invalid session', status=401)
-    except Exception as e:
-        logger.error(f"PDF export error: {str(e)}")
-        return HttpResponse(f'Export failed: {str(e)}', status=500)

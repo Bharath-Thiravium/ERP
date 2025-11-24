@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, RotateCcw, X, ShoppingCart, Receipt } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, RotateCcw, X, ShoppingCart, Receipt, CheckCircle, Clock, TrendingUp, XCircle } from 'lucide-react'
 import QuotationEdit from './QuotationEdit'
 import SendEmailModal from './SendEmailModal'
 import RejectInvoiceModal from './RejectInvoiceModal'
+import MetricCard from './MetricCard'
 import toast from 'react-hot-toast'
 
 interface Quotation {
@@ -74,6 +75,14 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
   const [editingQuotationId, setEditingQuotationId] = useState<number | null>(null)
   const [emailQuotation, setEmailQuotation] = useState<Quotation | null>(null)
   const [rejectingQuotation, setRejectingQuotation] = useState<Quotation | null>(null)
+  const [metrics, setMetrics] = useState({
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    totalValue: 0,
+    conversionRate: 0
+  })
 
   const statusOptions = [
     { value: '', label: 'All Status' },
@@ -115,9 +124,20 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
 
 
 
-      setQuotations(response.data.results || [])
+      const quotations = response.data.results || []
+      setQuotations(quotations)
       setTotalCount(response.data.count || 0)
       setTotalPages(Math.ceil((response.data.count || 0) / 5))
+      
+      // Calculate metrics
+      const total = quotations.length
+      const pending = quotations.filter((q: Quotation) => q.status === 'sent').length
+      const approved = quotations.filter((q: Quotation) => q.status === 'approved').length
+      const rejected = quotations.filter((q: Quotation) => q.is_rejected).length
+      const totalValue = quotations.reduce((sum: number, q: Quotation) => sum + parseFloat(q.total_amount || '0'), 0)
+      const conversionRate = total > 0 ? ((approved / total) * 100) : 0
+      
+      setMetrics({ total, pending, approved, rejected, totalValue, conversionRate })
     } catch (error) {
       console.error('Error fetching quotations:', error)
       setQuotations([])
@@ -293,6 +313,45 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
           <Plus className="w-4 h-4 mr-2" />
           New Quotation
         </button>
+      </div>
+
+      {/* Dashboard Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <MetricCard
+          title="Total Quotations"
+          value={metrics.total}
+          subtitle={`${metrics.total} quotations created`}
+          icon={FileText}
+          color="blue"
+        />
+        <MetricCard
+          title="Pending Approval"
+          value={metrics.pending}
+          subtitle={`${metrics.pending} awaiting response`}
+          icon={Clock}
+          color="orange"
+        />
+        <MetricCard
+          title="Approved"
+          value={metrics.approved}
+          subtitle={`${metrics.approved} quotations approved`}
+          icon={CheckCircle}
+          color="green"
+        />
+        <MetricCard
+          title="Rejected"
+          value={metrics.rejected}
+          subtitle={`${metrics.rejected} quotations rejected`}
+          icon={XCircle}
+          color="red"
+        />
+        <MetricCard
+          title="Conversion Rate"
+          value={`${metrics.conversionRate.toFixed(1)}%`}
+          subtitle={`₹${metrics.totalValue.toLocaleString()} total value`}
+          icon={TrendingUp}
+          color="purple"
+        />
       </div>
 
       {/* Search and Filters */}

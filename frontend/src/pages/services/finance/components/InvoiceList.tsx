@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, FileText, Calendar, User, DollarSign, Eye, Edit, XCircle, Download, Mail } from 'lucide-react';
+import { Plus, Search, FileText, Calendar, User, DollarSign, Eye, Edit, XCircle, Download, Mail, CheckCircle, Clock, TrendingUp } from 'lucide-react';
 
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
@@ -7,6 +7,7 @@ import InvoiceView from './InvoiceView';
 import UpdatePaymentModal from './UpdatePaymentModal';
 import SendEmailModal from './SendEmailModal';
 import RejectInvoiceModal from './RejectInvoiceModal';
+import MetricCard from './MetricCard';
 
 
 interface Invoice {
@@ -57,6 +58,14 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
   const [selectedForEmail, setSelectedForEmail] = useState<Invoice | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [selectedForReject, setSelectedForReject] = useState<Invoice | null>(null);
+  const [metrics, setMetrics] = useState({
+    total: 0,
+    paid: 0,
+    outstanding: 0,
+    rejected: 0,
+    totalAmount: 0,
+    paymentRate: 0
+  });
 
 
   const statusOptions = [
@@ -104,8 +113,20 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
         headers: { Authorization: `Bearer ${sessionKey}` }
       });
 
-      setInvoices(response.data.results || []);
+      const invoices = response.data.results || [];
+      setInvoices(invoices);
       setTotalPages(Math.ceil(response.data.count / 10));
+      
+      // Calculate metrics
+      const total = invoices.length;
+      const paid = invoices.filter((inv: Invoice) => inv.payment_status === 'paid').length;
+      const rejected = invoices.filter((inv: Invoice) => inv.is_rejected).length;
+      const totalAmount = invoices.reduce((sum: number, inv: Invoice) => sum + parseFloat(inv.total_amount || '0'), 0);
+      const paidAmount = invoices.reduce((sum: number, inv: Invoice) => sum + parseFloat(inv.paid_amount || '0'), 0);
+      const outstandingAmount = invoices.reduce((sum: number, inv: Invoice) => sum + parseFloat(inv.outstanding_amount || '0'), 0);
+      const paymentRate = totalAmount > 0 ? ((paidAmount / totalAmount) * 100) : 0;
+      
+      setMetrics({ total, paid, outstanding: outstandingAmount, rejected, totalAmount, paymentRate });
     } catch (error: any) {
       console.error('Error fetching invoices:', error);
       toast.error('Failed to fetch invoices');
@@ -207,6 +228,45 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
           </button>
 
         </div>
+      </div>
+
+      {/* Dashboard Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <MetricCard
+          title="Total Invoices"
+          value={metrics.total}
+          subtitle={`${metrics.total} invoices created`}
+          icon={FileText}
+          color="blue"
+        />
+        <MetricCard
+          title="Paid Invoices"
+          value={metrics.paid}
+          subtitle={`${metrics.paid} invoices paid`}
+          icon={CheckCircle}
+          color="green"
+        />
+        <MetricCard
+          title="Outstanding"
+          value={`₹${metrics.outstanding.toLocaleString()}`}
+          subtitle="Amount pending collection"
+          icon={Clock}
+          color="orange"
+        />
+        <MetricCard
+          title="Rejected"
+          value={metrics.rejected}
+          subtitle={`${metrics.rejected} invoices rejected`}
+          icon={XCircle}
+          color="red"
+        />
+        <MetricCard
+          title="Payment Rate"
+          value={`${metrics.paymentRate.toFixed(1)}%`}
+          subtitle={`₹${metrics.totalAmount.toLocaleString()} total value`}
+          icon={TrendingUp}
+          color="purple"
+        />
       </div>
 
       {/* Filters */}

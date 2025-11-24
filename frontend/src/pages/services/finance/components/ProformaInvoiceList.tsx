@@ -14,13 +14,16 @@ import {
   Clock,
   XCircle,
   Download,
-  Mail
+  Mail,
+  Send,
+  TrendingUp
 } from 'lucide-react'
 // import ProformaInvoiceForm from './ProformaInvoiceForm' // Removed - using simplified forms
 import ProformaInvoiceView from './ProformaInvoiceView'
 import UpdatePaymentModal from './UpdatePaymentModal'
 import SendEmailModal from './SendEmailModal'
 import RejectInvoiceModal from './RejectInvoiceModal'
+import MetricCard from './MetricCard'
 
 
 interface ProformaInvoice {
@@ -113,6 +116,17 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
       const invoices = response.data.results || []
       setProformaInvoices(invoices)
       setTotalPages(Math.ceil(response.data.count / 5))
+      
+      // Calculate metrics
+      const total = invoices.length
+      const draft = invoices.filter((inv: ProformaInvoice) => inv.status === 'draft').length
+      const sent = invoices.filter((inv: ProformaInvoice) => inv.status === 'sent').length
+      const rejected = invoices.filter((inv: ProformaInvoice) => inv.is_rejected).length
+      const totalValue = invoices.reduce((sum: number, inv: ProformaInvoice) => sum + parseFloat(inv.total_amount?.toString() || '0'), 0)
+      const paidAmount = invoices.reduce((sum: number, inv: ProformaInvoice) => sum + parseFloat(inv.paid_amount?.toString() || '0'), 0)
+      const collectionRate = totalValue > 0 ? ((paidAmount / totalValue) * 100) : 0
+      
+      setMetrics({ total, draft, sent, rejected, totalValue, collectionRate })
 
       if (invoices.length === 0 && currentPage === 1) {
         console.log('No proforma invoices found') // Debug log
@@ -139,6 +153,14 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
   const [selectedForEmail, setSelectedForEmail] = useState<ProformaInvoice | null>(null)
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [selectedForReject, setSelectedForReject] = useState<ProformaInvoice | null>(null)
+  const [metrics, setMetrics] = useState({
+    total: 0,
+    draft: 0,
+    sent: 0,
+    rejected: 0,
+    totalValue: 0,
+    collectionRate: 0
+  })
 
   
   const handleUpdatePayment = (proformaInvoice: ProformaInvoice) => {
@@ -220,6 +242,45 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
             From Purchase Order
           </button>
         </div>
+      </div>
+
+      {/* Dashboard Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <MetricCard
+          title="Total Proformas"
+          value={metrics.total}
+          subtitle={`${metrics.total} proforma invoices`}
+          icon={FileText}
+          color="blue"
+        />
+        <MetricCard
+          title="Draft"
+          value={metrics.draft}
+          subtitle={`${metrics.draft} in draft status`}
+          icon={Edit}
+          color="orange"
+        />
+        <MetricCard
+          title="Sent"
+          value={metrics.sent}
+          subtitle={`${metrics.sent} sent to customers`}
+          icon={Send}
+          color="green"
+        />
+        <MetricCard
+          title="Rejected"
+          value={metrics.rejected}
+          subtitle={`${metrics.rejected} proformas rejected`}
+          icon={XCircle}
+          color="red"
+        />
+        <MetricCard
+          title="Collection Rate"
+          value={`${metrics.collectionRate.toFixed(1)}%`}
+          subtitle={`₹${metrics.totalValue.toLocaleString()} total value`}
+          icon={TrendingUp}
+          color="purple"
+        />
       </div>
 
       {/* Filters */}

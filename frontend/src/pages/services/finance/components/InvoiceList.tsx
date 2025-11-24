@@ -27,6 +27,8 @@ interface Invoice {
   paid_amount: string;
   outstanding_amount: string;
   item_count: number;
+  is_rejected?: boolean;
+  rejection_reason?: string;
   created_at: string;
   created_by_name: string;
 }
@@ -352,52 +354,69 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
-                        <button
-                          onClick={() => handleUpdatePayment(invoice)}
-                          className="text-green-600 hover:text-green-800 transition-colors"
-                          title="Update Payment"
-                        >
-                          <DollarSign className="w-4 h-4" />
-                        </button>
+                        {invoice.is_rejected ? (
+                          // Only show view button for rejected invoices
+                          <button
+                            onClick={() => {
+                              setSelectedInvoice(invoice);
+                              setShowInvoiceView(true);
+                            }}
+                            className="text-athenas-blue hover:text-blue-600 transition-colors"
+                            title="View Invoice"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          // Show all buttons for non-rejected invoices
+                          <>
+                            <button
+                              onClick={() => handleUpdatePayment(invoice)}
+                              className="text-green-600 hover:text-green-800 transition-colors"
+                              title="Update Payment"
+                            >
+                              <DollarSign className="w-4 h-4" />
+                            </button>
 
-                        <button
-                          onClick={() => {
-                            setSelectedInvoice(invoice);
-                            setShowInvoiceView(true);
-                          }}
-                          className="text-athenas-blue hover:text-blue-600 transition-colors"
-                          title="View Invoice"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => onEditInvoice(invoice)}
-                          className="text-athenas-gold hover:text-yellow-600 transition-colors"
-                          title="Edit Invoice"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleSendEmail(invoice)}
-                          className="text-blue-600 hover:text-blue-800 transition-colors"
-                          title="Send Email"
-                        >
-                          <Mail className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}
-                          className="text-orange-600 hover:text-orange-800 transition-colors"
-                          title="Download PDF"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleReject(invoice)}
-                          className="text-red-600 hover:text-red-800 transition-colors"
-                          title="Reject Invoice"
-                        >
-                          <XCircle className="w-4 h-4" />
-                        </button>
+                            <button
+                              onClick={() => {
+                                setSelectedInvoice(invoice);
+                                setShowInvoiceView(true);
+                              }}
+                              className="text-athenas-blue hover:text-blue-600 transition-colors"
+                              title="View Invoice"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => onEditInvoice(invoice)}
+                              className="text-athenas-gold hover:text-yellow-600 transition-colors"
+                              title="Edit Invoice"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleSendEmail(invoice)}
+                              className="text-blue-600 hover:text-blue-800 transition-colors"
+                              title="Send Email"
+                            >
+                              <Mail className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}
+                              className="text-orange-600 hover:text-orange-800 transition-colors"
+                              title="Download PDF"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleReject(invoice)}
+                              className="text-red-600 hover:text-red-800 transition-colors"
+                              title="Reject Invoice"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

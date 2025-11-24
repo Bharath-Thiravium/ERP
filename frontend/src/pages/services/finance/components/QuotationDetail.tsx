@@ -70,6 +70,8 @@ interface QuotationDetail {
   terms_and_conditions: string
   created_at: string
   created_by_name: string
+  is_rejected?: boolean
+  rejection_reason?: string
   customer_details: Customer
   shipping_address_details: ShippingAddress | null
   quotation_items: QuotationItem[]
@@ -112,22 +114,7 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const statusColors = {
-      draft: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
-      sent: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-      accepted: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-      rejected: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
-      expired: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
-      converted: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
-    }
 
-    return (
-      <span className={`px-3 py-1 text-sm font-medium rounded-full ${statusColors[status as keyof typeof statusColors] || statusColors.draft}`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    )
-  }
 
   const getGstTypeBadge = (gstType: string) => {
     const gstColors = {
@@ -356,8 +343,30 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
                 )}
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 dark:text-gray-400">Status:</span>
-                  {getStatusBadge(quotation.status)}
+                  <span className={`px-3 py-1 text-sm font-medium rounded-full ${
+                    quotation.is_rejected 
+                      ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+                      : quotation.status === 'draft' 
+                        ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                        : quotation.status === 'sent'
+                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+                          : quotation.status === 'accepted'
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                  }`}>
+                    {quotation.is_rejected ? 'Rejected' : quotation.status.charAt(0).toUpperCase() + quotation.status.slice(1)}
+                  </span>
                 </div>
+                {quotation.is_rejected && quotation.rejection_reason && (
+                  <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                    <div className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">
+                      Rejection Reason:
+                    </div>
+                    <div className="text-sm text-red-700 dark:text-red-300">
+                      {quotation.rejection_reason}
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 dark:text-gray-400">GST Type:</span>
                   {getGstTypeBadge(quotation.gst_type)}

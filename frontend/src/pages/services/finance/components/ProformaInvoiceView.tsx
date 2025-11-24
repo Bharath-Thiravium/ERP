@@ -76,14 +76,24 @@ const ProformaInvoiceView: React.FC<ProformaInvoiceViewProps> = ({ proformaInvoi
                 <span className="text-gray-500">Code:</span>
                 <p className="font-medium">{proformaInvoice.customer_code}</p>
               </div>
-              <div>
-                <span className="text-gray-500">PO Number:</span>
-                <p className="font-medium">{proformaInvoice.po_number}</p>
-              </div>
+              {proformaInvoice.po_number && (
+                <div>
+                  <span className="text-gray-500">PO Number:</span>
+                  <p className="font-medium">{proformaInvoice.po_number}</p>
+                </div>
+              )}
               <div>
                 <span className="text-gray-500">Status:</span>
-                <p className="font-medium capitalize">{proformaInvoice.status}</p>
+                <p className="font-medium capitalize">
+                  {proformaInvoice.is_rejected ? 'Rejected' : proformaInvoice.status}
+                </p>
               </div>
+              {proformaInvoice.is_rejected && proformaInvoice.rejection_reason && (
+                <div className="col-span-2">
+                  <span className="text-gray-500">Rejection Reason:</span>
+                  <p className="font-medium text-red-600 dark:text-red-400">{proformaInvoice.rejection_reason}</p>
+                </div>
+              )}
             </div>
           </div>
 

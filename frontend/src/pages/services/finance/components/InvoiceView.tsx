@@ -27,6 +27,8 @@ interface Invoice {
   paid_amount: string;
   outstanding_amount: string;
   item_count: number;
+  is_rejected?: boolean;
+  rejection_reason?: string;
   invoice_items?: InvoiceItem[];
   created_at: string;
   created_by_name: string;
@@ -137,13 +139,27 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose }) => {
                       Status
                     </div>
                     <div className="flex space-x-2">
-                      <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
-                        {invoice.status.replace('_', ' ').toUpperCase()}
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        invoice.is_rejected 
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {invoice.is_rejected ? 'REJECTED' : invoice.status.replace('_', ' ').toUpperCase()}
                       </span>
                       <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded">
                         {invoice.payment_status.replace('_', ' ').toUpperCase()}
                       </span>
                     </div>
+                    {invoice.is_rejected && invoice.rejection_reason && (
+                      <div className="mt-2">
+                        <div className="text-xs font-medium text-red-600 dark:text-red-400">
+                          Rejection Reason:
+                        </div>
+                        <div className="text-xs text-red-600 dark:text-red-400">
+                          {invoice.rejection_reason}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

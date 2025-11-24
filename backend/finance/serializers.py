@@ -516,7 +516,7 @@ class QuotationListSerializer(serializers.ModelSerializer):
             'quotation_date', 'valid_until', 'status', 'gst_type',
             'subtotal', 'total_tax', 'total_amount', 'item_count', 'quotation_items',
             'created_at', 'created_by_name', 'is_revised', 'revision_count', 'revised_at', 'revised_by_name',
-            'po_created', 'po_created_at', 'invoice_created', 'invoice_created_at', 'proforma_created',
+            'po_created', 'po_created_at', 'invoice_created', 'invoice_created_at', 'proforma_created', 'is_rejected', 'rejection_reason',
             # Balance tracking fields for quotation-based invoice creation
             'claim_type', 'proforma_claimed_amount', 'invoice_claimed_amount',
             'remaining_proforma_balance', 'remaining_invoice_balance',
@@ -1067,7 +1067,7 @@ class ProformaInvoiceListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'proforma_number', 'proforma_date', 'due_date', 'customer_name', 'customer_code',
             'customer_project_area', 'po_number', 'status', 'payment_status', 'paid_amount', 'outstanding_amount', 'gst_type',
-            'subtotal', 'total_tax', 'total_amount', 'item_count', 'proforma_items',
+            'subtotal', 'total_tax', 'total_amount', 'item_count', 'proforma_items', 'is_rejected', 'rejection_reason',
             'created_at', 'created_by_name'
         ]
 
@@ -1515,7 +1515,7 @@ class InvoiceListSerializer(serializers.ModelSerializer):
             'id', 'invoice_number', 'invoice_date', 'due_date', 'customer_name',
             'customer_code', 'customer_project_area', 'proforma_number', 'status',
             'payment_status', 'gst_type', 'subtotal', 'total_tax', 'total_amount',
-            'paid_amount', 'outstanding_amount', 'item_count', 'created_at',
+            'paid_amount', 'outstanding_amount', 'item_count', 'is_rejected', 'rejection_reason', 'created_at',
             'created_by_name'
         ]
 

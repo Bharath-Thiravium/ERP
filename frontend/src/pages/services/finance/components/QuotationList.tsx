@@ -40,6 +40,8 @@ interface Quotation {
   invoice_created?: boolean
   invoice_created_at?: string
   proforma_created?: boolean
+  is_rejected?: boolean
+  rejection_reason?: string
   // Balance tracking fields
   claim_type?: string
   proforma_claimed_amount?: number

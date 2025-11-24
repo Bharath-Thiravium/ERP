@@ -89,6 +89,11 @@ urlpatterns = [
     path('proforma-invoices/<int:proforma_id>/send-email/', views.send_proforma_email_view, name='send_proforma_email'),
     path('purchase-orders/<int:purchase_order_id>/send-email/', views.send_purchase_order_email_view, name='send_purchase_order_email'),
     
+    # Rejection endpoints
+    path('quotations/<int:quotation_id>/reject/', views.reject_quotation, name='reject_quotation'),
+    path('proforma-invoices/<int:proforma_id>/reject/', views.reject_proforma_invoice, name='reject_proforma_invoice'),
+    path('invoices/<int:invoice_id>/reject/', views.reject_invoice, name='reject_invoice'),
+    
 
     
     # Indian Compliance endpoints

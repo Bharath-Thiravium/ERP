@@ -4,6 +4,7 @@ import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, RotateCcw, X, ShoppingCart, Receipt } from 'lucide-react'
 import QuotationEdit from './QuotationEdit'
 import SendEmailModal from './SendEmailModal'
+import RejectInvoiceModal from './RejectInvoiceModal'
 import toast from 'react-hot-toast'
 
 interface Quotation {
@@ -70,6 +71,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
   const [hoveredQuotation, setHoveredQuotation] = useState<number | null>(null)
   const [editingQuotationId, setEditingQuotationId] = useState<number | null>(null)
   const [emailQuotation, setEmailQuotation] = useState<Quotation | null>(null)
+  const [rejectingQuotation, setRejectingQuotation] = useState<Quotation | null>(null)
 
   const statusOptions = [
     { value: '', label: 'All Status' },
@@ -207,29 +209,13 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
     }
   }
 
-  const handleRejectQuotation = async (quotation: Quotation) => {
-    if (!confirm(`Are you sure you want to reject quotation ${quotation.quotation_number}? This will mark it as rejected but keep it in the database for records.`)) {
-      return
-    }
+  const handleRejectQuotation = (quotation: Quotation) => {
+    setRejectingQuotation(quotation)
+  }
 
-    if (!sessionKey) {
-      alert('Session expired. Please login again.')
-      return
-    }
-
-    try {
-      // Update quotation status to rejected instead of deleting
-      await apiClient.updateFinanceQuotation(quotation.id, {
-        status: 'rejected',
-        session_key: sessionKey
-      })
-
-      toast.success('Quotation rejected successfully!')
-      fetchQuotations(currentPage)
-    } catch (error) {
-      console.error('Error rejecting quotation:', error)
-      toast.error('Failed to reject quotation')
-    }
+  const handleRejectSuccess = () => {
+    setRejectingQuotation(null)
+    fetchQuotations(currentPage)
   }
 
   const getStatusBadge = (status: string) => {
@@ -731,6 +717,18 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
           invoiceType="quotation"
           customerEmail={emailQuotation.customer_email || ''}
           onSuccess={handleEmailSuccess}
+        />
+      )}
+
+      {/* Reject Quotation Modal */}
+      {rejectingQuotation && (
+        <RejectInvoiceModal
+          isOpen={true}
+          onClose={() => setRejectingQuotation(null)}
+          invoiceId={rejectingQuotation.id}
+          invoiceNumber={rejectingQuotation.quotation_number}
+          invoiceType="quotation"
+          onSuccess={handleRejectSuccess}
         />
       )}
     </div>

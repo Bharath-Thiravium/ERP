@@ -667,6 +667,12 @@ class Quotation(models.Model):
         help_text="Remaining amount to be invoiced (with tax) from quotation"
     )
 
+    # Rejection tracking fields
+    is_rejected = models.BooleanField(default=False, help_text="Whether this quotation has been rejected")
+    rejection_reason = models.TextField(blank=True, null=True, help_text="Reason for rejection")
+    rejected_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='rejected_quotations')
+    rejected_at = models.DateTimeField(null=True, blank=True, help_text="When this quotation was rejected")
+    
     # Audit fields
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_quotations')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -894,6 +900,23 @@ class Quotation(models.Model):
     def can_create_invoice(self):
         """Check if more invoices can be created from this quotation"""
         return self.remaining_invoice_balance > 0
+    
+    def reject_quotation(self, rejection_reason, rejected_by_user):
+        """Reject this quotation and update related documents"""
+        from django.utils import timezone
+        
+        # Mark as rejected
+        self.is_rejected = True
+        self.status = 'rejected'
+        self.rejection_reason = rejection_reason
+        self.rejected_by = rejected_by_user
+        self.rejected_at = timezone.now()
+        self.save()
+    
+    @property
+    def can_be_rejected(self):
+        """Check if this quotation can be rejected"""
+        return not self.is_rejected and self.status not in ['converted'] and not self.po_created and not self.invoice_created and not self.proforma_created
 
 
 class QuotationItem(models.Model):
@@ -1645,6 +1668,7 @@ class ProformaInvoice(models.Model):
         ('partially_paid', 'Partially Paid'),
         ('overdue', 'Overdue'),
         ('cancelled', 'Cancelled'),
+        ('rejected', 'Rejected'),
     ]
 
     PAYMENT_STATUS_CHOICES = [
@@ -1754,6 +1778,12 @@ class ProformaInvoice(models.Model):
     gst_transaction_id = models.CharField(max_length=50, blank=True, help_text="Unique GST transaction ID")
     place_of_supply = models.CharField(max_length=2, blank=True, help_text="State code where supply is made")
 
+    # Rejection tracking fields
+    is_rejected = models.BooleanField(default=False, help_text="Whether this proforma invoice has been rejected")
+    rejection_reason = models.TextField(blank=True, null=True, help_text="Reason for rejection")
+    rejected_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='rejected_proforma_invoices')
+    rejected_at = models.DateTimeField(null=True, blank=True, help_text="When this proforma invoice was rejected")
+    
     # Audit fields
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_proforma_invoices')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1853,6 +1883,31 @@ class ProformaInvoice(models.Model):
             'subtotal', 'total_tax', 'total_amount', 'discount_amount',
             'cgst_amount', 'sgst_amount', 'igst_amount'
         ])
+    
+    def reject_proforma(self, rejection_reason, rejected_by_user):
+        """Reject this proforma invoice and update related documents"""
+        from django.utils import timezone
+        
+        # Mark as rejected
+        self.is_rejected = True
+        self.status = 'rejected'
+        self.rejection_reason = rejection_reason
+        self.rejected_by = rejected_by_user
+        self.rejected_at = timezone.now()
+        self.save()
+        
+        # Update related PO balance tracking (remove this proforma's impact)
+        if self.purchase_order:
+            self.purchase_order.update_balance_tracking()
+        
+        # Update related quotation balance tracking (remove this proforma's impact)
+        if self.quotation:
+            self.quotation.update_balance_tracking()
+    
+    @property
+    def can_be_rejected(self):
+        """Check if this proforma invoice can be rejected"""
+        return not self.is_rejected and self.status not in ['paid', 'cancelled']
 
     @property
     def customer_details(self):
@@ -1956,6 +2011,7 @@ class Invoice(models.Model):
         ('partially_paid', 'Partially Paid'),
         ('overdue', 'Overdue'),
         ('cancelled', 'Cancelled'),
+        ('rejected', 'Rejected'),
     ]
 
     PAYMENT_STATUS_CHOICES = [
@@ -2037,6 +2093,12 @@ class Invoice(models.Model):
     gstr1_filing_date = models.DateField(null=True, blank=True)
     place_of_supply = models.CharField(max_length=2, blank=True, help_text="State code where supply is made")
     reverse_charge_applicable = models.BooleanField(default=False)
+    
+    # Rejection tracking fields
+    is_rejected = models.BooleanField(default=False, help_text="Whether this invoice has been rejected")
+    rejection_reason = models.TextField(blank=True, null=True, help_text="Reason for rejection")
+    rejected_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='rejected_invoices')
+    rejected_at = models.DateTimeField(null=True, blank=True, help_text="When this invoice was rejected")
     
     # Audit fields
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_invoices')
@@ -2177,6 +2239,31 @@ class Invoice(models.Model):
             'subtotal', 'total_tax', 'total_amount', 'discount_amount',
             'cgst_amount', 'sgst_amount', 'igst_amount', 'outstanding_amount'
         ])
+    
+    def reject_invoice(self, rejection_reason, rejected_by_user):
+        """Reject this invoice and update related documents"""
+        from django.utils import timezone
+        
+        # Mark as rejected
+        self.is_rejected = True
+        self.status = 'rejected'
+        self.rejection_reason = rejection_reason
+        self.rejected_by = rejected_by_user
+        self.rejected_at = timezone.now()
+        self.save()
+        
+        # Update related PO balance tracking (remove this invoice's impact)
+        if self.purchase_order:
+            self.purchase_order.update_balance_tracking()
+        
+        # Update related quotation balance tracking (remove this invoice's impact)
+        if self.quotation:
+            self.quotation.update_balance_tracking()
+    
+    @property
+    def can_be_rejected(self):
+        """Check if this invoice can be rejected"""
+        return not self.is_rejected and self.status not in ['paid', 'cancelled']
 
     @property
     def customer_details(self):

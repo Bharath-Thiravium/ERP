@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, FileText, Calendar, User, DollarSign, Eye, Edit, Trash2, Download, Mail } from 'lucide-react';
+import { Plus, Search, FileText, Calendar, User, DollarSign, Eye, Edit, XCircle, Download, Mail } from 'lucide-react';
 
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import InvoiceView from './InvoiceView';
 import UpdatePaymentModal from './UpdatePaymentModal';
 import SendEmailModal from './SendEmailModal';
+import RejectInvoiceModal from './RejectInvoiceModal';
 
 
 interface Invoice {
@@ -52,6 +53,8 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
   const [selectedForPayment, setSelectedForPayment] = useState<Invoice | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [selectedForEmail, setSelectedForEmail] = useState<Invoice | null>(null);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [selectedForReject, setSelectedForReject] = useState<Invoice | null>(null);
 
 
   const statusOptions = [
@@ -120,19 +123,9 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
 
 
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this invoice?')) return;
-
-    try {
-      await api.delete(`/api/finance/invoices/${id}/`, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
-      });
-      toast.success('Invoice deleted successfully');
-      fetchInvoices();
-    } catch (error: any) {
-      console.error('Error deleting invoice:', error);
-      toast.error('Failed to delete invoice');
-    }
+  const handleReject = (invoice: Invoice) => {
+    setSelectedForReject(invoice);
+    setShowRejectModal(true);
   };
 
   const handleDownloadPDF = async (id: number, invoiceNumber: string) => {
@@ -399,11 +392,11 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
                           <Download className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(invoice.id)}
+                          onClick={() => handleReject(invoice)}
                           className="text-red-600 hover:text-red-800 transition-colors"
-                          title="Delete Invoice"
+                          title="Reject Invoice"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <XCircle className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -460,6 +453,26 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
           invoiceNumber={selectedForEmail.invoice_number}
           invoiceType="tax_invoice"
           customerEmail=""
+        />
+      )}
+
+      {/* Reject Invoice Modal */}
+      {showRejectModal && selectedForReject && (
+        <RejectInvoiceModal
+          isOpen={showRejectModal}
+          onClose={() => {
+            setShowRejectModal(false);
+            setSelectedForReject(null);
+          }}
+          onSuccess={() => {
+            setShowRejectModal(false);
+            setSelectedForReject(null);
+            fetchInvoices();
+          }}
+          invoiceId={selectedForReject.id}
+          invoiceNumber={selectedForReject.invoice_number}
+          invoiceType="tax"
+          sessionKey={sessionKey}
         />
       )}
 

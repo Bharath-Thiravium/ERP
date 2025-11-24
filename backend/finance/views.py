@@ -3321,4 +3321,136 @@ def send_purchase_order_email_view(request, purchase_order_id):
         return Response({'error': str(e)}, status=500)
 
 
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
+def reject_proforma_invoice(request, proforma_id):
+    """Reject a proforma invoice with reason"""
+    session_key = request.data.get('session_key') or request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    rejection_reason = request.data.get('rejection_reason')
+    if not rejection_reason or not rejection_reason.strip():
+        return Response({'error': 'Rejection reason is required'}, status=400)
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+
+        # Get proforma invoice
+        proforma = ProformaInvoice.objects.get(
+            id=proforma_id,
+            company=service_user.company
+        )
+
+        # Check if it can be rejected
+        if not proforma.can_be_rejected:
+            return Response({'error': 'This proforma invoice cannot be rejected'}, status=400)
+
+        # Reject the proforma invoice
+        proforma.reject_proforma(rejection_reason.strip(), service_user)
+        
+        return Response({
+            'message': 'Proforma invoice rejected successfully',
+            'proforma_number': proforma.proforma_number,
+            'rejection_reason': rejection_reason.strip()
+        })
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except ProformaInvoice.DoesNotExist:
+        return Response({'error': 'Proforma invoice not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
+def reject_invoice(request, invoice_id):
+    """Reject a tax invoice with reason"""
+    session_key = request.data.get('session_key') or request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    rejection_reason = request.data.get('rejection_reason')
+    if not rejection_reason or not rejection_reason.strip():
+        return Response({'error': 'Rejection reason is required'}, status=400)
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+
+        # Get invoice
+        invoice = Invoice.objects.get(
+            id=invoice_id,
+            company=service_user.company
+        )
+
+        # Check if it can be rejected
+        if not invoice.can_be_rejected:
+            return Response({'error': 'This invoice cannot be rejected'}, status=400)
+
+        # Reject the invoice
+        invoice.reject_invoice(rejection_reason.strip(), service_user)
+        
+        return Response({
+            'message': 'Invoice rejected successfully',
+            'invoice_number': invoice.invoice_number,
+            'rejection_reason': rejection_reason.strip()
+        })
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except Invoice.DoesNotExist:
+        return Response({'error': 'Invoice not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([])
+def reject_quotation(request, quotation_id):
+    """Reject a quotation with reason"""
+    session_key = request.data.get('session_key') or request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    rejection_reason = request.data.get('rejection_reason')
+    if not rejection_reason or not rejection_reason.strip():
+        return Response({'error': 'Rejection reason is required'}, status=400)
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        service_user = session.service_user
+
+        # Get quotation
+        quotation = Quotation.objects.get(
+            id=quotation_id,
+            company=service_user.company
+        )
+
+        # Check if it can be rejected
+        if not quotation.can_be_rejected:
+            return Response({'error': 'This quotation cannot be rejected'}, status=400)
+
+        # Reject the quotation
+        quotation.reject_quotation(rejection_reason.strip(), service_user)
+        
+        return Response({
+            'message': 'Quotation rejected successfully',
+            'quotation_number': quotation.quotation_number,
+            'rejection_reason': rejection_reason.strip()
+        })
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=401)
+    except Quotation.DoesNotExist:
+        return Response({'error': 'Quotation not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
 

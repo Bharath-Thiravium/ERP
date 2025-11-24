@@ -8,21 +8,19 @@ import {
   Filter,
   Eye,
   Edit,
-  Trash2,
   Calendar,
-
   DollarSign,
   CheckCircle,
   Clock,
   XCircle,
   Download,
-
   Mail
 } from 'lucide-react'
 // import ProformaInvoiceForm from './ProformaInvoiceForm' // Removed - using simplified forms
 import ProformaInvoiceView from './ProformaInvoiceView'
 import UpdatePaymentModal from './UpdatePaymentModal'
 import SendEmailModal from './SendEmailModal'
+import RejectInvoiceModal from './RejectInvoiceModal'
 
 
 interface ProformaInvoice {
@@ -137,6 +135,8 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
   const [selectedForPayment, setSelectedForPayment] = useState<ProformaInvoice | null>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [selectedForEmail, setSelectedForEmail] = useState<ProformaInvoice | null>(null)
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [selectedForReject, setSelectedForReject] = useState<ProformaInvoice | null>(null)
 
   
   const handleUpdatePayment = (proformaInvoice: ProformaInvoice) => {
@@ -154,17 +154,9 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
     setShowForm(true)
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this proforma invoice?')) return
-
-    try {
-      await apiClient.deleteFinanceProformaInvoice(id, { session_key: sessionKey })
-      toast.success('Proforma invoice deleted successfully!')
-      fetchProformaInvoices()
-    } catch (error) {
-      console.error('Error deleting proforma invoice:', error)
-      toast.error('Failed to delete proforma invoice')
-    }
+  const handleReject = (proforma: ProformaInvoice) => {
+    setSelectedForReject(proforma)
+    setShowRejectModal(true)
   }
 
   const handleDownloadPDF = async (id: number, proformaNumber: string) => {
@@ -380,11 +372,11 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                           <Download className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(proforma.id)}
+                          onClick={() => handleReject(proforma)}
                           className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                          title="Delete"
+                          title="Reject"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <XCircle className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -467,6 +459,26 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
           invoiceNumber={selectedForEmail.proforma_number}
           invoiceType="proforma_invoice"
           customerEmail=""
+        />
+      )}
+
+      {/* Reject Invoice Modal */}
+      {showRejectModal && selectedForReject && (
+        <RejectInvoiceModal
+          isOpen={showRejectModal}
+          onClose={() => {
+            setShowRejectModal(false)
+            setSelectedForReject(null)
+          }}
+          onSuccess={() => {
+            setShowRejectModal(false)
+            setSelectedForReject(null)
+            fetchProformaInvoices()
+          }}
+          invoiceId={selectedForReject.id}
+          invoiceNumber={selectedForReject.proforma_number}
+          invoiceType="proforma"
+          sessionKey={sessionKey}
         />
       )}
 

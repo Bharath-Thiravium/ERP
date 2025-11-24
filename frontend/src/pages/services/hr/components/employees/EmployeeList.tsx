@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Search, Filter, Plus, Edit, Eye, Trash2, Users, Building, Mail, Phone, UserX } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
@@ -23,7 +23,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<EmployeeFilters>({})
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = useCallback(async () => {
     if (!sessionKey) return
     
     try {
@@ -44,7 +44,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     } finally {
       setLoading(false)
     }
-  }
+  }, [sessionKey, filters.search, filters.department, filters.status])
 
   const handleDeleteEmployee = async (employee: Employee) => {
     if (!sessionKey) return
@@ -80,8 +80,6 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
         status: 'terminated',
         termination_reason: reason,
         termination_date: terminationDate
-      }, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
       })
       
       toast.success('Employee terminated successfully')
@@ -94,7 +92,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
 
   useEffect(() => {
     fetchEmployees()
-  }, [sessionKey, filters])
+  }, [fetchEmployees])
 
   const getStatusColor = (status: string) => {
     switch (status) {

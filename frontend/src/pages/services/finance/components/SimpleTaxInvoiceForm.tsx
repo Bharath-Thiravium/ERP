@@ -35,7 +35,8 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
     invoice_date: editingInvoice?.invoice_date?.split('T')[0] || new Date().toISOString().split('T')[0],
     due_date: editingInvoice?.due_date?.split('T')[0] || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     reference: editingInvoice?.reference || '',
-    notes: editingInvoice?.notes || 'Tax invoice for GST filing'
+    notes: editingInvoice?.notes || 'Tax invoice for GST filing',
+    terms_and_conditions: editingInvoice?.terms_and_conditions || 'Payment terms: Net 30 days. GST as applicable. Late payments may incur additional charges.'
   })
 
   // Calculate amounts
@@ -154,6 +155,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
         ...(formData.due_date && { due_date: formData.due_date }),
         reference: formData.reference,
         notes: formData.notes,
+        terms_and_conditions: formData.terms_and_conditions,
         invoice_type: 'tax_invoice',
         status: 'draft'
       }
@@ -529,6 +531,19 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 placeholder="Enter notes"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Terms and Conditions
+              </label>
+              <textarea
+                value={formData.terms_and_conditions}
+                onChange={(e) => setFormData(prev => ({ ...prev, terms_and_conditions: e.target.value }))}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="Enter terms and conditions"
               />
             </div>
           </div>

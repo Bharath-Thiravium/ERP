@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, FileText, Calendar, User, DollarSign, Eye, Edit, XCircle, Download, Mail, CheckCircle, Clock, TrendingUp } from 'lucide-react';
+import { Plus, Search, FileText, Calendar, User, DollarSign, Eye, Edit, XCircle, Download, Mail, CheckCircle, Clock, TrendingUp, RotateCcw } from 'lucide-react';
 
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import InvoiceView from './InvoiceView';
+import SimpleTaxInvoiceForm from './SimpleTaxInvoiceForm';
 import UpdatePaymentModal from './UpdatePaymentModal';
 import SendEmailModal from './SendEmailModal';
 import RejectInvoiceModal from './RejectInvoiceModal';
@@ -30,17 +31,33 @@ interface Invoice {
   item_count: number;
   is_rejected?: boolean;
   rejection_reason?: string;
+  is_revised?: boolean;
+  revision_count?: number;
+  revised_at?: string;
+  revised_by_name?: string;
   created_at: string;
   created_by_name: string;
+  // Optional customer and address fields for edit forms
+  customer_details?: any;
+  customer?: number;
+  customer_email?: string;
+  customer_phone?: string;
+  customer_gstin?: string;
+  billing_address_line1?: string;
+  billing_address_line2?: string;
+  billing_city?: string;
+  billing_state?: string;
+  billing_pincode?: string;
+  billing_country?: string;
+  shipping_address_details?: any;
 }
 
 interface InvoiceListProps {
   onAddInvoice: () => void;
-  onEditInvoice: (invoice: Invoice) => void;
   sessionKey: string;
 }
 
-const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, sessionKey }) => {
+const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, sessionKey }) => {
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +69,8 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
   const [totalPages, setTotalPages] = useState(1);
   const [showInvoiceView, setShowInvoiceView] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [selectedForEdit, setSelectedForEdit] = useState<Invoice | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedForPayment, setSelectedForPayment] = useState<Invoice | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -149,6 +168,43 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
   const handleReject = (invoice: Invoice) => {
     setSelectedForReject(invoice);
     setShowRejectModal(true);
+  };
+
+  const handleReverseInvoice = async (invoice: Invoice) => {
+    if (!confirm(`Are you sure you want to reverse invoice ${invoice.invoice_number}? This will allow you to edit it once more.`)) {
+      return;
+    }
+
+    try {
+      // Create mutable copy of request data
+      const requestData = {
+        status: 'draft',
+        is_revised: true,
+        revision_count: (invoice.revision_count || 0) + 1,
+        revised_at: new Date().toISOString(),
+        invoice_date: invoice.invoice_date,
+        due_date: invoice.due_date
+      }
+
+      const response = await fetch(`/api/finance/invoices/${invoice.id}/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionKey}`
+        },
+        body: JSON.stringify({ ...requestData, session_key: sessionKey })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to reverse invoice')
+      }
+
+      toast.success('Invoice reversed successfully! You can now edit it.');
+      fetchInvoices();
+    } catch (error) {
+      console.error('Error reversing invoice:', error);
+      toast.error('Failed to reverse invoice');
+    }
   };
 
   const handleDownloadPDF = async (id: number, invoiceNumber: string) => {
@@ -354,14 +410,21 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
                       <div className="flex items-center">
                         <FileText className="w-5 h-5 text-athenas-blue mr-3" />
                         <div>
-                          <div 
-                            onClick={() => {
-                              setSelectedInvoice(invoice);
-                              setShowInvoiceView(true);
-                            }}
-                            className="text-sm font-medium text-blue-600 hover:text-blue-800 cursor-pointer"
-                          >
-                            {invoice.invoice_number}
+                          <div className="text-sm font-medium text-gray-900 dark:text-white flex items-center space-x-2">
+                            <span 
+                              onClick={() => {
+                                setSelectedInvoice(invoice);
+                                setShowInvoiceView(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-800 cursor-pointer"
+                            >
+                              {invoice.invoice_number}
+                            </span>
+                            {invoice.is_revised && (
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300">
+                                Revised
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm text-gray-500">From: {invoice.proforma_number}</div>
                         </div>
@@ -447,13 +510,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={() => onEditInvoice(invoice)}
-                              className="text-athenas-gold hover:text-yellow-600 transition-colors"
-                              title="Edit Invoice"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
+
                             <button
                               onClick={() => handleSendEmail(invoice)}
                               className="text-blue-600 hover:text-blue-800 transition-colors"
@@ -468,6 +525,52 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
                             >
                               <Download className="w-4 h-4" />
                             </button>
+                            {/* Draft status buttons */}
+                            {invoice.status === 'draft' && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    // Fetch complete invoice data with customer details
+                                    const response = await fetch(`/api/finance/invoices/${invoice.id}/`, {
+                                      headers: {
+                                        'Authorization': `Bearer ${sessionKey}`
+                                      }
+                                    })
+                                    
+                                    if (response.ok) {
+                                      const completeData = await response.json()
+                                      setSelectedForEdit(completeData)
+                                    } else {
+                                      setSelectedForEdit(invoice)
+                                    }
+                                  } catch (error) {
+                                    console.error('Error fetching complete invoice data:', error)
+                                    setSelectedForEdit(invoice)
+                                  }
+                                  setShowEditForm(true)
+                                }}
+                                className="text-green-600 hover:text-green-800 transition-colors"
+                                title="Edit"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            )}
+                            
+                            {/* Sent/Active status buttons */}
+                            {(invoice.status === 'sent' || invoice.status === 'active') && (
+                              <>
+                                {/* Only allow reverse if not already revised */}
+                                {!invoice.is_revised && (
+                                  <button
+                                    onClick={() => handleReverseInvoice(invoice)}
+                                    className="text-orange-600 hover:text-orange-800 transition-colors"
+                                    title="Reverse Invoice (Edit Once)"
+                                  >
+                                    <RotateCcw className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </>
+                            )}
                             <button
                               onClick={() => handleReject(invoice)}
                               className="text-red-600 hover:text-red-800 transition-colors"
@@ -532,6 +635,11 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
           invoiceNumber={selectedForEmail.invoice_number}
           invoiceType="tax_invoice"
           customerEmail=""
+          onSuccess={() => {
+            setShowEmailModal(false);
+            setSelectedForEmail(null);
+            fetchInvoices();
+          }}
         />
       )}
 
@@ -556,6 +664,67 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ onAddInvoice, onEditInvoice, 
       )}
 
 
+
+      {/* Tax Invoice Edit Form */}
+      {showEditForm && selectedForEdit && (
+        <SimpleTaxInvoiceForm
+          editingInvoice={selectedForEdit}
+          invoiceData={{
+            claim_type: 'percentage',
+            claim_percentage: 100
+          }}
+          quotation={{
+            id: selectedForEdit.id,
+            quotation_number: selectedForEdit.invoice_number,
+            customer_details: selectedForEdit.customer_details || {
+              id: selectedForEdit.customer || selectedForEdit.id,
+              name: selectedForEdit.customer_name,
+              customer_code: selectedForEdit.customer_code,
+              email: selectedForEdit.customer_email || '',
+              phone: selectedForEdit.customer_phone || '',
+              gstin: selectedForEdit.customer_gstin || '',
+              project_area: selectedForEdit.customer_project_area,
+              billing_address_line1: selectedForEdit.billing_address_line1 || '',
+              billing_address_line2: selectedForEdit.billing_address_line2 || '',
+              billing_city: selectedForEdit.billing_city || '',
+              billing_state: selectedForEdit.billing_state || '',
+              billing_pincode: selectedForEdit.billing_pincode || '',
+              billing_country: selectedForEdit.billing_country || 'India'
+            },
+            shipping_address_details: selectedForEdit.shipping_address_details || 
+              (selectedForEdit.customer_details?.shipping_address_line1 ? {
+                address_line1: selectedForEdit.customer_details.shipping_address_line1,
+                address_line2: selectedForEdit.customer_details.shipping_address_line2 || '',
+                city: selectedForEdit.customer_details.shipping_city || '',
+                state: selectedForEdit.customer_details.shipping_state || '',
+                pincode: selectedForEdit.customer_details.shipping_pincode || '',
+                country: selectedForEdit.customer_details.shipping_country || 'India'
+              } : null),
+            quotation_items: [{
+              id: Math.random(),
+              product: 'Service',
+              product_name: 'Tax Invoice Service',
+              quantity: 1,
+              unit: 'NOS',
+              unit_price: selectedForEdit.subtotal,
+              gst_rate: '18'
+            }],
+            subtotal: selectedForEdit.subtotal,
+            total_amount: selectedForEdit.total_amount,
+            available_invoice_percentage: '100',
+            remaining_invoice_balance: selectedForEdit.total_amount
+          }}
+          onClose={() => {
+            setShowEditForm(false);
+            setSelectedForEdit(null);
+          }}
+          onSuccess={() => {
+            setShowEditForm(false);
+            setSelectedForEdit(null);
+            fetchInvoices();
+          }}
+        />
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

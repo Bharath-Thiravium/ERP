@@ -1778,6 +1778,12 @@ class ProformaInvoice(models.Model):
     gst_transaction_id = models.CharField(max_length=50, blank=True, help_text="Unique GST transaction ID")
     place_of_supply = models.CharField(max_length=2, blank=True, help_text="State code where supply is made")
 
+    # Revision tracking fields
+    is_revised = models.BooleanField(default=False, help_text="Whether this proforma invoice has been revised")
+    revision_count = models.PositiveIntegerField(default=0, help_text="Number of times this proforma invoice has been revised")
+    revised_at = models.DateTimeField(null=True, blank=True, help_text="When this proforma invoice was last revised")
+    revised_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='revised_proforma_invoices')
+    
     # Rejection tracking fields
     is_rejected = models.BooleanField(default=False, help_text="Whether this proforma invoice has been rejected")
     rejection_reason = models.TextField(blank=True, null=True, help_text="Reason for rejection")
@@ -2093,6 +2099,12 @@ class Invoice(models.Model):
     gstr1_filing_date = models.DateField(null=True, blank=True)
     place_of_supply = models.CharField(max_length=2, blank=True, help_text="State code where supply is made")
     reverse_charge_applicable = models.BooleanField(default=False)
+    
+    # Revision tracking fields
+    is_revised = models.BooleanField(default=False, help_text="Whether this invoice has been revised")
+    revision_count = models.PositiveIntegerField(default=0, help_text="Number of times this invoice has been revised")
+    revised_at = models.DateTimeField(null=True, blank=True, help_text="When this invoice was last revised")
+    revised_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='revised_invoices')
     
     # Rejection tracking fields
     is_rejected = models.BooleanField(default=False, help_text="Whether this invoice has been rejected")

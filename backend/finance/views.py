@@ -1692,7 +1692,7 @@ class ProformaInvoiceDetailView(RetrieveUpdateDestroyAPIView):
         return session_key
 
     def update(self, request, *args, **kwargs):
-        """Override update to handle session authentication"""
+        """Override update to handle session authentication and revision tracking"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -1701,10 +1701,23 @@ class ProformaInvoiceDetailView(RetrieveUpdateDestroyAPIView):
             )
 
         try:
-            ServiceUserSession.objects.get(
+            session = ServiceUserSession.objects.get(
                 session_key=session_key,
                 is_active=True
             )
+            service_user = session.service_user
+
+            # Get the proforma invoice instance
+            proforma = self.get_object()
+
+            # Handle revision tracking
+            if request.data.get('is_revised') and not proforma.is_revised:
+                # Update the proforma instance directly
+                proforma.revision_count = proforma.revision_count + 1
+                proforma.revised_at = timezone.now()
+                proforma.revised_by = service_user
+                proforma.is_revised = True
+                proforma.save(update_fields=['revision_count', 'revised_at', 'revised_by', 'is_revised'])
 
             return super().update(request, *args, **kwargs)
 
@@ -1983,7 +1996,7 @@ class InvoiceDetailView(RetrieveUpdateDestroyAPIView):
             )
 
     def update(self, request, *args, **kwargs):
-        """Override update to handle session authentication"""
+        """Override update to handle session authentication and revision tracking"""
         session_key = self.get_session_key()
         if not session_key:
             return Response(
@@ -1996,7 +2009,20 @@ class InvoiceDetailView(RetrieveUpdateDestroyAPIView):
                 session_key=session_key,
                 is_active=True
             )
-            # Proceed with normal update
+            service_user = session.service_user
+
+            # Get the invoice instance
+            invoice = self.get_object()
+
+            # Handle revision tracking
+            if request.data.get('is_revised') and not invoice.is_revised:
+                # Update the invoice instance directly
+                invoice.revision_count = invoice.revision_count + 1
+                invoice.revised_at = timezone.now()
+                invoice.revised_by = service_user
+                invoice.is_revised = True
+                invoice.save(update_fields=['revision_count', 'revised_at', 'revised_by', 'is_revised'])
+
             return super().update(request, *args, **kwargs)
 
         except ServiceUserSession.DoesNotExist:
@@ -3185,6 +3211,9 @@ def send_invoice_email_view(request, invoice_id):
         success, result_message = send_invoice_email(invoice, recipient_email, message)
         
         if success:
+            # Update invoice status to 'sent'
+            invoice.status = 'sent'
+            invoice.save()
             return Response({'message': result_message})
         else:
             return Response({'error': result_message}, status=500)
@@ -3269,6 +3298,9 @@ def send_proforma_email_view(request, proforma_id):
         success, result_message = send_proforma_email(proforma, recipient_email, message)
         
         if success:
+            # Update proforma status to 'sent'
+            proforma.status = 'sent'
+            proforma.save()
             return Response({'message': result_message})
         else:
             return Response({'error': result_message}, status=500)

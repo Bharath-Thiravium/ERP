@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.utils._os import safe_join
+from django.db import transaction
 from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment, Vendor, PurchaseRequest, PurchaseRequestItem, VendorInvoice, VendorInvoiceItem, PurchasePayment
 from .indian_compliance import calculate_gst_for_invoice, calculate_tds_for_payment, get_indian_states
 from .security_validators import FinanceSecurityValidator
@@ -1058,6 +1059,7 @@ class ProformaInvoiceListSerializer(serializers.ModelSerializer):
     customer_code = serializers.CharField(source='customer.customer_code', read_only=True)
     customer_project_area = serializers.CharField(source='customer.project_area', read_only=True)
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    revised_by_name = serializers.CharField(source='revised_by.full_name', read_only=True)
     po_number = serializers.CharField(source='purchase_order.internal_po_number', read_only=True)
     item_count = serializers.SerializerMethodField()
     proforma_items = serializers.SerializerMethodField()
@@ -1068,6 +1070,7 @@ class ProformaInvoiceListSerializer(serializers.ModelSerializer):
             'id', 'proforma_number', 'proforma_date', 'due_date', 'customer_name', 'customer_code',
             'customer_project_area', 'po_number', 'status', 'payment_status', 'paid_amount', 'outstanding_amount', 'gst_type',
             'subtotal', 'total_tax', 'total_amount', 'item_count', 'proforma_items', 'is_rejected', 'rejection_reason',
+            'is_revised', 'revision_count', 'revised_at', 'revised_by_name',
             'created_at', 'created_by_name'
         ]
 
@@ -1508,6 +1511,7 @@ class InvoiceListSerializer(serializers.ModelSerializer):
     proforma_number = serializers.CharField(source='proforma_invoice.proforma_number', read_only=True)
     item_count = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.user.get_full_name', read_only=True)
+    revised_by_name = serializers.CharField(source='revised_by.user.get_full_name', read_only=True)
 
     class Meta:
         model = Invoice
@@ -1515,7 +1519,8 @@ class InvoiceListSerializer(serializers.ModelSerializer):
             'id', 'invoice_number', 'invoice_date', 'due_date', 'customer_name',
             'customer_code', 'customer_project_area', 'proforma_number', 'status',
             'payment_status', 'gst_type', 'subtotal', 'total_tax', 'total_amount',
-            'paid_amount', 'outstanding_amount', 'item_count', 'is_rejected', 'rejection_reason', 'created_at',
+            'paid_amount', 'outstanding_amount', 'item_count', 'is_rejected', 'rejection_reason',
+            'is_revised', 'revision_count', 'revised_at', 'revised_by_name', 'created_at',
             'created_by_name'
         ]
 
@@ -1708,60 +1713,118 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         """Create invoice from quotation with sophisticated claiming logic"""
         from decimal import Decimal
         
-        # Extract claiming parameters
-        claim_type = validated_data.pop('claim_type', None)
-        claim_percentage = validated_data.pop('claim_percentage', 0)
-        selected_items = validated_data.pop('selected_items', {})
-        item_percentages = validated_data.pop('item_percentages', {})
-        validated_data.pop('invoice_items', None)  # Remove direct items for quotation-based creation
-        
-        # Set customer and GST information from quotation
-        validated_data['customer'] = quotation.customer
-        validated_data['gst_type'] = quotation.gst_type
-        validated_data['customer_gstin'] = quotation.customer_gstin
-        validated_data['company_gstin'] = quotation.company_gstin
-        
-        # Create the invoice
-        invoice = Invoice.objects.create(**validated_data)
-        
-        # Update quotation claim type if this is the first invoice
-        if not quotation.claim_type and claim_type:
-            quotation.claim_type = claim_type
-            quotation.save(update_fields=['claim_type'])
-        
-        # Create invoice items from quotation
-        items_to_create = []
-        
-        if claim_type == 'quantity' and selected_items:
-            # QUANTITY-BASED CLAIMING: Create invoice for selected quantities
-            for quotation_item in quotation.quotation_items.all():
-                item_id_str = str(quotation_item.id)
-                if item_id_str in selected_items and selected_items[item_id_str] > 0:
-                    selected_quantity = Decimal(str(selected_items[item_id_str]))
-                    claim_line_total = selected_quantity * quotation_item.unit_price
-                    
-                    items_to_create.append(InvoiceItem(
-                        invoice=invoice,
-                        product=quotation_item.product,
-                        product_name=quotation_item.product_name,
-                        product_code=quotation_item.product_code,
-                        description=quotation_item.description,
-                        hsn_sac_code=quotation_item.hsn_sac_code,
-                        quantity=selected_quantity,
-                        unit=quotation_item.unit,
-                        unit_price=quotation_item.unit_price,
-                        line_total=claim_line_total,
-                        gst_rate=quotation_item.gst_rate,
-                        line_number=quotation_item.line_number
-                    ))
-        elif claim_type == 'percentage' and item_percentages:
-            # ITEM-LEVEL PERCENTAGE CLAIMING: Create invoice for item-specific percentages
-            for quotation_item in quotation.quotation_items.all():
-                item_id_str = str(quotation_item.id)
-                if item_id_str in item_percentages and float(item_percentages[item_id_str]) > 0:
-                    item_percentage = Decimal(str(item_percentages[item_id_str]))
-                    claim_line_total = (quotation_item.line_total * item_percentage) / Decimal('100')
-                    claim_quantity = (quotation_item.quantity * item_percentage) / Decimal('100')
+        with transaction.atomic():
+            # Lock quotation to prevent concurrent access
+            quotation = Quotation.objects.select_for_update().get(id=quotation.id)
+            
+            # Extract claiming parameters
+            claim_type = validated_data.pop('claim_type', None)
+            claim_percentage = validated_data.pop('claim_percentage', 0)
+            selected_items = validated_data.pop('selected_items', {})
+            item_percentages = validated_data.pop('item_percentages', {})
+            validated_data.pop('invoice_items', None)  # Remove direct items for quotation-based creation
+            
+            # Calculate total amount being claimed
+            total_claimed_amount = Decimal('0')
+            
+            if claim_type == 'quantity' and selected_items:
+                for quotation_item in quotation.quotation_items.all():
+                    item_id_str = str(quotation_item.id)
+                    if item_id_str in selected_items and selected_items[item_id_str] > 0:
+                        selected_quantity = Decimal(str(selected_items[item_id_str]))
+                        total_claimed_amount += selected_quantity * quotation_item.unit_price
+            elif claim_type == 'percentage' and item_percentages:
+                for quotation_item in quotation.quotation_items.all():
+                    item_id_str = str(quotation_item.id)
+                    if item_id_str in item_percentages and float(item_percentages[item_id_str]) > 0:
+                        item_percentage = Decimal(str(item_percentages[item_id_str]))
+                        total_claimed_amount += (quotation_item.line_total * item_percentage) / Decimal('100')
+            elif claim_type == 'percentage' and claim_percentage > 0:
+                claiming_percentage = Decimal(str(claim_percentage))
+                for quotation_item in quotation.quotation_items.all():
+                    total_claimed_amount += (quotation_item.line_total * claiming_percentage) / Decimal('100')
+            
+            # Check if total amount exceeds remaining balance
+            if total_claimed_amount > quotation.remaining_invoice_balance:
+                raise serializers.ValidationError(
+                    f"Total claimed amount {total_claimed_amount} exceeds remaining balance {quotation.remaining_invoice_balance}"
+                )
+            
+            # Update quotation balance first
+            quotation.remaining_invoice_balance -= total_claimed_amount
+            quotation.invoice_claimed_amount += total_claimed_amount
+            quotation.save(update_fields=['remaining_invoice_balance', 'invoice_claimed_amount'])
+            
+            # Set customer and GST information from quotation
+            validated_data['customer'] = quotation.customer
+            validated_data['gst_type'] = quotation.gst_type
+            validated_data['customer_gstin'] = quotation.customer_gstin
+            validated_data['company_gstin'] = quotation.company_gstin
+            validated_data['quotation'] = quotation
+            
+            # Create the invoice
+            invoice = Invoice.objects.create(**validated_data)
+            
+            # Update quotation claim type if this is the first invoice
+            if not quotation.claim_type and claim_type:
+                quotation.claim_type = claim_type
+                quotation.save(update_fields=['claim_type'])
+            
+            # Create invoice items from quotation
+            items_to_create = []
+            
+            if claim_type == 'quantity' and selected_items:
+                # QUANTITY-BASED CLAIMING: Create invoice for selected quantities
+                for quotation_item in quotation.quotation_items.all():
+                    item_id_str = str(quotation_item.id)
+                    if item_id_str in selected_items and selected_items[item_id_str] > 0:
+                        selected_quantity = Decimal(str(selected_items[item_id_str]))
+                        claim_line_total = selected_quantity * quotation_item.unit_price
+                        
+                        items_to_create.append(InvoiceItem(
+                            invoice=invoice,
+                            product=quotation_item.product,
+                            product_name=quotation_item.product_name,
+                            product_code=quotation_item.product_code,
+                            description=quotation_item.description,
+                            hsn_sac_code=quotation_item.hsn_sac_code,
+                            quantity=selected_quantity,
+                            unit=quotation_item.unit,
+                            unit_price=quotation_item.unit_price,
+                            line_total=claim_line_total,
+                            gst_rate=quotation_item.gst_rate,
+                            line_number=quotation_item.line_number
+                        ))
+            elif claim_type == 'percentage' and item_percentages:
+                # ITEM-LEVEL PERCENTAGE CLAIMING: Create invoice for item-specific percentages
+                for quotation_item in quotation.quotation_items.all():
+                    item_id_str = str(quotation_item.id)
+                    if item_id_str in item_percentages and float(item_percentages[item_id_str]) > 0:
+                        item_percentage = Decimal(str(item_percentages[item_id_str]))
+                        claim_line_total = (quotation_item.line_total * item_percentage) / Decimal('100')
+                        claim_quantity = (quotation_item.quantity * item_percentage) / Decimal('100')
+                        
+                        items_to_create.append(InvoiceItem(
+                            invoice=invoice,
+                            product=quotation_item.product,
+                            product_name=quotation_item.product_name,
+                            product_code=quotation_item.product_code,
+                            description=quotation_item.description,
+                            hsn_sac_code=quotation_item.hsn_sac_code,
+                            quantity=claim_quantity,
+                            unit=quotation_item.unit,
+                            unit_price=quotation_item.unit_price,
+                            line_total=claim_line_total,
+                            gst_rate=quotation_item.gst_rate,
+                            line_number=quotation_item.line_number
+                        ))
+            elif claim_type == 'percentage' and claim_percentage > 0:
+                # LEGACY PERCENTAGE-BASED CLAIMING: Create invoice for overall percentage
+                claiming_percentage = Decimal(str(claim_percentage))
+                
+                for quotation_item in quotation.quotation_items.all():
+                    claim_line_total = (quotation_item.line_total * claiming_percentage) / Decimal('100')
+                    claim_quantity = (quotation_item.quantity * claiming_percentage) / Decimal('100')
                     
                     items_to_create.append(InvoiceItem(
                         invoice=invoice,
@@ -1777,46 +1840,23 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                         gst_rate=quotation_item.gst_rate,
                         line_number=quotation_item.line_number
                     ))
-        elif claim_type == 'percentage' and claim_percentage > 0:
-            # LEGACY PERCENTAGE-BASED CLAIMING: Create invoice for overall percentage
-            claiming_percentage = Decimal(str(claim_percentage))
+            else:
+                # VALIDATION: Ensure at least some items are selected
+                if claim_type == 'percentage':
+                    raise serializers.ValidationError("Please select at least one product with a percentage greater than 0")
+                elif claim_type == 'quantity':
+                    raise serializers.ValidationError("Please select at least one product with a quantity greater than 0")
             
-            for quotation_item in quotation.quotation_items.all():
-                claim_line_total = (quotation_item.line_total * claiming_percentage) / Decimal('100')
-                claim_quantity = (quotation_item.quantity * claiming_percentage) / Decimal('100')
-                
-                items_to_create.append(InvoiceItem(
-                    invoice=invoice,
-                    product=quotation_item.product,
-                    product_name=quotation_item.product_name,
-                    product_code=quotation_item.product_code,
-                    description=quotation_item.description,
-                    hsn_sac_code=quotation_item.hsn_sac_code,
-                    quantity=claim_quantity,
-                    unit=quotation_item.unit,
-                    unit_price=quotation_item.unit_price,
-                    line_total=claim_line_total,
-                    gst_rate=quotation_item.gst_rate,
-                    line_number=quotation_item.line_number
-                ))
-        else:
-            # VALIDATION: Ensure at least some items are selected
-            if claim_type == 'percentage':
-                raise serializers.ValidationError("Please select at least one product with a percentage greater than 0")
-            elif claim_type == 'quantity':
-                raise serializers.ValidationError("Please select at least one product with a quantity greater than 0")
-        
-        # Create items
-        if items_to_create:
-            InvoiceItem.objects.bulk_create(items_to_create)
-        
-        # Calculate totals
-        invoice.calculate_totals()
-        
-        # Update quotation balance tracking
-        quotation.update_balance_tracking()
-        
-
+            # Create items
+            if items_to_create:
+                InvoiceItem.objects.bulk_create(items_to_create)
+            
+            # Calculate totals
+            invoice.calculate_totals()
+            
+            return invoice
+    
+    def _create_direct_invoice(self, validated_data):
         """Create invoice directly without Purchase Order"""
         from decimal import Decimal
         

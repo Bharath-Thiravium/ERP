@@ -114,7 +114,7 @@ class ComplianceFormTemplateViewSet(viewsets.ModelViewSet):
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             
             # Create Form XIII template
-            template, created = ComplianceFormTemplate.objects.get_or_create(
+            form_xiii_template, created_xiii = ComplianceFormTemplate.objects.get_or_create(
                 company=session.service_user.company,
                 template_name='Form XIII - Register of Workmen',
                 defaults={
@@ -141,13 +141,50 @@ class ComplianceFormTemplateViewSet(viewsets.ModelViewSet):
                 }
             )
             
+            # Create Form 1 - Register of Fines template
+            form_i_template, created_i = ComplianceFormTemplate.objects.get_or_create(
+                company=session.service_user.company,
+                template_name='Form 1 - Register of Fines',
+                defaults={
+                    'form_type': 'register_of_fines',
+                    'template_structure': {
+                        'fields': [
+                            {'name': 'Serial Number', 'type': 'text'},
+                            {'name': 'Name of Employee', 'type': 'text'},
+                            {'name': 'Employee ID/Token Number', 'type': 'text'},
+                            {'name': 'Department/Section', 'type': 'text'},
+                            {'name': 'Date of Fine Imposed', 'type': 'date'},
+                            {'name': 'Nature of Act/Omission', 'type': 'text'},
+                            {'name': 'Amount of Fine Imposed', 'type': 'number'},
+                            {'name': 'Amount Realized', 'type': 'number'},
+                            {'name': 'Date of Realization', 'type': 'date'},
+                            {'name': 'Purpose for which Fine is Utilized', 'type': 'text'},
+                            {'name': 'Remarks', 'type': 'text'}
+                        ]
+                    },
+                    'generation_day': 1,
+                    'is_active': True
+                }
+            )
+            
+            templates_created = []
+            if created_xiii:
+                templates_created.append('Form XIII - Register of Workmen')
+            if created_i:
+                templates_created.append('Form 1 - Register of Fines')
+            
             return Response({
-                'message': 'Common templates created successfully',
-                'created': created
+                'message': 'Common templates processed successfully',
+                'templates_created': templates_created,
+                'total_created': len(templates_created)
             })
             
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            logger.error(f"Error creating common templates: {str(e)}")
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class MonthlyComplianceFormViewSet(viewsets.ModelViewSet):
     """ViewSet for managing monthly compliance forms"""

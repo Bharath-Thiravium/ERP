@@ -8,6 +8,7 @@ interface SimpleTaxInvoiceFormProps {
   purchaseOrder?: any
   quotation?: any
   invoiceData: any
+  editingInvoice?: any
   onClose: () => void
   onSuccess: () => void
 }
@@ -16,6 +17,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
   purchaseOrder,
   quotation,
   invoiceData,
+  editingInvoice,
   onClose,
   onSuccess
 }) => {
@@ -26,12 +28,14 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({})
-  const [itemPercentages, setItemPercentages] = useState<Record<number, number>>({})
+  const [itemPercentages, setItemPercentages] = useState<Record<number, number>>(
+    editingInvoice ? { [sourceData.quotation_items?.[0]?.id || 1]: 100 } : {}
+  )
   const [formData, setFormData] = useState({
-    invoice_date: new Date().toISOString().split('T')[0],
-    due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    reference: '',
-    notes: 'Tax invoice for GST filing'
+    invoice_date: editingInvoice?.invoice_date?.split('T')[0] || new Date().toISOString().split('T')[0],
+    due_date: editingInvoice?.due_date?.split('T')[0] || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    reference: editingInvoice?.reference || '',
+    notes: editingInvoice?.notes || 'Tax invoice for GST filing'
   })
 
   // Calculate amounts
@@ -104,12 +108,12 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
     e.preventDefault()
     
     if (loading) {
-      console.log('Form already submitting, preventing double submission')
+      console.log('⚠️ Form already submitting, preventing double submission')
       return // Prevent double submission
     }
     
     setLoading(true)
-    console.log('Starting tax invoice creation...')
+    console.log('🚀 Starting tax invoice creation...')
 
     try {
       // Validate that at least some items are selected
@@ -155,8 +159,10 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
       }
 
       // Use the specific quotation-based endpoint
-      const response = await fetch('/api/finance/invoices/', {
-        method: 'POST',
+      const url = editingInvoice ? `/api/finance/invoices/${editingInvoice.id}/` : '/api/finance/invoices/'
+      const method = editingInvoice ? 'PUT' : 'POST'
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionKey}`
@@ -171,7 +177,7 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
       
       await response.json()
       
-      toast.success('Tax Invoice created successfully!')
+      toast.success(editingInvoice ? 'Tax Invoice updated successfully!' : 'Tax Invoice created successfully!')
       onSuccess()
     } catch (error: any) {
       console.error('Error creating invoice:', error)
@@ -538,10 +544,10 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading || invoiceTotalAmount <= 0}
-              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading || (!editingInvoice && invoiceTotalAmount <= 0)}
+              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? 'Creating...' : 'Create Tax Invoice'}
+              {loading ? (editingInvoice ? '⏳ Updating...' : '⏳ Creating...') : (editingInvoice ? 'Update Tax Invoice' : 'Create Tax Invoice')}
             </button>
           </div>
         </form>

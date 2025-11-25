@@ -88,9 +88,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
     toast.success('Create invoices via Purchase Orders → Raise Invoice');
   };
 
-  const handleEditInvoice = () => {
-    toast.success('Edit functionality moved to PO workflow with simplified forms');
-  };
+
 
   return (
     <div className="space-y-6">
@@ -224,9 +222,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
 
       {/* Invoice List */}
       <InvoiceList
-
         onAddInvoice={handleAddInvoice}
-        onEditInvoice={() => handleEditInvoice()}
         sessionKey={sessionKey}
       />
 

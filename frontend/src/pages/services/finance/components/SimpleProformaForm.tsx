@@ -8,6 +8,7 @@ interface SimpleProformaFormProps {
   purchaseOrder?: any
   quotation?: any
   invoiceData: any
+  editingInvoice?: any
   onClose: () => void
   onSuccess: () => void
 }
@@ -16,6 +17,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
   purchaseOrder,
   quotation,
   invoiceData,
+  editingInvoice,
   onClose,
   onSuccess
 }) => {
@@ -26,12 +28,14 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({})
-  const [itemPercentages, setItemPercentages] = useState<Record<number, number>>({})
+  const [itemPercentages, setItemPercentages] = useState<Record<number, number>>(
+    editingInvoice ? { [sourceData.quotation_items?.[0]?.id || 1]: 100 } : {}
+  )
   const [formData, setFormData] = useState({
-    proforma_date: new Date().toISOString().split('T')[0],
-    due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    reference: '',
-    notes: 'Advance payment request'
+    proforma_date: editingInvoice?.proforma_date?.split('T')[0] || new Date().toISOString().split('T')[0],
+    due_date: editingInvoice?.due_date?.split('T')[0] || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    reference: editingInvoice?.reference || '',
+    notes: editingInvoice?.notes || 'Advance payment request'
   })
 
   // Calculate amounts
@@ -71,6 +75,12 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
     if (loading) {
       console.log('Form already submitting, preventing double submission')
       return // Prevent double submission
+    }
+    
+    // Disable form immediately to prevent double clicks
+    const submitButton = e.currentTarget.querySelector('button[type="submit"]') as HTMLButtonElement
+    if (submitButton) {
+      submitButton.disabled = true
     }
     
     setLoading(true)
@@ -166,8 +176,10 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
       }
 
       // Use the specific quotation-based endpoint
-      const response = await fetch('/api/finance/proforma-invoices/', {
-        method: 'POST',
+      const url = editingInvoice ? `/api/finance/proforma-invoices/${editingInvoice.id}/` : '/api/finance/proforma-invoices/'
+      const method = editingInvoice ? 'PUT' : 'POST'
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionKey}`
@@ -182,7 +194,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
       
       await response.json()
       
-      toast.success('Proforma Invoice created successfully!')
+      toast.success(editingInvoice ? 'Proforma Invoice updated successfully!' : 'Proforma Invoice created successfully!')
       onSuccess()
     } catch (error: any) {
       console.error('Error creating proforma:', error)
@@ -512,10 +524,10 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading || proformaAmount <= 0}
+              disabled={loading || (!editingInvoice && proformaAmount <= 0)}
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Creating...' : 'Create Proforma Invoice'}
+              {loading ? (editingInvoice ? 'Updating...' : 'Creating...') : (editingInvoice ? 'Update Proforma Invoice' : 'Create Proforma Invoice')}
             </button>
           </div>
         </form>

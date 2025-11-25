@@ -216,8 +216,8 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
     }
 
     try {
-      // Change status back to draft and mark as revised
-      await apiClient.updateFinanceQuotation(quotation.id, {
+      // Use PATCH for partial update instead of PUT
+      await apiClient.patch(`/api/finance/quotations/${quotation.id}/`, {
         status: 'draft',
         is_revised: true,
         session_key: sessionKey

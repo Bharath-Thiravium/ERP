@@ -16,10 +16,12 @@ import {
   Download,
   Mail,
   Send,
-  TrendingUp
+  TrendingUp,
+  RotateCcw
 } from 'lucide-react'
 // import ProformaInvoiceForm from './ProformaInvoiceForm' // Removed - using simplified forms
 import ProformaInvoiceView from './ProformaInvoiceView'
+import SimpleProformaForm from './SimpleProformaForm'
 import UpdatePaymentModal from './UpdatePaymentModal'
 import SendEmailModal from './SendEmailModal'
 import RejectInvoiceModal from './RejectInvoiceModal'
@@ -46,6 +48,10 @@ interface ProformaInvoice {
   item_count: number
   is_rejected?: boolean
   rejection_reason?: string
+  is_revised?: boolean
+  revision_count?: number
+  revised_at?: string
+  revised_by_name?: string
   proforma_items: Array<{
     product_name: string
     quantity: number
@@ -55,6 +61,19 @@ interface ProformaInvoice {
   }>
   created_at: string
   created_by_name: string
+  // Optional customer and address fields for edit forms
+  customer_details?: any
+  customer?: number
+  customer_email?: string
+  customer_phone?: string
+  customer_gstin?: string
+  billing_address_line1?: string
+  billing_address_line2?: string
+  billing_city?: string
+  billing_state?: string
+  billing_pincode?: string
+  billing_country?: string
+  shipping_address_details?: any
 }
 
 interface ProformaInvoiceListProps {
@@ -70,6 +89,8 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
   const [totalPages, setTotalPages] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [selectedProformaInvoice, setSelectedProformaInvoice] = useState<ProformaInvoice | null>(null)
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [selectedForEdit, setSelectedForEdit] = useState<ProformaInvoice | null>(null)
 
   const statusOptions = [
     { value: '', label: 'All Status' },
@@ -173,14 +194,68 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
     setShowForm(true)
   }
   
-  const handleEdit = (proformaInvoice: ProformaInvoice) => {
-    setSelectedProformaInvoice(proformaInvoice)
-    setShowForm(true)
+  const handleEdit = async (proformaInvoice: ProformaInvoice) => {
+    try {
+      // Fetch complete proforma invoice data with customer details
+      const response = await fetch(`/api/finance/proforma-invoices/${proformaInvoice.id}/`, {
+        headers: {
+          'Authorization': `Bearer ${sessionKey}`
+        }
+      })
+      
+      if (response.ok) {
+        const completeData = await response.json()
+        setSelectedForEdit(completeData)
+      } else {
+        setSelectedForEdit(proformaInvoice)
+      }
+    } catch (error) {
+      console.error('Error fetching complete proforma data:', error)
+      setSelectedForEdit(proformaInvoice)
+    }
+    setShowEditForm(true)
   }
 
   const handleReject = (proforma: ProformaInvoice) => {
     setSelectedForReject(proforma)
     setShowRejectModal(true)
+  }
+
+  const handleReverseProforma = async (proforma: ProformaInvoice) => {
+    if (!confirm(`Are you sure you want to reverse proforma ${proforma.proforma_number}? This will allow you to edit it once more.`)) {
+      return
+    }
+
+    try {
+      // Create mutable copy of request data
+      const requestData = {
+        status: 'draft',
+        is_revised: true,
+        revision_count: (proforma.revision_count || 0) + 1,
+        revised_at: new Date().toISOString(),
+        proforma_date: proforma.proforma_date,
+        due_date: proforma.due_date
+      }
+
+      const response = await fetch(`/api/finance/proforma-invoices/${proforma.id}/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionKey}`
+        },
+        body: JSON.stringify({ ...requestData, session_key: sessionKey })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to reverse proforma')
+      }
+
+      toast.success('Proforma reversed successfully! You can now edit it.')
+      fetchProformaInvoices()
+    } catch (error) {
+      console.error('Error reversing proforma:', error)
+      toast.error('Failed to reverse proforma')
+    }
   }
 
   const handleDownloadPDF = async (id: number, proformaNumber: string) => {
@@ -352,11 +427,18 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                       <div className="flex items-center">
                         <FileText className="w-5 h-5 text-blue-500 mr-3" />
                         <div>
-                          <div 
-                            onClick={() => handleView(proforma)}
-                            className="text-sm font-medium text-blue-600 hover:text-blue-800 cursor-pointer"
-                          >
-                            {proforma.proforma_number}
+                          <div className="text-sm font-medium text-gray-900 dark:text-white flex items-center space-x-2">
+                            <span 
+                              onClick={() => handleView(proforma)}
+                              className="text-blue-600 hover:text-blue-800 cursor-pointer"
+                            >
+                              {proforma.proforma_number}
+                            </span>
+                            {proforma.is_revised && (
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300">
+                                Revised
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm text-gray-500 dark:text-gray-400">
                             {proforma.item_count} item{proforma.item_count !== 1 ? 's' : ''}
@@ -433,13 +515,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={() => handleEdit(proforma)}
-                              className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                              title="Edit"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
+
                             <button
                               onClick={() => handleSendEmail(proforma)}
                               className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
@@ -454,6 +530,32 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                             >
                               <Download className="w-4 h-4" />
                             </button>
+                            {/* Draft status buttons */}
+                            {proforma.status === 'draft' && (
+                              <button
+                                onClick={() => handleEdit(proforma)}
+                                className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                                title="Edit"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            )}
+                            
+                            {/* Sent/Active status buttons */}
+                            {(proforma.status === 'sent' || proforma.status === 'active') && (
+                              <>
+                                {/* Only allow reverse if not already revised */}
+                                {!proforma.is_revised && (
+                                  <button
+                                    onClick={() => handleReverseProforma(proforma)}
+                                    className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
+                                    title="Reverse Proforma (Edit Once)"
+                                  >
+                                    <RotateCcw className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </>
+                            )}
                             <button
                               onClick={() => handleReject(proforma)}
                               className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
@@ -509,6 +611,67 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
         />
       )}
 
+      {/* Proforma Invoice Edit Form */}
+      {showEditForm && selectedForEdit && (
+        <SimpleProformaForm
+          editingInvoice={selectedForEdit}
+          invoiceData={{
+            claim_type: 'percentage',
+            claim_percentage: 100
+          }}
+          quotation={{
+            id: selectedForEdit.id,
+            quotation_number: selectedForEdit.proforma_number,
+            customer_details: selectedForEdit.customer_details || {
+              id: selectedForEdit.customer || selectedForEdit.id,
+              name: selectedForEdit.customer_name,
+              customer_code: selectedForEdit.customer_code,
+              email: selectedForEdit.customer_email || '',
+              phone: selectedForEdit.customer_phone || '',
+              gstin: selectedForEdit.customer_gstin || '',
+              project_area: selectedForEdit.customer_project_area,
+              billing_address_line1: selectedForEdit.billing_address_line1 || '',
+              billing_address_line2: selectedForEdit.billing_address_line2 || '',
+              billing_city: selectedForEdit.billing_city || '',
+              billing_state: selectedForEdit.billing_state || '',
+              billing_pincode: selectedForEdit.billing_pincode || '',
+              billing_country: selectedForEdit.billing_country || 'India'
+            },
+            shipping_address_details: selectedForEdit.shipping_address_details || 
+              (selectedForEdit.customer_details?.shipping_address_line1 ? {
+                address_line1: selectedForEdit.customer_details.shipping_address_line1,
+                address_line2: selectedForEdit.customer_details.shipping_address_line2 || '',
+                city: selectedForEdit.customer_details.shipping_city || '',
+                state: selectedForEdit.customer_details.shipping_state || '',
+                pincode: selectedForEdit.customer_details.shipping_pincode || '',
+                country: selectedForEdit.customer_details.shipping_country || 'India'
+              } : null),
+            quotation_items: selectedForEdit.proforma_items?.map(item => ({
+              id: Math.random(),
+              product: item.product_name,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              unit: item.unit,
+              unit_price: item.unit_price.toString(),
+              gst_rate: '18'
+            })) || [],
+            subtotal: selectedForEdit.subtotal,
+            total_amount: selectedForEdit.total_amount,
+            available_proforma_percentage: '100',
+            remaining_proforma_balance: selectedForEdit.total_amount
+          }}
+          onClose={() => {
+            setShowEditForm(false)
+            setSelectedForEdit(null)
+          }}
+          onSuccess={() => {
+            setShowEditForm(false)
+            setSelectedForEdit(null)
+            fetchProformaInvoices()
+          }}
+        />
+      )}
+
       {/* Update Payment Modal */}
       {showPaymentModal && selectedForPayment && (
         <UpdatePaymentModal
@@ -544,6 +707,11 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
           invoiceNumber={selectedForEmail.proforma_number}
           invoiceType="proforma_invoice"
           customerEmail=""
+          onSuccess={() => {
+            setShowEmailModal(false)
+            setSelectedForEmail(null)
+            fetchProformaInvoices()
+          }}
         />
       )}
 

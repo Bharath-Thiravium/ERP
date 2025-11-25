@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice - {{ invoice.invoice_number }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+        }
+        
+        .company-info {
+            text-align: right;
+            flex: 1;
+        }
+        
+        .company-name {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .company-details {
+            font-size: 11px;
+            line-height: 1.3;
+        }
+        
+        .invoice-title {
+            font-size: 48px;
+            font-weight: bold;
+            color: #333;
+            margin-top: 20px;
+        }
+        
+        .invoice-meta {
+            display: flex;
+            justify-content: space-between;
+            margin: 30px 0;
+        }
+        
+        .invoice-details, .customer-details {
+            width: 48%;
+        }
+        
+        .section-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .details-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border: 1px solid #ddd;
+        }
+        
+        .invoice-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+        }
+        
+        .invoice-table th {
+            background: #333;
+            color: white;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: bold;
+            border: 1px solid #333;
+        }
+        
+        .invoice-table td {
+            padding: 10px 8px;
+            border: 1px solid #ddd;
+            vertical-align: top;
+        }
+        
+        .invoice-table tbody tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .totals-section {
+            margin-top: 30px;
+            display: flex;
+            justify-content: flex-end;
+        }
+        
+        .totals-table {
+            width: 300px;
+            border-collapse: collapse;
+        }
+        
+        .totals-table td {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+        }
+        
+        .totals-table .total-label {
+            font-weight: bold;
+            background: #f8f9fa;
+        }
+        
+        .grand-total {
+            background: #333 !important;
+            color: white !important;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .notes-section {
+            margin-top: 40px;
+            border: 1px solid #ddd;
+            padding: 15px;
+        }
+        
+        .notes-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 10px;
+            color: #666;
+            border-top: 1px solid #ddd;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header Section -->
+        <div class="header">
+            <div class="invoice-title">Invoice</div>
+            <div class="company-info">
+                <div class="company-name">{{ company.name }}</div>
+                <div class="company-details">
+                    {{ company.address_line1 }}<br>
+                    {% if company.address_line2 %}{{ company.address_line2 }}<br>{% endif %}
+                    {{ company.city }}, {{ company.state }} - {{ company.pincode }}<br>
+                    {% if company.country %}{{ company.country }}<br>{% endif %}
+                    GST: {{ company.gst_number|default:"N/A" }}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Invoice and Customer Details -->
+        <div class="invoice-meta">
+            <div class="invoice-details">
+                <div class="section-title">Invoice Details</div>
+                <div class="details-box">
+                    <strong>Invoice #:</strong> {{ invoice.invoice_number }}<br>
+                    <strong>Date:</strong> {{ invoice.invoice_date|date:"d/m/Y" }}<br>
+                    {% if invoice.due_date %}<strong>Due Date:</strong> {{ invoice.due_date|date:"d/m/Y" }}<br>{% endif %}
+                    {% if invoice.reference %}<strong>Reference:</strong> {{ invoice.reference }}<br>{% endif %}
+                    {% if invoice.purchase_order %}<strong>PO Number:</strong> {{ invoice.purchase_order.po_number }}<br>{% endif %}
+                </div>
+            </div>
+            
+            <div class="customer-details">
+                <div class="section-title">Bill To</div>
+                <div class="details-box">
+                    <strong>{{ invoice.customer.name }}</strong><br>
+                    {{ invoice.customer.billing_address_line1 }}<br>
+                    {% if invoice.customer.billing_address_line2 %}{{ invoice.customer.billing_address_line2 }}<br>{% endif %}
+                    {{ invoice.customer.billing_city }}, {{ invoice.customer.billing_state }}<br>
+                    {{ invoice.customer.billing_pincode }}<br>
+                    {% if invoice.customer.phone %}<strong>Phone:</strong> {{ invoice.customer.phone }}<br>{% endif %}
+                    {% if invoice.customer.email %}<strong>Email:</strong> {{ invoice.customer.email }}<br>{% endif %}
+                    {% if invoice.customer.gstin %}<strong>GSTIN:</strong> {{ invoice.customer.gstin }}{% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Invoice Items Table -->
+        <table class="invoice-table">
+            <thead>
+                <tr>
+                    <th style="width: 8%;">S.No</th>
+                    <th style="width: 12%;">HSN/SAC</th>
+                    <th style="width: 35%;">Description</th>
+                    <th style="width: 15%;">Quantity/Duration</th>
+                    <th style="width: 15%;">Price</th>
+                    <th style="width: 15%;">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in invoice.invoice_items.all %}
+                <tr>
+                    <td class="text-center">{{ item.line_number }}</td>
+                    <td class="text-center">{{ item.hsn_sac_code|default:"-" }}</td>
+                    <td>
+                        <strong>{{ item.product_name }}</strong><br>
+                        {% if item.description %}{{ item.description }}{% endif %}
+                    </td>
+                    <td class="text-center">{{ item.quantity }} {{ item.unit }}</td>
+                    <td class="text-right">₹{{ item.unit_price|floatformat:2 }}</td>
+                    <td class="text-right">₹{{ item.line_total|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <!-- Totals Section -->
+        <div class="totals-section">
+            <table class="totals-table">
+                <tr>
+                    <td class="total-label">Subtotal:</td>
+                    <td class="text-right">₹{{ invoice.subtotal|floatformat:2 }}</td>
+                </tr>
+                {% if invoice.discount_amount > 0 %}
+                <tr>
+                    <td class="total-label">Discount {% if invoice.discount_percentage > 0 %}({{ invoice.discount_percentage }}%){% endif %}:</td>
+                    <td class="text-right">-₹{{ invoice.discount_amount|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                {% if invoice.shipping_charges > 0 %}
+                <tr>
+                    <td class="total-label">Shipping Charges:</td>
+                    <td class="text-right">₹{{ invoice.shipping_charges|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                {% if invoice.other_charges > 0 %}
+                <tr>
+                    <td class="total-label">Other Charges:</td>
+                    <td class="text-right">₹{{ invoice.other_charges|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                {% if invoice.gst_type == 'cgst_sgst' %}
+                <tr>
+                    <td class="total-label">CGST:</td>
+                    <td class="text-right">₹{{ invoice.cgst_amount|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <td class="total-label">SGST:</td>
+                    <td class="text-right">₹{{ invoice.sgst_amount|floatformat:2 }}</td>
+                </tr>
+                {% elif invoice.gst_type == 'igst' %}
+                <tr>
+                    <td class="total-label">IGST:</td>
+                    <td class="text-right">₹{{ invoice.igst_amount|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                <tr class="grand-total">
+                    <td>Total Amount:</td>
+                    <td class="text-right">₹{{ invoice.total_amount|floatformat:2 }}</td>
+                </tr>
+            </table>
+        </div>
+        
+        <!-- Notes Section -->
+        {% if invoice.notes %}
+        <div class="notes-section">
+            <div class="notes-title">Notes</div>
+            <div>{{ invoice.notes|linebreaks }}</div>
+        </div>
+        {% endif %}
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p>Thank you for your business!</p>
+            {% if company.email %}<p>Email: {{ company.email }}</p>{% endif %}
+            {% if company.phone %}<p>Phone: {{ company.phone }}</p>{% endif %}
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Quotation - TC Template</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0.5in;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.3;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .header {
+            margin-bottom: 20px;
+        }
+        
+        .quotation-title {
+            text-align: center;
+            font-size: 18pt;
+            font-weight: bold;
+            letter-spacing: 3px;
+            color: #1a472a;
+            margin-bottom: 20px;
+            border-bottom: 3px solid #27ae60;
+            padding-bottom: 10px;
+        }
+        
+        .company-section {
+            margin-bottom: 20px;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-left: 5px solid #27ae60;
+        }
+        
+        .company-name {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #1a472a;
+            margin-bottom: 5px;
+        }
+        
+        .company-tagline {
+            font-size: 12pt;
+            color: #27ae60;
+            font-style: italic;
+            margin-bottom: 10px;
+        }
+        
+        .company-details {
+            font-size: 11pt;
+            line-height: 1.4;
+        }
+        
+        .info-section {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+            background-color: #e8f5e8;
+            padding: 15px;
+            border: 2px solid #27ae60;
+            border-radius: 5px;
+        }
+        
+        .info-item {
+            flex: 1;
+            padding: 0 10px;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #1a472a;
+            font-size: 11pt;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            font-size: 10pt;
+        }
+        
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        .items-table th {
+            background-color: #1a472a;
+            color: white;
+            padding: 12px 8px;
+            border: 1px solid #1a472a;
+            font-size: 10pt;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .items-table td {
+            padding: 10px 8px;
+            border: 1px solid #bdc3c7;
+            font-size: 10pt;
+        }
+        
+        .items-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .total-section {
+            margin-top: 20px;
+            text-align: right;
+        }
+        
+        .total-table {
+            width: 50%;
+            margin-left: auto;
+            border-collapse: collapse;
+        }
+        
+        .total-table td {
+            padding: 10px 15px;
+            border: 1px solid #bdc3c7;
+            font-size: 11pt;
+        }
+        
+        .total-table .label {
+            background-color: #e8f5e8;
+            font-weight: bold;
+            text-align: right;
+            color: #1a472a;
+        }
+        
+        .total-table .amount {
+            text-align: right;
+        }
+        
+        .final-total {
+            background-color: #27ae60;
+            color: white;
+            font-weight: bold;
+            font-size: 12pt;
+        }
+        
+        .terms-section {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-left: 5px solid #27ae60;
+            border-radius: 5px;
+        }
+        
+        .terms-title {
+            font-weight: bold;
+            font-size: 12pt;
+            color: #1a472a;
+            margin-bottom: 15px;
+        }
+        
+        .terms-list {
+            list-style: none;
+            padding: 0;
+            counter-reset: item;
+        }
+        
+        .terms-list li {
+            margin: 10px 0;
+            padding-left: 25px;
+            position: relative;
+            line-height: 1.4;
+        }
+        
+        .terms-list li::before {
+            content: counter(item) ".";
+            counter-increment: item;
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+            color: #27ae60;
+        }
+        
+        .signature {
+            margin-top: 50px;
+            text-align: right;
+        }
+        
+        .signature-box {
+            border: 3px solid #27ae60;
+            padding: 25px;
+            width: 280px;
+            margin-left: auto;
+            text-align: center;
+            background-color: #e8f5e8;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="quotation-title">Q U O T A T I O N</div>
+        
+        <div class="company-section">
+            <div class="company-name">{{ company.name }}</div>
+            {% if company.tagline %}<div class="company-tagline">{{ company.tagline }}</div>{% endif %}
+            <div class="company-details">
+                {% if company.address %}{{ company.address }}<br>{% endif %}
+                {% if company.address_line2 %}{{ company.address_line2 }}<br>{% endif %}
+                {% if company.city %}{{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}<br>{% endif %}
+                {% if company.email %}Email: {{ company.email }}{% endif %}{% if company.phone %}{% if company.email %}, {% endif %}Ph: {{ company.phone }}{% endif %}<br>
+                {% if company.gst_number %}<strong>GSTIN: {{ company.gst_number }}</strong>{% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Information Section -->
+    <div class="info-section">
+        <div class="info-item">
+            <div class="info-label">Date</div>
+            <div class="info-value">{{ quotation.quotation_date|date:"d/M/Y" }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Bill To</div>
+            <div class="info-value">
+                <strong>{{ quotation.customer.name }}</strong><br>
+                {{ quotation.customer.billing_address_line1|default:"" }}<br>
+                {{ quotation.customer.billing_city|default:"" }}, {{ quotation.customer.billing_state|default:"" }} – {{ quotation.customer.billing_pincode|default:"" }}<br>
+                {% if quotation.customer.gstin %}GSTIN: {{ quotation.customer.gstin }}{% endif %}
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Ship To</div>
+            <div class="info-value">
+                {% if quotation.shipping_address %}
+                    {{ quotation.shipping_address.address_line1 }}<br>
+                    {{ quotation.shipping_address.city }}, {{ quotation.shipping_address.state }}
+                {% else %}
+                    Same as Bill To
+                {% endif %}
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Quotation#</div>
+            <div class="info-value"><strong style="color: #1a472a;">{{ quotation.quotation_number }}</strong></div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Project</div>
+            <div class="info-value">{{ quotation.reference|default:"Standard Project" }}</div>
+        </div>
+    </div>
+    
+    <!-- Items Table -->
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 8%;">S.No</th>
+                <th style="width: 12%;">HSN/SAC</th>
+                <th style="width: 40%;">Description of Goods/Services</th>
+                <th style="width: 10%;">Qty</th>
+                <th style="width: 8%;">Unit</th>
+                <th style="width: 12%;">Rate</th>
+                <th style="width: 10%;">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in quotation.quotation_items.all %}
+            <tr>
+                <td style="text-align: center;">{{ forloop.counter }}</td>
+                <td style="text-align: center;">{{ item.hsn_sac_code }}</td>
+                <td>
+                    <strong>{{ item.product_name }}</strong>
+                    {% if item.description %}
+                    <br><small style="color: #666;">{{ item.description }}</small>
+                    {% endif %}
+                </td>
+                <td style="text-align: center;">{{ item.quantity }}</td>
+                <td style="text-align: center;">{{ item.unit }}</td>
+                <td style="text-align: right;">₹{{ item.unit_price|floatformat:2 }}</td>
+                <td style="text-align: right;">₹{{ item.line_total|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <!-- Totals -->
+    <div class="total-section">
+        <table class="total-table">
+            <tr>
+                <td class="label">Subtotal:</td>
+                <td class="amount">₹{{ quotation.subtotal|floatformat:2 }}</td>
+            </tr>
+            {% if quotation.total_tax > 0 %}
+            <tr>
+                <td class="label">GST (18%):</td>
+                <td class="amount">₹{{ quotation.total_tax|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+            <tr class="final-total">
+                <td class="label">Total Amount:</td>
+                <td class="amount">₹{{ quotation.total_amount|floatformat:2 }}</td>
+            </tr>
+        </table>
+    </div>
+    
+    <!-- Terms and Conditions -->
+    <div class="terms-section">
+        <div class="terms-title">Terms & Conditions:</div>
+        <ol class="terms-list">
+            <li>Additional – GST 18% applicable.</li>
+            <li>30% of the amount to be released in advance against Proforma Invoice.</li>
+            <li>30% of the amount to be released upon submission of documents against Tax Invoice.</li>
+            <li>30% of the amount to be released when the department officially approves against Tax Invoice.</li>
+            <li>10% of the amount is to be released upon submission of the completion certificate.</li>
+            <li>100% of the Government Fees amount to be released in advance against Proforma Invoice.</li>
+            {% if quotation.terms_and_conditions %}
+            <li>{{ quotation.terms_and_conditions }}</li>
+            {% endif %}
+        </ol>
+    </div>
+    
+    <!-- Signature -->
+    <div class="signature">
+        <div class="signature-box">
+            <strong style="color: #1a472a;">For {{ company.name }}</strong><br><br><br>
+            <div style="border-top: 3px solid #27ae60; margin-top: 20px; padding-top: 10px; color: #1a472a;">
+                <strong>Authorized Signatory</strong>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

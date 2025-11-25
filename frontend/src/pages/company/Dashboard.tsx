@@ -64,6 +64,10 @@ import SecurityAuditLogs from '../../components/company/security/SecurityAuditLo
 import AdvancedSecurity from '../../components/company/security/AdvancedSecurity'
 import GovernmentAPICredentials from '../../components/company/government/GovernmentAPICredentials'
 import DocumentNumbering from '../../components/company/DocumentNumbering'
+import QuotationTemplateSettings from '../../components/company/QuotationTemplateSettings'
+import POTemplateSettings from '../../components/company/POTemplateSettings'
+import ProformaTemplateSettings from '../../components/company/ProformaTemplateSettings'
+import InvoiceTemplateSettings from '../../components/company/InvoiceTemplateSettings'
 import CompanyDetailsPage from './CompanyDetailsPage'
 
 const CompanyDashboard: React.FC = () => {
@@ -406,6 +410,10 @@ Website: https://athenas.co.in
     { id: 'general', label: 'General', icon: Shield },
     { id: 'security', label: 'Security', icon: Lock },
     { id: 'email', label: 'Email Settings', icon: Bell },
+    { id: 'quotation-templates', label: 'Quotation Templates', icon: FileText },
+    { id: 'po-templates', label: 'PO Templates', icon: FileText },
+    { id: 'proforma-templates', label: 'Proforma Templates', icon: FileText },
+    { id: 'invoice-templates', label: 'Invoice Templates', icon: FileText },
     { id: 'logo', label: 'Company Logo', icon: Image },
     { id: 'password', label: 'Password', icon: Key }
   ]
@@ -793,6 +801,22 @@ Website: https://athenas.co.in
                 // Refresh any necessary data
                 queryClient.invalidateQueries({ queryKey: ['company-notifications'] })
               }} />
+            )}
+
+            {activeSettingsTab === 'quotation-templates' && (
+              <QuotationTemplateSettings />
+            )}
+
+            {activeSettingsTab === 'po-templates' && (
+              <POTemplateSettings />
+            )}
+
+            {activeSettingsTab === 'proforma-templates' && (
+              <ProformaTemplateSettings />
+            )}
+
+            {activeSettingsTab === 'invoice-templates' && (
+              <InvoiceTemplateSettings />
             )}
 
             {activeSettingsTab === 'general' && (

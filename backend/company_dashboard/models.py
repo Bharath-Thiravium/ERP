@@ -12,6 +12,9 @@ import os
 # Import document numbering models
 from .document_numbering_models import DocumentNumberingConfig, DocumentNumberingHistory, FinancialYearSettings
 
+# Import quotation template models
+from .quotation_template_models import CompanyQuotationTemplateSettings
+
 class ServiceUtilization(models.Model):
     """Track service usage statistics for companies"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='service_utilizations')

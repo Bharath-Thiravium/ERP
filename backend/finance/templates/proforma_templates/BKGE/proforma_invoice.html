@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proforma Invoice - {{ proforma.proforma_number }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0.5in;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 11px;
+            line-height: 1.4;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            margin: -20px -20px 30px -20px;
+            text-align: center;
+        }
+        
+        .company-logo {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .company-name {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .company-details {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        
+        .document-title {
+            background-color: #f8f9fa;
+            color: #495057;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            padding: 15px;
+            margin: 20px 0;
+            border-left: 5px solid #667eea;
+        }
+        
+        .document-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+        
+        .info-box {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            width: 48%;
+        }
+        
+        .info-title {
+            font-weight: bold;
+            font-size: 14px;
+            color: #495057;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 5px;
+        }
+        
+        .info-content {
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .items-table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 8px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 11px;
+        }
+        
+        .items-table td {
+            border: 1px solid #dee2e6;
+            padding: 10px 8px;
+            text-align: center;
+            background-color: #fff;
+        }
+        
+        .items-table tr:nth-child(even) td {
+            background-color: #f8f9fa;
+        }
+        
+        .items-table .description {
+            text-align: left;
+            max-width: 200px;
+        }
+        
+        .items-table .amount {
+            text-align: right;
+            font-weight: bold;
+        }
+        
+        .totals-section {
+            margin-top: 30px;
+            display: flex;
+            justify-content: flex-end;
+        }
+        
+        .totals-box {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            width: 350px;
+        }
+        
+        .totals-table {
+            width: 100%;
+            font-size: 12px;
+        }
+        
+        .totals-table td {
+            padding: 8px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .totals-table .label {
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .totals-table .amount {
+            text-align: right;
+            width: 120px;
+            font-weight: bold;
+        }
+        
+        .total-row {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .total-row td {
+            padding: 12px 0;
+            border: none;
+        }
+        
+        .notes-section {
+            margin-top: 40px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            border-left: 5px solid #667eea;
+        }
+        
+        .notes-title {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 10px;
+            color: #6c757d;
+            border-top: 2px solid #dee2e6;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="company-logo">🏢</div>
+        <div class="company-name">{{ company.name }}</div>
+        <div class="company-details">
+            {{ company.address_line1 }}, {{ company.city }}, {{ company.state }} - {{ company.pincode }}<br>
+            GST: {{ company.gst_number }} | Email: {{ company.email }} | Ph: {{ company.phone }}
+        </div>
+    </div>
+
+    <div class="document-title">Proforma Invoice</div>
+
+    <div class="document-info">
+        <div class="info-box">
+            <div class="info-title">TO:</div>
+            <div class="info-content">
+                <strong>{{ proforma.customer.name }}</strong><br>
+                {{ proforma.customer.billing_address_line1 }}<br>
+                {% if proforma.customer.billing_address_line2 %}{{ proforma.customer.billing_address_line2 }}<br>{% endif %}
+                {{ proforma.customer.billing_city }}, {{ proforma.customer.billing_state }} - {{ proforma.customer.billing_pincode }}
+            </div>
+            
+            {% if proforma.shipping_address %}
+            <div class="info-title" style="margin-top: 20px;">DISPATCHED TO:</div>
+            <div class="info-content">
+                <strong>{{ proforma.customer.name }}</strong><br>
+                {{ proforma.shipping_address.address_line1 }}<br>
+                {% if proforma.shipping_address.address_line2 %}{{ proforma.shipping_address.address_line2 }}<br>{% endif %}
+                {{ proforma.shipping_address.city }}, {{ proforma.shipping_address.state }} - {{ proforma.shipping_address.pincode }}
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="info-box">
+            <div class="info-title">Proforma Invoice #</div>
+            <div class="info-content">
+                <strong style="font-size: 14px; color: #667eea;">{{ proforma.proforma_number }}</strong>
+            </div>
+            
+            <div class="info-title" style="margin-top: 15px;">DATE</div>
+            <div class="info-content">
+                <strong>{{ proforma.proforma_date|date:"d/m/Y" }}</strong>
+            </div>
+        </div>
+    </div>
+
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 6%;">S No</th>
+                <th style="width: 10%;">HSN/SAC</th>
+                <th style="width: 40%;">DESCRIPTION</th>
+                <th style="width: 14%;">QUANTITY/DURATION</th>
+                <th style="width: 15%;">PRICE</th>
+                <th style="width: 15%;">AMOUNT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in proforma.proforma_items.all %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>{{ item.hsn_sac_code }}</td>
+                <td class="description">
+                    <strong>{{ item.product_name }}</strong><br>
+                    {% if item.description %}
+                        <span style="color: #6c757d; font-size: 9px;">{{ item.description }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ item.quantity }} {{ item.unit }}</td>
+                <td class="amount">₹{{ item.unit_price|floatformat:2 }}</td>
+                <td class="amount">₹{{ item.line_total|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totals-section">
+        <div class="totals-box">
+            <table class="totals-table">
+                {% if proforma.discount_amount > 0 %}
+                <tr>
+                    <td class="label">Subtotal:</td>
+                    <td class="amount">₹{{ proforma.subtotal|add:proforma.discount_amount|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Discount ({{ proforma.discount_percentage }}%):</td>
+                    <td class="amount" style="color: #dc3545;">-₹{{ proforma.discount_amount|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                
+                {% if proforma.shipping_charges > 0 %}
+                <tr>
+                    <td class="label">Shipping Charges:</td>
+                    <td class="amount">₹{{ proforma.shipping_charges|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                
+                {% if proforma.other_charges > 0 %}
+                <tr>
+                    <td class="label">Other Charges:</td>
+                    <td class="amount">₹{{ proforma.other_charges|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                
+                <tr class="total-row">
+                    <td class="label">TOTAL</td>
+                    <td class="amount">₹{{ proforma.total_amount|floatformat:2 }}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    {% if proforma.notes %}
+    <div class="notes-section">
+        <div class="notes-title">Notes</div>
+        <div>{{ proforma.notes|linebreaks }}</div>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <p><strong>Professional Proforma Invoice</strong> | Generated on {{ "now"|date:"d/m/Y H:i" }}</p>
+        <p>This is a computer-generated document and does not require a signature.</p>
+    </div>
+</body>
+</html>

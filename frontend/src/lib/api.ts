@@ -1466,6 +1466,52 @@ export const apiClient = {
   createFinancialYearSettings: (data: any) =>
     api.post('/api/company-dashboard/document-numbering/financial-year-settings/', data),
 
+  // Quotation Template APIs
+  getQuotationTemplateInfo: () =>
+    api.get('/api/company-dashboard/quotation-templates/info/'),
+
+  getQuotationTemplateSettings: () =>
+    api.get('/api/company-dashboard/quotation-templates/'),
+
+  updateQuotationTemplateSettings: (data: { selected_template: string }) =>
+    api.post('/api/company-dashboard/quotation-templates/', data),
+
+  previewQuotationTemplate: (templateName: string) =>
+    api.get(`/api/company-dashboard/quotation-templates/preview/${templateName}/`),
+
+  // PO Template APIs
+  getPOTemplateSettings: () =>
+    api.get('/api/company-dashboard/po-template-settings/'),
+
+  updatePOTemplateSettings: (data: { selected_po_template: string }) =>
+    api.post('/api/company-dashboard/po-template-settings/', data),
+
+  previewPOTemplate: (templateName: string) =>
+    api.get(`/api/company-dashboard/po-template-preview/${templateName}/`),
+
+  generatePurchaseOrderPDF: (id: number, params?: any) =>
+    api.get(`/api/finance/purchase-orders/${id}/pdf/`, { params }),
+
+  // Proforma Template APIs
+  getProformaTemplateSettings: () =>
+    api.get('/api/company-dashboard/proforma-template-settings/'),
+
+  updateProformaTemplateSettings: (data: { selected_proforma_template: string }) =>
+    api.post('/api/company-dashboard/proforma-template-settings/', data),
+
+  previewProformaTemplate: (templateName: string) =>
+    api.get(`/api/company-dashboard/proforma-template-preview/${templateName}/`),
+
+  // Invoice Template APIs
+  getInvoiceTemplateSettings: () =>
+    api.get('/api/company-dashboard/invoice-template-settings/'),
+
+  updateInvoiceTemplateSettings: (data: { selected_invoice_template: string }) =>
+    api.post('/api/company-dashboard/invoice-template-settings/', data),
+
+  previewInvoiceTemplate: (templateName: string) =>
+    api.get(`/api/company-dashboard/invoice-template-preview/${templateName}/`),
+
   // Convenience methods for backward compatibility
   getEmployees: (params?: any) => apiClient.getHREmployees(params),
   createEmployee: (data: any) => apiClient.createHREmployee(data),

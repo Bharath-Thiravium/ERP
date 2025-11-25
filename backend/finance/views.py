@@ -2670,8 +2670,8 @@ def generate_quotation_pdf(request, quotation_id):
         return Response({'error': str(e)}, status=500)
 
 
-def generate_proforma_pdf(request, proforma_id):
-    """Generate PDF for a proforma invoice"""
+def generate_purchase_order_pdf(request, purchase_order_id):
+    """Generate PDF for a purchase order"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not session_key:
         session_key = request.GET.get('session_key')
@@ -2680,7 +2680,52 @@ def generate_proforma_pdf(request, proforma_id):
         return Response({'error': 'Session key required'}, status=400)
 
     try:
-        from .email_utils import generate_proforma_pdf_content
+        from .po_pdf_service import po_pdf_service
+        from django.http import HttpResponse
+
+        session = ServiceUserSession.objects.get(
+            session_key=session_key,
+            is_active=True
+        )
+        service_user = session.service_user
+
+        # Get purchase order
+        purchase_order = PurchaseOrder.objects.select_related('customer', 'company').prefetch_related('po_items').get(
+            id=purchase_order_id,
+            company=service_user.company
+        )
+
+        # Generate PDF using PO PDF service
+        pdf_content = po_pdf_service.generate_po_pdf(purchase_order)
+
+        # Create filename
+        filename = f"PurchaseOrder_{purchase_order.internal_po_number}.pdf"
+
+        # Return PDF response
+        response = HttpResponse(pdf_content, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    except ServiceUserSession.DoesNotExist:
+        return Response({'error': 'Invalid session'}, status=404)
+    except PurchaseOrder.DoesNotExist:
+        return Response({'error': 'Purchase order not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+def generate_proforma_pdf(request, proforma_id):
+    """Generate PDF for a proforma invoice using template selection"""
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not session_key:
+        session_key = request.GET.get('session_key')
+
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=400)
+
+    try:
+        from .proforma_pdf_service import proforma_pdf_service
+        from company_dashboard.quotation_template_models import CompanyQuotationTemplateSettings
         from django.http import HttpResponse
 
         session = ServiceUserSession.objects.get(
@@ -2695,14 +2740,21 @@ def generate_proforma_pdf(request, proforma_id):
             company=service_user.company
         )
 
-        # Generate PDF using same function as email (with logo and from address)
-        pdf_buffer = generate_proforma_pdf_content(proforma)
+        # Get company's selected proforma template
+        try:
+            template_settings = CompanyQuotationTemplateSettings.objects.get(company=service_user.company)
+            template_code = template_settings.selected_proforma_template
+        except CompanyQuotationTemplateSettings.DoesNotExist:
+            template_code = 'AS'  # Default template
+
+        # Generate PDF using proforma PDF service with selected template
+        pdf_content = proforma_pdf_service.generate_proforma_pdf(proforma, template_code)
 
         # Create filename
         filename = f"Proforma_{proforma.proforma_number}.pdf"
 
         # Return PDF response
-        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response = HttpResponse(pdf_content, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 

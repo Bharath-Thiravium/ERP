@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Quotation - BKGE Template</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0.5in;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.2;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .quotation-title {
+            font-size: 18pt;
+            font-weight: bold;
+            letter-spacing: 4px;
+            margin-bottom: 20px;
+            color: #2980b9;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        
+        .company-info {
+            text-align: right;
+            font-size: 11pt;
+            margin-bottom: 20px;
+            background-color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        
+        .company-name {
+            font-weight: bold;
+            font-size: 14pt;
+            color: #2980b9;
+            margin-bottom: 5px;
+        }
+        
+        .info-section {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border: 1px solid #bdc3c7;
+        }
+        
+        .customer-details {
+            width: 45%;
+        }
+        
+        .quotation-details {
+            width: 45%;
+            text-align: right;
+        }
+        
+        .section-label {
+            font-weight: bold;
+            font-size: 11pt;
+            color: #2980b9;
+            margin-bottom: 5px;
+        }
+        
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        .items-table th {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 8px;
+            border: 1px solid #2980b9;
+            font-size: 10pt;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .items-table td {
+            padding: 10px 8px;
+            border: 1px solid #bdc3c7;
+            font-size: 10pt;
+            text-align: center;
+        }
+        
+        .items-table td.description {
+            text-align: left;
+        }
+        
+        .items-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .total-section {
+            margin-top: 20px;
+        }
+        
+        .total-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .total-table td {
+            padding: 8px 15px;
+            border: 1px solid #bdc3c7;
+            font-size: 11pt;
+        }
+        
+        .total-table .label {
+            background-color: #ecf0f1;
+            font-weight: bold;
+            text-align: right;
+            width: 70%;
+        }
+        
+        .total-table .amount {
+            text-align: right;
+            width: 30%;
+        }
+        
+        .final-total {
+            background-color: #3498db;
+            color: white;
+            font-weight: bold;
+            font-size: 12pt;
+        }
+        
+        .notes {
+            margin-top: 20px;
+            font-size: 9pt;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .signature {
+            margin-top: 40px;
+            text-align: right;
+        }
+        
+        .signature-box {
+            border: 2px solid #3498db;
+            padding: 20px;
+            width: 250px;
+            margin-left: auto;
+            text-align: center;
+            background-color: #ecf0f1;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="quotation-title">Q U O T A T I O N</div>
+    </div>
+    
+    <!-- Company Information -->
+    <div class="company-info">
+        <div class="company-name">{{ company.name }}</div>
+        {% if company.address %}<div>{{ company.address }}</div>{% endif %}
+        {% if company.address_line2 %}<div>{{ company.address_line2 }}</div>{% endif %}
+        {% if company.city %}<div>{{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}</div>{% endif %}
+        <div>{% if company.email %}Email: {{ company.email }}{% endif %}{% if company.phone %}{% if company.email %} {% endif %}Ph: {{ company.phone }}{% endif %}</div>
+        {% if company.gst_number %}<div><strong>GSTIN: {{ company.gst_number }}</strong></div>{% endif %}
+    </div>
+    
+    <!-- Customer and Quotation Details -->
+    <div class="info-section">
+        <div class="customer-details">
+            <div class="section-label">BILL TO:</div>
+            <div style="font-weight: bold; font-size: 12pt; color: #2980b9; margin-bottom: 5px;">{{ quotation.customer.name }}</div>
+            <div>{{ quotation.customer.billing_address_line1|default:"" }}</div>
+            <div>{{ quotation.customer.billing_city|default:"" }}, {{ quotation.customer.billing_state|default:"" }} {{ quotation.customer.billing_pincode|default:"" }}</div>
+            
+            <div style="margin-top: 15px;">
+                <div class="section-label">DISPATCHED TO:</div>
+                <div>
+                    {% if quotation.shipping_address %}
+                        {{ quotation.shipping_address.address_line1 }}<br>
+                        {{ quotation.shipping_address.city }}, {{ quotation.shipping_address.state }}.
+                    {% else %}
+                        {{ quotation.customer.billing_city|default:"" }}, {{ quotation.customer.billing_state|default:"" }}.
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="quotation-details">
+            <div class="section-label">QUOTATION #</div>
+            <div style="font-weight: bold; color: #2980b9;">{{ quotation.quotation_number }}</div>
+            <br>
+            <div class="section-label">DATE</div>
+            <div>{{ quotation.quotation_date|date:"d/m/Y" }}</div>
+        </div>
+    </div>
+    
+    <!-- Items Table -->
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 8%;">S.No</th>
+                <th style="width: 35%;">Description</th>
+                <th style="width: 8%;">Qty</th>
+                <th style="width: 8%;">Unit</th>
+                <th style="width: 15%;">Rate</th>
+                <th style="width: 8%;">GST%</th>
+                <th style="width: 18%;">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in quotation.quotation_items.all %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td class="description"><strong>{{ item.product_name }}</strong></td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ item.unit }}</td>
+                <td style="text-align: right;">₹{{ item.unit_price|floatformat:0 }}</td>
+                <td>{{ item.gst_rate|floatformat:0 }}%</td>
+                <td style="text-align: right;">₹{{ item.line_total|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <!-- Totals -->
+    <div class="total-section">
+        <table class="total-table">
+            <tr>
+                <td class="label">Sub Total:</td>
+                <td class="amount">₹{{ quotation.subtotal|floatformat:2 }}</td>
+            </tr>
+            {% if quotation.total_tax > 0 %}
+            <tr>
+                <td class="label">GST Amount:</td>
+                <td class="amount">₹{{ quotation.total_tax|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+            <tr class="final-total">
+                <td class="label">Total Amount:</td>
+                <td class="amount">₹{{ quotation.total_amount|floatformat:2 }}</td>
+            </tr>
+        </table>
+    </div>
+    
+    <!-- Notes -->
+    <div class="notes">
+        <strong>Notes:</strong><br>
+        {% if quotation.notes %}
+            {{ quotation.notes|linebreaks }}
+        {% endif %}
+        Round Off: ₹0.00
+        {% if quotation.terms_and_conditions %}
+        <br><br>
+        <strong>Terms & Conditions:</strong><br>
+        {{ quotation.terms_and_conditions|linebreaks }}
+        {% endif %}
+    </div>
+    
+    <!-- Signature -->
+    <div class="signature">
+        <div class="signature-box">
+            <strong>For {{ company.name }}</strong><br><br><br>
+            <div style="border-top: 2px solid #3498db; margin-top: 20px; padding-top: 5px;">
+                Authorized Signatory
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -38,4 +38,16 @@ urlpatterns = [
     
     # Document Numbering System
     path('document-numbering/', include('company_dashboard.document_numbering_urls')),
+    
+    # Quotation Template Settings
+    path('', include('company_dashboard.quotation_template_urls')),
+    
+    # PO Template Settings
+    path('', include('company_dashboard.po_template_urls')),
+    
+    # Proforma Template Settings
+    path('', include('company_dashboard.proforma_template_urls')),
+    
+    # Invoice Template Settings
+    path('', include('company_dashboard.invoice_template_urls')),
 ]

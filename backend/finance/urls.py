@@ -52,6 +52,7 @@ urlpatterns = [
 
     # PDF Generation endpoints
     path('quotations/<int:quotation_id>/pdf/', views.generate_quotation_pdf, name='generate_quotation_pdf'),
+    path('purchase-orders/<int:purchase_order_id>/pdf/', views.generate_purchase_order_pdf, name='generate_purchase_order_pdf'),
     path('invoices/<int:invoice_id>/pdf/', views.generate_invoice_pdf, name='generate_invoice_pdf'),
     path('proforma-invoices/<int:proforma_id>/pdf/', views.generate_proforma_pdf, name='generate_proforma_pdf'),
 

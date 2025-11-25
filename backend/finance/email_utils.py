@@ -535,7 +535,29 @@ Email: {getattr(invoice.company, 'email', 'greenvolt.energy.pvt.ltd@gmail.com')}
         return False, f"❌ Email failed: {str(e)}"
 
 def generate_quotation_pdf_content(quotation):
-    """Generate professional PDF content for quotation"""
+    """Generate professional PDF content for quotation using WeasyPrint templates"""
+    try:
+        from .quotation_pdf_service import quotation_pdf_service
+        pdf_bytes = quotation_pdf_service.generate_quotation_pdf(quotation)
+        
+        # Check if PDF generation was successful
+        if pdf_bytes and len(pdf_bytes) > 0:
+            # Convert bytes to BytesIO buffer for compatibility
+            buffer = io.BytesIO(pdf_bytes)
+            return buffer
+        else:
+            print("WeasyPrint returned empty PDF, falling back to ReportLab")
+            return generate_quotation_pdf_content_reportlab(quotation)
+            
+    except Exception as e:
+        print(f"Error generating quotation PDF with WeasyPrint: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Fallback to original ReportLab implementation
+        return generate_quotation_pdf_content_reportlab(quotation)
+
+def generate_quotation_pdf_content_reportlab(quotation):
+    """Fallback ReportLab implementation for quotation PDF generation"""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
     styles = getSampleStyleSheet()

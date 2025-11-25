@@ -36,3 +36,4 @@ setuptools
 psutil
 sentence-transformers
 pyotp
+pdfplumber

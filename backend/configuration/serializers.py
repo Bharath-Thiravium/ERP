@@ -50,11 +50,11 @@ class BackupUploadSerializer(serializers.ModelSerializer):
     class Meta:
         model = BackupUpload
         fields = ['id', 'name', 'original_filename', 'file_path', 'file_size', 
-                 'file_size_mb', 'checksum', 'status', 'validation_result', 
+                 'file_size_mb', 'checksum', 'status', 'is_valid_backup', 
                  'company', 'company_name', 'uploaded_by', 'uploaded_by_name', 
                  'uploaded_at']
         read_only_fields = ['id', 'file_path', 'file_size', 'checksum', 'status',
-                           'validation_result', 'uploaded_by', 'uploaded_at']
+                           'is_valid_backup', 'uploaded_by', 'uploaded_at']
 
 
 class RestoreOperationSerializer(serializers.ModelSerializer):

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Briefcase, DollarSign, Users, FileText } from 'lucide-react'
+import { X, Briefcase, IndianRupee, Users, FileText } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { JobPosting } from '../../types/hrTypes'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -298,7 +298,7 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
             {/* Compensation */}
             <div className="space-y-4">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center space-x-2">
-                <DollarSign className="h-5 w-5 text-green-500" />
+                <IndianRupee className="h-5 w-5 text-green-500" />
                 <span>Compensation</span>
               </h3>
               

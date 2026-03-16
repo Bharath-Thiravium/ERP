@@ -96,8 +96,30 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
     setCurrentView('list')
   }
 
-  const handleDetailEdit = () => {
+  const handleDetailEdit = async () => {
     if (selectedQuotation) {
+      // If status is 'sent', call revise API first
+      if (selectedQuotation.status === 'sent') {
+        try {
+          await fetch(`/api/finance/quotations/${selectedQuotation.id}/`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${sessionKey}`
+            },
+            body: JSON.stringify({
+              status: 'draft',
+              is_revised: true,
+              session_key: sessionKey
+            })
+          })
+          toast.success('Quotation revised successfully! You can now edit it.')
+        } catch (error) {
+          console.error('Error revising quotation:', error)
+          toast.error('Failed to revise quotation')
+          return
+        }
+      }
       setCurrentView('edit')
     }
   }

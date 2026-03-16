@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { Briefcase, MapPin, DollarSign, Users, FileText, Clock, Building, Send, Upload, ChevronLeft, ChevronRight, User, GraduationCap } from 'lucide-react'
+import { Briefcase, MapPin, IndianRupee, Users, FileText, Clock, Building, Send, Upload, ChevronLeft, ChevronRight, User, GraduationCap } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
 import api from '../../lib/api'
@@ -262,7 +262,7 @@ const PublicJobDetail: React.FC<PublicJobDetailProps> = () => {
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
                   <div className="flex items-center space-x-3">
-                    <DollarSign className="h-5 w-5 text-blue-200" />
+                    <IndianRupee className="h-5 w-5 text-blue-200" />
                     <div>
                       <p className="text-sm text-blue-200">Salary Range</p>
                       <p className="font-semibold">₹{job.min_salary?.toLocaleString()} - ₹{job.max_salary?.toLocaleString()}</p>
@@ -301,7 +301,7 @@ const PublicJobDetail: React.FC<PublicJobDetailProps> = () => {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="flex items-center space-x-3">
-                    <DollarSign className="h-5 w-5 text-green-500" />
+                    <IndianRupee className="h-5 w-5 text-green-500" />
                     <div>
                       <p className="text-sm text-gray-500 dark:text-gray-400">Salary</p>
                       <p className="font-medium">₹{job.min_salary?.toLocaleString()} - ₹{job.max_salary?.toLocaleString()}</p>

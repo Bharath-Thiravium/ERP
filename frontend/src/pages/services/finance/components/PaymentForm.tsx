@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, CreditCard, DollarSign } from 'lucide-react';
+import { X, Save, CreditCard, IndianRupee } from 'lucide-react';
 
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
@@ -253,16 +253,28 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, ses
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.invoice_type) {
-      newErrors.invoice_type = 'Please select invoice type';
-    }
+    // Only validate invoice fields when creating new payment
+    if (!payment?.id) {
+      if (!formData.invoice_type) {
+        newErrors.invoice_type = 'Please select invoice type';
+      }
 
-    if (formData.invoice_type === 'tax_invoice' && !formData.invoice) {
-      newErrors.invoice = 'Please select a tax invoice';
-    }
+      if (formData.invoice_type === 'tax_invoice' && !formData.invoice) {
+        newErrors.invoice = 'Please select a tax invoice';
+      }
 
-    if (formData.invoice_type === 'proforma_invoice' && !formData.proforma_invoice) {
-      newErrors.proforma_invoice = 'Please select a proforma invoice';
+      if (formData.invoice_type === 'proforma_invoice' && !formData.proforma_invoice) {
+        newErrors.proforma_invoice = 'Please select a proforma invoice';
+      }
+
+      // Check outstanding amount based on invoice type
+      if (formData.invoice_type === 'tax_invoice' && selectedInvoice && parseFloat(formData.amount) > parseFloat(selectedInvoice.outstanding_amount)) {
+        newErrors.amount = 'Amount cannot exceed outstanding amount';
+      }
+
+      if (formData.invoice_type === 'proforma_invoice' && selectedProformaInvoice && parseFloat(formData.amount) > parseFloat(selectedProformaInvoice.outstanding_amount)) {
+        newErrors.amount = 'Amount cannot exceed outstanding amount';
+      }
     }
 
     if (!formData.payment_date) {
@@ -271,15 +283,6 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, ses
 
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
       newErrors.amount = 'Please enter a valid amount';
-    }
-
-    // Check outstanding amount based on invoice type
-    if (formData.invoice_type === 'tax_invoice' && selectedInvoice && parseFloat(formData.amount) > parseFloat(selectedInvoice.outstanding_amount)) {
-      newErrors.amount = 'Amount cannot exceed outstanding amount';
-    }
-
-    if (formData.invoice_type === 'proforma_invoice' && selectedProformaInvoice && parseFloat(formData.amount) > parseFloat(selectedProformaInvoice.outstanding_amount)) {
-      newErrors.amount = 'Amount cannot exceed outstanding amount';
     }
 
     if (!formData.payment_method) {
@@ -320,36 +323,42 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, ses
       // Remove invoice_type field as it's not needed by backend
       delete cleanFormData.invoice_type;
       
-      // Only send the relevant invoice field based on invoice type
-      if (formData.invoice_type === 'tax_invoice') {
-        // For tax invoice payments, remove proforma_invoice field completely
-        delete cleanFormData.proforma_invoice;
-        // Ensure invoice is a number, not string, and not empty
-        if (cleanFormData.invoice && cleanFormData.invoice !== '' && cleanFormData.invoice !== '0') {
-          cleanFormData.invoice = parseInt(cleanFormData.invoice.toString());
-        } else {
-          // If no valid invoice ID, this is an error
-          toast.error('Please select a valid tax invoice');
-          setLoading(false);
-          return;
-        }
-      } else if (formData.invoice_type === 'proforma_invoice') {
-        // For proforma invoice payments, remove invoice field completely
+      // When editing, remove invoice fields (backend doesn't allow changing invoice)
+      if (payment?.id) {
         delete cleanFormData.invoice;
-        // Ensure proforma_invoice is a number, not string, and not empty
-        if (cleanFormData.proforma_invoice && cleanFormData.proforma_invoice !== '' && cleanFormData.proforma_invoice !== '0') {
-          cleanFormData.proforma_invoice = parseInt(cleanFormData.proforma_invoice.toString());
+        delete cleanFormData.proforma_invoice;
+      } else {
+        // Only send the relevant invoice field based on invoice type when creating
+        if (formData.invoice_type === 'tax_invoice') {
+          // For tax invoice payments, remove proforma_invoice field completely
+          delete cleanFormData.proforma_invoice;
+          // Ensure invoice is a number, not string, and not empty
+          if (cleanFormData.invoice && cleanFormData.invoice !== '' && cleanFormData.invoice !== '0') {
+            cleanFormData.invoice = parseInt(cleanFormData.invoice.toString());
+          } else {
+            // If no valid invoice ID, this is an error
+            toast.error('Please select a valid tax invoice');
+            setLoading(false);
+            return;
+          }
+        } else if (formData.invoice_type === 'proforma_invoice') {
+          // For proforma invoice payments, remove invoice field completely
+          delete cleanFormData.invoice;
+          // Ensure proforma_invoice is a number, not string, and not empty
+          if (cleanFormData.proforma_invoice && cleanFormData.proforma_invoice !== '' && cleanFormData.proforma_invoice !== '0') {
+            cleanFormData.proforma_invoice = parseInt(cleanFormData.proforma_invoice.toString());
+          } else {
+            // If no valid proforma invoice ID, this is an error
+            toast.error('Please select a valid proforma invoice');
+            setLoading(false);
+            return;
+          }
         } else {
-          // If no valid proforma invoice ID, this is an error
-          toast.error('Please select a valid proforma invoice');
+          // If no invoice type selected, this is an error
+          toast.error('Please select an invoice type');
           setLoading(false);
           return;
         }
-      } else {
-        // If no invoice type selected, this is an error
-        toast.error('Please select an invoice type');
-        setLoading(false);
-        return;
       }
       
       console.log('Form data before cleaning:', formData);
@@ -439,33 +448,34 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, ses
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Invoice Type Selection */}
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Invoice Type *
-                  </label>
-                  {preSelectedInvoice ? (
-                    <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
-                      <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                        {preSelectedInvoice.type === 'tax_invoice' ? 'Tax Invoice' : 'Proforma Invoice'} - {preSelectedInvoice.number}
-                      </span>
-                    </div>
-                  ) : (
-                    <select
-                      value={formData.invoice_type}
-                      onChange={(e) => handleInvoiceTypeChange(e.target.value as 'tax_invoice' | 'proforma_invoice' | '')}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-athenas-blue focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                      disabled={!!payment?.id}
-                    >
-                      <option value="">Select Invoice Type</option>
-                      <option value="tax_invoice">Tax Invoice</option>
-                      <option value="proforma_invoice">Proforma Invoice</option>
-                    </select>
-                  )}
-                  {errors.invoice_type && (
-                    <p className="text-red-500 text-sm mt-1">{errors.invoice_type}</p>
-                  )}
-                </div>
+                {/* Invoice Type Selection - Only show when creating new payment */}
+                {!payment?.id && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Invoice Type *
+                    </label>
+                    {preSelectedInvoice ? (
+                      <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+                        <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                          {preSelectedInvoice.type === 'tax_invoice' ? 'Tax Invoice' : 'Proforma Invoice'} - {preSelectedInvoice.number}
+                        </span>
+                      </div>
+                    ) : (
+                      <select
+                        value={formData.invoice_type}
+                        onChange={(e) => handleInvoiceTypeChange(e.target.value as 'tax_invoice' | 'proforma_invoice' | '')}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-athenas-blue focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      >
+                        <option value="">Select Invoice Type</option>
+                        <option value="tax_invoice">Tax Invoice</option>
+                        <option value="proforma_invoice">Proforma Invoice</option>
+                      </select>
+                    )}
+                    {errors.invoice_type && (
+                      <p className="text-red-500 text-sm mt-1">{errors.invoice_type}</p>
+                    )}
+                  </div>
+                )}
 
                 {/* Tax Invoice Selection */}
                 {formData.invoice_type === 'tax_invoice' && !preSelectedInvoice && (
@@ -637,7 +647,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, ses
             {/* World-Class TDS Section */}
             <div className="bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 rounded-lg p-4 border border-yellow-200 dark:border-yellow-700">
               <div className="flex items-center mb-4">
-                <DollarSign className="w-5 h-5 text-yellow-600 mr-2" />
+                <IndianRupee className="w-5 h-5 text-yellow-600 mr-2" />
                 <h3 className="text-lg font-semibold text-yellow-900 dark:text-yellow-100">TDS (Tax Deducted at Source)</h3>
               </div>
 
@@ -751,7 +761,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ payment, onClose, onSave, ses
                       className="w-4 h-4 text-yellow-600 bg-gray-100 border-gray-300 rounded focus:ring-yellow-500 dark:focus:ring-yellow-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
                     />
                     <span className="ml-2 text-sm font-medium text-yellow-700 dark:text-yellow-300">
-                      TDS Certificate/Refund Received
+                      TDS Received
                     </span>
                   </label>
                 </div>

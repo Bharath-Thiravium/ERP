@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation } from '@tanstack/react-query'
 import {
-  Building2, Users, DollarSign, Globe, FileText, Phone, Mail, User,
+  Building2, Users, IndianRupee, Globe, FileText, Phone, Mail, User,
   Briefcase, Receipt, CreditCard, Star, Sparkles,
   CheckCircle, ArrowRight, Shield, Zap, LogOut, Upload, X, File
 } from 'lucide-react'
@@ -345,7 +345,7 @@ const DetailedInfoForm: React.FC = () => {
                     type="number"
                     label="Annual Revenue (USD) *"
                     placeholder="1000000"
-                    icon={<DollarSign className="h-4 w-4" />}
+                    icon={<IndianRupee className="h-4 w-4" />}
                     error={errors.annual_revenue?.message}
                     required
                   />

@@ -39,6 +39,85 @@ class SACCode(models.Model):
         return escape(f"{self.code} - {self.service_name}")
 
 
+# ---------------------------------------------------------------------------
+# Finance Numbering system models (per-company, per-module)
+# ---------------------------------------------------------------------------
+FINANCE_NUMBERING_MODULE_CHOICES = [
+    ('quotation', 'Quotation'),
+    ('purchase_order', 'Purchase Order'),
+    ('proforma_invoice', 'Proforma Invoice'),
+    ('invoice', 'Invoice'),
+    ('customer_payment', 'Customer Payment'),
+    ('purchase_request', 'Purchase Request'),
+    ('purchase_payment', 'Purchase Payment'),
+    ('vendor_invoice', 'Vendor Invoice'),
+]
+
+NUMBERING_RESET_SCOPE_CHOICES = [
+    ('never', 'Never'),
+    ('yearly', 'Yearly'),
+    ('monthly', 'Monthly'),
+]
+
+
+class NumberingRule(models.Model):
+    """Per-company numbering configuration for finance modules."""
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='numbering_rules')
+    module = models.CharField(max_length=50, choices=FINANCE_NUMBERING_MODULE_CHOICES)
+    template = models.CharField(max_length=255, help_text="Template supporting {PREFIX},{SEP},{YY},{YYYY},{MM},{SEQ}")
+    prefix = models.CharField(max_length=50, blank=True, default='')
+    separator = models.CharField(max_length=5, blank=True, default='-')
+    padding = models.PositiveIntegerField(default=4)
+    reset_scope = models.CharField(max_length=10, choices=NUMBERING_RESET_SCOPE_CHOICES, default='never')
+    start_from = models.PositiveIntegerField(default=1)
+    allow_manual_override = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_numbering_rules'
+        indexes = [
+            models.Index(fields=['company', 'module'], name='finance_numbering_rule_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'module'],
+                name='finance_numbering_rule_company_module_unique',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.company_id}:{self.module}"
+
+
+class NumberingCounter(models.Model):
+    """Counters tracked per company, module, and reset scope grouping."""
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='numbering_counters')
+    module = models.CharField(max_length=50)
+    scope_key = models.CharField(max_length=20, blank=True, default='')
+    next_value = models.PositiveIntegerField(default=1)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_numbering_counters'
+        indexes = [
+            models.Index(fields=['company', 'module', 'scope_key'], name='finance_numbering_counter_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'module', 'scope_key'],
+                name='finance_numbering_counter_scope_unique',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.company_id}:{self.module}:{self.scope_key}->{self.next_value}"
+
+
 class Product(models.Model):
     """Product/Service model for finance management"""
     PRODUCT_TYPE_CHOICES = [
@@ -572,7 +651,7 @@ class Quotation(models.Model):
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='quotations')
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='quotations')
-    quotation_number = models.CharField(max_length=50, unique=True, db_index=True)
+    quotation_number = models.CharField(max_length=50, db_index=True)
 
     # Quotation Details
     quotation_date = models.DateField()
@@ -682,6 +761,9 @@ class Quotation(models.Model):
         db_table = 'finance_quotations'
         ordering = ['-created_at']
         unique_together = ['company', 'quotation_number']
+        indexes = [
+            models.Index(fields=['company', 'quotation_number'], name='fin_qt_no_idx'),
+        ]
 
     def __str__(self):
         return escape(f"{self.quotation_number} - {self.customer.name}")
@@ -983,11 +1065,9 @@ class PurchaseOrder(models.Model):
     """Purchase Order/Work Order model created from quotations"""
 
     STATUS_CHOICES = [
-        ('draft', 'Draft'),
-        ('confirmed', 'Confirmed'),
-        ('in_progress', 'In Progress'),
+        ('active', 'Active'),
+        ('partially_completed', 'Partially Completed'),
         ('completed', 'Completed'),
-        ('cancelled', 'Cancelled'),
     ]
 
     CLAIM_TYPE_CHOICES = [
@@ -1024,7 +1104,7 @@ class PurchaseOrder(models.Model):
     po_file = models.FileField(upload_to='po_files/', null=True, blank=True, help_text="Client's PO/WO file attachment")
 
     # Internal tracking
-    internal_po_number = models.CharField(max_length=50, unique=True, db_index=True, help_text="Our internal PO number")
+    internal_po_number = models.CharField(max_length=50, db_index=True, help_text="Our internal PO number")
 
     # Quotation Details (copied from original quotation, optional for direct POs)
     quotation_date = models.DateField(null=True, blank=True)
@@ -1128,6 +1208,16 @@ class PurchaseOrder(models.Model):
         db_table = 'finance_purchase_orders'
         ordering = ['-created_at']
         unique_together = ['company', 'internal_po_number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'po_number'],
+                name='finance_po_company_po_number_uniq'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'po_number'], name='finance_po_company_po_idx'),
+            models.Index(fields=['company', 'internal_po_number'], name='fin_po_int_idx'),
+        ]
 
     def __str__(self):
         return escape(f"{self.internal_po_number} - {self.customer.name}")
@@ -1250,6 +1340,9 @@ class PurchaseOrder(models.Model):
             # Initialize remaining balances to 0 - they will be set properly after calculate_totals()
             self.remaining_proforma_balance = Decimal('0')
             self.remaining_invoice_balance = Decimal('0')
+            # Set default status to active for new POs
+            if not hasattr(self, 'status') or not self.status:
+                self.status = 'active'
 
         super().save(*args, **kwargs)
 
@@ -1315,19 +1408,19 @@ class PurchaseOrder(models.Model):
         """World-Class Sophisticated Balance Tracking - Cross-impact between proforma and tax invoices"""
         from decimal import Decimal
 
-        # Calculate total proforma claimed amount (subtotal only)
+        # Calculate total proforma claimed amount (subtotal only) - EXCLUDE rejected proformas
         proforma_subtotal_total = sum(
-            proforma.subtotal for proforma in self.proforma_invoices.all()
+            proforma.subtotal for proforma in self.proforma_invoices.filter(is_rejected=False)
         ) or Decimal('0')
 
-        # Calculate total tax invoice claimed amount (with tax)
+        # Calculate total tax invoice claimed amount (with tax) - EXCLUDE rejected invoices
         invoice_total = sum(
-            invoice.total_amount for invoice in self.invoices.all()
+            invoice.total_amount for invoice in self.invoices.filter(is_rejected=False)
         ) or Decimal('0')
 
-        # Calculate tax invoice subtotal impact (for cross-impact calculation)
+        # Calculate tax invoice subtotal impact (for cross-impact calculation) - EXCLUDE rejected invoices
         invoice_subtotal_total = sum(
-            invoice.subtotal for invoice in self.invoices.all()
+            invoice.subtotal for invoice in self.invoices.filter(is_rejected=False)
         ) or Decimal('0')
 
         # Update claimed amounts
@@ -1369,15 +1462,21 @@ class PurchaseOrder(models.Model):
         # PO completion is based ONLY on tax invoices (not proforma)
         if invoice_total == 0:
             self.invoice_status = 'not_started'
+            # PO status logic: active = can raise proforma invoices
+            self.status = 'active'
         elif self.remaining_invoice_balance <= 0:
-            self.invoice_status = 'completed'  # This determines PO completion
+            self.invoice_status = 'completed'
+            # PO status logic: completed = all invoices raised
+            self.status = 'completed'
         else:
             self.invoice_status = 'partial'
+            # PO status logic: partially_completed = can raise tax invoices
+            self.status = 'partially_completed'
 
         self.save(update_fields=[
             'proforma_claimed_amount', 'invoice_claimed_amount',
             'remaining_proforma_balance', 'remaining_invoice_balance',
-            'proforma_status', 'invoice_status'
+            'proforma_status', 'invoice_status', 'status'
         ])
 
     def get_world_class_payment_summary(self):
@@ -1550,8 +1649,8 @@ class PurchaseOrder(models.Model):
         if self.total_amount <= 0:
             return Decimal('0')
         
-        # If remaining balance is 0 but no invoices exist, this is a new PO - allow 100%
-        if self.remaining_invoice_balance == 0 and self.invoices.count() == 0:
+        # If remaining balance is 0 but no NON-REJECTED invoices exist, this is a new PO - allow 100%
+        if self.remaining_invoice_balance == 0 and self.invoices.filter(is_rejected=False).count() == 0:
             return Decimal('100')
         
         # Calculate the percentage of remaining invoice balance
@@ -1660,17 +1759,6 @@ class PurchaseOrderItem(models.Model):
 class ProformaInvoice(models.Model):
     """Proforma Invoice model - created from approved Purchase Orders"""
 
-    STATUS_CHOICES = [
-        ('draft', 'Draft'),
-        ('sent', 'Sent to Customer'),
-        ('approved', 'Approved by Customer'),
-        ('paid', 'Fully Paid'),
-        ('partially_paid', 'Partially Paid'),
-        ('overdue', 'Overdue'),
-        ('cancelled', 'Cancelled'),
-        ('rejected', 'Rejected'),
-    ]
-
     PAYMENT_STATUS_CHOICES = [
         ('unpaid', 'Unpaid'),
         ('partially_paid', 'Partially Paid'),
@@ -1685,7 +1773,7 @@ class ProformaInvoice(models.Model):
     quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='proforma_invoices', null=True, blank=True, help_text="Quotation this proforma is created from (if not from PO)")
 
     # Proforma Invoice Details
-    proforma_number = models.CharField(max_length=50, unique=True, db_index=True)
+    proforma_number = models.CharField(max_length=50, db_index=True)
     proforma_date = models.DateField()
     due_date = models.DateField()
     reference = models.CharField(max_length=100, blank=True)
@@ -1718,8 +1806,7 @@ class ProformaInvoice(models.Model):
     shipping_charges = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
     other_charges = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
 
-    # Status and Notes
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    # Notes
     notes = models.TextField(blank=True)
     terms_and_conditions = models.TextField(blank=True)
 
@@ -1799,6 +1886,9 @@ class ProformaInvoice(models.Model):
         db_table = 'finance_proforma_invoices'
         ordering = ['-created_at']
         unique_together = ['company', 'proforma_number']
+        indexes = [
+            models.Index(fields=['company', 'proforma_number'], name='finance_pi_company_no_idx'),
+        ]
 
     def __str__(self):
         return escape(f"{self.proforma_number} - {self.customer.name}")
@@ -1837,10 +1927,18 @@ class ProformaInvoice(models.Model):
                 else:
                     self.proforma_number = f"PI-{timezone.now().year}-000001"
 
+        # Automatically set payment status when creating proforma invoice
+        if self.pk is None:  # New proforma invoice
+            self.payment_status = 'unpaid'
+
         super().save(*args, **kwargs)
 
         # Update PO balance tracking after save
         if self.purchase_order:
+            # Auto-set PO to active when first proforma invoice is created
+            if self.purchase_order.status not in ['partially_completed', 'completed']:
+                self.purchase_order.status = 'active'
+                self.purchase_order.save(update_fields=['status'])
             self.purchase_order.update_balance_tracking()
         
         # Update quotation balance tracking after save
@@ -1896,7 +1994,6 @@ class ProformaInvoice(models.Model):
         
         # Mark as rejected
         self.is_rejected = True
-        self.status = 'rejected'
         self.rejection_reason = rejection_reason
         self.rejected_by = rejected_by_user
         self.rejected_at = timezone.now()
@@ -1913,7 +2010,7 @@ class ProformaInvoice(models.Model):
     @property
     def can_be_rejected(self):
         """Check if this proforma invoice can be rejected"""
-        return not self.is_rejected and self.status not in ['paid', 'cancelled']
+        return not self.is_rejected and self.payment_status not in ['paid']
 
     @property
     def customer_details(self):
@@ -2010,16 +2107,6 @@ class ProformaInvoiceItem(models.Model):
 class Invoice(models.Model):
     """World-Class Tax Invoice - Official invoice with tax, can be created simultaneously with Proforma"""
 
-    STATUS_CHOICES = [
-        ('draft', 'Draft'),
-        ('sent', 'Sent to Customer'),
-        ('paid', 'Paid'),
-        ('partially_paid', 'Partially Paid'),
-        ('overdue', 'Overdue'),
-        ('cancelled', 'Cancelled'),
-        ('rejected', 'Rejected'),
-    ]
-
     PAYMENT_STATUS_CHOICES = [
         ('unpaid', 'Unpaid'),
         ('partially_paid', 'Partially Paid'),
@@ -2035,7 +2122,7 @@ class Invoice(models.Model):
     quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True, help_text="Quotation this invoice is created from (if not from PO)")
 
     # Invoice Details
-    invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
+    invoice_number = models.CharField(max_length=50, db_index=True)
     invoice_date = models.DateField()
     due_date = models.DateField(null=True, blank=True)
     reference = models.CharField(max_length=100, blank=True)
@@ -2088,8 +2175,7 @@ class Invoice(models.Model):
         help_text="Type of invoice"
     )
 
-    # Status and Notes
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    # Notes
     notes = models.TextField(blank=True)
     terms_and_conditions = models.TextField(blank=True)
 
@@ -2123,9 +2209,10 @@ class Invoice(models.Model):
         unique_together = ['company', 'invoice_number']
         indexes = [
             models.Index(fields=['invoice_number']),
+            models.Index(fields=['company', 'invoice_number'], name='finance_inv_company_no_idx'),
             models.Index(fields=['company', 'invoice_date']),
             models.Index(fields=['customer', 'payment_status']),
-            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['created_at']),
         ]
 
     def __str__(self):
@@ -2184,11 +2271,22 @@ class Invoice(models.Model):
         if self.payment_status != 'paid' and self.due_date and self.due_date < timezone.now().date():
             self.payment_status = 'overdue'
 
+        # Automatically set status to active when creating invoice
+        if self.pk is None:  # New invoice
+            pass  # No status field anymore
+
         super().save(*args, **kwargs)
 
         # Update PO balance tracking after save
         if self.purchase_order:
+            # Auto-set PO to active when first invoice is created
+            if self.purchase_order.status not in ['partially_completed', 'completed']:
+                self.purchase_order.status = 'active'
+                self.purchase_order.save(update_fields=['status'])
             self.purchase_order.update_balance_tracking()
+            
+            # Update PO status based on completion
+            self._update_po_status_based_on_completion()
         
         # Update quotation balance tracking after save
         if self.quotation:
@@ -2258,7 +2356,6 @@ class Invoice(models.Model):
         
         # Mark as rejected
         self.is_rejected = True
-        self.status = 'rejected'
         self.rejection_reason = rejection_reason
         self.rejected_by = rejected_by_user
         self.rejected_at = timezone.now()
@@ -2275,7 +2372,24 @@ class Invoice(models.Model):
     @property
     def can_be_rejected(self):
         """Check if this invoice can be rejected"""
-        return not self.is_rejected and self.status not in ['paid', 'cancelled']
+        return not self.is_rejected and self.payment_status not in ['paid']
+
+    def _update_po_status_based_on_completion(self):
+        """Update PO status based on invoice completion percentage"""
+        if not self.purchase_order:
+            return
+            
+        po = self.purchase_order
+        completion_percentage = po.invoice_completion_percentage
+        
+        if completion_percentage == 0:
+            po.status = 'active'  # Can raise proforma invoices
+        elif completion_percentage < 100:
+            po.status = 'partially_completed'  # Can raise tax invoices
+        else:
+            po.status = 'completed'  # All invoices raised
+            
+        po.save(update_fields=['status'])
 
     @property
     def customer_details(self):
@@ -2327,7 +2441,7 @@ class Payment(models.Model):
     proforma_invoice = models.ForeignKey(ProformaInvoice, on_delete=models.CASCADE, related_name='payments', null=True, blank=True)
 
     # Payment Details
-    payment_number = models.CharField(max_length=50, unique=True, db_index=True)
+    payment_number = models.CharField(max_length=50, db_index=True)
     payment_date = models.DateField()
     amount = models.DecimalField(max_digits=15, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
@@ -2367,6 +2481,9 @@ class Payment(models.Model):
         db_table = 'finance_payments'
         ordering = ['-payment_date', '-created_at']
         unique_together = ['company', 'payment_number']
+        indexes = [
+            models.Index(fields=['company', 'payment_number'], name='finance_pay_company_no_idx'),
+        ]
 
     def __str__(self):
         invoice_info = f"INV: {self.invoice.invoice_number}" if self.invoice else f"PI: {self.proforma_invoice.proforma_number}" if self.proforma_invoice else "No Invoice"
@@ -2412,18 +2529,33 @@ class Payment(models.Model):
         amount = Decimal(str(self.amount)) if self.amount is not None else Decimal('0')
         tds_percentage = Decimal(str(self.tds_percentage)) if self.tds_percentage is not None else Decimal('0')
         tds_amount = Decimal(str(self.tds_amount)) if self.tds_amount is not None else Decimal('0')
+        net_amount_received = Decimal(str(self.net_amount_received)) if self.net_amount_received is not None else Decimal('0')
         
-        if tds_percentage > 0 and amount > 0:
+        # If net_amount_received is provided (from frontend), preserve it and calculate other values
+        if net_amount_received > 0 and tds_amount > 0:
+            # Frontend provided both net amount and TDS amount - preserve both
+            # Calculate total amount if not provided
+            if amount == 0:
+                self.amount = net_amount_received + tds_amount
+            # Calculate TDS percentage if not provided
+            if tds_percentage == 0 and amount > 0:
+                self.tds_percentage = (tds_amount / amount) * Decimal('100')
+        elif tds_percentage > 0 and amount > 0:
+            # Calculate TDS amount from percentage
             self.tds_amount = (amount * tds_percentage) / Decimal('100')
-            self.net_amount_received = amount - self.tds_amount
+            # Only calculate net_amount_received if not already provided
+            if net_amount_received == 0:
+                self.net_amount_received = amount - self.tds_amount
         elif tds_amount > 0:
-            # If TDS amount is provided directly, calculate net amount
-            self.net_amount_received = amount - tds_amount
+            # If TDS amount is provided directly, calculate net amount if not provided
+            if net_amount_received == 0:
+                self.net_amount_received = amount - tds_amount
             if amount > 0:
                 self.tds_percentage = (tds_amount / amount) * Decimal('100')
         else:
-            # No TDS
-            self.net_amount_received = amount
+            # No TDS - net amount equals total amount
+            if net_amount_received == 0:
+                self.net_amount_received = amount
 
         super().save(*args, **kwargs)
 
@@ -2488,6 +2620,71 @@ class Payment(models.Model):
 
             self.proforma_invoice.last_payment_date = self.payment_date
             self.proforma_invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'last_payment_date'])
+
+    def delete(self, *args, **kwargs):
+        """Override delete to update invoice payment status after deletion"""
+        # Store invoice references before deletion
+        invoice = self.invoice
+        proforma_invoice = self.proforma_invoice
+        
+        # Delete the payment
+        super().delete(*args, **kwargs)
+        
+        # Recalculate invoice payment status after deletion
+        from decimal import Decimal
+        
+        if invoice:
+            # Recalculate payments for this invoice
+            direct_payments = invoice.payments.filter(status='completed').aggregate(
+                total=models.Sum('amount')
+            )['total'] or Decimal('0')
+            
+            proforma_advances = Decimal('0')
+            if invoice.purchase_order:
+                proforma_advances = invoice.purchase_order.proforma_invoices.aggregate(
+                    total=models.Sum('paid_amount')
+                )['total'] or Decimal('0')
+            
+            total_paid = direct_payments + proforma_advances
+            invoice.paid_amount = total_paid
+            invoice_total = Decimal(str(invoice.total_amount)) if invoice.total_amount is not None else Decimal('0')
+            invoice.outstanding_amount = invoice_total - total_paid
+            
+            if invoice.outstanding_amount <= 0:
+                invoice.payment_status = 'paid'
+            elif total_paid > 0:
+                invoice.payment_status = 'partially_paid'
+            else:
+                invoice.payment_status = 'unpaid'
+            
+            # Get last payment date from remaining payments
+            last_payment = invoice.payments.filter(status='completed').order_by('-payment_date').first()
+            invoice.last_payment_date = last_payment.payment_date if last_payment else None
+            
+            invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'last_payment_date'])
+        
+        elif proforma_invoice:
+            # Recalculate payments for this proforma
+            total_payments = proforma_invoice.payments.filter(status='completed').aggregate(
+                total=models.Sum('amount')
+            )['total'] or Decimal('0')
+            
+            proforma_invoice.paid_amount = total_payments
+            proforma_total = Decimal(str(proforma_invoice.total_amount)) if proforma_invoice.total_amount is not None else Decimal('0')
+            proforma_invoice.outstanding_amount = proforma_total - total_payments
+            
+            if abs(proforma_invoice.outstanding_amount) <= Decimal('0.01'):
+                proforma_invoice.payment_status = 'paid'
+            elif total_payments > Decimal('0'):
+                proforma_invoice.payment_status = 'partially_paid'
+            else:
+                proforma_invoice.payment_status = 'unpaid'
+            
+            # Get last payment date from remaining payments
+            last_payment = proforma_invoice.payments.filter(status='completed').order_by('-payment_date').first()
+            proforma_invoice.last_payment_date = last_payment.payment_date if last_payment else None
+            
+            proforma_invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'last_payment_date'])
 
 
 class InvoiceItem(models.Model):
@@ -2654,7 +2851,7 @@ class PurchaseRequest(models.Model):
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='purchase_requests')
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='purchase_requests')
-    request_number = models.CharField(max_length=50, unique=True, db_index=True)
+    request_number = models.CharField(max_length=50, db_index=True)
     
     # Request Details
     request_date = models.DateField()
@@ -2696,6 +2893,9 @@ class PurchaseRequest(models.Model):
         db_table = 'finance_purchase_requests'
         ordering = ['-created_at']
         unique_together = ['company', 'request_number']
+        indexes = [
+            models.Index(fields=['company', 'request_number'], name='finance_pr_company_no_idx'),
+        ]
 
     def __str__(self):
         return escape(f"{self.request_number} - {self.vendor.name}")
@@ -2792,9 +2992,9 @@ class VendorInvoice(models.Model):
     purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendor_invoices')
     
     # Invoice details from vendor
-    vendor_invoice_number = models.CharField(max_length=100)
+    vendor_invoice_number = models.CharField(max_length=100, db_index=True)
     vendor_invoice_date = models.DateField()
-    our_reference_number = models.CharField(max_length=50, unique=True, db_index=True)
+    our_reference_number = models.CharField(max_length=50, db_index=True)
     
     # Due date
     due_date = models.DateField()
@@ -2842,6 +3042,16 @@ class VendorInvoice(models.Model):
         db_table = 'finance_vendor_invoices'
         ordering = ['-created_at']
         unique_together = ['company', 'our_reference_number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'vendor_invoice_number'],
+                name='finance_vendor_invoice_company_number_uniq'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'vendor_invoice_number'], name='fin_vi_no_idx'),
+            models.Index(fields=['company', 'our_reference_number'], name='finance_vi_company_ref_idx'),
+        ]
 
     def __str__(self):
         return escape(f"{self.our_reference_number} - {self.vendor.name}")
@@ -2959,7 +3169,7 @@ class PurchasePayment(models.Model):
     vendor_invoice = models.ForeignKey(VendorInvoice, on_delete=models.CASCADE, related_name='payments')
     
     # Payment Details
-    payment_number = models.CharField(max_length=50, unique=True, db_index=True)
+    payment_number = models.CharField(max_length=50, db_index=True)
     payment_date = models.DateField()
     amount = models.DecimalField(max_digits=15, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
@@ -2988,6 +3198,9 @@ class PurchasePayment(models.Model):
         db_table = 'finance_purchase_payments'
         ordering = ['-payment_date', '-created_at']
         unique_together = ['company', 'payment_number']
+        indexes = [
+            models.Index(fields=['company', 'payment_number'], name='finance_pp_company_no_idx'),
+        ]
 
     def __str__(self):
         return escape(f"{self.payment_number} - ₹{self.amount} - {self.vendor.name}")
@@ -3050,6 +3263,3 @@ class PurchasePayment(models.Model):
         
         self.vendor_invoice.last_payment_date = self.payment_date
         self.vendor_invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'status', 'last_payment_date'])
-
-
-

@@ -3,6 +3,7 @@ import { X, Shield } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
 import toast from 'react-hot-toast'
+import { Modal } from '../../../../components/ui/Modal'
 
 interface ComplianceRuleModalProps {
   isOpen: boolean
@@ -72,21 +73,26 @@ export const ComplianceRuleModal: React.FC<ComplianceRuleModalProps> = ({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center">
-            <Shield className="h-6 w-6 text-blue-500 mr-3" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              {rule ? 'Edit Compliance Rule' : 'Add New Compliance Rule'}
-            </h2>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="h-6 w-6" />
-          </button>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      size="lg"
+      className="max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-xl"
+      bodyClassName="p-0"
+    >
+      <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center">
+          <Shield className="h-6 w-6 text-blue-500 mr-3" />
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+            {rule ? 'Edit Compliance Rule' : 'Add New Compliance Rule'}
+          </h2>
         </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <X className="h-6 w-6" />
+        </button>
+      </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -168,8 +174,7 @@ export const ComplianceRuleModal: React.FC<ComplianceRuleModalProps> = ({
               {loading ? 'Saving...' : rule ? 'Update Rule' : 'Create Rule'}
             </button>
           </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   )
 }

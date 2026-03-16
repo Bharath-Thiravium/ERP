@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, RotateCcw, X, ShoppingCart, Receipt, CheckCircle, Clock, TrendingUp, XCircle } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, X, ShoppingCart, IndianRupee, CheckCircle, Clock, TrendingUp, XCircle } from 'lucide-react'
 import QuotationEdit from './QuotationEdit'
 import SendEmailModal from './SendEmailModal'
 import RejectInvoiceModal from './RejectInvoiceModal'
@@ -15,6 +15,11 @@ interface Quotation {
   customer_code: string
   customer_project_area?: string
   customer_email?: string
+  customer_shipping_addresses?: Array<{
+    type: string
+    address: string
+    is_default?: boolean
+  }>
   quotation_date: string
   valid_until: string
   status: string
@@ -61,6 +66,8 @@ interface QuotationListProps {
   onRaiseInvoice?: (quotation: Quotation) => void
 }
 
+const QUOTATIONS_PAGE_SIZE = 5
+
 const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCreatePO, onRaiseInvoice }) => {
   const { sessionKey } = useServiceUserStore()
   const [quotations, setQuotations] = useState<Quotation[]>([])
@@ -71,7 +78,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
-  const [hoveredQuotation, setHoveredQuotation] = useState<number | null>(null)
+  const [hoveredQuotation, setHoveredQuotation] = useState<number | string | null>(null)
   const [editingQuotationId, setEditingQuotationId] = useState<number | null>(null)
   const [emailQuotation, setEmailQuotation] = useState<Quotation | null>(null)
   const [rejectingQuotation, setRejectingQuotation] = useState<Quotation | null>(null)
@@ -94,6 +101,12 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
     { value: 'converted', label: 'Converted' },
   ]
 
+  const resetToFirstPage = () => {
+    if (currentPage !== 1) {
+      setCurrentPage(1)
+    }
+  }
+
   // Debounce search term
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -109,25 +122,35 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
       return
     }
 
+    // Don't fetch page 2+ if we haven't loaded page 1 yet
+    if (page > 1 && totalPages === 1) {
+      return
+    }
+
     try {
       setLoading(true)
       const params = new URLSearchParams()
       params.append('session_key', sessionKey)
       params.append('page', page.toString())
+      params.append('page_size', QUOTATIONS_PAGE_SIZE.toString())
       if (debouncedSearchTerm) params.append('search', debouncedSearchTerm)
       if (statusFilter) params.append('status', statusFilter)
 
-      console.log('🔍 DEBUG: Fetching quotations with session key:', sessionKey.substring(0, 10) + '...')
-      console.log('🔍 DEBUG: API URL:', `/api/finance/quotations/?${params.toString()}`)
-
       const response = await apiClient.getFinanceQuotations(Object.fromEntries(params))
 
-
-
       const quotations = response.data.results || []
+      
+      // Debug: Check if customer_shipping_addresses is in the response
+      console.log('First Quotation customer data:', quotations[0] ? {
+        customer_name: quotations[0].customer_name,
+        customer_shipping_addresses: quotations[0].customer_shipping_addresses,
+        hasAddresses: quotations[0].customer_shipping_addresses && quotations[0].customer_shipping_addresses.length > 0
+      } : 'No quotations found')
+      
       setQuotations(quotations)
       setTotalCount(response.data.count || 0)
-      setTotalPages(Math.ceil((response.data.count || 0) / 5))
+      const calculatedPages = Math.ceil((response.data.count || 0) / QUOTATIONS_PAGE_SIZE)
+      setTotalPages(Math.max(1, calculatedPages))
       
       // Calculate metrics
       const total = quotations.length
@@ -138,8 +161,18 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
       const conversionRate = total > 0 ? ((approved / total) * 100) : 0
       
       setMetrics({ total, pending, approved, rejected, totalValue, conversionRate })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching quotations:', error)
+
+      const isInvalidPage = error?.response?.status === 404 &&
+        typeof error?.response?.data?.detail === 'string' &&
+        error.response.data.detail.toLowerCase().includes('invalid page')
+
+      if (isInvalidPage && page > 1) {
+        setCurrentPage(page - 1)
+        return
+      }
+
       setQuotations([])
     } finally {
       setLoading(false)
@@ -149,13 +182,6 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
   useEffect(() => {
     fetchQuotations(currentPage)
   }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter])
-
-  // Reset to first page when search/filter changes
-  useEffect(() => {
-    if (currentPage !== 1) {
-      setCurrentPage(1)
-    }
-  }, [debouncedSearchTerm, statusFilter])
 
   const handleDelete = async (quotation: Quotation) => {
     if (!confirm(`Are you sure you want to delete quotation ${quotation.quotation_number}?`)) {
@@ -170,8 +196,11 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
     try {
       await apiClient.deleteFinanceQuotation(quotation.id, { session_key: sessionKey })
 
-      // Refresh the list
-      fetchQuotations(currentPage)
+      if (quotations.length === 1 && currentPage > 1) {
+        setCurrentPage(currentPage - 1)
+      } else {
+        fetchQuotations(currentPage)
+      }
       alert('Quotation deleted successfully!')
     } catch (error) {
       console.error('Error deleting quotation:', error)
@@ -205,13 +234,13 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
     }
   }
 
-  const handleReverseQuotation = async (quotation: Quotation) => {
+  const handleReviseQuotation = async (quotation: Quotation) => {
     if (!sessionKey) {
       alert('Session expired. Please login again.')
       return
     }
 
-    if (!confirm(`Are you sure you want to reverse quotation ${quotation.quotation_number}? This will allow you to edit it once more.`)) {
+    if (!confirm(`Are you sure you want to revise quotation ${quotation.quotation_number}? This will allow you to edit it once more.`)) {
       return
     }
 
@@ -223,11 +252,11 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
         session_key: sessionKey
       })
 
-      toast.success('Quotation reversed successfully! You can now edit it.')
+      toast.success('Quotation revised successfully! You can now edit it.')
       fetchQuotations(currentPage)
     } catch (error) {
       console.error('Error reversing quotation:', error)
-      toast.error('Failed to reverse quotation')
+      toast.error('Failed to revise quotation')
     }
   }
 
@@ -364,7 +393,10 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                 type="text"
                 placeholder="Search quotations by number, customer name, or reference..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  resetToFirstPage()
+                  setSearchTerm(e.target.value)
+                }}
                 className="w-full pl-10 pr-12 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               />
               {/* Show loading indicator when search is being debounced */}
@@ -378,7 +410,10 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
           <div className="sm:w-48">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                resetToFirstPage()
+                setStatusFilter(e.target.value)
+              }}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               {statusOptions.map(option => (
@@ -453,9 +488,9 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                             <Package className="w-3 h-3 inline mr-1" />
                             {quotation.item_count} item{quotation.item_count !== 1 ? 's' : ''}
 
-                            {/* Tooltip */}
+                            {/* Items Tooltip */}
                             {hoveredQuotation === quotation.id && (
-                              <div className="fixed z-[9999] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 min-w-80 max-w-96 pointer-events-none"
+                              <div className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 min-w-80 max-w-96 pointer-events-none"
                                    style={{
                                      left: '50%',
                                      top: '50%',
@@ -485,14 +520,58 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                                 </div>
                               </div>
                             )}
+                            
+                            {/* Customer Address Tooltip */}
+                            {hoveredQuotation === `customer-${quotation.id}` && quotation.customer_shipping_addresses && quotation.customer_shipping_addresses.length > 0 && (
+                              <div className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 max-w-2xl pointer-events-none"
+                                   style={{
+                                     left: '50%',
+                                     top: '50%',
+                                     transform: 'translate(-50%, -50%)',
+                                   }}>
+                                <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3 pb-2 border-b border-gray-200 dark:border-gray-600">
+                                  {quotation.customer_name}
+                                </div>
+                                <div className="space-y-2 max-h-96 overflow-y-auto">
+                                  {quotation.customer_shipping_addresses.map((addr, index) => (
+                                    <div key={index} className="text-xs">
+                                      <div className={`font-semibold mb-1 flex items-center gap-1 ${
+                                        addr.type === 'Billing' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'
+                                      }`}>
+                                        {addr.type === 'Billing' ? '🏠' : '🏢'} {addr.type}
+                                        {addr.is_default && (
+                                          <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-1 py-0.5 rounded text-xs font-medium">
+                                            DEFAULT
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-gray-700 dark:text-gray-300 leading-relaxed pl-4">
+                                        {addr.address}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {quotation.customer_name}
-                          </div>
+                          {/* Customer Name with Tooltip */}
+                          {quotation.customer_shipping_addresses && quotation.customer_shipping_addresses.length > 0 ? (
+                            <div 
+                              className="text-sm font-medium text-blue-600 cursor-pointer border-b border-dotted border-blue-600 hover:text-blue-800"
+                              onMouseEnter={() => setHoveredQuotation(`customer-${quotation.id}`)}
+                              onMouseLeave={() => setHoveredQuotation(null)}
+                            >
+                              {quotation.customer_name}
+                            </div>
+                          ) : (
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              {quotation.customer_name}
+                            </div>
+                          )}
                           <div className="text-sm text-gray-500 dark:text-gray-400">
                             {quotation.customer_code}
                             {quotation.customer_project_area && (
@@ -615,7 +694,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                                   className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
                                   title="Raise Invoice"
                                 >
-                                  <Receipt className="w-4 h-4" />
+                                  <IndianRupee className="w-4 h-4" />
                                 </button>
                               )}
                               {/* Show status indicators when actions are taken */}
@@ -632,14 +711,14 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                               >
                                 <Copy className="w-4 h-4" />
                               </button>
-                              {/* Only allow reverse if not already revised AND no business transactions */}
+                              {/* Only allow revise if not already revised AND no business transactions */}
                               {!quotation.is_revised && !quotation.po_created && !quotation.invoice_created && !quotation.proforma_created && (
                                 <button
-                                  onClick={() => handleReverseQuotation(quotation)}
+                                  onClick={() => handleReviseQuotation(quotation)}
                                   className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
-                                  title="Reverse Quotation (Edit Once)"
+                                  title="Revise Quotation (Edit Once)"
                                 >
-                                  <RotateCcw className="w-4 h-4" />
+                                  <Edit className="w-4 h-4" />
                                 </button>
                               )}
                               {/* Only show reject if no PO or invoices created */}
@@ -704,7 +783,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                   </button>
                   <button
                     onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                    disabled={currentPage === totalPages}
+                    disabled={currentPage >= totalPages}
                     className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Next
@@ -713,8 +792,8 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                 <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm text-gray-700 dark:text-gray-300">
-                      Showing <span className="font-medium">{((currentPage - 1) * 5) + 1}</span> to{' '}
-                      <span className="font-medium">{Math.min(currentPage * 5, totalCount)}</span> of{' '}
+                      Showing <span className="font-medium">{((currentPage - 1) * QUOTATIONS_PAGE_SIZE) + 1}</span> to{' '}
+                      <span className="font-medium">{Math.min(currentPage * QUOTATIONS_PAGE_SIZE, totalCount)}</span> of{' '}
                       <span className="font-medium">{totalCount}</span> results
                     </p>
                   </div>
@@ -742,7 +821,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                       ))}
                       <button
                         onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                        disabled={currentPage === totalPages}
+                        disabled={currentPage >= totalPages || !quotations.length}
                         className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-medium text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Next

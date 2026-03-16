@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, CreditCard, User, DollarSign, Eye, Edit, Trash2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Plus, Search, CreditCard, User, IndianRupee, Eye, Edit, Trash2 } from 'lucide-react';
 
 import { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
@@ -24,12 +23,12 @@ interface Payment {
 interface PaymentListProps {
   onAddPayment: () => void;
   onEditPayment: (payment: Payment) => void;
+  onViewPayment: (payment: Payment) => void;
   sessionKey: string;
 }
 
-const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, sessionKey }) => {
+const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, onViewPayment, sessionKey }) => {
 
-  const navigate = useNavigate();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -264,7 +263,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <DollarSign className="w-4 h-4 text-gray-400 mr-2" />
+                        <IndianRupee className="w-4 h-4 text-gray-400 mr-2" />
                         <div className="text-sm font-medium text-gray-900">
                           ₹{parseFloat(payment.amount || '0').toFixed(2)}
                         </div>
@@ -286,7 +285,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
                         <button
-                          onClick={() => navigate(`/services/finance/payments/${payment.id}`)}
+                          onClick={() => onViewPayment(payment)}
                           className="text-athenas-blue hover:text-blue-600 transition-colors"
                           title="View Payment"
                         >

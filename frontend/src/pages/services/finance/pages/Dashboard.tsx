@@ -16,7 +16,6 @@ import {
   Moon,
   Shield,
   RefreshCw,
-  MoreVertical,
   ExternalLink,
   ChevronRight,
   Banknote,
@@ -43,6 +42,9 @@ import Invoices from './Invoices'
 import Payments from './Payments'
 import CustomerLedger from '../components/CustomerLedger'
 import ComplianceDashboard from './ComplianceDashboard'
+import TestInvoices from '../../../../components/TestInvoices'
+import ErrorCatcher from '../../../../components/ErrorCatcher'
+import SimpleInvoiceList from '../../../../components/SimpleInvoiceList'
 
 // Purchase & Expense Management Pages
 import Vendors from './Vendors'
@@ -54,12 +56,18 @@ import VendorLedger from './VendorLedger'
 import { EInvoiceManager } from '../components/EInvoiceManager'
 
 import Integration from './Integration'
+import FinanceCard from '../components/FinanceCard'
 
 const FinanceDashboard: React.FC = () => {
   const navigate = useNavigate()
   // const { logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
   const { serviceUser, sessionKey, logout: serviceUserLogout } = useServiceUserStore()
+  
+  // Debug logging
+  console.log('🔍 Dashboard - serviceUser:', serviceUser ? 'Present' : 'Missing');
+  console.log('🔍 Dashboard - sessionKey from store:', sessionKey ? 'Present' : 'Missing');
+  console.log('🔍 Dashboard - sessionKey from sessionStorage:', sessionStorage.getItem('service_session_key') ? 'Present' : 'Missing');
   
   // Add session validation
   useSessionValidation()
@@ -128,8 +136,14 @@ const FinanceDashboard: React.FC = () => {
     const urlParams = new URLSearchParams(window.location.search)
     const tab = urlParams.get('tab')
     const action = urlParams.get('action')
-
-    if (tab) {
+    
+    // Check if URL path indicates a specific tab
+    const currentPath = window.location.pathname
+    if (currentPath.includes('/invoices')) {
+      setActiveTab('invoices')
+    } else if (currentPath.includes('/purchase-orders')) {
+      setActiveTab('purchase-orders')
+    } else if (tab) {
       setActiveTab(tab)
     }
 
@@ -226,32 +240,33 @@ const handlePOCreated = () => {
 
   // Complete sidebar menu items with hierarchical structure
   const sidebarItems = [
-    { id: 'overview', label: 'Overview', icon: BarChart3 },
-    { id: 'customers', label: 'Customers', icon: Users },
-    { id: 'products', label: 'Products', icon: Building },
-    { id: 'quotations', label: 'Quotations', icon: CreditCard },
-    { id: 'purchase-orders', label: 'PO/WO', icon: ShoppingCart },
-    { id: 'proforma-invoices', label: 'Proforma Invoices', icon: Banknote },
-    { id: 'invoices', label: 'Invoices', icon: FileText },
-    { id: 'payments', label: 'Payments', icon: CreditCard },
-    { id: 'customer-ledger', label: 'Customer Ledger', icon: User },
+    { id: 'overview', label: 'Overview', icon: BarChart3, description: 'Dashboard analytics and insights' },
+    { id: 'customers', label: 'Customers', icon: Users, description: 'Manage customer database' },
+    { id: 'products', label: 'Products', icon: Building, description: 'Product catalog management' },
+    { id: 'quotations', label: 'Quotations', icon: CreditCard, description: 'Create and manage quotations' },
+    { id: 'purchase-orders', label: 'PO/WO', icon: ShoppingCart, description: 'Purchase and work orders' },
+    { id: 'proforma-invoices', label: 'Proforma Invoices', icon: Banknote, description: 'Proforma invoice management' },
+    { id: 'invoices', label: 'Invoices', icon: FileText, description: 'Invoice generation and tracking' },
+    { id: 'payments', label: 'Payments', icon: CreditCard, description: 'Payment processing and records' },
+    { id: 'customer-ledger', label: 'Customer Ledger', icon: User, description: 'Customer account statements' },
     {
       id: 'purchase-expense',
       label: 'Purchase & Expense',
       icon: ShoppingCart,
+      description: 'Vendor and expense management',
       isParent: true,
       children: [
-        { id: 'vendors', label: 'Vendors', icon: Users },
-        { id: 'purchase-requests', label: 'Purchase Requests', icon: FileText },
-        { id: 'vendor-invoices', label: 'Vendor Invoices', icon: FileText },
-        { id: 'purchase-payments', label: 'Purchase Payments', icon: CreditCard },
-        { id: 'vendor-ledger', label: 'Vendor Ledger', icon: User }
+        { id: 'vendors', label: 'Vendors', icon: Users, description: 'Vendor database management' },
+        { id: 'purchase-requests', label: 'Purchase Requests', icon: FileText, description: 'Purchase request workflow' },
+        { id: 'vendor-invoices', label: 'Vendor Invoices', icon: FileText, description: 'Vendor invoice processing' },
+        { id: 'purchase-payments', label: 'Purchase Payments', icon: CreditCard, description: 'Vendor payment management' },
+        { id: 'vendor-ledger', label: 'Vendor Ledger', icon: User, description: 'Vendor account statements' }
       ]
     },
-    { id: 'compliance', label: 'Indian Compliance', icon: Shield },
-    { id: 'einvoice', label: 'E-Invoice', icon: Zap },
-    { id: 'integration', label: 'Integration', icon: Zap },
-    { id: 'settings', label: 'Settings', icon: Settings }
+    { id: 'compliance', label: 'Indian Compliance', icon: Shield, description: 'Tax and regulatory compliance' },
+    { id: 'einvoice', label: 'E-Invoice', icon: Zap, description: 'Electronic invoice management' },
+    { id: 'integration', label: 'Integration', icon: Zap, description: 'Third-party integrations' },
+    { id: 'settings', label: 'Settings', icon: Settings, description: 'System preferences and security' }
   ]
 
   const toggleMenu = (menuId: string) => {
@@ -279,20 +294,26 @@ const handlePOCreated = () => {
       const vendorInvoices = vendorInvoicesRes.data.results || []
       const purchasePayments = purchasePaymentsRes.data.results || []
 
+      // Get total counts from pagination info or fallback to array length
+      const totalVendors = vendorsRes.data.count || vendors.length
+      const totalPurchaseRequests = purchaseRequestsRes.data.count || purchaseRequests.length
+      const totalVendorInvoices = vendorInvoicesRes.data.count || vendorInvoices.length
+      const totalPurchasePayments = purchasePaymentsRes.data.count || purchasePayments.length
+
       const vendorInvoiceValue = vendorInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.total_amount || 0), 0)
       const outstandingVendorAmount = vendorInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.outstanding_amount || 0), 0)
       const totalPaid = purchasePayments.reduce((sum: number, pay: any) => sum + parseFloat(pay.amount || 0), 0)
       const totalTDS = purchasePayments.reduce((sum: number, pay: any) => sum + parseFloat(pay.tds_amount || 0), 0)
 
       setPurchaseExpenseData({
-        totalVendors: vendors.length,
+        totalVendors,
         activeVendors: vendors.filter((v: any) => v.is_active).length,
-        totalPurchaseRequests: purchaseRequests.length,
+        totalPurchaseRequests,
         pendingRequests: purchaseRequests.filter((pr: any) => pr.status === 'draft').length,
-        totalVendorInvoices: vendorInvoices.length,
+        totalVendorInvoices,
         vendorInvoiceValue,
         outstandingVendorAmount,
-        totalPurchasePayments: purchasePayments.length,
+        totalPurchasePayments,
         totalPaid,
         totalTDS
       })
@@ -322,6 +343,14 @@ const handlePOCreated = () => {
       const customers = customersRes.data.results || []
       const products = productsRes.data.results || []
 
+      // Get total counts from pagination info or fallback to array length
+      const totalCustomers = customersRes.data.count || customers.length
+      const totalProducts = productsRes.data.count || products.length
+      const totalQuotations = quotationsRes.data.count || quotations.length
+      const totalPurchaseOrders = posRes.data.count || pos.length
+      const totalProformaInvoices = proformasRes.data.count || proformas.length
+      const totalInvoices = invoicesRes.data.count || invoices.length
+
       // Calculate real financial metrics
       const quotationValue = quotations.reduce((sum: number, q: any) => sum + parseFloat(q.total_amount || 0), 0)
       const poValue = pos.reduce((sum: number, p: any) => sum + parseFloat(p.total_amount || 0), 0)
@@ -330,12 +359,12 @@ const handlePOCreated = () => {
       const outstandingAmount = invoices.reduce((sum: number, i: any) => sum + parseFloat(i.outstanding_amount || 0), 0)
 
       setFinancialData({
-        totalQuotations: quotations.length,
-        totalPurchaseOrders: pos.length,
-        totalProformaInvoices: proformas.length,
-        totalInvoices: invoices.length,
-        totalCustomers: customers.length,
-        totalProducts: products.length,
+        totalQuotations,
+        totalPurchaseOrders,
+        totalProformaInvoices,
+        totalInvoices,
+        totalCustomers,
+        totalProducts,
         quotationValue,
         poValue,
         proformaValue,
@@ -528,12 +557,12 @@ const handlePOCreated = () => {
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Sales Management</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Total Quotations Card */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 p-6 text-white shadow-xl shadow-blue-500/25">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 p-6 text-gray-800 shadow-lg shadow-blue-200/30 border border-gray-300 dark:border-transparent">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/20 rounded-xl">
-                <FileText className="h-6 w-6" />
+              <div className="p-2 bg-white/60 rounded-xl">
+                <FileText className="h-6 w-6 text-blue-600" />
               </div>
               <div className="text-right">
                 <div className="text-xs opacity-80">Total Value</div>
@@ -548,12 +577,12 @@ const handlePOCreated = () => {
         </div>
 
         {/* Total Purchase Orders Card */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 p-6 text-white shadow-xl shadow-green-500/25">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-50 via-green-100 to-green-200 p-6 text-gray-800 shadow-lg shadow-green-200/30 border border-gray-300 dark:border-transparent">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/20 rounded-xl">
-                <ShoppingCart className="h-6 w-6" />
+              <div className="p-2 bg-white/60 rounded-xl">
+                <ShoppingCart className="h-6 w-6 text-green-600" />
               </div>
               <div className="text-right">
                 <div className="text-xs opacity-80">Total Value</div>
@@ -568,12 +597,12 @@ const handlePOCreated = () => {
         </div>
 
         {/* Total Proforma Invoices Card */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-500 to-violet-600 p-6 text-white shadow-xl shadow-purple-500/25">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-50 via-purple-100 to-purple-200 p-6 text-gray-800 shadow-lg shadow-purple-200/30 border border-gray-300 dark:border-transparent">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/20 rounded-xl">
-                <Banknote className="h-6 w-6" />
+              <div className="p-2 bg-white/60 rounded-xl">
+                <Banknote className="h-6 w-6 text-purple-600" />
               </div>
               <div className="text-right">
                 <div className="text-xs opacity-80">Total Value</div>
@@ -588,12 +617,12 @@ const handlePOCreated = () => {
         </div>
 
         {/* Total Invoices Card */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 p-6 text-white shadow-xl shadow-emerald-500/25">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50 via-emerald-100 to-emerald-200 p-6 text-gray-800 shadow-lg shadow-emerald-200/30 border border-gray-300 dark:border-transparent">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/20 rounded-xl">
-                <FileText className="h-6 w-6" />
+              <div className="p-2 bg-white/60 rounded-xl">
+                <FileText className="h-6 w-6 text-emerald-600" />
               </div>
               <div className="text-right">
                 <div className="text-xs opacity-80">Total Value</div>
@@ -608,12 +637,12 @@ const handlePOCreated = () => {
         </div>
 
         {/* Customers & Products Card */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 p-6 text-white shadow-xl shadow-orange-500/25">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-50 via-orange-100 to-orange-200 p-6 text-gray-800 shadow-lg shadow-orange-200/30 border border-gray-300 dark:border-transparent">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/20 rounded-xl">
-                <Users className="h-6 w-6" />
+              <div className="p-2 bg-white/60 rounded-xl">
+                <Users className="h-6 w-6 text-orange-600" />
               </div>
               <div className="text-right">
                 <div className="text-xs opacity-80">Database</div>
@@ -634,12 +663,12 @@ const handlePOCreated = () => {
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Purchase & Expense Management</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Vendors Card */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 p-6 text-white shadow-xl shadow-purple-500/25">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-50 via-purple-100 to-purple-200 p-6 text-gray-800 shadow-lg shadow-purple-200/30 border border-gray-300 dark:border-transparent">
             <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-white/20 rounded-xl">
-                  <Building className="h-6 w-6" />
+                <div className="p-2 bg-white/60 rounded-xl">
+                  <Building className="h-6 w-6 text-purple-600" />
                 </div>
                 <div className="text-right">
                   <div className="text-xs opacity-80">Total Vendors</div>
@@ -654,12 +683,12 @@ const handlePOCreated = () => {
           </div>
 
           {/* Purchase Requests Card */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 p-6 text-white shadow-xl shadow-green-500/25">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-50 via-green-100 to-green-200 p-6 text-gray-800 shadow-lg shadow-green-200/30 border border-gray-300 dark:border-transparent">
             <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-white/20 rounded-xl">
-                  <FileText className="h-6 w-6" />
+                <div className="p-2 bg-white/60 rounded-xl">
+                  <FileText className="h-6 w-6 text-green-600" />
                 </div>
                 <div className="text-right">
                   <div className="text-xs opacity-80">Purchase Requests</div>
@@ -674,12 +703,12 @@ const handlePOCreated = () => {
           </div>
 
           {/* Vendor Invoices Card */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 p-6 text-white shadow-xl shadow-indigo-500/25">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-50 via-indigo-100 to-indigo-200 p-6 text-gray-800 shadow-lg shadow-indigo-200/30 border border-gray-300 dark:border-transparent">
             <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-white/20 rounded-xl">
-                  <FileText className="h-6 w-6" />
+                <div className="p-2 bg-white/60 rounded-xl">
+                  <FileText className="h-6 w-6 text-indigo-600" />
                 </div>
                 <div className="text-right">
                   <div className="text-xs opacity-80">Vendor Invoices</div>
@@ -694,12 +723,12 @@ const handlePOCreated = () => {
           </div>
 
           {/* Purchase Payments Card */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 p-6 text-white shadow-xl shadow-teal-500/25">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-50 via-teal-100 to-teal-200 p-6 text-gray-800 shadow-lg shadow-teal-200/30 border border-gray-300 dark:border-transparent">
             <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-white/20 rounded-xl">
-                  <CreditCard className="h-6 w-6" />
+                <div className="p-2 bg-white/60 rounded-xl">
+                  <CreditCard className="h-6 w-6 text-teal-600" />
                 </div>
                 <div className="text-right">
                   <div className="text-xs opacity-80">Payments Made</div>
@@ -718,14 +747,14 @@ const handlePOCreated = () => {
       {/* Modern Charts and Analytics Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Revenue Analytics Chart */}
-        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+        <FinanceCard>
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Revenue Analytics</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">Quotations vs Purchase Orders vs Invoices</p>
             </div>
             <Button variant="outline" size="sm" onClick={handleRevenueAnalyticsMenu}>
-              <MoreVertical className="h-4 w-4" />
+              <BarChart3 className="h-4 w-4" />
             </Button>
           </div>
           <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl p-4">
@@ -775,10 +804,10 @@ const handlePOCreated = () => {
               </div>
             </div>
           </div>
-        </div>
+        </FinanceCard>
 
         {/* Payment Status Breakdown */}
-        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+        <FinanceCard className="" padding="sm">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Payment Status</h3>
@@ -789,64 +818,136 @@ const handlePOCreated = () => {
             </Button>
           </div>
           <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl p-4">
-            <div className="h-full flex flex-col justify-center">
-              {/* Donut Chart Simulation */}
-              <div className="relative mx-auto">
-                <div className="w-32 h-32 mx-auto relative">
-                  {/* Outer Ring - Total Invoice Value */}
-                  <div className="w-32 h-32 rounded-full border-8 border-gray-200 dark:border-gray-700"></div>
+            <div className="h-full flex items-center justify-between">
+              {/* Enhanced Donut Chart */}
+              <div className="relative flex-shrink-0">
+                <div className="w-40 h-40 relative">
+                  {/* Background Circle */}
+                  <svg className="w-40 h-40 transform -rotate-90" viewBox="0 0 160 160">
+                    <circle
+                      cx="80"
+                      cy="80"
+                      r="70"
+                      stroke="currentColor"
+                      strokeWidth="20"
+                      fill="transparent"
+                      className="text-gray-200 dark:text-gray-700"
+                    />
+                    {/* Paid Amount Arc */}
+                    <circle
+                      cx="80"
+                      cy="80"
+                      r="70"
+                      stroke="url(#paidGradient)"
+                      strokeWidth="20"
+                      fill="transparent"
+                      strokeDasharray={`${financialData.invoiceValue > 0 ? ((financialData.invoiceValue - financialData.outstandingAmount) / financialData.invoiceValue) * 440 : 0} 440`}
+                      strokeLinecap="round"
+                      className="transition-all duration-1000 ease-out"
+                    />
+                    {/* Outstanding Amount Arc */}
+                    <circle
+                      cx="80"
+                      cy="80"
+                      r="70"
+                      stroke="url(#outstandingGradient)"
+                      strokeWidth="20"
+                      fill="transparent"
+                      strokeDasharray={`${financialData.invoiceValue > 0 ? (financialData.outstandingAmount / financialData.invoiceValue) * 440 : 0} 440`}
+                      strokeDashoffset={`-${financialData.invoiceValue > 0 ? ((financialData.invoiceValue - financialData.outstandingAmount) / financialData.invoiceValue) * 440 : 0}`}
+                      strokeLinecap="round"
+                      className="transition-all duration-1000 ease-out"
+                    />
+                    {/* Gradients */}
+                    <defs>
+                      <linearGradient id="paidGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#10b981" />
+                        <stop offset="100%" stopColor="#059669" />
+                      </linearGradient>
+                      <linearGradient id="outstandingGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#ef4444" />
+                        <stop offset="100%" stopColor="#dc2626" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
                   
-                  {/* Outstanding Amount Ring */}
-                  <div 
-                    className="absolute top-0 left-0 w-32 h-32 rounded-full border-8 border-red-500 transform -rotate-90 transition-all duration-1000"
-                    style={{
-                      borderImage: `conic-gradient(#ef4444 0deg ${financialData.invoiceValue > 0 ? (financialData.outstandingAmount / financialData.invoiceValue) * 360 : 0}deg, transparent ${financialData.invoiceValue > 0 ? (financialData.outstandingAmount / financialData.invoiceValue) * 360 : 0}deg 360deg) 1`,
-                      borderRadius: '50%'
-                    }}
-                  ></div>
-                  
-                  {/* Center Text */}
+                  {/* Center Content */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center">
-                      <div className="text-lg font-bold text-gray-900 dark:text-white">
+                      <div className="text-2xl font-bold text-gray-900 dark:text-white">
                         {financialData.invoiceValue > 0 ? ((1 - financialData.outstandingAmount / financialData.invoiceValue) * 100).toFixed(0) : 0}%
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">Paid</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">Paid</div>
                     </div>
                   </div>
                 </div>
               </div>
               
-              {/* Legend */}
-              <div className="mt-6 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                    <span className="text-sm text-gray-700 dark:text-gray-300">Paid</span>
+              {/* Enhanced Stats Panel */}
+              <div className="flex-1 ml-8 space-y-4">
+                {/* Paid Amount */}
+                <div className="bg-white/50 dark:bg-gray-800/50 rounded-xl p-4 border border-green-200/50 dark:border-green-800/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center">
+                      <div className="w-4 h-4 bg-gradient-to-r from-green-500 to-green-600 rounded-full mr-3"></div>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Paid Amount</span>
+                    </div>
+                    <span className="text-xs text-green-600 dark:text-green-400 font-medium">
+                      {financialData.invoiceValue > 0 ? (((financialData.invoiceValue - financialData.outstandingAmount) / financialData.invoiceValue) * 100).toFixed(1) : 0}%
+                    </span>
                   </div>
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                  <div className="text-xl font-bold text-green-600 dark:text-green-400">
                     ₹{(financialData.invoiceValue - financialData.outstandingAmount).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-                    <span className="text-sm text-gray-700 dark:text-gray-300">Outstanding</span>
                   </div>
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-2">
+                    <div 
+                      className="bg-gradient-to-r from-green-500 to-green-600 h-2 rounded-full transition-all duration-1000"
+                      style={{ width: `${financialData.invoiceValue > 0 ? ((financialData.invoiceValue - financialData.outstandingAmount) / financialData.invoiceValue) * 100 : 0}%` }}
+                    ></div>
+                  </div>
+                </div>
+                
+                {/* Outstanding Amount */}
+                <div className="bg-white/50 dark:bg-gray-800/50 rounded-xl p-4 border border-red-200/50 dark:border-red-800/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center">
+                      <div className="w-4 h-4 bg-gradient-to-r from-red-500 to-red-600 rounded-full mr-3"></div>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Outstanding</span>
+                    </div>
+                    <span className="text-xs text-red-600 dark:text-red-400 font-medium">
+                      {financialData.invoiceValue > 0 ? ((financialData.outstandingAmount / financialData.invoiceValue) * 100).toFixed(1) : 0}%
+                    </span>
+                  </div>
+                  <div className="text-xl font-bold text-red-600 dark:text-red-400">
                     ₹{financialData.outstandingAmount.toLocaleString()}
-                  </span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-2">
+                    <div 
+                      className="bg-gradient-to-r from-red-500 to-red-600 h-2 rounded-full transition-all duration-1000"
+                      style={{ width: `${financialData.invoiceValue > 0 ? (financialData.outstandingAmount / financialData.invoiceValue) * 100 : 0}%` }}
+                    ></div>
+                  </div>
+                </div>
+                
+                {/* Total Invoice Value */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-4 border border-blue-200/50 dark:border-blue-800/50">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Total Invoice Value</span>
+                    <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                      ₹{financialData.invoiceValue.toLocaleString()}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </FinanceCard>
       </div>
 
       {/* Business Insights */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Quick Stats */}
-        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+        <FinanceCard>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Stats</h3>
           <div className="space-y-3">
             <div className="flex justify-between items-center">
@@ -868,10 +969,10 @@ const handlePOCreated = () => {
               </span>
             </div>
           </div>
-        </div>
+        </FinanceCard>
         
         {/* Document Status */}
-        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+        <FinanceCard>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Document Status</h3>
           <div className="space-y-3">
             <div className="flex justify-between items-center">
@@ -893,10 +994,10 @@ const handlePOCreated = () => {
               </span>
             </div>
           </div>
-        </div>
+        </FinanceCard>
         
         {/* Performance Metrics */}
-        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+        <FinanceCard>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Performance</h3>
           <div className="space-y-3">
             <div>
@@ -922,11 +1023,11 @@ const handlePOCreated = () => {
               </div>
             </div>
           </div>
-        </div>
+        </FinanceCard>
       </div>
 
       {/* Modern Recent Transactions */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+      <FinanceCard>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Transactions</h3>
@@ -1001,7 +1102,7 @@ const handlePOCreated = () => {
             </div>
           ))}
         </div>
-      </div>
+      </FinanceCard>
 
     </div>
   )
@@ -1157,7 +1258,18 @@ const handlePOCreated = () => {
       case 'proforma-invoices':
         return <ProformaInvoices sessionKey={sessionKey || ''} />
       case 'invoices':
-        return <Invoices sessionKey={sessionKey || ''} />
+        console.log('🔍 Dashboard - Rendering Invoices with sessionKey:', sessionKey ? 'Present' : 'Missing');
+        return (
+          <div className="space-y-4">
+            <TestInvoices />
+            <ErrorCatcher name="SimpleInvoiceList">
+              <SimpleInvoiceList sessionKey={sessionKey || ''} />
+            </ErrorCatcher>
+            <ErrorCatcher name="OriginalInvoices">
+              <Invoices sessionKey={sessionKey || ''} />
+            </ErrorCatcher>
+          </div>
+        )
       case 'payments':
         return <Payments sessionKey={sessionKey || ''} />
       case 'customer-ledger':
@@ -1186,9 +1298,9 @@ const handlePOCreated = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950">
+    <div className="flex flex-col flex-1 min-h-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950">
       {/* Modern Sidebar */}
-      <div className="fixed inset-y-0 left-0 z-50 w-64 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-r border-gray-200/50 dark:border-gray-700/50">
+      <aside id="sidebar" className="fixed inset-y-0 left-0 z-[var(--z-sidebar)] w-64 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-r border-gray-200/50 dark:border-gray-700/50 flex flex-col">
         {/* Sidebar Header with Company Logo */}
         <div className="flex items-center h-16 px-6 border-b border-gray-200/50 dark:border-gray-700/50">
           <div className="flex items-center space-x-3">
@@ -1216,7 +1328,7 @@ const handlePOCreated = () => {
         </div>
 
         {/* Navigation Menu */}
-        <nav className="mt-6 px-3">
+        <nav className="mt-6 px-3 flex-1 overflow-y-auto pr-1">
           <div className="space-y-1">
             {sidebarItems.map((item: any) => {
               const Icon = item.icon
@@ -1235,8 +1347,21 @@ const handlePOCreated = () => {
                           : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
                       }`}
                     >
-                      <Icon className={`h-5 w-5 mr-3 ${hasActiveChild ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
-                      {item.label}
+                      <div className={`p-2 rounded-xl transition-all duration-300 ${
+                        hasActiveChild
+                          ? 'bg-white/20 shadow-lg'
+                          : 'bg-gray-100 dark:bg-gray-800'
+                      }`}>
+                        <Icon className={`h-5 w-5 ${hasActiveChild ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
+                      </div>
+                      {hasActiveChild ? (
+                        <div className="flex-1 ml-3 text-left">
+                          <p className="text-sm font-semibold text-white">{item.label}</p>
+                          <p className="text-xs text-white/80">{item.description}</p>
+                        </div>
+                      ) : (
+                        <span className="ml-3">{item.label}</span>
+                      )}
                       <ChevronRight className={`h-4 w-4 ml-auto transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
                     </button>
                     {isExpanded && (
@@ -1254,8 +1379,21 @@ const handlePOCreated = () => {
                                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
                               }`}
                             >
-                              <ChildIcon className={`h-4 w-4 mr-3 ${isChildActive ? 'text-white' : 'text-gray-400 dark:text-gray-500'}`} />
-                              {child.label}
+                              <div className={`p-1.5 rounded-lg transition-all duration-300 ${
+                                isChildActive
+                                  ? 'bg-white/20 shadow-lg'
+                                  : 'bg-gray-100 dark:bg-gray-800'
+                              }`}>
+                                <ChildIcon className={`h-4 w-4 ${isChildActive ? 'text-white' : 'text-gray-400 dark:text-gray-500'}`} />
+                              </div>
+                              {isChildActive ? (
+                                <div className="flex-1 ml-3 text-left">
+                                  <p className="text-sm font-semibold text-white">{child.label}</p>
+                                  <p className="text-xs text-white/80">{child.description}</p>
+                                </div>
+                              ) : (
+                                <span className="ml-3">{child.label}</span>
+                              )}
                             </button>
                           )
                         })}
@@ -1275,8 +1413,21 @@ const handlePOCreated = () => {
                       : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
                   }`}
                 >
-                  <Icon className={`h-5 w-5 mr-3 ${isActive ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
-                  {item.label}
+                  <div className={`p-2 rounded-xl transition-all duration-300 ${
+                    isActive
+                      ? 'bg-white/20 shadow-lg'
+                      : 'bg-gray-100 dark:bg-gray-800'
+                  }`}>
+                    <Icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
+                  </div>
+                  {isActive ? (
+                    <div className="flex-1 ml-3 text-left">
+                      <p className="text-sm font-semibold text-white">{item.label}</p>
+                      <p className="text-xs text-white/80">{item.description}</p>
+                    </div>
+                  ) : (
+                    <span className="ml-3">{item.label}</span>
+                  )}
                   {isActive && <ChevronRight className="h-4 w-4 ml-auto" />}
                 </button>
               )
@@ -1285,7 +1436,7 @@ const handlePOCreated = () => {
         </nav>
 
         {/* User Info at Bottom */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200/50 dark:border-gray-700/50">
+        <div className="p-4 border-t border-gray-200/50 dark:border-gray-700/50">
           <div className="flex items-center space-x-3">
             <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
               <span className="text-xs font-medium text-white">
@@ -1310,7 +1461,7 @@ const handlePOCreated = () => {
             </Button>
           </div>
         </div>
-      </div>
+      </aside>
 
       {/* Main Content */}
       <div className="ml-64">

@@ -13,7 +13,7 @@ import {
   CheckCircle,
   AlertCircle,
   Package,
-  DollarSign,
+  IndianRupee,
   X,
   Save
 } from 'lucide-react';
@@ -380,7 +380,7 @@ const PurchaseOrderManager: React.FC = () => {
               <p className="text-purple-100 text-sm font-medium mb-1">Total Value</p>
               <p className="text-white text-2xl font-bold">₹{(orders.reduce((sum, o) => sum + o.total_amount, 0) / 1000).toFixed(0)}K</p>
             </div>
-            <DollarSign className="w-6 h-6 text-purple-200" />
+            <IndianRupee className="w-6 h-6 text-purple-200" />
           </div>
         </Card>
       </div>

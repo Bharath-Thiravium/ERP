@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { Button } from '../../../../components/ui/Button'
-import { Plus, TrendingUp, Target, DollarSign, Calendar, Search, Filter, ChevronLeft, ChevronRight, Edit } from 'lucide-react'
+import { Plus, TrendingUp, Target, IndianRupee, Calendar, Search, Filter, ChevronLeft, ChevronRight, Edit } from 'lucide-react'
 import { crmApi } from '../utils/api'
 import { PipelineOverview, Deal, VelocityMetrics, SalesQuota } from '../types'
 import { formatCurrency, formatDate } from '../../../../lib/utils'
@@ -132,7 +132,7 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ sessionKey }) => {
                 <p className="text-sm text-gray-600">Pipeline Value</p>
                 <p className="text-2xl font-bold">{formatCurrency(totalPipelineValue)}</p>
               </div>
-              <DollarSign className="h-8 w-8 text-blue-500" />
+              <IndianRupee className="h-8 w-8 text-blue-500" />
             </div>
           </CardContent>
         </Card>

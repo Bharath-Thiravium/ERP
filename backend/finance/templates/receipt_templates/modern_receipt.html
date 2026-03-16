@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Payment Receipt - {{ payment.payment_number }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 20mm 15mm 20mm 15mm;
+        }
+        
+        body {
+            font-family: Roboto, Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        
+        /* Modern Template - Clean Whitespace Layout */
+        .header-section {
+            display: table;
+            width: 100%;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #9b59b6;
+            padding-bottom: 20px;
+        }
+        
+        .company-info {
+            display: table-cell;
+            width: 60%;
+            vertical-align: top;
+        }
+        
+        .company-name {
+            font-size: 18pt;
+            font-weight: bold;
+            color: #9b59b6;
+            margin-bottom: 10px;
+        }
+        
+        .company-details {
+            line-height: 1.5;
+            color: #666;
+        }
+        
+        .document-info {
+            display: table-cell;
+            width: 40%;
+            text-align: right;
+            vertical-align: top;
+        }
+        
+        .document-title {
+            font-size: 24pt;
+            font-weight: bold;
+            color: #9b59b6;
+            margin-bottom: 10px;
+        }
+        
+        .document-meta {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        
+        .customer-section {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 12pt;
+            font-weight: bold;
+            color: #9b59b6;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #9b59b6;
+            padding-bottom: 5px;
+        }
+        
+        .payment-details-grid {
+            display: table;
+            width: 100%;
+            margin-bottom: 30px;
+        }
+        
+        .payment-row {
+            display: table-row;
+        }
+        
+        .payment-cell {
+            display: table-cell;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            margin: 5px;
+            width: 25%;
+        }
+        
+        .payment-label {
+            font-weight: bold;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .payment-value {
+            font-weight: bold;
+        }
+        
+        .amount-highlight {
+            background: linear-gradient(135deg, #a29bfe, #6c5ce7);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .amount-title {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .amount-value {
+            font-size: 28pt;
+            font-weight: bold;
+        }
+        
+        .amount-words {
+            background-color: #e8f4fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: #1565c0;
+        }
+        
+        .invoice-table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+        
+        .invoice-table th {
+            background-color: #9b59b6;
+            color: white;
+            padding: 12px;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .invoice-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .invoice-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .tds-section {
+            background: linear-gradient(135deg, #fdcb6e, #e17055);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .tds-grid {
+            display: table;
+            width: 100%;
+        }
+        
+        .tds-row {
+            display: table-row;
+        }
+        
+        .tds-cell {
+            display: table-cell;
+            padding: 8px 15px;
+            width: 25%;
+        }
+        
+        .tds-label {
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+        
+        .acknowledgment {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #155724;
+        }
+        
+        .signature-section {
+            text-align: right;
+            margin-top: 40px;
+        }
+        
+        .signature-box {
+            display: inline-block;
+            text-align: center;
+            padding: 20px;
+            border: 2px solid #9b59b6;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header Section -->
+    <div class="header-section">
+        <div class="company-info">
+            <div class="company-name">{{ company.name }}</div>
+            <div class="company-details">
+                {{ company.address|default:"" }}<br>
+                {{ company.city|default:"" }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}<br>
+                GSTIN: {{ company.gst_number|default:"N/A" }} | PAN: {{ company.pan_number|default:"N/A" }}<br>
+                Phone: {{ company.phone|default:"N/A" }} | Email: {{ company.email|default:"N/A" }}
+            </div>
+        </div>
+        <div class="document-info">
+            <div class="document-title">PAYMENT RECEIPT</div>
+            <div class="document-meta">
+                <strong>{{ payment.payment_number }}</strong><br>
+                Date: {{ payment.payment_date|date:"d/m/Y" }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Section -->
+    <div class="customer-section">
+        <div class="section-title">RECEIVED FROM</div>
+        <strong>{{ payment.customer.name }}</strong><br>
+        {{ payment.customer.billing_address_line1|default:"" }}<br>
+        {% if payment.customer.billing_address_line2 %}{{ payment.customer.billing_address_line2 }}<br>{% endif %}
+        {{ payment.customer.billing_city|default:"" }}, {{ payment.customer.billing_state|default:"" }} - {{ payment.customer.billing_pincode|default:"" }}<br>
+        GSTIN: {{ payment.customer.gstin|default:"N/A" }}<br>
+        Phone: {{ payment.customer.phone|default:"N/A" }} | Email: {{ payment.customer.email|default:"N/A" }}
+    </div>
+
+    <!-- Payment Details Grid -->
+    <div class="payment-details-grid">
+        <div class="payment-row">
+            <div class="payment-cell">
+                <div class="payment-label">Receipt Number</div>
+                <div class="payment-value">{{ payment.payment_number }}</div>
+            </div>
+            <div class="payment-cell">
+                <div class="payment-label">Date</div>
+                <div class="payment-value">{{ payment.payment_date|date:"d/m/Y" }}</div>
+            </div>
+            <div class="payment-cell">
+                <div class="payment-label">Payment Mode</div>
+                <div class="payment-value">{{ payment.get_payment_method_display }}</div>
+            </div>
+            <div class="payment-cell">
+                <div class="payment-label">Reference Number</div>
+                <div class="payment-value">{{ payment.reference_number|default:"N/A" }}</div>
+            </div>
+        </div>
+        {% if payment.payment_method == 'upi' or payment.payment_method == 'net_banking' or payment.payment_method == 'rtgs' or payment.payment_method == 'neft' %}
+        <div class="payment-row">
+            <div class="payment-cell">
+                <div class="payment-label">{% if payment.payment_method == 'upi' or payment.payment_method == 'net_banking' %}UTR Number{% else %}Transaction ID{% endif %}</div>
+                <div class="payment-value">{{ payment.transaction_id|default:"N/A" }}</div>
+            </div>
+            <div class="payment-cell">
+                <div class="payment-label">Bank Name</div>
+                <div class="payment-value">{{ payment.bank_name|default:"N/A" }}</div>
+            </div>
+            <div class="payment-cell"></div>
+            <div class="payment-cell"></div>
+        </div>
+        {% elif payment.payment_method == 'cheque' %}
+        <div class="payment-row">
+            <div class="payment-cell">
+                <div class="payment-label">Cheque Number</div>
+                <div class="payment-value">{{ payment.reference_number|default:"N/A" }}</div>
+            </div>
+            <div class="payment-cell">
+                <div class="payment-label">Bank Name</div>
+                <div class="payment-value">{{ payment.bank_name|default:"N/A" }}</div>
+            </div>
+            <div class="payment-cell"></div>
+            <div class="payment-cell"></div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Amount Highlight -->
+    <div class="amount-highlight">
+        <div class="amount-title">RECEIVED AMOUNT</div>
+        <div class="amount-value">₹{{ payment.amount|floatformat:2 }}</div>
+    </div>
+
+    <!-- Amount in Words -->
+    <div class="amount-words">
+        <strong>Amount in Words:</strong><br>
+        {{ payment.amount|floatformat:2 }} Only
+    </div>
+
+    <!-- Invoice Details -->
+    {% if payment.invoice or payment.proforma_invoice %}
+    <table class="invoice-table">
+        <thead>
+            <tr>
+                <th>Against Invoice Numbers</th>
+                <th>Invoice Date</th>
+                <th>Invoice Amount</th>
+                <th>Balance Due</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if payment.invoice %}
+            <tr>
+                <td>{{ payment.invoice.invoice_number }}</td>
+                <td>{{ payment.invoice.invoice_date|date:"d/m/Y" }}</td>
+                <td style="text-align: right;">₹{{ payment.invoice.total_amount|floatformat:2 }}</td>
+                <td style="text-align: right;">₹{{ payment.invoice.outstanding_amount|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+            {% if payment.proforma_invoice %}
+            <tr>
+                <td>{{ payment.proforma_invoice.proforma_number }} (Proforma)</td>
+                <td>{{ payment.proforma_invoice.proforma_date|date:"d/m/Y" }}</td>
+                <td style="text-align: right;">₹{{ payment.proforma_invoice.total_amount|floatformat:2 }}</td>
+                <td style="text-align: right;">₹{{ payment.proforma_invoice.outstanding_amount|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <!-- TDS Details (if applicable) -->
+    {% if payment.tds_amount > 0 %}
+    <div class="tds-section">
+        <div class="section-title" style="color: white; border-bottom-color: white;">TDS DETAILS</div>
+        <div class="tds-grid">
+            <div class="tds-row">
+                <div class="tds-cell">
+                    <div class="tds-label">TDS Amount:</div>
+                    <div>₹{{ payment.tds_amount|floatformat:2 }}</div>
+                </div>
+                <div class="tds-cell">
+                    <div class="tds-label">TDS Percentage:</div>
+                    <div>{{ payment.tds_percentage|floatformat:2 }}%</div>
+                </div>
+                <div class="tds-cell">
+                    <div class="tds-label">TDS Section:</div>
+                    <div>{{ payment.tds_section|default:"N/A" }}</div>
+                </div>
+                <div class="tds-cell">
+                    <div class="tds-label">Net Amount Received:</div>
+                    <div><strong>₹{{ payment.net_amount_received|floatformat:2 }}</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Acknowledgment -->
+    <div class="acknowledgment">
+        <strong>Acknowledgment:</strong><br>
+        We hereby acknowledge the receipt of the above mentioned amount from {{ payment.customer.name }} towards the payment of invoice(s) as detailed above. This receipt is issued as proof of payment received.
+    </div>
+
+    <!-- Notes -->
+    {% if payment.notes %}
+    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #9b59b6;">
+        <strong>Notes:</strong><br>
+        {{ payment.notes|linebreaks }}
+    </div>
+    {% endif %}
+
+    <!-- Signature -->
+    <div class="signature-section">
+        <div class="signature-box">
+            <strong>For {{ company.name }}</strong><br><br><br>
+            <div style="border-top: 2px solid #9b59b6; padding-top: 10px; margin-top: 30px;">
+                Authorized Signatory
+            </div>
+        </div>
+    </div>
+</body>
+</html>

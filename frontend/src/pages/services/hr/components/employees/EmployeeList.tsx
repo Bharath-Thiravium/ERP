@@ -49,7 +49,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
   const handleDeleteEmployee = async (employee: Employee) => {
     if (!sessionKey) return
     
-    if (!confirm(`Are you sure you want to delete ${employee.full_name}? This action cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to permanently delete ${employee.full_name}? This action cannot be undone.`)) {
       return
     }
     
@@ -58,11 +58,14 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
         headers: { Authorization: `Bearer ${sessionKey}` }
       })
       
+      // Remove from local state immediately
+      setEmployees(prev => prev.filter(emp => emp.id !== employee.id))
       toast.success('Employee deleted successfully')
-      fetchEmployees() // Refresh the list
     } catch (error) {
       console.error('Error deleting employee:', error)
       toast.error('Failed to delete employee')
+      // Refresh the list to ensure consistency
+      fetchEmployees()
     }
   }
 

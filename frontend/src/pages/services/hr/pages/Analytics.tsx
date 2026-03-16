@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
-import { TrendingUp, Users, Calendar, DollarSign, Award, Target } from 'lucide-react'
+import { TrendingUp, Users, Calendar, IndianRupee, Award, Target } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import api from '../../../../lib/api'
@@ -186,7 +186,7 @@ const Analytics: React.FC = () => {
                       <p className="text-2xl font-bold">{formatCurrency(analyticsData.salary_analytics.average_salary)}</p>
                       <p className="text-xs opacity-75">Per employee</p>
                     </div>
-                    <DollarSign className="h-8 w-8 opacity-80" />
+                    <IndianRupee className="h-8 w-8 opacity-80" />
                   </div>
                 </div>
 
@@ -297,7 +297,7 @@ const Analytics: React.FC = () => {
               <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
-                    <DollarSign className="h-5 w-5 text-green-500" />
+                    <IndianRupee className="h-5 w-5 text-green-500" />
                     <span>Payroll Trends</span>
                   </CardTitle>
                 </CardHeader>

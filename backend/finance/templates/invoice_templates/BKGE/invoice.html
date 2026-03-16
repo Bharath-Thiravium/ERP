@@ -11,21 +11,28 @@
             box-sizing: border-box;
         }
         
+        @page {
+            size: A4;
+            margin: 20mm 15mm;
+        }
+        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             font-size: 12px;
             line-height: 1.4;
             color: #333;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            min-height: 100vh;
+            margin: 0;
+            padding: 20mm 15mm;
+            background: white;
+            min-height: auto;
         }
         
         .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
             background: white;
-            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            box-shadow: none;
         }
         
         .header {
@@ -33,7 +40,7 @@
             color: white;
             padding: 30px;
             text-align: center;
-            margin: -20px -20px 30px -20px;
+            margin: 0 0 30px 0;
             position: relative;
         }
         
@@ -218,9 +225,6 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border-radius: 10px;
-            margin-left: -20px;
-            margin-right: -20px;
-            margin-bottom: -20px;
         }
         
         .footer h3 {
@@ -287,6 +291,22 @@
                     {% if invoice.customer.phone %}<strong>Phone:</strong> {{ invoice.customer.phone }}<br>{% endif %}
                     {% if invoice.customer.email %}<strong>Email:</strong> {{ invoice.customer.email }}<br>{% endif %}
                     {% if invoice.customer.gstin %}<strong>GSTIN:</strong> {{ invoice.customer.gstin }}{% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Shipping Address Section -->
+        <div class="invoice-meta">
+            <div class="customer-details" style="margin: 0 auto; max-width: 400px;">
+                <div class="section-title">Ship To</div>
+                <div class="details-content">
+                    {% if has_specific_shipping %}
+                        <strong>{{ shipping_info.label }}</strong><br><br>
+                        {{ shipping_info.address }}
+                    {% else %}
+                        <strong>Same as Billing Address</strong><br><br>
+                        {{ shipping_info.address }}
+                    {% endif %}
                 </div>
             </div>
         </div>

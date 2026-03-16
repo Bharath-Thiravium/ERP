@@ -1,6 +1,6 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Server, DollarSign, Users } from 'lucide-react'
+import { Server, IndianRupee, Users } from 'lucide-react'
 import { apiClient } from '../../../../lib/api'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 
@@ -60,7 +60,7 @@ const ServiceAnalytics: React.FC = () => {
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
-              <DollarSign className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <IndianRupee className="h-6 w-6 text-green-600 dark:text-green-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Finance Service</h3>
           </div>

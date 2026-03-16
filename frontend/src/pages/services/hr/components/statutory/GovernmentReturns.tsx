@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { FileText, Download, Send, Plus, Calendar, Users, DollarSign, CheckCircle, AlertTriangle, Clock, X } from 'lucide-react'
+import { FileText, Download, Send, Plus, Calendar, Users, IndianRupee, CheckCircle, AlertTriangle, Clock, X } from 'lucide-react'
 import { Card, CardContent } from '../../../../../components/ui/Card'
 import { Button } from '../../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -249,7 +249,7 @@ const GovernmentReturns: React.FC = () => {
                   </div>
                   
                   <div className="flex items-center space-x-2">
-                    <DollarSign className="h-4 w-4 text-gray-500" />
+                    <IndianRupee className="h-4 w-4 text-gray-500" />
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Total Wages</p>
                       <p className="text-sm font-medium text-gray-900 dark:text-white">
@@ -259,7 +259,7 @@ const GovernmentReturns: React.FC = () => {
                   </div>
                   
                   <div className="flex items-center space-x-2">
-                    <DollarSign className="h-4 w-4 text-gray-500" />
+                    <IndianRupee className="h-4 w-4 text-gray-500" />
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Contribution</p>
                       <p className="text-sm font-medium text-gray-900 dark:text-white">

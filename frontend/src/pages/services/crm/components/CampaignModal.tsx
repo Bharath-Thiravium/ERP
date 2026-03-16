@@ -4,6 +4,7 @@ import { Button } from '../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
 import toast from 'react-hot-toast'
+import { Modal } from '../../../../components/ui/Modal'
 
 interface CampaignModalProps {
   isOpen: boolean
@@ -101,18 +102,23 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({ isOpen, onClose, o
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-            {campaign ? 'Edit Campaign' : 'Create New Campaign'}
-          </h2>
-          <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      size="lg"
+      className="max-w-2xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl"
+      bodyClassName="p-0"
+    >
+      <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+          {campaign ? 'Edit Campaign' : 'Create New Campaign'}
+        </h2>
+        <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+      <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -229,8 +235,7 @@ export const CampaignModal: React.FC<CampaignModalProps> = ({ isOpen, onClose, o
               {loading ? 'Saving...' : (campaign ? 'Update Campaign' : 'Create Campaign')}
             </Button>
           </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   )
 }

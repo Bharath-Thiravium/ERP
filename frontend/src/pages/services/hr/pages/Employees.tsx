@@ -72,12 +72,14 @@ const Employees: React.FC = () => {
   }, [sessionKey, refreshKey])
 
   const handleAddEmployee = () => {
+    // Clear any existing employee data to ensure clean create form
     setSelectedEmployee(undefined)
     setShowForm(true)
   }
 
   const handleEditEmployee = (employee: Employee) => {
-    setSelectedEmployee(employee)
+    // Ensure we have a clean copy of the employee data
+    setSelectedEmployee({ ...employee })
     setShowForm(true)
   }
 

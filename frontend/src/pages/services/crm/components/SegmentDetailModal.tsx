@@ -1,6 +1,7 @@
 import React from 'react'
 import { Button } from '../../../../components/ui/Button'
 import { CustomerSegment } from '../types'
+import { Modal } from '../../../../components/ui/Modal'
 
 interface SegmentDetailModalProps {
   isOpen: boolean
@@ -16,11 +17,14 @@ export const SegmentDetailModal: React.FC<SegmentDetailModalProps> = ({
   if (!isOpen || !segment) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
-      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Segment Details</h2>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      size="sm"
+      className="max-w-md"
+      bodyClassName="p-6"
+    >
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Segment Details</h2>
           
           <div className="space-y-4">
             <div>
@@ -55,8 +59,6 @@ export const SegmentDetailModal: React.FC<SegmentDetailModalProps> = ({
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={onClose}>Close</Button>
           </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

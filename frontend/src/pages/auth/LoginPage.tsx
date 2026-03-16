@@ -11,6 +11,7 @@ import AccountLockoutWarning from '../../components/auth/AccountLockoutWarning'
 import PasswordExpiryWarning from '../../components/auth/PasswordExpiryWarning'
 import TrustedDeviceOption from '../../components/auth/TrustedDeviceOption'
 import athenasLogo from '../../assets/logo.jpeg'
+import '../../styles/right-corner-position.css'
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -26,6 +27,14 @@ const LoginPage: React.FC = () => {
   const [isAnimating, setIsAnimating] = useState(true)
   const [rememberDevice, setRememberDevice] = useState(false)
   const [hasFailedAttempt, setHasFailedAttempt] = useState(false)
+
+  // Check for Athens service parameter and auto-select company user type
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('service') === 'athens_sustainability') {
+      setUserType('company')
+    }
+  }, [])
 
   const { 
     login, 
@@ -53,15 +62,15 @@ const LoginPage: React.FC = () => {
 
   // Auto-redirect when authentication state changes (only for successful login, not 2FA)
   useEffect(() => {
+    console.log('🔍 Auth state changed:', { isAuthenticated, user, isLoading })
     if (isAuthenticated && user && !isLoading) {
-      // Use window.location for reliable navigation after auth state change
-      setTimeout(() => {
-        if (user.is_master_admin) {
-          window.location.replace('/master-admin')
-        } else if (user.is_company_user) {
-          window.location.replace('/company')
-        }
-      }, 100)
+      console.log('🔍 Redirecting user:', user)
+      // Force immediate navigation
+      if (user.is_master_admin) {
+        window.location.href = '/master-admin'
+      } else if (user.is_company_user) {
+        window.location.href = '/company'
+      }
     }
   }, [isAuthenticated, user, isLoading])
 
@@ -132,7 +141,7 @@ const LoginPage: React.FC = () => {
       {/* Theme Toggle */}
       <button
         onClick={toggleTheme}
-        className="absolute top-6 right-6 p-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 transition-all duration-300 group z-50"
+        className="right-corner-element p-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 transition-all duration-300 group"
       >
         <div className="relative">
           {theme === 'light' ? (
@@ -222,7 +231,18 @@ const LoginPage: React.FC = () => {
                     <span className="text-white font-medium">Secure Access Portal</span>
                   </div>
                   <h3 className="text-2xl font-bold text-white mb-2">Welcome Back</h3>
-                  <p className="text-gray-300">Sign in to access your workspace</p>
+                  <p className="text-gray-300">
+                    {new URLSearchParams(window.location.search).get('service') === 'athens_sustainability' 
+                      ? 'Sign in to Athens Sustainability Management'
+                      : 'Sign in to access your workspace'
+                    }
+                  </p>
+                  {new URLSearchParams(window.location.search).get('service') === 'athens_sustainability' && (
+                    <div className="mt-3 inline-flex items-center space-x-2 px-3 py-1 bg-green-600/20 border border-green-500/30 rounded-xl">
+                      <span className="text-lg">🌱</span>
+                      <span className="text-green-200 text-sm font-medium">Athens Sustainability</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
@@ -359,6 +379,7 @@ const LoginPage: React.FC = () => {
                         <input
                           {...register('email')}
                           type="email"
+                          autoComplete="email"
                           className="w-full pl-12 pr-4 py-4 bg-white/5 border border-white/20 rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 backdrop-blur-md transition-all duration-300"
                           placeholder="Enter your email"
                         />
@@ -379,6 +400,7 @@ const LoginPage: React.FC = () => {
                         <input
                           {...register('password')}
                           type={showPassword ? 'text' : 'password'}
+                          autoComplete="current-password"
                           className="w-full pl-12 pr-12 py-4 bg-white/5 border border-white/20 rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 backdrop-blur-md transition-all duration-300"
                           placeholder="Enter your password"
                         />

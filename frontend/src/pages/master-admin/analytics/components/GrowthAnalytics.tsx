@@ -1,6 +1,6 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { TrendingUp, Building2, DollarSign, Users, ArrowUpRight, ArrowDownRight } from 'lucide-react'
+import { TrendingUp, Building2, IndianRupee, Users, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { apiClient } from '../../../../lib/api'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 
@@ -64,7 +64,7 @@ const GrowthAnalytics: React.FC = () => {
         <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-6 border border-green-200 dark:border-green-700">
           <div className="flex items-center justify-between mb-4">
             <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
-              <DollarSign className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <IndianRupee className="h-6 w-6 text-green-600 dark:text-green-400" />
             </div>
             {growth.growth_kpis?.revenue_growth_rate && formatPercentage(growth.growth_kpis.revenue_growth_rate)}
           </div>

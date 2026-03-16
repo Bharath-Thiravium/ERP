@@ -2,6 +2,7 @@ import React from 'react'
 import { Button } from '../../../../components/ui/Button'
 import { CustomerInteraction } from '../types'
 import { formatDate } from '../../../../lib/utils'
+import { Modal } from '../../../../components/ui/Modal'
 
 interface InteractionDetailModalProps {
   isOpen: boolean
@@ -17,11 +18,14 @@ export const InteractionDetailModal: React.FC<InteractionDetailModalProps> = ({
   if (!isOpen || !interaction) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
-      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Interaction Details</h2>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      size="lg"
+      className="max-w-2xl"
+      bodyClassName="p-6"
+    >
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Interaction Details</h2>
           
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -81,8 +85,6 @@ export const InteractionDetailModal: React.FC<InteractionDetailModalProps> = ({
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={onClose}>Close</Button>
           </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

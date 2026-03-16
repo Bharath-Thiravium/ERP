@@ -168,15 +168,26 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     const storeSessionKey = useServiceUserStore.getState().sessionKey
     const storageSessionKey = sessionStorage.getItem('service_session_key')
     
+    console.log('🔍 Session Debug:', {
+      storeSessionKey: !!storeSessionKey,
+      storageSessionKey: !!storageSessionKey,
+      sessionKey: !!sessionKey,
+      storeSessionKeyValue: storeSessionKey?.substring(0, 10) + '...',
+      storageSessionKeyValue: storageSessionKey?.substring(0, 10) + '...'
+    })
+    
     if (storeSessionKey && !storageSessionKey) {
       sessionStorage.setItem('service_session_key', storeSessionKey)
     }
     
     const currentSessionKey = sessionKey || storeSessionKey
     if (currentSessionKey) {
+      console.log('🔍 Starting to load data with session key:', currentSessionKey.substring(0, 10) + '...')
       loadCustomers()
       loadProducts()
       loadCompanyDetails()
+    } else {
+      console.error('❌ No session key available for loading data')
     }
   }, [sessionKey])
 
@@ -243,12 +254,27 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       if (foundCustomer) {
         console.log('Found customer in list:', foundCustomer)
         setSelectedCustomer(foundCustomer)
-
       } else {
         loadCustomerDetails(formData.customer)
       }
     }
   }, [formData.customer, selectedCustomer, sessionKey, customers])
+
+  // Load shipping address details when editing PO or when customer is loaded with shipping address
+  useEffect(() => {
+    if (formData.shipping_address && selectedCustomer) {
+      console.log('Checking shipping address:', formData.shipping_address, 'for customer:', selectedCustomer.id)
+      // Find the shipping address in customer's addresses
+      const shippingAddr = selectedCustomer.shipping_addresses?.find(addr => addr.id === formData.shipping_address)
+      if (!shippingAddr && formData.shipping_address) {
+        // If not found in customer addresses, try to load it separately
+        console.log('Shipping address not found in customer addresses, loading separately')
+        loadShippingAddressDetails(formData.shipping_address)
+      } else if (shippingAddr) {
+        console.log('Shipping address found in customer addresses:', shippingAddr)
+      }
+    }
+  }, [formData.shipping_address, selectedCustomer])
 
   // Load full quotation details including customer_details
   const loadFullQuotationDetails = async (quotationId: number) => {
@@ -271,6 +297,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
   const populateFormFromQuotation = (quotationData: any) => {
     console.log('Populating form from quotation:', quotationData)
     console.log('Quotation items:', quotationData.quotation_items)
+    console.log('Quotation shipping address:', quotationData.shipping_address)
 
     // Convert quotation items from detailed format to form format
     const convertedItems = quotationData.quotation_items ? quotationData.quotation_items.map((item: any) => {
@@ -303,6 +330,8 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       po_items: convertedItems
     }))
 
+    console.log('Form data updated with shipping address:', quotationData.shipping_address)
+
     // Set selected customer if available - use customer_details for detailed view
     console.log('Quotation customer data:', quotationData.customer_details, quotationData.customer)
 
@@ -331,12 +360,183 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     }
   }
 
+  // Load products with better error handling and caching
   const loadProducts = async () => {
     try {
-      const response = await apiClient.getFinanceProducts({ session_key: sessionKey })
-      setProducts(response.data.results)
+      console.log('🔍 Loading products with session key:', !!sessionKey)
+      console.log('🔍 Session key value:', sessionKey)
+      console.log('🔍 Storage session key:', sessionStorage.getItem('service_session_key'))
+      
+      let loadedProducts: any[] = []
+      let bestCount = 0
+      
+      // Try multiple approaches to get all products - use the search endpoint without limit
+      const approaches = [
+        { name: 'searchFinanceProducts (no limit)', call: () => apiClient.searchFinanceProducts({ session_key: sessionKey }) },
+        { name: 'searchFinanceProducts (limit 500)', call: () => apiClient.searchFinanceProducts({ session_key: sessionKey, limit: 500 }) },
+        { name: 'getFinanceProducts', call: () => apiClient.getFinanceProducts({ session_key: sessionKey }) }
+      ]
+      
+      for (const approach of approaches) {
+        try {
+          console.log(`🔍 Trying: ${approach.name}`)
+          const response = await approach.call()
+          const products = response.data.results || response.data || []
+          console.log(`  Result: ${products.length} products`)
+          
+          if (products.length > bestCount) {
+            bestCount = products.length
+            loadedProducts = products
+            console.log(`  ✅ New best result: ${products.length} products`)
+          }
+          
+          // If we got all 26, stop trying
+          if (products.length >= 26) {
+            console.log(`  🎉 Found all expected products!`)
+            break
+          }
+        } catch (error) {
+          console.log(`  ❌ ${approach.name} failed:`, error)
+        }
+      }
+      
+      console.log(`✅ Using best result: ${loadedProducts.length} products`)
+      
+      // Enhanced debugging for missing items
+      if (loadedProducts.length > 0) {
+        console.log('📊 Product Analysis:')
+        console.log('- Total loaded:', loadedProducts.length)
+        
+        // Analyze the products
+        const services = loadedProducts.filter((p: any) => p.product_type === 'service')
+        const products = loadedProducts.filter((p: any) => p.product_type === 'product')
+        const activeItems = loadedProducts.filter((p: any) => p.is_active === true)
+        const inactiveItems = loadedProducts.filter((p: any) => p.is_active === false)
+        
+        console.log('🔍 Product Analysis:')
+        console.log('  - Services:', services.length)
+        console.log('  - Products:', products.length)
+        console.log('  - Active items:', activeItems.length)
+        console.log('  - Inactive items:', inactiveItems.length)
+        
+        // Look for the specific missing items
+        const missingItems = [
+          'I&C - AC Scope',
+          'I&C - DC Scope', 
+          'MMS & Module Installation',
+          'Fencing - Chain Link - Installation'
+        ]
+        
+        console.log('🎯 Searching for missing items:')
+        missingItems.forEach(itemName => {
+          const found = loadedProducts.find((p: any) => 
+            p.name && p.name.toLowerCase().includes(itemName.toLowerCase().substring(0, 10))
+          )
+          console.log(`   "${itemName}": ${found ? 'FOUND' : 'NOT FOUND'}`)
+          if (found) {
+            console.log(`     Details:`, found)
+          }
+        })
+        
+        console.log('🔍 All product names (first 30):')
+        loadedProducts.slice(0, 30).forEach((p: Product, index: number) => {
+          console.log(`  ${index + 1}. ${p.name} (ID: ${p.id}, Code: ${p.product_code}, Active: ${(p as any).is_active})`)
+        })
+        
+        if (loadedProducts.length > 30) {
+          console.log(`  ... and ${loadedProducts.length - 30} more products`)
+        }
+      } else {
+        console.log('⚠️ No products found in any response')
+      }
+      
+      setProducts(loadedProducts)
+      
+      // If we have PO items but some products are missing, try to load them individually
+      if (formData.po_items.length > 0) {
+        const missingProductIds = formData.po_items
+          .map(item => item.product)
+          .filter(productId => !loadedProducts.find((p: Product) => p.id === productId))
+        
+        if (missingProductIds.length > 0) {
+          console.log(`⚠️ Found ${missingProductIds.length} missing products:`, missingProductIds)
+          console.log('PO items needing products:', formData.po_items.map(item => ({ product: item.product, name: 'Unknown' })))
+          console.log('Available product IDs:', loadedProducts.map((p: Product) => p.id))
+          await loadMissingProducts(missingProductIds)
+        } else {
+          console.log('✅ All PO item products found in loaded products')
+        }
+      }
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { status?: number; statusText?: string; data?: unknown }; message?: string }
+      console.error('❌ Error loading products:', error)
+      console.error('Error details:', {
+        status: axiosError.response?.status,
+        statusText: axiosError.response?.statusText,
+        data: axiosError.response?.data,
+        message: axiosError.message
+      })
+      
+      // Try to get more specific error information
+      if (axiosError.response?.status === 403) {
+        console.error('🚫 Permission denied - check if service user has access to products')
+        toast.error('Permission denied: Cannot access products. Contact administrator.')
+      } else if (axiosError.response?.status === 404) {
+        console.error('🔍 Products endpoint not found - API might have changed')
+        toast.error('Products API not found. Please contact support.')
+      } else {
+        toast.error('Failed to load products')
+      }
+    }
+  }
+
+  const loadMissingProducts = async (productIds: number[]) => {
+    try {
+      const missingProducts: Product[] = []
+      for (const productId of productIds) {
+        try {
+          console.log(`Attempting to load missing product ${productId} with session key:`, !!sessionKey)
+          const response = await apiClient.getFinanceProduct(productId, { session_key: sessionKey })
+          missingProducts.push(response.data)
+          console.log(`✅ Successfully loaded missing product: ${response.data.name} (ID: ${productId})`)
+        } catch (error: unknown) {
+          const axiosError = error as { response?: { status?: number; statusText?: string; data?: unknown }; message?: string }
+          console.error(`❌ Failed to load product ${productId}:`, error)
+          console.error('Error details:', {
+            status: axiosError.response?.status,
+            statusText: axiosError.response?.statusText,
+            data: axiosError.response?.data,
+            message: axiosError.message
+          })
+          
+          // Only create placeholder if it's actually a 404 (not found) or 403 (forbidden)
+          // For other errors (like network issues), don't create placeholder
+          if (axiosError.response?.status === 404) {
+            console.log(`Product ${productId} not found (404), creating placeholder`)
+            missingProducts.push({
+              id: productId,
+              name: `Product #${productId} (Not Found)`,
+              product_code: `NF-${productId}`,
+              description: 'This product was not found in the system',
+              unit: 'NOS',
+              selling_price: 0,
+              gst_rate: 0,
+              hsn_code_display: '',
+              sac_code_display: ''
+            })
+          } else {
+            console.log(`Product ${productId} failed to load due to error (${axiosError.response?.status || 'unknown'}), skipping placeholder`)
+            // For other errors, show a toast to inform the user
+            toast.error(`Failed to load product details for Product #${productId}. Please refresh the page.`)
+          }
+        }
+      }
+      
+      if (missingProducts.length > 0) {
+        setProducts(prev => [...prev, ...missingProducts])
+      }
     } catch (error) {
-      console.error('Error loading products:', error)
+      console.error('Error loading missing products:', error)
     }
   }
 
@@ -355,6 +555,32 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     }
   }
 
+  const loadShippingAddressDetails = async (shippingAddressId: number) => {
+    if (!sessionKey || !shippingAddressId) return
+
+    try {
+      console.log('Loading shipping address details for ID:', shippingAddressId)
+      const response = await apiClient.get(`/api/finance/customers/shipping-addresses/${shippingAddressId}/`, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+
+      const shippingAddress = response.data
+      console.log('Loaded shipping address details:', shippingAddress)
+      
+      // Add the shipping address to the selected customer's addresses if not already present
+      if (selectedCustomer && !selectedCustomer.shipping_addresses?.find(addr => addr.id === shippingAddressId)) {
+        setSelectedCustomer(prev => prev ? {
+          ...prev,
+          shipping_addresses: [...(prev.shipping_addresses || []), shippingAddress]
+        } : prev)
+      }
+    } catch (error) {
+      console.error('Error loading shipping address details:', error)
+      toast.error('Failed to load shipping address details')
+    }
+  }
+
   const loadCustomerDetails = async (customerId: number) => {
     if (!sessionKey || !customerId) return
 
@@ -366,12 +592,22 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       console.log('Loaded customer details:', fullCustomer)
       setSelectedCustomer(fullCustomer)
 
-      // Also update form data with customer ID and default shipping address
-      setFormData(prev => ({
-        ...prev,
-        customer: fullCustomer.id,
-        shipping_address: fullCustomer.shipping_addresses?.find((addr: any) => addr.is_default)?.id || null
-      }))
+      // Only set default shipping address if no shipping address is already set
+      // This preserves shipping addresses from quotations/POs
+      if (!formData.shipping_address) {
+        const defaultShippingAddress = fullCustomer.shipping_addresses?.find((addr: any) => addr.is_default)?.id || null
+        setFormData(prev => ({
+          ...prev,
+          customer: fullCustomer.id,
+          shipping_address: defaultShippingAddress
+        }))
+      } else {
+        // Just update the customer ID without changing shipping address
+        setFormData(prev => ({
+          ...prev,
+          customer: fullCustomer.id
+        }))
+      }
     } catch (error) {
       console.error('Error loading customer details:', error)
       toast.error('Failed to load customer details')
@@ -604,17 +840,19 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
       toast.success(purchaseOrder ? 'Purchase order updated successfully!' : 'Purchase order created successfully!')
       onSuccess()
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error saving purchase order:', error)
-      console.error('Error response:', error.response?.data)
-      console.error('Error status:', error.response?.status)
+      
+      const axiosError = error as { response?: { data?: unknown; status?: number } }
+      console.error('Error response:', axiosError.response?.data)
+      console.error('Error status:', axiosError.response?.status)
 
-      if (error.response?.data) {
-        const errorData = error.response.data
+      if (axiosError.response?.data) {
+        const errorData = axiosError.response.data
         console.log('Error data type:', typeof errorData)
         console.log('Error data:', errorData)
 
-        if (typeof errorData === 'object') {
+        if (typeof errorData === 'object' && errorData !== null) {
           // Handle field-specific errors
           const fieldErrors: Record<string, string> = {}
           Object.entries(errorData).forEach(([key, value]) => {
@@ -877,19 +1115,39 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                 </label>
                 {quotation ? (
                   <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white text-sm">
-                    {selectedCustomer.shipping_addresses && selectedCustomer.shipping_addresses.length > 0 ? (
-                      selectedCustomer.shipping_addresses
-                        .filter(addr => addr.id === formData.shipping_address)
-                        .map(address => (
-                          <div key={address.id}>
-                            <div className="font-medium">{address.label}{address.is_default && ' (Default)'}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              {address.address_line1}, {address.city}, {address.state} {address.pincode}
+                    {selectedCustomer && selectedCustomer.shipping_addresses && selectedCustomer.shipping_addresses.length > 0 ? (
+                      (() => {
+                        const selectedShippingAddr = selectedCustomer.shipping_addresses.find(addr => addr.id === formData.shipping_address)
+                        if (selectedShippingAddr) {
+                          return (
+                            <div>
+                              <div className="font-medium">{selectedShippingAddr.label}{selectedShippingAddr.is_default && ' (Default)'}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                {selectedShippingAddr.address_line1}
+                                {selectedShippingAddr.address_line2 && `, ${selectedShippingAddr.address_line2}`}
+                                <br />
+                                {selectedShippingAddr.city}, {selectedShippingAddr.state} {selectedShippingAddr.pincode}
+                                {selectedShippingAddr.country && selectedShippingAddr.country !== 'India' && `, ${selectedShippingAddr.country}`}
+                              </div>
                             </div>
-                          </div>
-                        ))[0] || 'Same as billing address'
+                          )
+                        } else if (formData.shipping_address) {
+                          return (
+                            <div className="text-orange-600 dark:text-orange-400">
+                              ⚠️ Shipping address (ID: {formData.shipping_address}) not found
+                              <div className="text-xs mt-1">The selected shipping address may have been deleted</div>
+                            </div>
+                          )
+                        } else {
+                          return 'Same as billing address'
+                        }
+                      })()
                     ) : (
-                      'Same as billing address'
+                      formData.shipping_address ? 
+                        <div className="text-orange-600 dark:text-orange-400">
+                          ⚠️ Loading shipping address details...
+                        </div> : 
+                        'Same as billing address'
                     )}
                   </div>
                 ) : (
@@ -930,33 +1188,52 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
 
                   {showProductDropdown && (
                     <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {products
-                        .filter(product =>
-                          !productSearch || 
-                          product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-                          product.product_code.toLowerCase().includes(productSearch.toLowerCase())
-                        )
-                        .map((product) => (
-                          <div
-                            key={product.id}
-                            onClick={() => handleAddProduct(product)}
-                            className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-200 dark:border-gray-600 last:border-b-0"
-                          >
-                            <div className="font-medium text-gray-900 dark:text-white">{product.name}</div>
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                              {product.product_code} | HSN/SAC: {product.hsn_code_display || product.sac_code_display || 'N/A'} | ₹{product.selling_price} | GST: {product.gst_rate}%
-                            </div>
-                          </div>
-                        ))
-                      }
-                      {products.filter(product =>
-                        !productSearch || 
-                        product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-                        product.product_code.toLowerCase().includes(productSearch.toLowerCase())
-                      ).length === 0 && (
+                      
+                      {products.length === 0 ? (
                         <div className="px-3 py-2 text-gray-500 dark:text-gray-400 text-center">
-                          {products.length === 0 ? 'No products available' : 'No products match your search'}
+                          No products loaded. Check console for errors.
                         </div>
+                      ) : (
+                        <>
+                          {products
+                            .filter(product => {
+                              if (!productSearch.trim()) return true
+                              
+                              const search = productSearch.toLowerCase()
+                              const name = product.name.toLowerCase()
+                              const code = product.product_code.toLowerCase()
+                              
+                              return name.includes(search) || code.includes(search)
+                            })
+                            .map((product) => (
+                              <div
+                                key={product.id}
+                                onClick={() => handleAddProduct(product)}
+                                className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-200 dark:border-gray-600 last:border-b-0"
+                              >
+                                <div className="font-medium text-gray-900 dark:text-white">{product.name}</div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400">
+                                  {product.product_code} | HSN/SAC: {product.hsn_code_display || product.sac_code_display || 'N/A'} | ₹{product.selling_price} | GST: {product.gst_rate}%
+                                </div>
+                              </div>
+                            ))
+                          }
+                          
+                          {products
+                            .filter(product => {
+                              if (!productSearch.trim()) return true
+                              
+                              const search = productSearch.toLowerCase()
+                              const name = product.name.toLowerCase()
+                              const code = product.product_code.toLowerCase()
+                              
+                              return name.includes(search) || code.includes(search)
+                            }).length === 0 && productSearch.trim() && (
+                            <div className="px-3 py-2 text-gray-500 dark:text-gray-400 text-center">
+                              No products match "{productSearch}"
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
@@ -982,10 +1259,20 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex-1">
                               <div className="font-medium text-gray-900 dark:text-white">
-                                {product?.name || 'Unknown Product'}
+                                {product?.name || `Product #${item.product} (Not Found)`}
+                                {product?.name && product.name.includes('(Deleted)') && (
+                                  <span className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300 rounded-full">
+                                    Deleted
+                                  </span>
+                                )}
                               </div>
                               <div className="text-sm text-gray-500 dark:text-gray-400">
-                                {product?.product_code} | HSN/SAC: {item.hsn_sac_code || product?.hsn_code_display || product?.sac_code_display || 'N/A'} | GST: {item.gst_rate}%
+                                {product?.product_code || `ID: ${item.product}`} | HSN/SAC: {item.hsn_sac_code || product?.hsn_code_display || product?.sac_code_display || 'N/A'} | GST: {item.gst_rate}%
+                                {!product && (
+                                  <div className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                                    ⚠️ This product may have been deleted or is no longer available
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <button

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Button } from '../../../../components/ui/Button'
 import { Input } from '../../../../components/ui/Input'
 import { crmApi } from '../utils/api'
+import { Modal } from '../../../../components/ui/Modal'
 
 interface QuotaModalProps {
   isOpen: boolean
@@ -47,12 +48,15 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({ isOpen, onClose, onSave,
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
-      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Set Sales Quota</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      size="sm"
+      className="max-w-md"
+      bodyClassName="p-6"
+    >
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Set Sales Quota</h2>
+      <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Period</label>
               <select 
@@ -137,9 +141,7 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({ isOpen, onClose, onSave,
                 {loading ? 'Saving...' : 'Set Quota'}
               </Button>
             </div>
-          </form>
-        </div>
-      </div>
-    </div>
+      </form>
+    </Modal>
   )
 }

@@ -10,7 +10,6 @@ import {
   Settings,
   Plus,
   Search,
-  MoreVertical,
   CheckCircle,
   XCircle,
   Clock,
@@ -40,7 +39,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
 import { Button } from '../../components/ui/Button'
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner'
-import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../components/ui/DropdownMenu'
+
 import { getStatusColor, getSeverityStyle, cardContainer } from '../../utils/styleUtils'
 import CreateCompanyModal from '../../components/forms/CreateCompanyModal'
 import CompanyViewModal from '../../components/modals/CompanyViewModal'
@@ -75,7 +74,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   // Handle URL parameters for section navigation
   useEffect(() => {
     const section = searchParams.get('section')
-    if (section && ['overview', 'companies', 'services', 'monitoring', 'ai-assistant', 'alerts', 'analytics', 'configuration'].includes(section)) {
+    if (section) {
       setActiveSection(section)
     }
   }, [searchParams])
@@ -126,6 +125,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const { data: notifications } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => apiClient.get('/api/notifications/?is_read=false'),
+    refetchInterval: 120000, // Refresh every 2 minutes
   })
 
   // Fetch services
@@ -144,6 +144,11 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const notificationsData = notifications?.data?.results || []
   const servicesData = services?.data?.results || []
 
+  // Get total counts from pagination info or fallback to array length
+  const totalCompanies = companies?.data?.count || companiesData.length
+  const totalServices = services?.data?.count || servicesData.length
+  const totalNotifications = notifications?.data?.count || notificationsData.length
+
   // Filter companies
   const filteredCompanies = companiesData.filter((company: any) => {
     const matchesSearch = company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -154,11 +159,11 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
 
   // Stats
   const stats = {
-    totalCompanies: companiesData.length,
+    totalCompanies,
     pendingApprovals: companiesData.filter((c: any) => c.approval_status === 'pending').length,
     approvedCompanies: companiesData.filter((c: any) => c.approval_status === 'approved').length,
-    totalServices: servicesData.length,
-    unreadNotifications: notificationsData.length,
+    totalServices,
+    unreadNotifications: totalNotifications,
   }
 
 
@@ -609,55 +614,56 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2 relative flex-shrink-0 overflow-visible">
-                    {company.approval_status === 'pending' && (
+                    <div className="flex items-center space-x-2 flex-shrink-0">
+                      {company.approval_status === 'pending' && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleReviewCompany(company)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Review
+                        </Button>
+                      )}
                       <Button
                         size="sm"
-                        onClick={() => handleReviewCompany(company)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
+                        variant="ghost"
+                        onClick={() => handleViewCompany(company)}
+                        className="hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                        title="View Details"
                       >
-                        <Eye className="h-4 w-4 mr-1" />
-                        Review & Approve
+                        <Eye className="h-4 w-4" />
                       </Button>
-                    )}
-                    <div className="relative flex-shrink-0 overflow-visible">
-                      <DropdownMenu
-                        trigger={
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            className="hover:bg-gray-100 dark:hover:bg-gray-700 p-2 h-8 w-8 flex items-center justify-center"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        }
-                        align="right"
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleEditCompany(company)}
+                        className="hover:bg-green-50 dark:hover:bg-green-900/20 text-green-600 dark:text-green-400"
+                        title="Edit Company"
                       >
-                        <DropdownMenuItem onClick={() => handleViewCompany(company)}>
-                          <Eye className="h-4 w-4" />
-                          View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleEditCompany(company)}>
-                          <Edit className="h-4 w-4" />
-                          Edit Company
-                        </DropdownMenuItem>
-                        {company.approval_status === 'approved' && (
-                          <DropdownMenuItem onClick={() => handleResetPassword(company)}>
-                            <Key className="h-4 w-4" />
-                            Reset Password
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleDeleteCompany(company)}
-                          variant="danger"
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      {company.approval_status === 'approved' && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleResetPassword(company)}
+                          className="hover:bg-orange-50 dark:hover:bg-orange-900/20 text-orange-600 dark:text-orange-400"
+                          title="Reset Password"
                         >
-                          <Trash2 className="h-4 w-4" />
-                          Delete Company
-                        </DropdownMenuItem>
-                      </DropdownMenu>
+                          <Key className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteCompany(company)}
+                        className="hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"
+                        title="Delete Company"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                  </div>
                 </div>
               </div>
                 )
@@ -673,6 +679,8 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const renderServicesSection = () => (
     <ServicesManagement />
   )
+
+  // Athens Sustainability Section
 
   // AI Assistant Section
   const renderAIAssistantSection = () => (
@@ -712,13 +720,13 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const { data: systemOverview, isLoading: systemLoading } = useQuery({
     queryKey: ['system-overview'],
     queryFn: () => apiClient.get('/api/analytics/system-overview/'),
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 300000, // Refresh every 5 minutes
   })
 
   const { data: serviceMetrics } = useQuery({
     queryKey: ['service-metrics'],
     queryFn: () => apiClient.get('/api/analytics/service-metrics/'),
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 300000, // Refresh every 5 minutes
   })
 
   const systemData = systemOverview?.data || {}
@@ -1036,7 +1044,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   const { data: systemAlerts, refetch: refetchAlerts } = useQuery({
     queryKey: ['system-alerts'],
     queryFn: () => apiClient.get('/api/analytics/system-alerts/'),
-    refetchInterval: 30000,
+    refetchInterval: 300000, // Refresh every 5 minutes
   })
 
   const [realtimeAlerts, setRealtimeAlerts] = useState<any[]>([])
@@ -1217,10 +1225,10 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
         return renderCompaniesSection()
       case 'services':
         return renderServicesSection()
-      case 'monitoring':
-        return renderSystemMonitoringSection()
       case 'ai-assistant':
         return renderAIAssistantSection()
+      case 'monitoring':
+        return renderSystemMonitoringSection()
       case 'alerts':
         return renderAlertCenterSection()
       case 'analytics':
@@ -1233,7 +1241,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-100/40 dark:from-gray-950 dark:via-slate-900 dark:to-indigo-950/30 relative overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-full bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-100/40 dark:from-gray-950 dark:via-slate-900 dark:to-indigo-950/30 relative overflow-hidden">
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-purple-600/20 rounded-full blur-3xl animate-pulse"></div>
@@ -1370,9 +1378,9 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
       </header>
 
       {/* Main Layout Container */}
-      <div className="flex min-h-screen">
+      <div className="flex flex-1 min-h-full">
         {/* Enhanced Fixed Sidebar Navigation */}
-        <aside className="fixed left-0 top-20 bottom-0 w-72 bg-white/90 dark:bg-gray-900/90 backdrop-blur-2xl border-r border-gray-200/50 dark:border-gray-700/50 overflow-y-auto z-40 shadow-2xl shadow-gray-900/5">
+        <aside id="sidebar" className="fixed left-0 top-20 bottom-0 w-72 bg-white/90 dark:bg-gray-900/90 backdrop-blur-2xl border-r border-gray-200/50 dark:border-gray-700/50 overflow-y-auto z-[var(--z-sidebar)] shadow-2xl shadow-gray-900/5">
           <div className="p-6">
             {/* Sidebar Header */}
             <div className="mb-8">
@@ -1460,7 +1468,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
         </aside>
 
         {/* Enhanced Main Content Area */}
-        <main className="flex-1 ml-72 pt-20 min-h-screen relative z-10">
+        <main className="flex-1 ml-72 pt-20 min-h-full relative z-10">
           <div className="w-full max-w-none p-8 overflow-visible">
             <div className="space-y-8 overflow-visible">
               {/* Enhanced Section Header */}

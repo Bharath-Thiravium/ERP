@@ -150,22 +150,22 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, currentPage = 'overview
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950">
+    <div className="min-h-screen flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950">
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 z-40 bg-black bg-opacity-50 lg:hidden"
+          className="fixed inset-0 z-[var(--z-overlay)] bg-black bg-opacity-50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-r border-gray-200/50 dark:border-gray-700/50 transform transition-transform duration-300 ease-in-out flex flex-col ${
+      <aside id="sidebar" className={`fixed inset-y-0 left-0 z-[var(--z-sidebar)] w-80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-r border-gray-200/50 dark:border-gray-700/50 transform transition-transform duration-300 ease-in-out flex flex-col ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       } lg:translate-x-0`}>
         
         {/* Sidebar Header */}
-        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200/50 dark:border-gray-700/50">
+        <div className="flex-shrink-0 flex items-center justify-between h-16 px-6 border-b border-gray-200/50 dark:border-gray-700/50">
           <div className="flex items-center space-x-3">
             <div className="h-8 w-8 rounded-lg overflow-hidden bg-gradient-to-r from-orange-500 to-red-600 flex items-center justify-center">
               {companyData?.logo ? (
@@ -190,8 +190,8 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, currentPage = 'overview
         </div>
 
         {/* Navigation Menu */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <nav className="px-4 py-6 pb-20">
+        <div className="flex-1 overflow-y-auto">
+          <nav className="px-4 py-6">
             <div className="space-y-6">
               {sidebarSections.map((section) => (
                 <div key={section.title}>
@@ -263,10 +263,10 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, currentPage = 'overview
             </button>
           </div>
         </div>
-      </div>
+      </aside>
 
       {/* Main Content */}
-      <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:ml-80' : 'ml-0'}`}>
+      <div className={`flex-1 min-w-0 flex flex-col transition-all duration-300 ${sidebarOpen ? 'lg:ml-80' : 'ml-0'}`}>
         {/* Top Header */}
         <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-700/50 sticky top-0 z-30">
           <div className="px-6 py-4">
@@ -300,7 +300,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, currentPage = 'overview
                     <Bell className="h-5 w-5" />
                   </button>
                   {notificationOpen && (
-                    <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                    <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-[var(--z-dropdown)]">
                       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h3>
                       </div>
@@ -320,7 +320,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, currentPage = 'overview
         </header>
 
         {/* Main Content Area */}
-        <main className="p-6">
+        <main id="main-content" className="flex-1 min-h-0 overflow-y-auto p-6">
           {renderContent()}
         </main>
       </div>

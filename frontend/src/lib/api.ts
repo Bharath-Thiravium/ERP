@@ -1,8 +1,37 @@
 import axios, { AxiosResponse, AxiosError, AxiosInstance } from 'axios'
 import toast from 'react-hot-toast'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+const resolveApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_URL as string | undefined
+  // Use empty string for same-origin requests in production
+  if (!envUrl || envUrl === '') {
+    return ''
+  }
+  return envUrl
+}
+
+const resolveWsBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_WS_URL as string | undefined
+  if (envUrl) {
+    if (typeof window !== 'undefined') {
+      const isLocalEnv = /localhost|127\.0\.0\.1/.test(envUrl)
+      const isLocalHost = /localhost|127\.0\.0\.1/.test(window.location.hostname)
+      if (isLocalEnv && !isLocalHost) {
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+        return `${protocol}://${window.location.host}`
+      }
+    }
+    return envUrl
+  }
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    return `${protocol}://${window.location.host}`
+  }
+  return 'ws://localhost:8000'
+}
+
+const API_BASE_URL = resolveApiBaseUrl()
+const WS_BASE_URL = resolveWsBaseUrl()
 
 // Helper function to get WebSocket URL
 export const getWebSocketUrl = (endpoint: string): string => {
@@ -68,25 +97,20 @@ api.interceptors.request.use(
         // Use session key as query parameter for service user endpoints
         let sessionKey = sessionStorage.getItem('service_session_key')
         
-        // Fallback to store if sessionStorage is empty
+        // If no session key, abort immediately
         if (!sessionKey) {
-          try {
-            const storeState = JSON.parse(localStorage.getItem('service-user-storage') || '{}')
-            sessionKey = storeState?.state?.sessionKey
-            if (sessionKey) {
-              sessionStorage.setItem('service_session_key', sessionKey)
+          return Promise.reject({
+            response: {
+              status: 401,
+              data: { error: 'Session expired. Please login again.' }
             }
-          } catch (error) {
-            console.warn('Failed to restore session key from store:', error)
-          }
+          })
         }
         
-        if (sessionKey) {
-          config.params = config.params || {}
-          config.params.session_key = sessionKey
-        }
+        config.params = config.params || {}
+        config.params.session_key = sessionKey
       } else {
-        // Use JWT token for regular endpoints
+        // Use JWT token for regular endpoints (including Athens)
         const token = getToken()
         if (token) {
           config.headers.Authorization = `Bearer ${token}`
@@ -124,17 +148,21 @@ api.interceptors.response.use(
                                    originalRequest.url?.includes('/api/crm/')
       
       if (isServiceUserEndpoint) {
-        // For service user endpoints, only logout if it's a real authentication failure
-        const errorData = error.response?.data as { error?: string }
-        if (errorData?.error === 'Invalid session' || errorData?.error === 'Session key required') {
-          sessionStorage.removeItem('service_session_key')
+        // Only redirect if we're actually logged out
+        const hasSession = sessionStorage.getItem('service_session_key')
+        if (!hasSession) {
+          sessionStorage.clear()
+          localStorage.removeItem('service-user-storage')
           if (!window.location.pathname.includes('/service-login')) {
-            window.location.replace('/service-login')
+            window.location.href = '/service-login'
           }
         }
         return Promise.reject(error)
       }
 
+      // Check if this is an Athens employee management endpoint
+      const isAthensEmployeeEndpoint = originalRequest.url?.includes('/api/athens-sust/employees')
+      
       const refreshToken = getRefreshToken()
       if (refreshToken) {
         try {
@@ -151,15 +179,22 @@ api.interceptors.response.use(
         } catch (refreshError: any) {
           // Refresh failed, redirect to login
           clearTokens()
+          
+          // Force logout from auth store to clear all state
+          localStorage.removeItem('auth-storage')
+          sessionStorage.clear()
 
           // Don't show error toast for token refresh failures
           // Only redirect if not already on login page and not during navigation
           if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/unauthorized')) {
-            // Use history-friendly navigation instead of replace
-            clearTokens()
-            sessionStorage.clear()
-            // Let the auth store handle the redirect properly
-            return Promise.reject(refreshError)
+            // For Athens employee endpoints, show a more specific error
+            if (isAthensEmployeeEndpoint) {
+              toast.error('Authentication expired. Please login again to access employee management.')
+            } else {
+              toast.error('Session expired. Please login again.')
+            }
+            // Force a complete page reload to reset all state
+            window.location.href = '/login'
           }
           return Promise.reject(refreshError)
         }
@@ -173,8 +208,18 @@ api.interceptors.response.use(
         if (!isServiceUserEndpoint && !originalRequest.url?.includes('/validate-token/')) {
           clearTokens()
           sessionStorage.clear()
-          // Let the auth store and router handle redirects properly
-          // Don't force navigation here to preserve browser history
+          localStorage.removeItem('auth-storage')
+          
+          // Force complete page reload to reset all state
+          if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/unauthorized')) {
+            // For Athens employee endpoints, show a more specific error
+            if (isAthensEmployeeEndpoint) {
+              toast.error('Authentication required. Please login to access employee management.')
+            } else {
+              toast.error('Session expired. Please login again.')
+            }
+            window.location.href = '/login'
+          }
         }
       }
     }
@@ -182,12 +227,18 @@ api.interceptors.response.use(
     // Handle other errors (but not for token validation failures during app init)
     if (!originalRequest.url?.includes('/validate-token/')) {
       const errorData = error.response?.data as any
-      if (errorData?.message) {
-        toast.error(errorData.message)
-      } else if (errorData?.error) {
-        toast.error(errorData.error)
-      } else if (error.message && !error.message.includes('401')) {
-        toast.error(error.message)
+      
+      // Don't show generic error toasts for Athens employee endpoints - let the component handle it
+      const isAthensEmployeeEndpoint = originalRequest.url?.includes('/api/athens-sust/employees')
+      
+      if (!isAthensEmployeeEndpoint) {
+        if (errorData?.message) {
+          toast.error(errorData.message)
+        } else if (errorData?.error) {
+          toast.error(errorData.error)
+        } else if (error.message && !error.message.includes('401')) {
+          toast.error(error.message)
+        }
       }
     }
 
@@ -197,10 +248,16 @@ api.interceptors.response.use(
 
 // URL validation for SSRF protection
 function validateUrl(url: string): boolean {
+  // Allow relative URLs when API_BASE_URL is empty
+  if (!API_BASE_URL && url.startsWith('/')) {
+    return true
+  }
+  
   try {
-    const urlObj = new URL(url, API_BASE_URL)
+    const urlObj = new URL(url, API_BASE_URL || window.location.origin)
     // Only allow same origin requests
-    return urlObj.origin === new URL(API_BASE_URL).origin
+    const baseOrigin = API_BASE_URL ? new URL(API_BASE_URL).origin : window.location.origin
+    return urlObj.origin === baseOrigin
   } catch {
     return false
   }
@@ -250,6 +307,10 @@ export const apiClient = {
 
   companyUserLogin: (credentials: { email: string; password: string }) =>
     api.post('/api/auth/company/login/', credentials),
+
+  // Athens Sustainability Login
+  athensLogin: (credentials: { username: string; password: string }) =>
+    api.post('/api/athens-sust/auth/login/', credentials),
 
   changeCompanyUserPassword: (data: { current_password: string; new_password: string; confirm_password: string; force_logout_all?: boolean }) =>
     api.post('/api/company-dashboard/security/password-change/', data),
@@ -384,7 +445,14 @@ export const apiClient = {
     api.post('/api/auth/service-user/login/', credentials),
 
   serviceUserLogout: (sessionKey: string) =>
-    api.post('/api/auth/service-user/logout/', { session_key: sessionKey }),
+    // Use fetch directly to avoid authentication interceptor issues during logout
+    fetch('/api/auth/service-user/logout/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ session_key: sessionKey })
+    }),
 
   changeServiceUserPassword: (data: { session_key: string; current_password: string; new_password: string; confirm_password: string }) =>
     api.post('/api/auth/service-user/change-password/', data),
@@ -520,7 +588,7 @@ export const apiClient = {
     api.post(`/api/finance/quotations/${id}/copy/`, {}, { params }),
 
   sendQuotationEmail: (id: number, data?: any) =>
-    api.post(`/api/finance/quotations/${id}/send-email/`, data),
+    api.post(`/api/finance/quotations/${id}/send_email/`, data),
 
   // Purchase Orders
   getFinancePurchaseOrders: (params?: any) =>
@@ -558,10 +626,10 @@ export const apiClient = {
     api.get(`/api/finance/proforma-invoices/${id}/pdf/`, { params }),
 
   sendProformaEmail: (id: number, data?: any) =>
-    api.post(`/api/finance/proforma-invoices/${id}/send-email/`, data),
+    api.post(`/api/finance/proforma-invoices/${id}/send_email/`, data),
 
   sendPurchaseOrderEmail: (id: number, data?: any) =>
-    api.post(`/api/finance/purchase-orders/${id}/send-email/`, data),
+    api.post(`/api/finance/purchase-orders/${id}/send_email/`, data),
 
   // Tax Invoices
   getFinanceInvoices: (params?: any) =>
@@ -583,7 +651,7 @@ export const apiClient = {
     api.get(`/api/finance/invoices/${id}/pdf/`, { params }),
 
   sendInvoiceEmail: (id: number, data?: any) =>
-    api.post(`/api/finance/invoices/${id}/send-email/`, data),
+    api.post(`/api/finance/invoices/${id}/send_email/`, data),
 
   updateInvoicePayment: (id: number, data: any) =>
     api.post(`/api/finance/invoices/${id}/payments/`, data),

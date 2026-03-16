@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, Download, Calendar, User, Building, DollarSign } from 'lucide-react'
+import { X, Download, Calendar, User, Building, IndianRupee } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 
@@ -144,7 +144,7 @@ const PayslipDetailView: React.FC<PayslipDetailViewProps> = ({ payslip, onClose,
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2 text-green-600 dark:text-green-400">
-                  <DollarSign className="h-5 w-5" />
+                  <IndianRupee className="h-5 w-5" />
                   <span>Earnings</span>
                 </CardTitle>
               </CardHeader>
@@ -194,7 +194,7 @@ const PayslipDetailView: React.FC<PayslipDetailViewProps> = ({ payslip, onClose,
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2 text-red-600 dark:text-red-400">
-                  <DollarSign className="h-5 w-5" />
+                  <IndianRupee className="h-5 w-5" />
                   <span>Deductions</span>
                 </CardTitle>
               </CardHeader>

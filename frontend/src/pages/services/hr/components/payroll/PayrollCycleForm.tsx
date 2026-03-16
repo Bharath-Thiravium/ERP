@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Save, Calendar, DollarSign } from 'lucide-react'
+import { Save, Calendar, IndianRupee } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -98,7 +98,7 @@ const PayrollCycleForm: React.FC<PayrollCycleFormProps> = ({ onSuccess, onCancel
       <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <DollarSign className="h-5 w-5 text-blue-500" />
+            <IndianRupee className="h-5 w-5 text-blue-500" />
             <span>Payroll Cycle Details</span>
           </CardTitle>
         </CardHeader>

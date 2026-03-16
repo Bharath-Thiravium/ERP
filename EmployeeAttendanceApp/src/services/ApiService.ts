@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BASE_URL = 'http://192.168.29.133:8000/api'; // Your computer's IP address
+const BASE_URL = 'https://sap.athenas.co.in/api'; // Production API URL
 
 class ApiService {
   private api;
@@ -140,8 +140,24 @@ class ApiService {
     ]);
   }
 
+  // Validate token
+  async validateToken() {
+    try {
+      const response = await this.api.get('/auth/validate-token/');
+      return response;
+    } catch (error) {
+      console.error('🚨 Token validation failed:', error);
+      throw error;
+    }
+  }
+
   // Logout
   async logout() {
+    try {
+      await this.api.post('/auth/logout/');
+    } catch (error) {
+      console.log('Logout API call failed, clearing local data anyway');
+    }
     await this.clearLocalData();
   }
 }

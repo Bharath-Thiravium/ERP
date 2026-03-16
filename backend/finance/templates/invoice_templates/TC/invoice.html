@@ -11,17 +11,25 @@
             box-sizing: border-box;
         }
         
+        @page {
+            size: A4;
+            margin: 20mm 15mm;
+        }
+        
         body {
-            font-family: 'Times New Roman', serif;
+            font-family: 'Roboto', 'Times New Roman', serif;
             font-size: 11px;
             line-height: 1.4;
             color: #333;
+            margin: 0;
+            padding: 20mm 15mm;
+            background: white;
         }
         
         .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
             border: 2px solid #333;
         }
         
@@ -316,6 +324,27 @@
                     {% endif %}
                     <div class="label">State Code:</div>
                     <div>{{ invoice.customer.gstin|slice:":2"|default:"N/A" }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Shipping Address Section -->
+        <div class="invoice-meta">
+            <div class="customer-details" style="margin: 0 auto; width: 48%;">
+                <div class="section-title">Ship To</div>
+                <div class="details-grid">
+                    {% if has_specific_shipping %}
+                        <div class="label">Location:</div>
+                        <div><strong>{{ shipping_info.label }}</strong></div>
+                        <div class="label">Address:</div>
+                        <div>{{ shipping_info.address }}</div>
+                    {% else %}
+                        <div class="label">Address:</div>
+                        <div>
+                            <strong>Same as Billing Address</strong><br>
+                            {{ shipping_info.address }}
+                        </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

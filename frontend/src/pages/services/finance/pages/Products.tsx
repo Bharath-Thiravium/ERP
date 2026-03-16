@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Package, Wrench, DollarSign } from 'lucide-react'
+import { Package, Wrench, IndianRupee } from 'lucide-react'
 import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import ProductList from '../components/ProductList'
@@ -140,7 +140,7 @@ const Products: React.FC = () => {
           title="Avg Selling Price"
           value={`₹${metrics.avgSellingPrice.toLocaleString()}`}
           subtitle="Average price per item"
-          icon={DollarSign}
+          icon={IndianRupee}
           color="orange"
         />
       </div>

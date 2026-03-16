@@ -93,31 +93,23 @@ class InvoicePDFService:
     def _prepare_context(self, invoice):
         """Prepare context data for template rendering"""
         try:
-            # Get company information
-            company = invoice.company
+            # Import the new service
+            from .invoice_service import invoice_pdf_service
             
-            # Prepare context
-            context = {
-                'invoice': invoice,
-                'company': company,
-                'customer': invoice.customer,
-                'items': invoice.invoice_items.all().order_by('line_number'),
-            }
-            
-            # Add calculated fields
-            context.update({
-                'subtotal_before_discount': invoice.subtotal + invoice.discount_amount if invoice.discount_amount > 0 else invoice.subtotal,
-                'has_taxes': invoice.total_tax > 0,
-                'has_discount': invoice.discount_amount > 0,
-                'has_shipping': invoice.shipping_charges > 0,
-                'has_other_charges': invoice.other_charges > 0,
-            })
+            # Use the new service to prepare context with proper shipping address handling
+            context = invoice_pdf_service.prepare_invoice_context(invoice)
             
             return context
             
         except Exception as e:
             logger.error(f"Error preparing context for invoice {invoice.invoice_number}: {str(e)}")
-            raise
+            # Fallback to basic context
+            return {
+                'invoice': invoice,
+                'company': invoice.company,
+                'customer': invoice.customer,
+                'items': invoice.invoice_items.all().order_by('line_number'),
+            }
     
     def _generate_pdf_from_html(self, html_content):
         """Generate PDF from HTML content using WeasyPrint"""

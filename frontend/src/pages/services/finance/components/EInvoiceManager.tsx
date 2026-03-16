@@ -2,13 +2,13 @@
  * E-Invoice Management Component
  */
 import React, { useState, useEffect } from 'react'
-// import { documentApi, EInvoiceResult } from '../../../../services/documentApi'
 import { financeApi } from '../../../../services/financeApi'
 import { DataTable } from '../../../../components/ui/DataTable'
 import { Button } from '../../../../components/ui/Button'
 import { Modal } from '../../../../components/ui/Modal'
 import { Badge } from '../../../../components/ui/Badge'
-import { Card } from '../../../../components/ui/Card'
+import FinanceCard from './FinanceCard'
+import MetricCard from './MetricCard'
 import { 
   Zap, 
   CheckCircle, 
@@ -196,74 +196,63 @@ export const EInvoiceManager: React.FC<EInvoiceManagerProps> = ({ className = ''
   return (
     <div className={`space-y-6 ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">E-Invoice Management</h2>
-          <p className="text-gray-600">Generate and manage government E-Invoices</p>
+      <FinanceCard>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">E-Invoice Management</h2>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">Generate and manage government E-Invoices</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={handleBulkGenerate}
+              disabled={selectedInvoices.length === 0 || bulkGenerating}
+            >
+              <Zap className="w-4 h-4 mr-2" />
+              Bulk Generate ({selectedInvoices.length})
+            </Button>
+            <Button variant="outline" onClick={loadInvoices}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            onClick={handleBulkGenerate}
-            disabled={selectedInvoices.length === 0 || bulkGenerating}
-          >
-            <Zap className="w-4 h-4 mr-2" />
-            Bulk Generate ({selectedInvoices.length})
-          </Button>
-          <Button variant="outline" onClick={loadInvoices}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
-      </div>
+      </FinanceCard>
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total Invoices</p>
-              <p className="text-2xl font-bold text-gray-900">{invoices.length}</p>
-            </div>
-            <FileText className="w-8 h-8 text-blue-600" />
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">E-Invoices Generated</p>
-              <p className="text-2xl font-bold text-green-600">{generatedCount}</p>
-            </div>
-            <CheckCircle className="w-8 h-8 text-green-600" />
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Eligible for E-Invoice</p>
-              <p className="text-2xl font-bold text-yellow-600">{eligibleInvoices.length}</p>
-            </div>
-            <AlertCircle className="w-8 h-8 text-yellow-600" />
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Completion Rate</p>
-              <p className="text-2xl font-bold text-purple-600">
-                {invoices.length > 0 ? Math.round((generatedCount / invoices.length) * 100) : 0}%
-              </p>
-            </div>
-            <Zap className="w-8 h-8 text-purple-600" />
-          </div>
-        </Card>
+        <MetricCard
+          title="Total Invoices"
+          value={invoices.length.toString()}
+          subtitle=""
+          icon={FileText}
+          color="blue"
+        />
+        <MetricCard
+          title="E-Invoices Generated"
+          value={generatedCount.toString()}
+          subtitle=""
+          icon={CheckCircle}
+          color="green"
+        />
+        <MetricCard
+          title="Eligible for E-Invoice"
+          value={eligibleInvoices.length.toString()}
+          subtitle=""
+          icon={AlertCircle}
+          color="orange"
+        />
+        <MetricCard
+          title="Completion Rate"
+          value={`${invoices.length > 0 ? Math.round((generatedCount / invoices.length) * 100) : 0}%`}
+          subtitle=""
+          icon={Zap}
+          color="purple"
+        />
       </div>
 
       {/* E-Invoice Requirements Info */}
-      <Card className="p-6 bg-blue-50 border-blue-200">
+      <FinanceCard className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
           <div>
@@ -274,7 +263,7 @@ export const EInvoiceManager: React.FC<EInvoiceManagerProps> = ({ className = ''
             </p>
           </div>
         </div>
-      </Card>
+      </FinanceCard>
 
       {/* Invoices Table */}
       <DataTable

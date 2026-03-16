@@ -7,6 +7,7 @@ import CustomerList from '../components/CustomerList'
 import CustomerForm from '../components/CustomerForm'
 import CustomerDetail from '../components/CustomerDetail'
 import MetricCard from '../components/MetricCard'
+import FinanceCard from '../components/FinanceCard'
 
 interface Customer {
   id: number
@@ -139,14 +140,14 @@ const Customers: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6">
+      <FinanceCard>
         <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
           Customers
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
           Manage your customer database and relationships
         </p>
-      </div>
+      </FinanceCard>
 
       {/* Dashboard Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -173,7 +174,7 @@ const Customers: React.FC = () => {
         />
         <MetricCard
           title="Total Credit Limit"
-          value={`₹${metrics.totalCreditLimit.toLocaleString()}`}
+          value={metrics.totalCreditLimit > 0 ? `₹${metrics.totalCreditLimit.toLocaleString('en-IN')}` : '₹0'}
           subtitle="Combined credit limits"
           icon={CreditCard}
           color="orange"

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '../../../../lib/api'
 
-import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, MapPin, Package, ShoppingCart, Receipt, CheckCircle, TrendingUp, XCircle } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, Package, ShoppingCart, Receipt, CheckCircle, TrendingUp, XCircle, User } from 'lucide-react'
 import MetricCard from './MetricCard'
 import toast from 'react-hot-toast'
 
@@ -13,7 +13,17 @@ interface PurchaseOrder {
   customer_name: string
   customer_code: string
   customer_project_area?: string
+  customer_email?: string
+  customer_phone?: string
+  customer_shipping_addresses?: Array<{
+    type: string
+    address: string
+    is_default?: boolean
+  }>
   quotation_number: string
+  reference: string
+  shipping_address?: string
+  shipping_address_text?: string
   status: string
   gst_type: string
   subtotal: string
@@ -50,7 +60,8 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
   const [statusFilter, setStatusFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [hoveredPO, setHoveredPO] = useState<number | null>(null)
+  const [hoveredPO, setHoveredPO] = useState<number | string | null>(null)
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [metrics, setMetrics] = useState({
     total: 0,
     draft: 0,
@@ -60,7 +71,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
     avgDealSize: 0
   })
 
-  // Debounce search term
+  // Debounce search term and reset pagination
   useEffect(() => {
     if (searchTerm !== debouncedSearchTerm) {
       setSearching(true)
@@ -68,11 +79,17 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
     
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm)
+      setCurrentPage(1) // Reset to first page when search changes
       setSearching(false)
     }, 500)
 
     return () => clearTimeout(timer)
   }, [searchTerm, debouncedSearchTerm])
+
+  // Reset pagination when status filter changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [statusFilter])
 
   const fetchPurchaseOrders = useCallback(async (page: number) => {
     if (!sessionKey) return
@@ -92,11 +109,23 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
       const response = await apiClient.getFinancePurchaseOrders(Object.fromEntries(new URLSearchParams(params)))
 
       const pos = response.data.results
-      setPurchaseOrders(pos)
-      setTotalPages(Math.ceil(response.data.count / 5))
       
-      // Calculate metrics
-      const total = pos.length
+      // Debug: Check if customer_shipping_addresses is in the response
+      console.log('First PO customer data:', pos[0] ? {
+        customer_name: pos[0].customer_name,
+        customer_shipping_addresses: pos[0].customer_shipping_addresses,
+        customer_email: pos[0].customer_email,
+        customer_phone: pos[0].customer_phone
+      } : 'No POs found')
+      
+      setPurchaseOrders(pos)
+      
+      // Fix pagination calculation - use proper page size from backend (20 items per page)
+      const pageSize = 20
+      setTotalPages(Math.ceil(response.data.count / pageSize))
+      
+      // Calculate metrics from all data, not just current page
+      const total = response.data.count
       const draft = pos.filter((po: PurchaseOrder) => po.status === 'draft').length
       const confirmed = pos.filter((po: PurchaseOrder) => po.status === 'confirmed').length
       const cancelled = pos.filter((po: PurchaseOrder) => po.status === 'cancelled').length
@@ -228,20 +257,82 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Purchase Orders / Work Orders</h2>
-          <p className="text-gray-600 dark:text-gray-400">Manage your purchase and work orders</p>
-        </div>
-        <button
-          onClick={onCreateNew}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+      {/* Tooltip Portal - Render at root level */}
+      {hoveredPO !== null && (
+        <div 
+          className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 max-w-2xl pointer-events-none"
+          style={{
+            left: `${Math.min(mousePosition.x + 15, window.innerWidth - 600)}px`,
+            top: `${Math.max(mousePosition.y - 50, 10)}px`,
+          }}
         >
-          <Plus className="w-4 h-4" />
-          New PO/WO
-        </button>
-      </div>
+          {/* Customer Address Tooltip */}
+          {typeof hoveredPO === 'string' && hoveredPO.startsWith('customer-') && (() => {
+            const poId = parseInt(hoveredPO.replace('customer-', ''))
+            const currentPO = purchaseOrders.find(po => po.id === poId)
+            if (currentPO) {
+              return (
+                <div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3 pb-2 border-b border-gray-200 dark:border-gray-600">
+                    {currentPO.customer_name}
+                    {currentPO.customer_email && (
+                      <div className="text-xs text-gray-600 dark:text-gray-400 font-normal mt-1">
+                        📧 {currentPO.customer_email}
+                      </div>
+                    )}
+                    {currentPO.customer_phone && (
+                      <div className="text-xs text-gray-600 dark:text-gray-400 font-normal">
+                        📞 {currentPO.customer_phone}
+                      </div>
+                    )}
+                  </div>
+                  {/* Show only PO-specific shipping address */}
+                  {currentPO.shipping_address_text ? (
+                    <div className="text-xs">
+                      <div className="font-semibold mb-1 flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                        🏢 PO Shipping Address
+                      </div>
+                      <div className="text-gray-700 dark:text-gray-300 leading-relaxed pl-4">
+                        {currentPO.shipping_address_text}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      No specific shipping address for this PO
+                    </div>
+                  )}
+                </div>
+              )
+            }
+            return null
+          })()}
+          
+          {/* Items Tooltip */}
+          {typeof hoveredPO === 'number' && (() => {
+            const currentPO = purchaseOrders.find(po => po.id === hoveredPO)
+            if (currentPO?.po_items && currentPO.po_items.length > 0) {
+              return (
+                <div>
+                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Items in this PO:</div>
+                  <div className="space-y-1 max-h-96 overflow-y-auto">
+                    {currentPO.po_items.map((item, index) => (
+                      <div key={index} className="text-xs">
+                        <div className="font-medium text-gray-900 dark:text-white">{item.product_name}</div>
+                        <div className="text-gray-500 dark:text-gray-400">
+                          {parseFloat(String(item.quantity || 0)).toFixed(2)} {item.unit} x ₹{parseFloat(String(item.unit_price || 0)).toFixed(2)} = ₹{parseFloat(String(item.line_total || 0)).toFixed(2)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            } else {
+              return <div className="text-xs text-gray-500 dark:text-gray-400">No items data available</div>
+            }
+          })()}
+        </div>
+      )}
+
 
       {/* Dashboard Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
@@ -376,44 +467,19 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                           </div>
                           <div
                             className="text-sm text-gray-500 dark:text-gray-400 cursor-help relative"
-                            onMouseEnter={() => setHoveredPO(po.id)}
+                            onMouseEnter={(e) => {
+                              setHoveredPO(po.id)
+                              setMousePosition({ x: e.clientX, y: e.clientY })
+                            }}
                             onMouseLeave={() => setHoveredPO(null)}
+                            onMouseMove={(e) => {
+                              if (hoveredPO === po.id) {
+                                setMousePosition({ x: e.clientX, y: e.clientY })
+                              }
+                            }}
                           >
                             <Package className="w-3 h-3 inline mr-1" />
                             {po.item_count} item{po.item_count !== 1 ? 's' : ''}
-
-                            {/* Tooltip */}
-                            {hoveredPO === po.id && (
-                              <div className="fixed z-[9999] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 min-w-80 max-w-96 pointer-events-none"
-                                   style={{
-                                     left: '50%',
-                                     top: '50%',
-                                     transform: 'translate(-50%, -50%)',
-                                   }}>
-                                <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Items in this PO:</div>
-                                <div className="space-y-1 max-h-48 overflow-y-auto">
-                                  {po.po_items && po.po_items.length > 0 ? (
-                                    po.po_items.map((item, index) => (
-                                      <div key={index} className="flex justify-between items-center text-xs">
-                                        <div className="flex-1 truncate pr-2">
-                                          <span className="font-medium text-gray-900 dark:text-white">{item.product_name}</span>
-                                        </div>
-                                        <div className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                                          {item.quantity} {item.unit} × ₹{item.unit_price.toFixed(2)} = ₹{item.line_total.toFixed(2)}
-                                        </div>
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <div className="text-xs text-gray-500 dark:text-gray-400">No items data available</div>
-                                  )}
-                                  {po.item_count > 10 && (
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 text-center pt-1 border-t">
-                                      ... and {po.item_count - 10} more items
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
                           </div>
                           <div className="text-sm text-gray-500 dark:text-gray-400">
                             {po.quotation_number ? `From: ${po.quotation_number}` : 'Direct PO (No Quotation)'}
@@ -421,19 +487,37 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {po.customer_name}
+                        <div className="flex items-center">
+                          <User className="w-4 h-4 text-gray-400 mr-2" />
+                          <div>
+                            {/* Customer Name with Tooltip - Only show tooltip if PO has specific shipping address */}
+                            {po.shipping_address ? (
+                              <div 
+                                className="text-sm font-medium text-blue-600 dark:text-blue-400 cursor-pointer border-b border-dotted border-blue-600 dark:border-blue-400 hover:text-blue-800 dark:hover:text-blue-300 relative group"
+                                onMouseEnter={(e) => {
+                                  setHoveredPO(`customer-${po.id}`)
+                                  setMousePosition({ x: e.clientX, y: e.clientY })
+                                }}
+                                onMouseLeave={() => setHoveredPO(null)}
+                                onMouseMove={(e) => {
+                                  if (hoveredPO === `customer-${po.id}`) {
+                                    setMousePosition({ x: e.clientX, y: e.clientY })
+                                  }
+                                }}
+                              >
+                                {po.customer_name ? po.customer_name.replace(/[<>"'&]/g, '') : ''}
+                              </div>
+                            ) : (
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                {po.customer_name ? po.customer_name.replace(/[<>"'&]/g, '') : ''}
+                              </div>
+                            )}
+                            {po.customer_project_area && (
+                              <div className="text-sm text-gray-500 dark:text-gray-400">
+                                Project: {po.customer_project_area}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
-                            {po.customer_code}
-                          </div>
-                          {po.customer_project_area && (
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                              <MapPin className="w-3 h-3 inline mr-1" />
-                              {po.customer_project_area}
-                            </div>
-                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

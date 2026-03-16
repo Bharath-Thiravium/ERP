@@ -3,6 +3,7 @@ import { Plus, Users, Copy, Trash2, User, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { LoadingSpinner } from '../ui/LoadingSpinner'
+import { Modal } from '../ui/Modal'
 
 interface ServiceUserManagementProps {
   serviceUsersData: any[]
@@ -165,154 +166,121 @@ const ServiceUserManagement: React.FC<ServiceUserManagementProps> = ({
       </Card>
 
       {/* Delete Confirmation Modal */}
-      {deleteConfirm.show && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-4">
-            <div className="p-6">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
-                  <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Delete Service User
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    This action cannot be undone
-                  </p>
-                </div>
-              </div>
-              
-              <div className="mb-6">
-                <p className="text-gray-700 dark:text-gray-300">
-                  Are you sure you want to delete <strong>{deleteConfirm.user?.full_name}</strong>?
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                  This will permanently remove their access to {deleteConfirm.user?.service_name}.
-                </p>
-              </div>
-              
-              <div className="flex justify-end space-x-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setDeleteConfirm({show: false, user: null})}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={confirmDelete}
-                  className="bg-red-600 hover:bg-red-700 text-white"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete User
-                </Button>
-              </div>
-            </div>
+      <Modal
+        isOpen={deleteConfirm.show}
+        onClose={() => setDeleteConfirm({show: false, user: null})}
+        title="Delete Service User"
+        size="md"
+      >
+        <div className="flex items-center space-x-3 mb-4">
+          <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              This action cannot be undone
+            </p>
           </div>
         </div>
-      )}
+        
+        <div className="mb-6">
+          <p className="text-gray-700 dark:text-gray-300">
+            Are you sure you want to delete <strong>{deleteConfirm.user?.full_name}</strong>?
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+            This will permanently remove their access to {deleteConfirm.user?.service_name}.
+          </p>
+        </div>
+        
+        <div className="flex justify-end space-x-3">
+          <Button
+            variant="outline"
+            onClick={() => setDeleteConfirm({show: false, user: null})}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={confirmDelete}
+            className="bg-red-600 hover:bg-red-700 text-white"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete User
+          </Button>
+        </div>
+      </Modal>
 
       {/* View User Modal */}
-      {viewUser && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                    <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      Service User Details
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Complete user information
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setViewUser(null)}
-                >
-                  ×
-                </Button>
+      <Modal
+        isOpen={!!viewUser}
+        onClose={() => setViewUser(null)}
+        title="Service User Details"
+        size="lg"
+        className="p-0"
+      >
+        {viewUser && (
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Full Name
+                </label>
+                <p className="text-gray-900 dark:text-white">{viewUser.full_name}</p>
               </div>
-              
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Full Name
-                    </label>
-                    <p className="text-gray-900 dark:text-white">{viewUser.full_name}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Username
-                    </label>
-                    <p className="text-gray-900 dark:text-white">{viewUser.username}</p>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Email Address
-                  </label>
-                  <p className="text-gray-900 dark:text-white">{viewUser.email}</p>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Service
-                    </label>
-                    <p className="text-gray-900 dark:text-white">{viewUser.service_name}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Role
-                    </label>
-                    <p className="text-gray-900 dark:text-white capitalize">{viewUser.role}</p>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Status
-                    </label>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      viewUser.is_active
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                        : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-                    }`}>
-                      {viewUser.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Created
-                    </label>
-                    <p className="text-gray-900 dark:text-white text-sm">
-                      {viewUser.created_at ? new Date(viewUser.created_at).toLocaleDateString() : 'N/A'}
-                    </p>
-                  </div>
-                </div>
-                
-
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Username
+                </label>
+                <p className="text-gray-900 dark:text-white">{viewUser.username}</p>
               </div>
-              
-              <div className="flex justify-end mt-6">
-                <Button onClick={() => setViewUser(null)}>
-                  Close
-                </Button>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Email Address
+              </label>
+              <p className="text-gray-900 dark:text-white">{viewUser.email}</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Service
+                </label>
+                <p className="text-gray-900 dark:text-white">{viewUser.service_name}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Role
+                </label>
+                <p className="text-gray-900 dark:text-white capitalize">{viewUser.role}</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Status
+                </label>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  viewUser.is_active
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                    : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                }`}>
+                  {viewUser.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Created
+                </label>
+                <p className="text-gray-900 dark:text-white text-sm">
+                  {viewUser.created_at ? new Date(viewUser.created_at).toLocaleDateString() : 'N/A'}
+                </p>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   )
 }

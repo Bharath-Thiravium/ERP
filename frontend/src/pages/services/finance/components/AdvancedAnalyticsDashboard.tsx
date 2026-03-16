@@ -12,7 +12,7 @@ import {
   PieChart,
 
   Users,
-  DollarSign,
+  IndianRupee,
   Receipt
 } from 'lucide-react'
 import { analyticsApiService, type TaxAnalyticsSummary, type ComplianceAlert } from '../../../../services/analyticsApi'
@@ -173,7 +173,7 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
                     {analyticsApiService.formatPercentage(analyticsData.current_month.gst_growth)}
                   </div>
                 </div>
-                <DollarSign className="h-8 w-8 text-green-500" />
+                <IndianRupee className="h-8 w-8 text-green-500" />
               </div>
             </CardContent>
           </Card>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Briefcase, Plus, Users, Eye, Edit, Trash2, Clock, CheckCircle, TrendingUp, FileText, Calendar, MapPin, DollarSign } from 'lucide-react'
+import { Briefcase, Plus, Users, Eye, Edit, Trash2, Clock, CheckCircle, TrendingUp, FileText, Calendar, MapPin, IndianRupee } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { JobPosting, JobApplication } from '../types/hrTypes'
@@ -321,7 +321,7 @@ const Recruitment: React.FC = () => {
                         <span>{job.department_name}</span>
                       </div>
                       <div className="flex items-center space-x-1">
-                        <DollarSign className="h-4 w-4" />
+                        <IndianRupee className="h-4 w-4" />
                         <span>₹{job.min_salary} - ₹{job.max_salary}</span>
                       </div>
                     </div>

@@ -1,99 +1,62 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from . import viewsets
 from . import payment_views
 from . import indian_compliance_views
 from . import government_api_views
 from . import analytics_views
+from .test_auth import test_session_auth
 
 from . import integration_views
 from . import purchase_views
 from . import unit_views
+from . import hsn_sac_views
+from . import refactored_invoice_views
 
 
 # Create router for ViewSets
 router = DefaultRouter()
+router.register(r'customers', viewsets.CustomerViewSet)
+router.register(r'products', viewsets.ProductViewSet)
+router.register(r'quotations', viewsets.QuotationViewSet)
+router.register(r'purchase-orders', viewsets.PurchaseOrderViewSet)
+router.register(r'proforma-invoices', viewsets.ProformaInvoiceViewSet)
+router.register(r'invoices', viewsets.InvoiceViewSet)
+router.register(r'invoices-enhanced', refactored_invoice_views.RefactoredInvoiceViewSet, basename='invoices-enhanced')
+router.register(r'payments', viewsets.PaymentViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    
+    # Test endpoint
+    path('test-session/', test_session_auth, name='test_session_auth'),
 
-    # Customer endpoints
-    path('customers/', views.CustomerListCreateView.as_view(), name='customer_list_create'),
-    path('customers/<int:pk>/', views.CustomerDetailView.as_view(), name='customer_detail'),
+    # Customer Shipping Address endpoint
+    path('customers/shipping-addresses/<int:address_id>/', views.CustomerShippingAddressDetailView.as_view(), name='customer_shipping_address_detail'),
 
-    # Product endpoints
-    path('products/', views.ProductListCreateView.as_view(), name='product_list_create'),
-    path('products/<int:pk>/', views.ProductDetailView.as_view(), name='product_detail'),
-
-    # Quotation endpoints
-    path('quotations/', views.QuotationListCreateView.as_view(), name='quotation_list_create'),
-    path('quotations/<int:pk>/', views.QuotationDetailView.as_view(), name='quotation_detail'),
-    path('quotations/<int:pk>/copy/', views.QuotationCopyView.as_view(), name='quotation_copy'),
-
-    # Purchase Order endpoints
-    path('purchase-orders/', views.PurchaseOrderListCreateView.as_view(), name='purchase_order_list_create'),
-    path('purchase-orders/<int:pk>/', views.PurchaseOrderDetailView.as_view(), name='purchase_order_detail'),
-
-    # Proforma Invoice endpoints
-    path('proforma-invoices/', views.ProformaInvoiceListCreateView.as_view(), name='proforma_invoice_list_create'),
-    path('proforma-invoices/<int:pk>/', views.ProformaInvoiceDetailView.as_view(), name='proforma_invoice_detail'),
-
-    # Invoice endpoints
-    path('invoices/', views.InvoiceListCreateView.as_view(), name='invoice_list_create'),
-    path('invoices/<int:pk>/', views.InvoiceDetailView.as_view(), name='invoice_detail'),
-
-    # Payment endpoints
-    path('payments/', views.PaymentListCreateView.as_view(), name='payment_list_create'),
-    path('payments/<int:pk>/', views.PaymentDetailView.as_view(), name='payment_detail'),
-    path('payments/stats/', views.payment_stats, name='payment_stats'),
-
-    # Customer Ledger endpoint
+    # Legacy customer ledger endpoint (kept for backward compatibility)
     path('customer-ledger/', views.customer_ledger, name='customer_ledger'),
 
-    # PDF Generation endpoints
-    path('quotations/<int:quotation_id>/pdf/', views.generate_quotation_pdf, name='generate_quotation_pdf'),
-    path('purchase-orders/<int:purchase_order_id>/pdf/', views.generate_purchase_order_pdf, name='generate_purchase_order_pdf'),
-    path('invoices/<int:invoice_id>/pdf/', views.generate_invoice_pdf, name='generate_invoice_pdf'),
-    path('proforma-invoices/<int:proforma_id>/pdf/', views.generate_proforma_pdf, name='generate_proforma_pdf'),
+    # Customer Ledger endpoint - SECURE: Uses new auth via viewset action
+    # Moved to CustomerViewSet.ledger action
 
-    # HSN/SAC code search endpoints
-    path('hsn-codes/search/', views.HSNCodeSearchView.as_view(), name='hsn_code_search'),
-    path('sac-codes/search/', views.SACCodeSearchView.as_view(), name='sac_code_search'),
-    
-    # Product search endpoint (for quotation forms)
-    path('products/search/', views.ProductSearchView.as_view(), name='product_search'),
-    
-    # HSN/SAC code creation endpoints
-    path('hsn-codes/create/', views.HSNCodeCreateView.as_view(), name='hsn_code_create'),
-    path('sac-codes/create/', views.SACCodeCreateView.as_view(), name='sac_code_create'),
+    # PDF Generation endpoints - SECURE: Now handled by ViewSet actions
+    # quotations/{id}/pdf/ -> QuotationViewSet.pdf action
+    # purchase-orders/{id}/pdf/ -> PurchaseOrderViewSet.pdf action  
+    # invoices/{id}/pdf/ -> InvoiceViewSet.pdf action
+    # proforma-invoices/{id}/pdf/ -> ProformaInvoiceViewSet.pdf action
 
-    # Generate product/service code endpoint
-    path('generate-code/', views.GenerateProductCodeView.as_view(), name='generate_product_code'),
+    # Email endpoints - SECURE: Now handled by ViewSet actions
+    # quotations/{id}/send-email/ -> QuotationViewSet.send_email action
+    # invoices/{id}/send-email/ -> InvoiceViewSet.send_email action
+    # proforma-invoices/{id}/send-email/ -> ProformaInvoiceViewSet.send_email action
+    # purchase-orders/{id}/send-email/ -> PurchaseOrderViewSet.send_email action
     
-    # Unit management endpoints
-    path('units/', unit_views.UnitListCreateView.as_view(), name='unit_list_create'),
-
-    # World-Class Payment Management endpoints
-    path('world-class-payments/', views.WorldClassPaymentListCreateView.as_view(), name='world_class_payments'),
-    path('world-class-payments/summary/', views.world_class_payment_summary, name='world_class_payment_summary'),
-    path('purchase-orders/<int:po_id>/world-class-dashboard/', views.world_class_po_payment_dashboard, name='world_class_po_dashboard'),
-    path('purchase-orders/<int:po_id>/sophisticated-claiming/', views.sophisticated_po_claiming_status, name='sophisticated_po_claiming'),
-    path('purchase-orders/<int:po_id>/payment-details/', views.purchase_order_payment_details, name='purchase_order_payment_details'),
-    
-    # Payment Update endpoints
-    path('invoices/<int:invoice_id>/payments/', payment_views.unified_payment_update, name='update_invoice_payment'),
-    path('proforma-invoices/<int:proforma_id>/payments/', payment_views.update_proforma_payment, name='update_proforma_payment'),
-    
-    # Email endpoints
-    path('quotations/<int:quotation_id>/send-email/', views.send_quotation_email_view, name='send_quotation_email'),
-    path('invoices/<int:invoice_id>/send-email/', views.send_invoice_email_view, name='send_invoice_email'),
-    path('proforma-invoices/<int:proforma_id>/send-email/', views.send_proforma_email_view, name='send_proforma_email'),
-    path('purchase-orders/<int:purchase_order_id>/send-email/', views.send_purchase_order_email_view, name='send_purchase_order_email'),
-    
-    # Rejection endpoints
-    path('quotations/<int:quotation_id>/reject/', views.reject_quotation, name='reject_quotation'),
-    path('proforma-invoices/<int:proforma_id>/reject/', views.reject_proforma_invoice, name='reject_proforma_invoice'),
-    path('invoices/<int:invoice_id>/reject/', views.reject_invoice, name='reject_invoice'),
+    # Rejection endpoints - SECURE: Now handled by ViewSet actions
+    # quotations/{id}/reject/ -> QuotationViewSet.reject action
+    # proforma-invoices/{id}/reject/ -> ProformaInvoiceViewSet.reject action
+    # invoices/{id}/reject/ -> InvoiceViewSet.reject action
     
 
     
@@ -178,5 +141,17 @@ urlpatterns = [
     # Purchase & Expense Reports
     path('vendor-ledger/', purchase_views.vendor_ledger, name='vendor_ledger'),
     path('purchase-expense-stats/', purchase_views.purchase_expense_stats, name='purchase_expense_stats'),
+
+    # Finance numbering rule management
+    path('numbering/finance/', views.FinanceNumberingRuleView.as_view(), name='finance_numbering_rules'),
+    path('numbering/finance/<str:module>/', views.FinanceNumberingRuleView.as_view(), name='finance_numbering_rule_detail'),
+    path('numbering/finance/<str:module>/preview/', views.FinanceNumberingPreviewView.as_view(), name='finance_numbering_preview'),
+
+    # Unit Management endpoints
+    path('units/', unit_views.UnitListCreateView.as_view(), name='unit_list_create'),
+
+    # HSN/SAC Code Search endpoints
+    path('hsn-codes/search/', hsn_sac_views.HSNCodeSearchView.as_view(), name='hsn_code_search'),
+    path('sac-codes/search/', hsn_sac_views.SACCodeSearchView.as_view(), name='sac_code_search'),
 
 ]

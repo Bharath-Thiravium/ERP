@@ -12,8 +12,16 @@ def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
     
     if response is not None:
+        request = context.get('request')
+        request_id = getattr(request, 'correlation_id', None) if request else None
+
         # Log the error
-        logger.error(f"API Error: {exc} - Context: {context}")
+        logger.error(
+            "API Error: %s - Context: %s",
+            exc,
+            context,
+            extra={'request_id': request_id},
+        )
         
         # Create custom response format
         custom_response_data = {
@@ -21,8 +29,10 @@ def custom_exception_handler(exc, context):
             'message': str(exc),
             'status_code': response.status_code,
             'timestamp': timezone.now().isoformat(),
-            'path': context['request'].path if 'request' in context else None
+            'path': request.path if request else None,
         }
+        if request_id:
+            custom_response_data['request_id'] = request_id
         
         # Preserve original error details for debugging
         if hasattr(exc, 'detail'):

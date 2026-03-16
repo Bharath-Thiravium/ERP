@@ -136,7 +136,7 @@ class ProformaTemplatePreviewView(APIView):
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Generate HTML preview
-            html_content = proforma_pdf_service.generate_proforma_html(sample_proforma, template_name)
+            html_content = proforma_pdf_service.preview_proforma_template(sample_proforma, template_name)
             
             # Return HTML response
             return HttpResponse(html_content, content_type='text/html')
@@ -167,6 +167,8 @@ class ProformaTemplatePreviewView(APIView):
                 name="Sample Customer Pvt Ltd",
                 defaults={
                     'customer_code': 'CUST001',
+                    'customer_type': 'business',
+                    'display_name': 'Sample Customer Pvt Ltd',
                     'email': 'customer@example.com',
                     'phone': '9876543210',
                     'billing_address_line1': '123 Business Street',
@@ -189,6 +191,51 @@ class ProformaTemplatePreviewView(APIView):
                 total_tax=Decimal('0.00'),
                 total_amount=Decimal('25000.00'),
                 notes='This is a sample proforma invoice for template preview.'
+            )
+            
+            # Create sample proforma items
+            ProformaInvoiceItem.objects.create(
+                proforma_invoice=proforma,
+                product=Product.objects.filter(company=company).first() or Product.objects.create(
+                    company=company,
+                    product_code='SAMPLE001',
+                    name='Sample Product 1',
+                    description='Professional consulting services',
+                    product_type='service',
+                    selling_price=Decimal('1500.00'),
+                    gst_rate=Decimal('18.00')
+                ),
+                line_number=1,
+                product_name='Sample Product 1',
+                description='Professional consulting services',
+                quantity=Decimal('10.00'),
+                unit='Hours',
+                unit_price=Decimal('1500.00'),
+                line_total=Decimal('15000.00'),
+                hsn_sac_code='998314',
+                gst_rate=Decimal('18.00')
+            )
+            
+            ProformaInvoiceItem.objects.create(
+                proforma_invoice=proforma,
+                product=Product.objects.filter(company=company).first() or Product.objects.create(
+                    company=company,
+                    product_code='SAMPLE002',
+                    name='Sample Product 2',
+                    description='Software development services',
+                    product_type='service',
+                    selling_price=Decimal('2000.00'),
+                    gst_rate=Decimal('18.00')
+                ),
+                line_number=2,
+                product_name='Sample Product 2',
+                description='Software development services',
+                quantity=Decimal('5.00'),
+                unit='Days',
+                unit_price=Decimal('2000.00'),
+                line_total=Decimal('10000.00'),
+                hsn_sac_code='998313',
+                gst_rate=Decimal('18.00')
             )
             
             return proforma

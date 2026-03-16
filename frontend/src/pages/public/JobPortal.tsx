@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, MapPin, DollarSign, Briefcase, Building, Calendar, ArrowRight } from 'lucide-react'
+import { Search, MapPin, IndianRupee, Briefcase, Building, Calendar, ArrowRight } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
 import api from '../../lib/api'
@@ -133,7 +133,7 @@ const JobPortal: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-4">
                           <div className="flex items-center space-x-1 text-sm text-gray-500">
-                            <DollarSign className="h-4 w-4" />
+                            <IndianRupee className="h-4 w-4" />
                             <span>₹{job.min_salary?.toLocaleString()} - ₹{job.max_salary?.toLocaleString()}</span>
                           </div>
                           <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 rounded-full text-xs">

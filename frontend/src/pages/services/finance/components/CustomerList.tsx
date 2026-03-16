@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { apiClient } from '../../../../lib/api'
+import FinanceCard from './FinanceCard'
 
 interface Customer {
   id: number
@@ -200,7 +201,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
       </div>
 
       {/* Search and Filters */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+      <FinanceCard>
         <div className="flex flex-col md:flex-row gap-4">
           {/* Search */}
           <div className="flex-1 relative">
@@ -245,10 +246,10 @@ const CustomerList: React.FC<CustomerListProps> = ({
             </select>
           </div>
         </div>
-      </div>
+      </FinanceCard>
 
       {/* Customer List */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden shadow-xl">
+      <FinanceCard className="overflow-hidden" padding="sm">
         {customers.length === 0 ? (
           <div className="text-center py-12">
             <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -468,7 +469,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
             </div>
           </div>
         )}
-      </div>
+      </FinanceCard>
     </div>
   )
 }

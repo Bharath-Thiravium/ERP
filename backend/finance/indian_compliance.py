@@ -267,13 +267,28 @@ def calculate_gst_for_invoice(invoice_data):
     }
 
 def calculate_tds_for_payment(payment_data):
-    """Calculate TDS for payment - wrapper function"""
+    """Calculate TDS for payment - wrapper function with threshold check"""
     manager = IndianComplianceManager()
     
-    payment_amount = payment_data.get('amount', Decimal('0'))
+    payment_amount = Decimal(str(payment_data.get('amount', 0)))
     tds_section = payment_data.get('tds_section', '194J')
     
-    return manager.calculate_tds(payment_amount, tds_section)
+    # Get section details
+    section_info = TDS_SECTIONS.get(tds_section, {})
+    threshold = Decimal(str(section_info.get('threshold', 0)))
+    
+    # Check if payment is above threshold
+    if payment_amount >= threshold:
+        tds_result = manager.calculate_tds(payment_amount, tds_section)
+        tds_result['is_above_threshold'] = True
+        return tds_result
+    else:
+        return {
+            'tds_amount': Decimal('0'),
+            'tds_rate': Decimal('0'),
+            'net_amount': payment_amount,
+            'is_above_threshold': False
+        }
 
 def get_indian_states():
     """Get list of Indian states"""

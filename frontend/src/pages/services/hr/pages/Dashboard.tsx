@@ -445,9 +445,9 @@ const HRDashboard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950">
+    <div className="flex flex-col flex-1 min-h-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950">
       {/* Modern Sidebar */}
-      <div className="fixed inset-y-0 left-0 z-50 w-64 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-r border-gray-200/50 dark:border-gray-700/50">
+      <aside id="sidebar" className="fixed inset-y-0 left-0 z-[var(--z-sidebar)] w-64 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-r border-gray-200/50 dark:border-gray-700/50">
         {/* Sidebar Header with Company Logo */}
         <div className="flex items-center h-16 px-6 border-b border-gray-200/50 dark:border-gray-700/50">
           <div className="flex items-center space-x-3">
@@ -525,7 +525,7 @@ const HRDashboard: React.FC = () => {
             </Button>
           </div>
         </div>
-      </div>
+      </aside>
 
       {/* Main Content */}
       <div className="ml-64">

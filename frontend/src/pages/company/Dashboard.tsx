@@ -36,7 +36,11 @@ import {
   Globe,
   Monitor,
   FileText,
-  Hash
+  Hash,
+  ChevronDown,
+  Home,
+  Briefcase,
+  Cog
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
 import { useAuthStore } from '../../store/authStore'
@@ -69,6 +73,7 @@ import POTemplateSettings from '../../components/company/POTemplateSettings'
 import ProformaTemplateSettings from '../../components/company/ProformaTemplateSettings'
 import InvoiceTemplateSettings from '../../components/company/InvoiceTemplateSettings'
 import CompanyDetailsPage from './CompanyDetailsPage'
+
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -126,6 +131,10 @@ const CompanyDashboard: React.FC = () => {
   // Handle paginated response from ListAPIView (axios wraps response in .data)
   const servicesData = services?.data?.results || services?.data || []
   const serviceUsersData = serviceUsers?.data?.results || serviceUsers?.data || []
+  
+  // Get total counts from pagination info or fallback to array length
+  const totalServices = services?.data?.count || servicesData.length
+  const totalServiceUsers = serviceUsers?.data?.count || serviceUsersData.length
   
   // Fetch enhanced dashboard data
   const { data: overviewData, isLoading: overviewLoading } = useQuery({
@@ -392,19 +401,51 @@ Website: https://athenas.co.in
     }
   }
 
-  // Enhanced navigation tabs with new features
-  const navigationTabs = [
-    { id: 'overview', label: 'Overview', icon: BarChart3 },
-    { id: 'services', label: 'Services', icon: Settings },
-    { id: 'users', label: 'Service Users', icon: Users },
-    { id: 'company-details', label: 'Company Details', icon: Building2 },
-    { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-    { id: 'activity', label: 'Activity', icon: Activity },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'document-numbering', label: 'Document Numbering', icon: Hash },
-    { id: 'government-api', label: 'Government API', icon: Globe },
-    { id: 'settings', label: 'Settings', icon: Shield }
+
+  // Categorized navigation menu
+  const navigationCategories = [
+    {
+      id: 'main',
+      label: 'Dashboard',
+      icon: Home,
+      items: [
+        { id: 'overview', label: 'Overview', icon: BarChart3 },
+        { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+        { id: 'activity', label: 'Activity', icon: Activity },
+        { id: 'notifications', label: 'Notifications', icon: Bell }
+      ]
+    },
+    {
+      id: 'services',
+      label: 'Services',
+      icon: Briefcase,
+      items: [
+        { id: 'services', label: 'Manage Services', icon: Settings },
+        { id: 'users', label: 'Service Users', icon: Users },
+
+      ]
+    },
+    {
+      id: 'company',
+      label: 'Company',
+      icon: Building2,
+      items: [
+        { id: 'company-details', label: 'Company Details', icon: Building2 },
+        { id: 'document-numbering', label: 'Document Numbering', icon: Hash },
+        { id: 'government-api', label: 'Government API', icon: Globe }
+      ]
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      icon: Cog,
+      items: [
+        { id: 'settings', label: 'Settings', icon: Shield }
+      ]
+    }
   ]
+
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null)
 
   const settingsTabs = [
     { id: 'general', label: 'General', icon: Shield },
@@ -434,7 +475,10 @@ Website: https://athenas.co.in
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div 
+      className="flex flex-col flex-1 min-h-full bg-gray-50 dark:bg-gray-900"
+      onClick={() => setOpenDropdown(null)}
+    >
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="w-full px-4 sm:px-6 lg:px-8">
@@ -502,25 +546,73 @@ Website: https://athenas.co.in
         </div>
       </header>
 
-      {/* Navigation Tabs */}
+      {/* Categorized Navigation */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="w-full px-4 sm:px-6 lg:px-8">
-          <nav className="flex space-x-8">
-            {navigationTabs.map((tab) => {
-              const Icon = tab.icon
+          <nav className="flex space-x-6">
+            {navigationCategories.filter((category) => category.items.length > 0).map((category) => {
+              const CategoryIcon = category.icon
+              const isOpen = openDropdown === category.id
+              const hasActiveItem = category.items.some(item => item.id === activeTab)
+              
               return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  <span>{tab.label}</span>
-                </button>
+                <div key={category.id} className="relative">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (category.items.length === 1) {
+                        setActiveTab(category.items[0].id)
+                        setOpenDropdown(null)
+                      } else {
+                        setOpenDropdown(isOpen ? null : category.id)
+                      }
+                    }}
+                    className={`flex items-center space-x-2 py-4 px-3 border-b-2 font-medium text-sm transition-colors ${
+                      hasActiveItem
+                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                    }`}
+                  >
+                    <CategoryIcon className="h-5 w-5" />
+                    <span>{category.label}</span>
+                    {category.items.length > 1 && (
+                      <ChevronDown className={`h-4 w-4 transition-transform ${
+                        isOpen ? 'rotate-180' : ''
+                      }`} />
+                    )}
+                  </button>
+                  
+                  {/* Dropdown Menu */}
+                  {isOpen && category.items.length > 1 && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-[var(--z-dropdown)]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="py-2">
+                        {category.items.map((item) => {
+                          const ItemIcon = item.icon
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => {
+                                setActiveTab(item.id)
+                                setOpenDropdown(null)
+                              }}
+                              className={`w-full flex items-center space-x-3 px-4 py-2 text-sm transition-colors ${
+                                activeTab === item.id
+                                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                                  : 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700'
+                              }`}
+                            >
+                              <ItemIcon className="h-4 w-4" />
+                              <span>{item.label}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </nav>
@@ -555,7 +647,7 @@ Website: https://athenas.co.in
                   </div>
                   <div>
                     <p className="text-white/80 text-sm font-medium mb-1">Available Services</p>
-                    <p className="text-3xl font-bold">{servicesData.length}</p>
+                    <p className="text-3xl font-bold">{totalServices}</p>
                     <p className="text-white/70 text-xs mt-2">Ready to use</p>
                   </div>
                 </div>
@@ -573,7 +665,7 @@ Website: https://athenas.co.in
                   </div>
                   <div>
                     <p className="text-white/80 text-sm font-medium mb-1">Service Users</p>
-                    <p className="text-3xl font-bold">{dashboardOverview?.total_service_users || serviceUsersData.length}</p>
+                    <p className="text-3xl font-bold">{dashboardOverview?.total_service_users || totalServiceUsers}</p>
                     <p className="text-white/70 text-xs mt-2">Active accounts</p>
                   </div>
                 </div>
@@ -681,7 +773,7 @@ Website: https://athenas.co.in
                     <div className="flex items-center space-x-3">
                       <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                       <span className="text-sm text-gray-600 dark:text-gray-400">
-                        {servicesData.length} services assigned
+                        {totalServices} services assigned
                       </span>
                     </div>
                     <div className="flex items-center space-x-3">
@@ -760,6 +852,9 @@ Website: https://athenas.co.in
         {activeTab === 'government-api' && (
           <GovernmentAPICredentials />
         )}
+
+
+
 
         {activeTab === 'settings' && (
           <div className="space-y-8">
@@ -1305,7 +1400,7 @@ Website: https://athenas.co.in
 
       {/* Enhanced Create Service User Modal */}
       {showCreateUserModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[var(--z-modal)] p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">

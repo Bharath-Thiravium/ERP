@@ -3,6 +3,7 @@ import { Button } from '../../../../components/ui/Button'
 import { Input } from '../../../../components/ui/Input'
 import { crmApi } from '../utils/api'
 import { CustomerSegment } from '../types'
+import { Modal } from '../../../../components/ui/Modal'
 
 interface SegmentModalProps {
   isOpen: boolean
@@ -46,12 +47,15 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({ isOpen, onClose, onS
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
-      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{segment ? 'Edit Segment' : 'Create Customer Segment'}</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      size="sm"
+      className="max-w-md"
+      bodyClassName="p-6"
+    >
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{segment ? 'Edit Segment' : 'Create Customer Segment'}</h2>
+      <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Segment Name *</label>
             <Input
@@ -96,9 +100,7 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({ isOpen, onClose, onS
               {loading ? 'Saving...' : segment ? 'Update Segment' : 'Create Segment'}
             </Button>
           </div>
-          </form>
-        </div>
-      </div>
-    </div>
+      </form>
+    </Modal>
   )
 }

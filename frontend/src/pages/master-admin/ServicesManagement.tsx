@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, ToggleLeft, ToggleRight, Save, X, DollarSign, List } from 'lucide-react';
+import { Plus, Edit, Trash2, ToggleLeft, ToggleRight, Save, X, IndianRupee, List } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { apiClient } from '../../lib/api';
 
@@ -342,7 +342,7 @@ const ServicesManagement: React.FC = () => {
             <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">{service.description}</p>
 
             <div className="flex items-center gap-2 mb-4">
-              <DollarSign className="h-4 w-4 text-green-600" />
+              <IndianRupee className="h-4 w-4 text-green-600" />
               <span className="font-semibold text-green-600">${service.base_price}</span>
             </div>
 

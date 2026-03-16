@@ -460,10 +460,28 @@ class JobPostingDetailView(RetrieveUpdateDestroyAPIView):
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             instance = self.get_object()
-            self.perform_destroy(instance)
-            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+            # Ensure the employee belongs to the same company
+            if instance.company != session.service_user.company:
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+            
+            # Store employee info before deletion
+            employee_id = instance.employee_id
+            employee_name = instance.full_name
+            
+            # Perform hard delete
+            instance.delete()
+            
+            return Response({
+                'success': True,
+                'message': f'Employee {employee_name} ({employee_id}) deleted successfully'
+            }, status=status.HTTP_200_OK)
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            return Response({
+                'error': f'Failed to delete employee: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class JobApplicationListCreateView(ListCreateAPIView):

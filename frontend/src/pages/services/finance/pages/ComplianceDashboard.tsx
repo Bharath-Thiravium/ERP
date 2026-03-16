@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { Button } from '../../../../components/ui/Button'
 import { 
   FileText, 
@@ -13,6 +12,8 @@ import {
   Shield,
   Brain
 } from 'lucide-react'
+import FinanceCard from '../components/FinanceCard'
+import MetricCard from '../components/MetricCard'
 import GSTCalculator from '../components/GSTCalculator'
 import TDSCalculator from '../components/TDSCalculator'
 import Phase2Summary from '../components/Phase2Summary'
@@ -142,94 +143,71 @@ const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({ sessionKey })
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold">Indian Compliance Dashboard</h1>
-          <p className="text-gray-600">
-            GST & TDS compliance status for {complianceData?.period || 'current period'}
-          </p>
+      <FinanceCard>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">Indian Compliance Dashboard</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">
+              GST & TDS compliance status for {complianceData?.period || 'current period'}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={refreshData} disabled={refreshing} variant="outline">
+              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button onClick={generateGSTR1}>
+              <Download className="h-4 w-4 mr-2" />
+              Generate GSTR-1
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={refreshData} disabled={refreshing} variant="outline">
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button onClick={generateGSTR1}>
-            <Download className="h-4 w-4 mr-2" />
-            Generate GSTR-1
-          </Button>
-        </div>
-      </div>
+      </FinanceCard>
 
       {/* Overall Status */}
       {complianceData && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">Overall Compliance Status</h3>
-                <p className="text-gray-600">Current period: {complianceData.period}</p>
-              </div>
-              {getStatusBadge(complianceData.overall_status)}
+        <FinanceCard>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Overall Compliance Status</h3>
+              <p className="text-gray-600 dark:text-gray-400">Current period: {complianceData.period}</p>
             </div>
-          </CardContent>
-        </Card>
+            {getStatusBadge(complianceData.overall_status)}
+          </div>
+        </FinanceCard>
       )}
 
       {/* Compliance Summary Cards */}
       {complianceData && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Total Invoices</p>
-                  <p className="text-2xl font-bold">{complianceData.gst_compliance.total_invoices}</p>
-                </div>
-                <FileText className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Tax Collected</p>
-                  <p className="text-2xl font-bold">
-                    {formatCurrency(complianceData.gst_compliance.total_tax_collected)}
-                  </p>
-                </div>
-                <TrendingUp className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">TDS Payments</p>
-                  <p className="text-2xl font-bold">{complianceData.tds_compliance.total_tds_payments}</p>
-                </div>
-                <Calculator className="h-8 w-8 text-purple-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">TDS Deducted</p>
-                  <p className="text-2xl font-bold">
-                    {formatCurrency(complianceData.tds_compliance.total_tds_deducted)}
-                  </p>
-                </div>
-                <Calendar className="h-8 w-8 text-orange-500" />
-              </div>
-            </CardContent>
-          </Card>
+          <MetricCard
+            title="Total Invoices"
+            value={complianceData.gst_compliance.total_invoices.toString()}
+            subtitle=""
+            icon={FileText}
+            color="blue"
+          />
+          <MetricCard
+            title="Tax Collected"
+            value={formatCurrency(complianceData.gst_compliance.total_tax_collected)}
+            subtitle=""
+            icon={TrendingUp}
+            color="green"
+          />
+          <MetricCard
+            title="TDS Payments"
+            value={complianceData.tds_compliance.total_tds_payments.toString()}
+            subtitle=""
+            icon={Calculator}
+            color="purple"
+          />
+          <MetricCard
+            title="TDS Deducted"
+            value={formatCurrency(complianceData.tds_compliance.total_tds_deducted)}
+            subtitle=""
+            icon={Calendar}
+            color="orange"
+          />
         </div>
       )}
 
@@ -237,17 +215,15 @@ const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({ sessionKey })
       {complianceData && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* GST Compliance */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                GST Compliance
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <FinanceCard>
+            <div className="flex items-center gap-2 mb-4">
+              <FileText className="h-5 w-5" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">GST Compliance</h3>
+            </div>
+            <div className="space-y-4">
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span>GSTR-1 Filing</span>
+                  <span className="text-gray-700 dark:text-gray-300">GSTR-1 Filing</span>
                   {complianceData.gst_compliance.gstr1_filed ? (
                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Filed</span>
                   ) : (
@@ -255,7 +231,7 @@ const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({ sessionKey })
                   )}
                 </div>
                 <div className="flex justify-between items-center">
-                  <span>GSTR-3B Filing</span>
+                  <span className="text-gray-700 dark:text-gray-300">GSTR-3B Filing</span>
                   {complianceData.gst_compliance.gstr3b_filed ? (
                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Filed</span>
                   ) : (
@@ -264,43 +240,41 @@ const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({ sessionKey })
                 </div>
               </div>
               
-              <div className="pt-4 border-t">
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Taxable Amount:</span>
-                    <span className="font-medium">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Taxable Amount:</span>
+                    <span className="font-medium text-gray-900 dark:text-white">
                       {formatCurrency(complianceData.gst_compliance.total_taxable_amount)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Tax Collected:</span>
-                    <span className="font-medium">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Tax Collected:</span>
+                    <span className="font-medium text-gray-900 dark:text-white">
                       {formatCurrency(complianceData.gst_compliance.total_tax_collected)}
                     </span>
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </FinanceCard>
 
           {/* TDS Compliance */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calculator className="h-5 w-5" />
-                TDS Compliance
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <FinanceCard>
+            <div className="flex items-center gap-2 mb-4">
+              <Calculator className="h-5 w-5" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">TDS Compliance</h3>
+            </div>
+            <div className="space-y-4">
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span>Certificates Issued</span>
+                  <span className="text-gray-700 dark:text-gray-300">Certificates Issued</span>
                   <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                     {complianceData.tds_compliance.certificates_issued}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span>Pending Certificates</span>
+                  <span className="text-gray-700 dark:text-gray-300">Pending Certificates</span>
                   {complianceData.tds_compliance.pending_certificates > 0 ? (
                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                       {complianceData.tds_compliance.pending_certificates}
@@ -311,22 +285,22 @@ const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({ sessionKey })
                 </div>
               </div>
               
-              <div className="pt-4 border-t">
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">TDS Payments:</span>
-                    <span className="font-medium">{complianceData.tds_compliance.total_tds_payments}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">TDS Payments:</span>
+                    <span className="font-medium text-gray-900 dark:text-white">{complianceData.tds_compliance.total_tds_payments}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Total TDS:</span>
-                    <span className="font-medium">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Total TDS:</span>
+                    <span className="font-medium text-gray-900 dark:text-white">
                       {formatCurrency(complianceData.tds_compliance.total_tds_deducted)}
                     </span>
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </FinanceCard>
         </div>
       )}
 
@@ -345,7 +319,7 @@ const CalculatorTabs: React.FC<CalculatorTabsProps> = ({ sessionKey }) => {
   const [activeTab, setActiveTab] = useState<'summary' | 'gst' | 'tds' | 'government' | 'analytics' | 'reports' | 'ai-features'>('summary')
 
   return (
-    <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6">
+    <FinanceCard>
       <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
         <button 
           onClick={() => setActiveTab('summary')}
@@ -431,7 +405,7 @@ const CalculatorTabs: React.FC<CalculatorTabsProps> = ({ sessionKey }) => {
       {activeTab === 'analytics' && <AdvancedAnalyticsDashboard sessionKey={sessionKey} />}
       {activeTab === 'reports' && <ReportsManager sessionKey={sessionKey} />}
       {activeTab === 'ai-features' && <AIFeaturesManager sessionKey={sessionKey} />}
-    </div>
+    </FinanceCard>
   )
 }
 

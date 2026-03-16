@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, Save, User, Building, DollarSign } from 'lucide-react'
+import { X, Save, User, Building, IndianRupee } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
@@ -232,7 +232,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, onSuccess
           {/* Lead Details */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-              <DollarSign className="h-5 w-5 mr-2 text-orange-500" />
+              <IndianRupee className="h-5 w-5 mr-2 text-orange-500" />
               Lead Details
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

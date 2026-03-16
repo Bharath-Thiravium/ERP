@@ -4,6 +4,7 @@ from rest_framework.test import APITestCase
 from authentication.models import Company
 from .models import Customer, Product, Invoice, HSNCode
 from decimal import Decimal
+from tests_common.payloads import VALID_CUSTOMER_PAYLOAD
 
 class CustomerModelTest(TestCase):
     def setUp(self):
@@ -20,24 +21,27 @@ class CustomerModelTest(TestCase):
         )
 
     def test_customer_creation(self):
-        customer = Customer.objects.create(
-            company=self.company,
-            name="Test Customer",
-            email="customer@test.com",
-            customer_type="business"
-        )
+        customer_data = VALID_CUSTOMER_PAYLOAD.copy()
+        customer_data.update({
+            'company': self.company,
+            'name': 'Test Customer',
+            'email': 'customer@test.com'
+        })
+        customer = Customer.objects.create(**customer_data)
         self.assertEqual(customer.name, "Test Customer")
         self.assertTrue(len(customer.customer_code) > 0)  # Auto-generated code exists
 
     def test_customer_full_address_property(self):
-        customer = Customer.objects.create(
-            company=self.company,
-            name="Test Customer",
-            billing_address_line1="123 Main St",
-            billing_city="Test City",
-            billing_state="Test State",
-            billing_pincode="12345"
-        )
+        customer_data = VALID_CUSTOMER_PAYLOAD.copy()
+        customer_data.update({
+            'company': self.company,
+            'name': 'Test Customer',
+            'billing_address_line1': '123 Main St',
+            'billing_city': 'Test City',
+            'billing_state': 'Test State',
+            'billing_pincode': '12345'
+        })
+        customer = Customer.objects.create(**customer_data)
         address = customer.full_billing_address
         self.assertIn("123 Main St", address)
         self.assertIn("Test City", address)
@@ -86,11 +90,13 @@ class InvoiceModelTest(TestCase):
             email="test@company.com",
             created_by=self.user
         )
-        self.customer = Customer.objects.create(
-            company=self.company,
-            name="Test Customer",
-            email="customer@test.com"
-        )
+        customer_data = VALID_CUSTOMER_PAYLOAD.copy()
+        customer_data.update({
+            'company': self.company,
+            'name': 'Test Customer',
+            'email': 'customer@test.com'
+        })
+        self.customer = Customer.objects.create(**customer_data)
 
     def test_invoice_creation(self):
         from django.utils import timezone

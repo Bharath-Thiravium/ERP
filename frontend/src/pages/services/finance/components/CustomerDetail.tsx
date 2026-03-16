@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   X, Edit, Trash2, User, Building2, Mail, Phone, MapPin,
-  CreditCard, FileText, Globe, Calendar, DollarSign
+  CreditCard, FileText, Globe, Calendar, IndianRupee
 } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 
@@ -36,6 +36,17 @@ interface Customer {
   created_at: string
   updated_at: string
   created_by_name: string
+  shipping_addresses?: Array<{
+    id: number
+    label: string
+    address_line1: string
+    address_line2?: string
+    city: string
+    state: string
+    pincode: string
+    country: string
+    is_default: boolean
+  }>
 }
 
 interface CustomerDetailProps {
@@ -263,14 +274,42 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
                 <MapPin className="w-5 h-5" />
                 Address Information
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-500">Billing Address</label>
                   <p className="text-gray-900">{customer.full_billing_address || '-'}</p>
                 </div>
+                
+                {/* Shipping Addresses */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">Shipping Address</label>
-                  <p className="text-gray-900">{customer.full_shipping_address || '-'}</p>
+                  <label className="block text-sm font-medium text-gray-500 mb-2">Shipping Addresses</label>
+                  {customer.shipping_addresses && customer.shipping_addresses.length > 0 ? (
+                    <div className="space-y-3">
+                      {customer.shipping_addresses.map((address, index) => (
+                        <div key={address.id || index} className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg border">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              {address.label}
+                            </span>
+                            {address.is_default && (
+                              <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 rounded-full">
+                                Default
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {address.address_line1}
+                            {address.address_line2 && `, ${address.address_line2}`}
+                            <br />
+                            {address.city}, {address.state} {address.pincode}
+                            {address.country && address.country !== 'India' && `, ${address.country}`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-900">{customer.full_shipping_address || 'Same as billing address'}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -344,7 +383,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
             {/* Financial Information */}
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <DollarSign className="w-5 h-5" />
+                <IndianRupee className="w-5 h-5" />
                 Financial Information
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

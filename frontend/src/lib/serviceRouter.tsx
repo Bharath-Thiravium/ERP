@@ -33,6 +33,7 @@ const CRMRoutes = React.lazy(() =>
   }))
 )
 
+
 export const ServiceRouter: React.FC = () => {
   return (
     <Routes>

@@ -26,7 +26,7 @@ interface AuthState {
   deviceId: string | null
 
   // Actions
-  login: (credentials: MasterAdminLoginRequest | CompanyUserLoginRequest, userType: 'master' | 'company', rememberDevice?: boolean) => Promise<boolean | {requires_2fa: boolean, user_id: number}>
+  login: (credentials: MasterAdminLoginRequest | CompanyUserLoginRequest | { username: string; password: string }, userType: 'master' | 'company' | 'athens', rememberDevice?: boolean) => Promise<boolean | {requires_2fa: boolean, user_id: number}>
   logout: () => void
   initializeAuth: () => void
   clearError: () => void
@@ -64,9 +64,17 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null })
 
         try {
-          const response = userType === 'master'
-            ? await apiClient.masterAdminLogin(credentials)
-            : await apiClient.companyUserLogin(credentials)
+          let response
+          
+          if (userType === 'master') {
+            response = await apiClient.masterAdminLogin(credentials as MasterAdminLoginRequest)
+          } else if (userType === 'athens') {
+            // Athens login with username/password
+            response = await apiClient.athensLogin(credentials as { username: string; password: string })
+          } else {
+            // Regular company user login
+            response = await apiClient.companyUserLogin(credentials as CompanyUserLoginRequest)
+          }
 
           const data = response.data
           
@@ -105,40 +113,74 @@ export const useAuthStore = create<AuthState>()(
           }
 
           // Normal login success
-
-
-
           // Store tokens and update state immediately
           setTokens(data.access, data.refresh)
           
-          set({
-            user: data.user,
+          // Handle Athens login response format
+          let userData
+          if (userType === 'athens') {
+            userData = {
+              id: data.user_id,
+              email: data.email,
+              username: data.username,
+              full_name: data.full_name,
+              role_type: data.role_type,
+              project_id: data.project_id,
+              project_name: data.project_name,
+              must_reset_password: data.must_reset_password
+            }
+          } else {
+            userData = data.user
+          }
+          
+          // Update state synchronously
+          const isAthensLogin = userType === 'athens'
+          const newState = {
+            user: userData,
             isAuthenticated: true,
             isLoading: false,
             firstLoginRequired: data.first_login_required || false,
             approvalPending: data.approval_pending || false,
             approvalStatus: data.approval_status || null,
-            mustChangePassword: data.must_change_password || false,
-            forcePasswordReset: data.force_password_reset || false,
-          })
+            // Only company users should use the password-change modal flow
+            mustChangePassword: isAthensLogin ? false : (data.must_change_password || data.must_reset_password || false),
+            forcePasswordReset: isAthensLogin ? false : (data.force_password_reset || false),
+          }
           
-          // Force immediate persistence
+          set(newState)
+
+          // Force immediate session storage update
+          sessionStorage.setItem('user', JSON.stringify(userData))
+          sessionStorage.setItem('firstLoginRequired', JSON.stringify(newState.firstLoginRequired))
+          sessionStorage.setItem('approvalPending', JSON.stringify(newState.approvalPending))
+          sessionStorage.setItem('approvalStatus', JSON.stringify(newState.approvalStatus))
+          sessionStorage.setItem('mustChangePassword', JSON.stringify(newState.mustChangePassword))
+          sessionStorage.setItem('forcePasswordReset', JSON.stringify(newState.forcePasswordReset))
+
+          // Store Athens admin session for Athens flows (password reset + dashboard header)
+          if (isAthensLogin) {
+            const athensSession = {
+              user_id: data.user_id ?? (data.user?.id ?? userData?.id),
+              username: data.username ?? (data.user?.username ?? userData?.username),
+              email: data.email ?? (data.user?.email ?? userData?.email),
+              full_name: data.full_name ?? userData?.full_name,
+              role_type: data.role_type ?? userData?.role_type,
+              project_id: data.project_id ?? userData?.project_id,
+              project_name: data.project_name ?? userData?.project_name,
+              must_reset_password: data.must_reset_password || false
+            }
+            sessionStorage.setItem('athens_admin_session', JSON.stringify(athensSession))
+          }
+          
+          // Force immediate persistence to localStorage
           const stateToStore = {
-            state: {
-              user: data.user,
-              isAuthenticated: true,
-              firstLoginRequired: data.first_login_required || false,
-              approvalPending: data.approval_pending || false,
-              approvalStatus: data.approval_status || null,
-              mustChangePassword: data.must_change_password || false,
-              forcePasswordReset: data.force_password_reset || false,
-            },
+            state: newState,
             version: 0
           }
           localStorage.setItem('auth-storage', JSON.stringify(stateToStore))
 
           // Show success message
-          toast.success(`Welcome back, ${data.user.email}!`)
+          toast.success(`Welcome back, ${userData.email || userData.username}!`)
 
           // Return true for successful login (not 2FA object)
           return true
@@ -173,6 +215,8 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         // Clear all authentication data
         clearTokens()
+        sessionStorage.clear()
+        localStorage.removeItem('auth-storage')
 
         // Reset auth state
         set({
@@ -196,13 +240,8 @@ export const useAuthStore = create<AuthState>()(
           deviceId: null,
         })
 
-
-
         // Show success message
         toast.success('Logged out successfully')
-
-        // Clear session storage to ensure clean state
-        sessionStorage.clear()
         
         // Don't force redirect here - let the router handle it naturally
         // This preserves browser history and prevents back button issues
@@ -262,7 +301,7 @@ export const useAuthStore = create<AuthState>()(
               forcePasswordReset,
             })
 
-            // Validate token with backend in background
+            // Validate token with backend in background (don't logout on failure)
             try {
               const response = await apiClient.validateToken()
               // Update user data from validation response if available
@@ -273,19 +312,9 @@ export const useAuthStore = create<AuthState>()(
                 isAuthenticated: true,
               })
             } catch (error: any) {
-              // Token is invalid, clear everything
-              clearTokens()
-              sessionStorage.clear()
-              set({
-                user: null,
-                isAuthenticated: false,
-                isLoading: false,
-                firstLoginRequired: false,
-                approvalPending: false,
-                approvalStatus: null,
-                mustChangePassword: false,
-                forcePasswordReset: false,
-              })
+              // Token validation failed, but don't logout - just log the error
+              console.warn('Token validation failed:', error.message)
+              // Keep existing authentication state
             }
           } catch (error) {
             // Invalid stored data, clear it

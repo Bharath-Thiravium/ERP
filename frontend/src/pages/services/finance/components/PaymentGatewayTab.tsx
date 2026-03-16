@@ -9,7 +9,7 @@ import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner';
 import { 
   Plus, TestTube, Edit, Trash2, 
   CheckCircle, Clock, AlertCircle, CreditCard,
-  DollarSign, TrendingUp, Link, Zap
+  IndianRupee, TrendingUp, Link, Zap
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -358,7 +358,7 @@ const PaymentGatewayTab: React.FC = () => {
           </Card>
           <Card className="p-4">
             <div className="flex items-center">
-              <DollarSign className="h-8 w-8 text-purple-500 mr-3" />
+              <IndianRupee className="h-8 w-8 text-purple-500 mr-3" />
               <div>
                 <div className="text-2xl font-bold">{dashboardData.payment_stats?.total_payments || 0}</div>
                 <div className="text-sm text-gray-600">Payments (30d)</div>

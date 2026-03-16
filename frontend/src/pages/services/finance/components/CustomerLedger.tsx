@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, User, Calendar, DollarSign, TrendingUp, TrendingDown, FileText, CreditCard, AlertCircle, Users } from 'lucide-react';
-import api from '../../../../lib/api';
+import { Search, User, Calendar, IndianRupee, TrendingUp, TrendingDown, FileText, CreditCard, AlertCircle, Users } from 'lucide-react';
+import { apiClient } from '../../../../lib/api';
+import FinanceCard from './FinanceCard';
 import MetricCard from './MetricCard';
 import toast from 'react-hot-toast';
 
@@ -62,10 +63,7 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
     if (!sessionKey) return;
 
     try {
-      const response = await api.get('/api/finance/customers/', {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { page_size: 1000 }
-      });
+      const response = await apiClient.getFinanceCustomers({ page_size: 1000 });
 
       const customerData = response.data.results || [];
       setCustomers(customerData);
@@ -78,12 +76,14 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
       setOverallMetrics({
         totalCustomers,
         activeCustomers,
-        totalOutstanding: 0, // Will be updated when ledger data is fetched
+        totalOutstanding: 0,
         totalCreditLimit
       });
     } catch (error: any) {
       console.error('Error fetching customers:', error);
-      toast.error('Failed to fetch customers');
+      if (error?.response?.status !== 401) {
+        toast.error('Failed to fetch customers');
+      }
     }
   };
 
@@ -93,21 +93,21 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
 
     try {
       setLoading(true);
-      const params = new URLSearchParams({
+      const params: any = {
         customer_id: selectedCustomer,
-      });
+      };
 
-      if (dateRange.start_date) params.append('start_date', dateRange.start_date);
-      if (dateRange.end_date) params.append('end_date', dateRange.end_date);
+      if (dateRange.start_date) params.start_date = dateRange.start_date;
+      if (dateRange.end_date) params.end_date = dateRange.end_date;
 
-      const response = await api.get(`/api/finance/customer-ledger/?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
-      });
+      const response = await apiClient.getCustomerLedger(params);
 
       setLedgerData(response.data);
     } catch (error: any) {
       console.error('Error fetching ledger data:', error);
-      toast.error('Failed to fetch ledger data');
+      if (error?.response?.status !== 401) {
+        toast.error('Failed to fetch ledger data');
+      }
     } finally {
       setLoading(false);
     }
@@ -158,14 +158,14 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6">
+      <FinanceCard>
         <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
           Customer Ledger
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
           View customer account statements and transaction history
         </p>
-      </div>
+      </FinanceCard>
 
       {/* Overall Dashboard Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -185,14 +185,14 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
         />
         <MetricCard
           title="Total Credit Limit"
-          value={`₹${overallMetrics.totalCreditLimit.toLocaleString()}`}
+          value={overallMetrics.totalCreditLimit > 0 ? `₹${overallMetrics.totalCreditLimit.toLocaleString('en-IN')}` : '₹0'}
           subtitle="Combined credit limits"
           icon={CreditCard}
           color="purple"
         />
         <MetricCard
           title="Outstanding Amount"
-          value={ledgerData ? `₹${ledgerData.outstanding_amount.toLocaleString()}` : '₹0'}
+          value={ledgerData ? `₹${ledgerData.outstanding_amount.toLocaleString('en-IN')}` : '₹0'}
           subtitle={ledgerData ? 'Selected customer' : 'Select customer to view'}
           icon={AlertCircle}
           color="orange"
@@ -200,7 +200,7 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
       </div>
 
       {/* Customer Selection and Filters */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <FinanceCard>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Customer Search and Selection */}
           <div className="md:col-span-2">
@@ -262,99 +262,52 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
             </div>
           </div>
         </div>
-      </div>
+      </FinanceCard>
 
       {/* Customer Summary */}
       {ledgerData && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-          {/* Opening Balance */}
-          <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-6 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-indigo-100 text-sm font-medium">Opening Balance</p>
-                <p className="text-2xl font-bold">
-                  ₹{ledgerData.opening_balance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                </p>
-                {ledgerData.opening_balance_date && (
-                  <p className="text-indigo-100 text-xs">
-                    As of {new Date(ledgerData.opening_balance_date).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-              <div className="bg-indigo-400 bg-opacity-30 rounded-lg p-3">
-                <TrendingUp className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
-
-          {/* Total Invoiced */}
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-100 text-sm font-medium">Total Invoiced</p>
-                <p className="text-2xl font-bold">
-                  ₹{ledgerData.total_invoiced.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div className="bg-blue-400 bg-opacity-30 rounded-lg p-3">
-                <FileText className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
-
-          {/* Total Paid */}
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-green-100 text-sm font-medium">Total Paid</p>
-                <p className="text-2xl font-bold">
-                  ₹{ledgerData.total_paid.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div className="bg-green-400 bg-opacity-30 rounded-lg p-3">
-                <CreditCard className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
-
-          {/* Outstanding Amount */}
-          <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-xl p-6 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-red-100 text-sm font-medium">Outstanding</p>
-                <p className="text-2xl font-bold">
-                  ₹{ledgerData.outstanding_amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div className="bg-red-400 bg-opacity-30 rounded-lg p-3">
-                <AlertCircle className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
-
-          {/* Credit Limit */}
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-purple-100 text-sm font-medium">Credit Limit</p>
-                <p className="text-2xl font-bold">
-                  ₹{ledgerData.credit_limit.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-purple-100 text-xs">
-                  Available: ₹{(ledgerData.credit_limit - ledgerData.outstanding_amount).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div className="bg-purple-400 bg-opacity-30 rounded-lg p-3">
-                <DollarSign className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
+          <MetricCard
+            title="Opening Balance"
+            value={`₹${ledgerData.opening_balance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+            subtitle={ledgerData.opening_balance_date ? `As of ${new Date(ledgerData.opening_balance_date).toLocaleDateString()}` : ''}
+            icon={TrendingUp}
+            color="indigo"
+          />
+          <MetricCard
+            title="Total Invoiced"
+            value={`₹${ledgerData.total_invoiced.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+            subtitle=""
+            icon={FileText}
+            color="blue"
+          />
+          <MetricCard
+            title="Total Paid"
+            value={`₹${ledgerData.total_paid.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+            subtitle=""
+            icon={CreditCard}
+            color="green"
+          />
+          <MetricCard
+            title="Outstanding"
+            value={`₹${ledgerData.outstanding_amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+            subtitle=""
+            icon={AlertCircle}
+            color="red"
+          />
+          <MetricCard
+            title="Credit Limit"
+            value={`₹${ledgerData.credit_limit.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+            subtitle={`Available: ₹${(ledgerData.credit_limit - ledgerData.outstanding_amount).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+            icon={IndianRupee}
+            color="purple"
+          />
         </div>
       )}
 
       {/* Customer Information */}
       {ledgerData && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-700 rounded-xl border border-blue-200 dark:border-gray-600 p-6">
+        <FinanceCard className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-700 border-blue-200 dark:border-gray-600">
           <div className="flex items-center mb-4">
             <User className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Customer Information</h3>
@@ -374,7 +327,7 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
               <p className="text-sm text-gray-600 dark:text-gray-400">{ledgerData.customer.phone}</p>
             </div>
           </div>
-        </div>
+        </FinanceCard>
       )}
 
       {/* Ledger Entries */}
@@ -383,7 +336,7 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-athenas-blue"></div>
         </div>
       ) : ledgerData ? (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <FinanceCard>
           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Transaction History</h3>
           </div>
@@ -454,7 +407,7 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
               </table>
             </div>
           )}
-        </div>
+        </FinanceCard>
       ) : selectedCustomer ? (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-athenas-blue mx-auto"></div>

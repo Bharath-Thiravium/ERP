@@ -79,12 +79,19 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <Router>
           <AuthWrapper>
-            <div className={`min-h-screen transition-colors duration-300 ${
-              theme === 'dark'
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-50 text-gray-900'
-            }`}>
-              <AppRouter />
+            <div
+              className={`h-screen flex flex-col transition-colors duration-300 ${
+                theme === 'dark'
+                  ? 'bg-gray-900 text-white'
+                  : 'bg-gray-50 text-gray-900'
+              }`}
+            >
+              <div className="flex flex-1">
+                <main id="main-content" className="flex-1">
+                  <AppRouter />
+                </main>
+              </div>
+              <div id="content-modal-root" className="shrink-0"></div>
               <Toaster
                 position="top-right"
                 toastOptions={{

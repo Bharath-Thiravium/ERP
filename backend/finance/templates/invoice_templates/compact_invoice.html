@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Tax Invoice - {{ invoice.invoice_number }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 15mm 10mm 15mm 10mm;
+        }
+        
+        body {
+            font-family: Roboto, Arial, sans-serif;
+            font-size: 8pt;
+            line-height: 1.2;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        
+        /* Compact Template - Designed for Many Items */
+        .header {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+        }
+        
+        .header td {
+            padding: 4px;
+            vertical-align: top;
+        }
+        
+        .company-section {
+            width: 65%;
+        }
+        
+        .company-name {
+            font-size: 12pt;
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+        
+        .company-details {
+            font-size: 7pt;
+            line-height: 1.3;
+        }
+        
+        .doc-section {
+            width: 35%;
+            text-align: right;
+            border: 1px solid #000;
+            padding: 6px;
+        }
+        
+        .doc-title {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        
+        .gst-info {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+            font-size: 7pt;
+            background-color: #f0f8ff;
+        }
+        
+        .gst-info td {
+            border: 1px solid #666;
+            padding: 3px 6px;
+        }
+        
+        .gst-label {
+            background-color: #e0e0e0;
+            font-weight: bold;
+            width: 15%;
+        }
+        
+        .customer-info {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+            font-size: 7pt;
+        }
+        
+        .customer-info td {
+            border: 1px solid #666;
+            padding: 4px;
+            vertical-align: top;
+        }
+        
+        .customer-header {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: center;
+            font-size: 8pt;
+        }
+        
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+        }
+        
+        .items-table th {
+            background-color: #333;
+            color: white;
+            padding: 3px 2px;
+            font-size: 6pt;
+            font-weight: bold;
+            text-align: center;
+            border: 1px solid #000;
+        }
+        
+        .items-table td {
+            border: 1px solid #666;
+            padding: 2px 1px;
+            font-size: 6pt;
+        }
+        
+        .items-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .totals {
+            width: 50%;
+            float: right;
+            border-collapse: collapse;
+            font-size: 7pt;
+        }
+        
+        .totals td {
+            border: 1px solid #666;
+            padding: 3px 6px;
+        }
+        
+        .total-label {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: right;
+        }
+        
+        .total-value {
+            text-align: right;
+            font-weight: bold;
+        }
+        
+        .grand-total {
+            background-color: #333;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .amount-words {
+            clear: both;
+            margin-top: 8px;
+            font-size: 7pt;
+            font-weight: bold;
+            border: 1px solid #666;
+            padding: 4px;
+            background-color: #f9f9f9;
+        }
+        
+        .declaration {
+            margin-top: 8px;
+            font-size: 6pt;
+            border: 1px solid #666;
+            padding: 4px;
+            background-color: #fff3cd;
+            font-style: italic;
+        }
+        
+        .terms {
+            margin-top: 8px;
+            font-size: 7pt;
+            border: 1px solid #666;
+            padding: 6px;
+        }
+        
+        .signature {
+            margin-top: 10px;
+            text-align: right;
+            font-size: 8pt;
+        }
+    </style>
+</head>
+<body>
+    <!-- Compact Header -->
+    <table class="header">
+        <tr>
+            <td class="company-section">
+                <div class="company-name">{{ company.name }}</div>
+                <div class="company-details">
+                    {{ company.address|default:"" }}, {{ company.city|default:"" }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}<br>
+                    GSTIN: {{ company.gst_number|default:"N/A" }} | PAN: {{ company.pan_number|default:"N/A" }} | Ph: {{ company.phone|default:"N/A" }} | Email: {{ company.email|default:"N/A" }}
+                </div>
+            </td>
+            <td class="doc-section">
+                <div class="doc-title">TAX INVOICE</div>
+                <div>{{ invoice.invoice_number }}</div>
+                <div>{{ invoice.invoice_date|date:"d/m/Y" }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- GST Information -->
+    <table class="gst-info">
+        <tr>
+            <td class="gst-label">Supplier GSTIN</td>
+            <td>{{ invoice.company_gstin|default:"N/A" }}</td>
+            <td class="gst-label">Buyer GSTIN</td>
+            <td>{{ invoice.customer_gstin|default:"N/A" }}</td>
+            <td class="gst-label">Place of Supply</td>
+            <td>{{ invoice.place_of_supply|default:invoice.customer.state_code|default:"N/A" }}</td>
+            <td class="gst-label">Reverse Charge</td>
+            <td>{% if invoice.reverse_charge_applicable %}Yes{% else %}No{% endif %}</td>
+        </tr>
+    </table>
+
+    <!-- Customer Information -->
+    <table class="customer-info">
+        <tr>
+            <td class="customer-header" style="width: 50%;">BILL TO</td>
+            <td class="customer-header" style="width: 50%;">SHIP TO</td>
+        </tr>
+        <tr>
+            <td>
+                <strong>{{ invoice.customer.name }}</strong><br>
+                {{ invoice.customer.billing_address_line1|default:"" }}{% if invoice.customer.billing_address_line2 %}, {{ invoice.customer.billing_address_line2 }}{% endif %}<br>
+                {{ invoice.customer.billing_city|default:"" }}, {{ invoice.customer.billing_state|default:"" }} - {{ invoice.customer.billing_pincode|default:"" }}<br>
+                GSTIN: {{ invoice.customer.gstin|default:"N/A" }} | State: {{ invoice.customer.state_code|default:"N/A" }}
+            </td>
+            <td>
+                {% if invoice.shipping_address %}
+                    {{ invoice.shipping_address.address_line1 }}{% if invoice.shipping_address.address_line2 %}, {{ invoice.shipping_address.address_line2 }}{% endif %}<br>
+                    {{ invoice.shipping_address.city }}, {{ invoice.shipping_address.state }} - {{ invoice.shipping_address.pincode }}
+                {% else %}
+                    Same as Billing Address
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <!-- Narrow Items Table -->
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 3%;">S.No</th>
+                <th style="width: 22%;">Description</th>
+                <th style="width: 6%;">HSN/SAC</th>
+                <th style="width: 5%;">Qty</th>
+                <th style="width: 4%;">Unit</th>
+                <th style="width: 8%;">Rate</th>
+                <th style="width: 4%;">Disc</th>
+                <th style="width: 8%;">Taxable Value</th>
+                {% if invoice.gst_type == 'cgst_sgst' %}
+                <th style="width: 6%;">CGST</th>
+                <th style="width: 6%;">SGST</th>
+                {% else %}
+                <th style="width: 8%;">IGST</th>
+                {% endif %}
+                <th style="width: 8%;">Line Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in invoice.invoice_items.all %}
+            <tr>
+                <td style="text-align: center;">{{ forloop.counter }}</td>
+                <td>
+                    <strong>{{ item.product_name }}</strong>
+                    {% if item.description %}<br><small>{{ item.description|truncatechars:40 }}</small>{% endif %}
+                </td>
+                <td style="text-align: center;">{{ item.hsn_sac_code|default:"N/A" }}</td>
+                <td style="text-align: right;">{{ item.quantity|floatformat:1 }}</td>
+                <td style="text-align: center;">{{ item.unit }}</td>
+                <td style="text-align: right;">₹{{ item.unit_price|floatformat:2 }}</td>
+                <td style="text-align: right;">-</td>
+                <td style="text-align: right;">₹{{ item.line_total|floatformat:2 }}</td>
+                {% if invoice.gst_type == 'cgst_sgst' %}
+                <td style="text-align: right;">₹{{ item.tax_amount|floatformat:2|div:2 }}</td>
+                <td style="text-align: right;">₹{{ item.tax_amount|floatformat:2|div:2 }}</td>
+                {% else %}
+                <td style="text-align: right;">₹{{ item.tax_amount|floatformat:2 }}</td>
+                {% endif %}
+                <td style="text-align: right;">₹{{ item.line_total|add:item.tax_amount|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Compact Totals -->
+    <table class="totals">
+        <tr>
+            <td class="total-label">Subtotal:</td>
+            <td class="total-value">₹{{ invoice.subtotal|floatformat:2 }}</td>
+        </tr>
+        {% if invoice.discount_amount > 0 %}
+        <tr>
+            <td class="total-label">Discount:</td>
+            <td class="total-value">₹{{ invoice.discount_amount|floatformat:2 }}</td>
+        </tr>
+        {% endif %}
+        <tr>
+            <td class="total-label">Taxable:</td>
+            <td class="total-value">₹{{ invoice.subtotal|floatformat:2 }}</td>
+        </tr>
+        {% if invoice.gst_type == 'cgst_sgst' %}
+        <tr>
+            <td class="total-label">CGST:</td>
+            <td class="total-value">₹{{ invoice.cgst_amount|floatformat:2 }}</td>
+        </tr>
+        <tr>
+            <td class="total-label">SGST:</td>
+            <td class="total-value">₹{{ invoice.sgst_amount|floatformat:2 }}</td>
+        </tr>
+        {% elif invoice.gst_type == 'igst' %}
+        <tr>
+            <td class="total-label">IGST:</td>
+            <td class="total-value">₹{{ invoice.igst_amount|floatformat:2 }}</td>
+        </tr>
+        {% endif %}
+        <tr>
+            <td class="total-label">Tax:</td>
+            <td class="total-value">₹{{ invoice.total_tax|floatformat:2 }}</td>
+        </tr>
+        <tr class="grand-total">
+            <td class="total-label">Total:</td>
+            <td class="total-value">₹{{ invoice.total_amount|floatformat:2 }}</td>
+        </tr>
+    </table>
+
+    <!-- Amount in Words -->
+    <div class="amount-words">
+        <strong>Amount in Words:</strong> {{ invoice.total_amount|floatformat:2 }} Only
+    </div>
+
+    <!-- Declaration -->
+    <div class="declaration">
+        <strong>Declaration:</strong> We declare that this invoice shows the actual price of the goods/services described and that all particulars are true and correct.
+    </div>
+
+    <!-- Compact Terms -->
+    <div class="terms">
+        <strong>Terms:</strong> {{ invoice.terms_and_conditions|default:"Payment as agreed. Interest @ 18% p.a. on delayed payments. Local jurisdiction. Goods once sold not taken back."|truncatechars:200 }}
+    </div>
+
+    <!-- Signature -->
+    <div class="signature">
+        <strong>For {{ company.name }}</strong><br><br>
+        <div style="border-top: 1px solid #000; width: 150px; margin-left: auto; padding-top: 3px; text-align: center;">
+            Authorized Signatory
+        </div>
+    </div>
+</body>
+</html>

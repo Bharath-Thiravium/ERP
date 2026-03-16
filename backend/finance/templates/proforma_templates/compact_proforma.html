@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Proforma Invoice - {{ proforma.proforma_number }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 15mm 10mm 15mm 10mm;
+        }
+        
+        body {
+            font-family: Roboto, Arial, sans-serif;
+            font-size: 8pt;
+            line-height: 1.2;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        
+        /* Compact Template - Designed for Many Items */
+        .header {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+        }
+        
+        .header td {
+            padding: 4px;
+            vertical-align: top;
+        }
+        
+        .company-section {
+            width: 65%;
+        }
+        
+        .company-name {
+            font-size: 12pt;
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+        
+        .company-details {
+            font-size: 7pt;
+            line-height: 1.3;
+        }
+        
+        .doc-section {
+            width: 35%;
+            text-align: right;
+            border: 1px solid #000;
+            padding: 6px;
+        }
+        
+        .doc-title {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        
+        .proforma-notice {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 6px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 7pt;
+            color: #856404;
+            margin-bottom: 8px;
+        }
+        
+        .customer-info {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+            font-size: 7pt;
+        }
+        
+        .customer-info td {
+            border: 1px solid #666;
+            padding: 4px;
+            vertical-align: top;
+        }
+        
+        .customer-header {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: center;
+            font-size: 8pt;
+        }
+        
+        .meta-info {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+            font-size: 7pt;
+        }
+        
+        .meta-info td {
+            border: 1px solid #666;
+            padding: 3px 6px;
+        }
+        
+        .meta-label {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            width: 15%;
+        }
+        
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+        }
+        
+        .items-table th {
+            background-color: #333;
+            color: white;
+            padding: 4px 2px;
+            font-size: 7pt;
+            font-weight: bold;
+            text-align: center;
+            border: 1px solid #000;
+        }
+        
+        .items-table td {
+            border: 1px solid #666;
+            padding: 3px 2px;
+            font-size: 7pt;
+        }
+        
+        .items-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .totals {
+            width: 45%;
+            float: right;
+            border-collapse: collapse;
+            font-size: 8pt;
+        }
+        
+        .totals td {
+            border: 1px solid #666;
+            padding: 4px 8px;
+        }
+        
+        .total-label {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: right;
+        }
+        
+        .total-value {
+            text-align: right;
+            font-weight: bold;
+        }
+        
+        .grand-total {
+            background-color: #333;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .amount-words {
+            clear: both;
+            margin-top: 8px;
+            font-size: 7pt;
+            font-weight: bold;
+            border: 1px solid #666;
+            padding: 4px;
+            background-color: #f9f9f9;
+        }
+        
+        .bank-details {
+            margin-top: 8px;
+            font-size: 7pt;
+            border: 1px solid #666;
+            padding: 6px;
+            background-color: #e3f2fd;
+        }
+        
+        .terms {
+            margin-top: 8px;
+            font-size: 7pt;
+            border: 1px solid #666;
+            padding: 6px;
+        }
+        
+        .signature {
+            margin-top: 10px;
+            text-align: right;
+            font-size: 8pt;
+        }
+    </style>
+</head>
+<body>
+    <!-- Compact Header -->
+    <table class="header">
+        <tr>
+            <td class="company-section">
+                <div class="company-name">{{ company.name }}</div>
+                <div class="company-details">
+                    {{ company.address|default:"" }}, {{ company.city|default:"" }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}<br>
+                    GSTIN: {{ company.gst_number|default:"N/A" }} | PAN: {{ company.pan_number|default:"N/A" }} | Ph: {{ company.phone|default:"N/A" }} | Email: {{ company.email|default:"N/A" }}
+                </div>
+            </td>
+            <td class="doc-section">
+                <div class="doc-title">PROFORMA INVOICE</div>
+                <div>{{ proforma.proforma_number }}</div>
+                <div>{{ proforma.proforma_date|date:"d/m/Y" }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Proforma Notice -->
+    <div class="proforma-notice">
+        THIS IS A PROFORMA INVOICE AND NOT A TAX INVOICE
+    </div>
+
+    <!-- Customer Information -->
+    <table class="customer-info">
+        <tr>
+            <td class="customer-header" style="width: 50%;">BILL TO</td>
+            <td class="customer-header" style="width: 50%;">SHIP TO</td>
+        </tr>
+        <tr>
+            <td>
+                <strong>{{ proforma.customer.name }}</strong><br>
+                {{ proforma.customer.billing_address_line1|default:"" }}{% if proforma.customer.billing_address_line2 %}, {{ proforma.customer.billing_address_line2 }}{% endif %}<br>
+                {{ proforma.customer.billing_city|default:"" }}, {{ proforma.customer.billing_state|default:"" }} - {{ proforma.customer.billing_pincode|default:"" }}<br>
+                GSTIN: {{ proforma.customer.gstin|default:"N/A" }} | State: {{ proforma.customer.state_code|default:"N/A" }}
+            </td>
+            <td>
+                {% if proforma.shipping_address %}
+                    {{ proforma.shipping_address.address_line1 }}{% if proforma.shipping_address.address_line2 %}, {{ proforma.shipping_address.address_line2 }}{% endif %}<br>
+                    {{ proforma.shipping_address.city }}, {{ proforma.shipping_address.state }} - {{ proforma.shipping_address.pincode }}
+                {% else %}
+                    Same as Billing Address
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <!-- Meta Information -->
+    <table class="meta-info">
+        <tr>
+            <td class="meta-label">Proforma #</td>
+            <td>{{ proforma.proforma_number }}</td>
+            <td class="meta-label">Date</td>
+            <td>{{ proforma.proforma_date|date:"d/m/Y" }}</td>
+            <td class="meta-label">Ref. Quotation</td>
+            <td>{{ proforma.quotation.quotation_number|default:proforma.purchase_order.quotation.quotation_number|default:"N/A" }}</td>
+            <td class="meta-label">Payment Terms</td>
+            <td>{{ proforma.customer.payment_terms|default:"Advance" }}</td>
+        </tr>
+    </table>
+
+    <!-- Narrow Items Table -->
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 4%;">S.No</th>
+                <th style="width: 32%;">Description</th>
+                <th style="width: 8%;">HSN/SAC</th>
+                <th style="width: 6%;">Qty</th>
+                <th style="width: 6%;">Unit</th>
+                <th style="width: 10%;">Rate</th>
+                <th style="width: 6%;">Disc</th>
+                <th style="width: 5%;">Tax%</th>
+                <th style="width: 10%;">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in proforma.proforma_items.all %}
+            <tr>
+                <td style="text-align: center;">{{ forloop.counter }}</td>
+                <td>
+                    <strong>{{ item.product_name }}</strong>
+                    {% if item.description %}<br><small>{{ item.description|truncatechars:50 }}</small>{% endif %}
+                </td>
+                <td style="text-align: center;">{{ item.hsn_sac_code|default:"N/A" }}</td>
+                <td style="text-align: right;">{{ item.quantity|floatformat:1 }}</td>
+                <td style="text-align: center;">{{ item.unit }}</td>
+                <td style="text-align: right;">₹{{ item.unit_price|floatformat:2 }}</td>
+                <td style="text-align: right;">-</td>
+                <td style="text-align: right;">{{ item.gst_rate|floatformat:0 }}%</td>
+                <td style="text-align: right;">₹{{ item.line_total|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Compact Totals -->
+    <table class="totals">
+        <tr>
+            <td class="total-label">Subtotal:</td>
+            <td class="total-value">₹{{ proforma.subtotal|floatformat:2 }}</td>
+        </tr>
+        {% if proforma.discount_amount > 0 %}
+        <tr>
+            <td class="total-label">Discount:</td>
+            <td class="total-value">₹{{ proforma.discount_amount|floatformat:2 }}</td>
+        </tr>
+        {% endif %}
+        <tr>
+            <td class="total-label">Taxable:</td>
+            <td class="total-value">₹{{ proforma.subtotal|floatformat:2 }}</td>
+        </tr>
+        <tr>
+            <td class="total-label">Tax:</td>
+            <td class="total-value">₹0.00</td>
+        </tr>
+        <tr class="grand-total">
+            <td class="total-label">Total:</td>
+            <td class="total-value">₹{{ proforma.total_amount|floatformat:2 }}</td>
+        </tr>
+    </table>
+
+    <!-- Amount in Words -->
+    <div class="amount-words">
+        <strong>Amount in Words:</strong> {{ proforma.total_amount|floatformat:2 }} Only
+    </div>
+
+    <!-- Bank Details -->
+    <div class="bank-details">
+        <strong>BANK DETAILS:</strong> {{ company.bank_name|default:"[Bank Name]" }} | A/c: {{ company.bank_account_number|default:"[Account Number]" }} | IFSC: {{ company.bank_ifsc_code|default:"[IFSC Code]" }} | Holder: {{ company.name }}
+    </div>
+
+    <!-- Compact Terms -->
+    <div class="terms">
+        <strong>Expected Delivery:</strong> As per agreed schedule<br>
+        <strong>Terms:</strong> {{ proforma.terms_and_conditions|default:"Proforma for advance payment. No tax on advance. Final tax invoice on delivery. Payment as agreed."|truncatechars:200 }}
+    </div>
+
+    <!-- Signature -->
+    <div class="signature">
+        <strong>For {{ company.name }}</strong><br><br>
+        <div style="border-top: 1px solid #000; width: 150px; margin-left: auto; padding-top: 3px; text-align: center;">
+            Authorized Signatory
+        </div>
+    </div>
+</body>
+</html>

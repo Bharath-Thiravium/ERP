@@ -1,5 +1,41 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
+@import './styles/zIndex.css';
+
+/* Density System */
+:root {
+  --density: 1;
+  --font-base: 16px;
+  --radius: 12px;
+  --shadow-strength: 1;
+}
+
+:root[data-density="compact"] {
+  --density: 0.8;
+  --font-base: 12.8px;
+}
+
+:root[data-density="normal"] {
+  --density: 1;
+  --font-base: 16px;
+}
+
+html {
+  font-size: var(--font-base);
+}
+
+:root {
+  --space-1: calc(0.25rem * var(--density));
+  --space-2: calc(0.5rem * var(--density));
+  --space-3: calc(0.75rem * var(--density));
+  --space-4: calc(1rem * var(--density));
+  --space-5: calc(1.25rem * var(--density));
+  --space-6: calc(1.5rem * var(--density));
+  --space-8: calc(2rem * var(--density));
+  --space-10: calc(2.5rem * var(--density));
+  --space-12: calc(3rem * var(--density));
+  --btn-h: calc(2.5rem * var(--density));
+  --input-h: calc(2.75rem * var(--density));
+  --card-pad: calc(1.25rem * var(--density));
+}
 
 @tailwind base;
 @tailwind components;
@@ -7,14 +43,21 @@
 
 @layer base {
   body {
-    background-color: white;
+    background-color: #f9fafb;
     color: #111827;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
   html {
     scroll-behavior: smooth;
+    background-color: #f9fafb;
+  }
+
+  /* Desktop typography scale */
+  @media (min-width: 1024px) {
+    h1 { @apply text-3xl font-semibold; }
+    h2 { @apply text-2xl font-semibold; }
   }
 }
 
@@ -24,7 +67,7 @@
   }
 
   .font-athenas {
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-family: 'SFMono-Regular', 'Cascadia Code', 'Consolas', 'Courier New', monospace;
     font-weight: 800;
     letter-spacing: 0.1em;
   }
@@ -35,10 +78,18 @@
 
   /* ᗩTᕼᙓᑎᗩ'𝔖 Brand Styles */
   .brand-title {
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-family: 'SFMono-Regular', 'Cascadia Code', 'Consolas', 'Courier New', monospace;
     font-weight: 800;
     letter-spacing: 0.15em;
     text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+  }
+
+  /* SAP-Python Canvas Background */
+  .bg-app-canvas {
+    background:
+      radial-gradient(1200px 600px at 70% 20%, hsl(142 76% 36% / 0.08), transparent 60%),
+      radial-gradient(900px 500px at 20% 80%, hsl(142 76% 36% / 0.10), transparent 60%),
+      hsl(var(--background));
   }
 }
 
@@ -112,15 +163,13 @@
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
-/* Glassmorphism effects */
+/* Glassmorphism effects - DISABLED FOR PERFORMANCE */
 .glass-effect {
-  backdrop-filter: blur(16px) saturate(180%);
   background-color: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .glass-effect-dark {
-  backdrop-filter: blur(16px) saturate(180%);
   background-color: rgba(17, 25, 40, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.125);
 }

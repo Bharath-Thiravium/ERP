@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
-import { X, CreditCard, User, MapPin, Calculator, Package } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { X, CreditCard, User, MapPin, Calculator, Package, ChevronDown } from 'lucide-react'
 
 import toast from 'react-hot-toast'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
+import api from '../../../../lib/api'
 
 interface SimpleTaxInvoiceFormProps {
   purchaseOrder?: any
@@ -31,13 +32,71 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
   const [itemPercentages, setItemPercentages] = useState<Record<number, number>>(
     editingInvoice ? { [sourceData.quotation_items?.[0]?.id || 1]: 100 } : {}
   )
+  const [availableShippingAddresses, setAvailableShippingAddresses] = useState<any[]>([])
+  const [selectedShippingAddress, setSelectedShippingAddress] = useState<number | null>(null)
+  const [effectiveShippingAddress, setEffectiveShippingAddress] = useState<any>(null)
   const [formData, setFormData] = useState({
+    invoice_number: editingInvoice?.invoice_number || '',
     invoice_date: editingInvoice?.invoice_date?.split('T')[0] || new Date().toISOString().split('T')[0],
     due_date: editingInvoice?.due_date?.split('T')[0] || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     reference: editingInvoice?.reference || '',
     notes: editingInvoice?.notes || 'Tax invoice for GST filing',
-    terms_and_conditions: editingInvoice?.terms_and_conditions || 'Payment terms: Net 30 days. GST as applicable. Late payments may incur additional charges.'
+    terms_and_conditions: editingInvoice?.terms_and_conditions || 'Payment terms: Net 30 days. GST as applicable. Late payments may incur additional charges.',
+    shipping_address: editingInvoice?.shipping_address || null
   })
+
+  // Fetch available shipping addresses and effective shipping address
+  useEffect(() => {
+    const fetchShippingAddresses = async () => {
+      if (!sessionKey || !sourceData?.customer_details?.id) return
+      
+      try {
+        // Fetch customer shipping addresses
+        const response = await api.get(`/api/finance/customers/${sourceData.customer_details.id}/`, {
+          params: { session_key: sessionKey }
+        })
+        
+        const customer = response.data
+        const addresses = []
+        
+        // Add billing address as option
+        addresses.push({
+          id: null,
+          type: 'billing',
+          label: 'Same as Billing Address',
+          address: `${customer.billing_address_line1}, ${customer.billing_city}, ${customer.billing_state} ${customer.billing_pincode}`,
+          is_default: true
+        })
+        
+        // Add customer shipping addresses
+        if (customer.shipping_addresses) {
+          customer.shipping_addresses.forEach((addr: any) => {
+            addresses.push({
+              id: addr.id,
+              type: 'shipping',
+              label: addr.label || 'Shipping Address',
+              address: addr.full_address,
+              is_default: addr.is_default
+            })
+          })
+        }
+        
+        setAvailableShippingAddresses(addresses)
+        
+        // Set effective shipping address from editing invoice or source data
+        if (editingInvoice?.effective_shipping_address) {
+          setEffectiveShippingAddress(editingInvoice.effective_shipping_address)
+        } else if (sourceData?.effective_shipping_address) {
+          setEffectiveShippingAddress(sourceData.effective_shipping_address)
+        }
+        
+      } catch (error) {
+        console.error('Error fetching shipping addresses:', error)
+      }
+    }
+    
+    fetchShippingAddresses()
+  }, [sessionKey, sourceData?.customer_details?.id, editingInvoice])
 
   // Calculate amounts
   const baseAmount = parseFloat(sourceData.subtotal || '0')
@@ -151,11 +210,13 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
         claim_percentage: invoiceData.claim_percentage,
         selected_items: invoiceData.claim_type === 'quantity' ? selectedItems : undefined,
         item_percentages: invoiceData.claim_type === 'percentage' ? itemPercentages : undefined,
+        invoice_number: formData.invoice_number || undefined,
         invoice_date: formData.invoice_date,
         ...(formData.due_date && { due_date: formData.due_date }),
         reference: formData.reference,
         notes: formData.notes,
         terms_and_conditions: formData.terms_and_conditions,
+        shipping_address: selectedShippingAddress,
         invoice_type: 'tax_invoice',
         status: 'draft'
       }
@@ -277,25 +338,80 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
               </div>
               
               {/* Shipping Address */}
-              <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl">
-                <h3 className="font-medium text-gray-900 dark:text-white mb-3 flex items-center">
-                  <MapPin className="w-4 h-4 mr-2" />
-                  Shipping Address
-                </h3>
-                <div className="text-sm text-gray-700 dark:text-gray-300">
-                  {sourceData.shipping_address_details ? (
-                    <>
-                      <p>{sourceData.shipping_address_details.address_line1}</p>
-                      {sourceData.shipping_address_details.address_line2 && (
-                        <p>{sourceData.shipping_address_details.address_line2}</p>
-                      )}
-                      <p>{sourceData.shipping_address_details.city}, {sourceData.shipping_address_details.state} {sourceData.shipping_address_details.pincode}</p>
-                      <p>{sourceData.shipping_address_details.country}</p>
-                    </>
-                  ) : (
-                    <p className="text-gray-500">Same as billing address</p>
+              <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-xl border border-orange-200 dark:border-orange-800">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-medium text-gray-900 dark:text-white flex items-center">
+                    <MapPin className="w-4 h-4 mr-2" />
+                    Shipping Address
+                  </h3>
+                  {effectiveShippingAddress?.source && (
+                    <span className="text-xs px-2 py-1 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300 rounded-full">
+                      {effectiveShippingAddress.source}
+                    </span>
                   )}
                 </div>
+                
+                {/* Current Effective Address Display */}
+                {effectiveShippingAddress && (
+                  <div className="mb-3 p-3 bg-white dark:bg-gray-800 rounded-lg border">
+                    <div className="text-sm">
+                      <div className="font-medium text-orange-800 dark:text-orange-300 mb-1">
+                        Current: {effectiveShippingAddress.label}
+                      </div>
+                      <div className="text-gray-600 dark:text-gray-400">
+                        {effectiveShippingAddress.address}
+                      </div>
+                      <div className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                        Source: {effectiveShippingAddress.source}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Shipping Address Selection */}
+                {availableShippingAddresses.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Override Shipping Address (Optional)
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={selectedShippingAddress || ''}
+                        onChange={(e) => setSelectedShippingAddress(e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full px-3 py-2 pr-8 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white appearance-none"
+                      >
+                        <option value="">Use default from {effectiveShippingAddress?.source || 'source'}</option>
+                        {availableShippingAddresses.map((addr) => (
+                          <option key={addr.id || 'billing'} value={addr.id || ''}>
+                            {addr.label} - {addr.address.substring(0, 50)}...
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Leave as default to use address from {effectiveShippingAddress?.source || 'source document'}
+                    </p>
+                  </div>
+                )}
+                
+                {/* Fallback display */}
+                {!effectiveShippingAddress && (
+                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                    {sourceData.shipping_address_details ? (
+                      <>
+                        <p>{sourceData.shipping_address_details.address_line1}</p>
+                        {sourceData.shipping_address_details.address_line2 && (
+                          <p>{sourceData.shipping_address_details.address_line2}</p>
+                        )}
+                        <p>{sourceData.shipping_address_details.city}, {sourceData.shipping_address_details.state} {sourceData.shipping_address_details.pincode}</p>
+                        <p>{sourceData.shipping_address_details.country}</p>
+                      </>
+                    ) : (
+                      <p className="text-gray-500">Same as billing address</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -482,7 +598,19 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
             </div>
 
             {/* Form Fields */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Invoice Number (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={formData.invoice_number || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, invoice_number: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="Auto-generated if empty"
+                />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Invoice Date

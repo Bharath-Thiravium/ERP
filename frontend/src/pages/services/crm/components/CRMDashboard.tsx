@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { BarChart3, Users, Target, Building, Phone, Calendar, TrendingUp, DollarSign, Activity, AlertCircle, PieChart } from 'lucide-react'
+import { BarChart3, Users, Target, Building, Phone, Calendar, TrendingUp, IndianRupee, Activity, AlertCircle, PieChart } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -38,7 +38,7 @@ export const CRMDashboard: React.FC = () => {
         const leadsRes = await crmApi.getLeads(sessionKey!)
         const oppsRes = await crmApi.getOpportunities(sessionKey!)
         
-        // Process leads by status
+        // Process leads by status - use all results, not just current page
         const leads = leadsRes.data.results || leadsRes.data
         const leadStatusCounts = leads.reduce((acc: any, lead: any) => {
           acc[lead.status] = (acc[lead.status] || 0) + 1
@@ -46,13 +46,20 @@ export const CRMDashboard: React.FC = () => {
         }, {})
         setLeadsByStatus(Object.entries(leadStatusCounts).map(([status, count]) => ({ status, count })))
 
-        // Process opportunities by stage
+        // Process opportunities by stage - use all results, not just current page
         const opportunities = oppsRes.data.results || oppsRes.data
         const oppStageCounts = opportunities.reduce((acc: any, opp: any) => {
           acc[opp.stage] = (acc[opp.stage] || 0) + 1
           return acc
         }, {})
         setOpportunitiesByStage(Object.entries(oppStageCounts).map(([stage, count]) => ({ stage, count })))
+        
+        // Note: If these APIs are paginated and we need all data for accurate counts,
+        // we should either:
+        // 1. Use a dedicated dashboard stats API that returns total counts
+        // 2. Or fetch all pages of data (not recommended for large datasets)
+        // 3. Or use the total count from pagination info if available
+        console.warn('CRM Dashboard: Lead/Opportunity counts may be inaccurate due to pagination. Consider using dedicated stats API.')
       } catch (error) {
         console.error('Error fetching additional data:', error)
       }
@@ -124,7 +131,7 @@ export const CRMDashboard: React.FC = () => {
         <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50 hover:shadow-lg transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pipeline Value</CardTitle>
-            <DollarSign className="h-4 w-4 text-orange-600" />
+            <IndianRupee className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-600">₹{stats?.pipeline_value?.toLocaleString() || 0}</div>

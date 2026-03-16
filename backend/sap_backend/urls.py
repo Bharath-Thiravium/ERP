@@ -56,6 +56,7 @@ urlpatterns = [
     path('api/company-dashboard/', include('company_dashboard.urls')),
     path('api/', include('configuration.urls')),
     path('api/crm/', include('crm.urls')),
+    path('api/', include('orchestrator.urls')),
 ]
 
 # Serve static and media files in development

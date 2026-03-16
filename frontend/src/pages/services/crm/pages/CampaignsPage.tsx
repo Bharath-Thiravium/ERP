@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Megaphone, Calendar, DollarSign, Edit, Trash2 } from 'lucide-react'
+import { Plus, Search, Megaphone, Calendar, IndianRupee, Edit, Trash2 } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -180,7 +180,7 @@ export const CampaignsPage: React.FC = () => {
               </div>
               {campaign.budget && (
                 <div className="flex items-center space-x-2">
-                  <DollarSign className="h-4 w-4 text-gray-400" />
+                  <IndianRupee className="h-4 w-4 text-gray-400" />
                   <span className="text-sm text-gray-600 dark:text-gray-300">
                     Budget: ₹{campaign.budget.toLocaleString()}
                   </span>

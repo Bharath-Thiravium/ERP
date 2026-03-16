@@ -5,7 +5,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Provider, useSelector } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { store, RootState } from './src/store';
-import { loginSuccess } from './src/store/slices/authSlice';
+import { loginSuccess, logout } from './src/store/slices/authSlice';
+import ApiService from './src/services/ApiService';
 import LoginScreen from './src/screens/auth/LoginScreen';
 import AttendanceScreen from './src/screens/attendance/AttendanceScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
@@ -50,11 +51,21 @@ const AppNavigator = () => {
       const companyData = await AsyncStorage.getItem('companyData');
 
       if (sessionKey && employeeData && companyData) {
-        store.dispatch(loginSuccess({
-          employee: JSON.parse(employeeData),
-          company: JSON.parse(companyData),
-          sessionKey,
-        }));
+        try {
+          // Validate token with server
+          await ApiService.validateToken();
+          
+          store.dispatch(loginSuccess({
+            employee: JSON.parse(employeeData),
+            company: JSON.parse(companyData),
+            sessionKey,
+          }));
+        } catch (error) {
+          // Token is invalid, clear local data
+          console.log('Token validation failed, logging out');
+          store.dispatch(logout());
+          await ApiService.clearLocalData();
+        }
       }
     } catch (error) {
       console.log('Error checking auth state:', error);

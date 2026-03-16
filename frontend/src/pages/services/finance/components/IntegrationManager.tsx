@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { integrationApi, MobileAppConfig } from '../../../../services/integrationApi';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../components/ui/Tabs';
-import { Card } from '../../../../components/ui/Card';
 
 import { Checkbox } from '../../../../components/ui/Checkbox';
+import FinanceCard from './FinanceCard';
+import MetricCard from './MetricCard';
 import BankIntegrationTab from './BankIntegrationTab';
 import ERPConnectorsTab from './ERPConnectorsTab';
 import PaymentGatewayTab from './PaymentGatewayTab';
 import EmailAutomationTab from './EmailAutomationTab';
+import { Building2, Zap, CreditCard, Mail } from 'lucide-react';
 
 const IntegrationManager: React.FC = () => {
   const [dashboardData, setDashboardData] = useState<any>(null);
@@ -57,9 +59,10 @@ const IntegrationManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Integration & Automation</h2>
-      </div>
+      <FinanceCard>
+        <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">Integration & Automation</h2>
+        <p className="text-gray-600 dark:text-gray-400 mt-2">Manage integrations and automation workflows</p>
+      </FinanceCard>
 
       <Tabs defaultValue="dashboard">
         <TabsList>
@@ -75,45 +78,34 @@ const IntegrationManager: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {dashboardData && (
               <>
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Bank Integration</h3>
-                  <div className="text-3xl font-bold text-blue-600">
-                    {dashboardData.bank_integration?.verified_customers || 0}
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {dashboardData.bank_integration?.total_customers || 0} Total Customers
-                  </p>
-                </Card>
-
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">ERP Connectors</h3>
-                  <div className="text-3xl font-bold text-green-600">
-                    {dashboardData.erp_integration?.connected_integrations || 0}
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {dashboardData.erp_integration?.total_integrations || 0} Total Connectors
-                  </p>
-                </Card>
-
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Payment Gateway</h3>
-                  <div className="text-3xl font-bold text-purple-600">
-                    {dashboardData.payment_gateway?.verified_gateways || 0}
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {dashboardData.payment_gateway?.total_gateways || 0} Total Gateways
-                  </p>
-                </Card>
-
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Email Automation</h3>
-                  <div className="text-3xl font-bold text-orange-600">
-                    {dashboardData.email_automation?.active_automations || 0}
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {dashboardData.email_automation?.emails_sent_today || 0} Sent Today
-                  </p>
-                </Card>
+                <MetricCard
+                  title="Bank Integration"
+                  value={(dashboardData.bank_integration?.verified_customers || 0).toString()}
+                  subtitle={`${dashboardData.bank_integration?.total_customers || 0} Total Customers`}
+                  icon={Building2}
+                  color="blue"
+                />
+                <MetricCard
+                  title="ERP Connectors"
+                  value={(dashboardData.erp_integration?.connected_integrations || 0).toString()}
+                  subtitle={`${dashboardData.erp_integration?.total_integrations || 0} Total Connectors`}
+                  icon={Zap}
+                  color="green"
+                />
+                <MetricCard
+                  title="Payment Gateway"
+                  value={(dashboardData.payment_gateway?.verified_gateways || 0).toString()}
+                  subtitle={`${dashboardData.payment_gateway?.total_gateways || 0} Total Gateways`}
+                  icon={CreditCard}
+                  color="purple"
+                />
+                <MetricCard
+                  title="Email Automation"
+                  value={(dashboardData.email_automation?.active_automations || 0).toString()}
+                  subtitle={`${dashboardData.email_automation?.emails_sent_today || 0} Sent Today`}
+                  icon={Mail}
+                  color="orange"
+                />
               </>
             )}
           </div>
@@ -141,7 +133,7 @@ const IntegrationManager: React.FC = () => {
             
             {mobileConfig && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="p-6">
+                <FinanceCard>
                   <h4 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Notifications</h4>
                   <div className="space-y-3">
                     <Checkbox
@@ -160,9 +152,9 @@ const IntegrationManager: React.FC = () => {
                       label="Payment Due Alerts"
                     />
                   </div>
-                </Card>
+                </FinanceCard>
 
-                <Card className="p-6">
+                <FinanceCard>
                   <h4 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Features</h4>
                   <div className="space-y-3">
                     <Checkbox
@@ -181,7 +173,7 @@ const IntegrationManager: React.FC = () => {
                       label="Quick Invoice"
                     />
                   </div>
-                </Card>
+                </FinanceCard>
               </div>
             )}
           </div>

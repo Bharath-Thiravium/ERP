@@ -162,9 +162,6 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
       let profileUrl = null
       let faceUrl = null
       
-      console.log('Employee profile_picture:', employee.profile_picture)
-      console.log('Employee face_photo:', employee.face_photo)
-      
       if (employee.profile_picture && 
           employee.profile_picture !== null && 
           employee.profile_picture !== '' && 
@@ -173,7 +170,6 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
         profileUrl = employee.profile_picture.startsWith('http') 
           ? employee.profile_picture 
           : `http://localhost:8000${employee.profile_picture}`
-        console.log('Setting profileUrl:', profileUrl)
       }
       
       if (employee.face_photo && 
@@ -184,16 +180,73 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
         faceUrl = employee.face_photo.startsWith('http') 
           ? employee.face_photo 
           : `http://localhost:8000${employee.face_photo}`
-        console.log('Setting faceUrl:', faceUrl)
       }
-      
-      console.log('Final URLs - Profile:', profileUrl, 'Face:', faceUrl)
       
       setProfilePreview(profileUrl)
       setFacePreview(faceUrl)
       
       // Set skills text
       setSkillsText(Array.isArray(employee.skills) ? employee.skills.join(', ') : '')
+    } else {
+      // Reset form for new employee creation
+      setFormData({
+        first_name: '',
+        last_name: '',
+        email: '',
+        phone: '',
+        date_of_birth: '',
+        gender: '',
+        department: 0,
+        designation: 0,
+        employment_type: 'full_time',
+        work_mode: 'office',
+        date_of_joining: '',
+        base_salary: 0,
+        address_line1: '',
+        address_line2: '',
+        city: '',
+        state: '',
+        pincode: '',
+        country: 'India',
+        aadhar_number: '',
+        pan_number: '',
+        pf_number: '',
+        uan_number: '',
+        esi_number: '',
+        bank_name: '',
+        bank_account_number: '',
+        bank_ifsc_code: '',
+        bank_branch: '',
+        emergency_contact_name: '',
+        emergency_contact_relationship: '',
+        emergency_contact_phone: '',
+        emergency_contact_address: '',
+        skills: [],
+        profile_picture: undefined,
+        face_photo: undefined,
+        capture_face_photo: false,
+        father_husband_name: '',
+        nature_of_employment: '',
+        employee_signature: undefined,
+        termination_reason: '',
+        employee_remarks: '',
+        permanent_address_line1: '',
+        permanent_address_line2: '',
+        permanent_city: '',
+        permanent_state: '',
+        permanent_pincode: '',
+        permanent_country: 'India',
+        local_address_line1: '',
+        local_address_line2: '',
+        local_city: '',
+        local_state: '',
+        local_pincode: '',
+        local_country: 'India'
+      })
+      setProfilePreview(null)
+      setFacePreview(null)
+      setSkillsText('')
+      setErrors({})
     }
   }, [employee])
   const [showCamera, setShowCamera] = useState(false)
@@ -678,7 +731,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
 
               {/* Camera Modal */}
               {showCamera && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[9999]">
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[var(--z-modal)]">
                   <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl">
                     <div className="text-center space-y-4">
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white">

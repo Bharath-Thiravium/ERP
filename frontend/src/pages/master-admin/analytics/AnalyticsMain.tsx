@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { TrendingUp, Users, Server, BarChart3, DollarSign } from 'lucide-react'
+import { TrendingUp, Users, Server, BarChart3, IndianRupee } from 'lucide-react'
 import AnalyticsOverview from './components/AnalyticsOverview'
 import RevenueAnalytics from './components/RevenueAnalytics'
 import UserAnalytics from './components/UserAnalytics'
@@ -11,7 +11,7 @@ const AnalyticsMain: React.FC = () => {
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
-    { id: 'revenue', label: 'Revenue', icon: DollarSign },
+    { id: 'revenue', label: 'Revenue', icon: IndianRupee },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'services', label: 'Services', icon: Server },
     { id: 'growth', label: 'Growth', icon: TrendingUp },

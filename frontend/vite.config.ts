@@ -2,8 +2,20 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 
+function normalizeBasePath(basePath?: string) {
+  if (!basePath || basePath.trim() === '') {
+    return '/'
+  }
+
+  const withLeadingSlash = basePath.startsWith('/') ? basePath : `/${basePath}`
+  return withLeadingSlash.endsWith('/') ? withLeadingSlash : `${withLeadingSlash}/`
+}
+
+const basePath = normalizeBasePath(process.env.VITE_BASE_PATH)
+
 // https://vite.dev/config/
 export default defineConfig({
+  base: basePath,
   plugins: [react()],
 
   // Path resolution
@@ -22,18 +34,18 @@ export default defineConfig({
 
   // Development server configuration
   server: {
-    port: 3000,
+    port: 3001,
     host: true,
     open: true,
     cors: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8006',
         changeOrigin: true,
         secure: false,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'ws://localhost:8006',
         ws: true,
         changeOrigin: true,
       },
@@ -75,7 +87,7 @@ export default defineConfig({
 
   // Preview server (for production build testing)
   preview: {
-    port: 3000,
+    port: 3001,
     host: true,
     cors: true,
   },

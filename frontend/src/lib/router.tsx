@@ -283,6 +283,7 @@ export const AppRouter: React.FC = () => {
         }
       />
 
+
       {/* Employee Mobile App */}
       <Route
         path="/employee"
@@ -358,6 +359,17 @@ export const AppRouter: React.FC = () => {
       />
 
       <Route
+        path="/services/finance/invoices"
+        element={
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <FinanceDashboard />
+            </SuspenseWrapper>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/services/hr/dashboard"
         element={
           <ProtectedRoute requireServiceUser>
@@ -386,6 +398,48 @@ export const AppRouter: React.FC = () => {
           <ProtectedRoute requireServiceUser>
             <SuspenseWrapper>
               <CRMRoutes />
+            </SuspenseWrapper>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Athens Sustainability Routes - Company User Access */}
+      <Route
+        path="/services/athens_sustainability/*"
+        element={
+          <Navigate to="/login?redirect=athens" replace />
+        }
+      />
+
+      {/* Athens Sustainability Dashboard */}
+      <Route
+        path="/services/sustainability/dashboard"
+        element={
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+                <div className="text-center">
+                  <h1 className="text-2xl font-bold text-green-600 mb-4">Athens Sustainability Dashboard</h1>
+                  <p className="text-gray-600">Athens Sustainability Dashboard coming soon!</p>
+                </div>
+              </div>
+            </SuspenseWrapper>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Generic Services Dashboard - redirect to appropriate service */}
+      <Route
+        path="/services/dashboard"
+        element={
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+                <div className="text-center">
+                  <h1 className="text-2xl font-bold text-blue-600 mb-4">Service Dashboard</h1>
+                  <p className="text-gray-600">Please select a specific service from your dashboard.</p>
+                </div>
+              </div>
             </SuspenseWrapper>
           </ProtectedRoute>
         }

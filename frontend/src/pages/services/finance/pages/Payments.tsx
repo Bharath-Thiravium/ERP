@@ -4,6 +4,9 @@ import { CreditCard, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import PaymentList from '../components/PaymentList';
 import PaymentForm from '../components/PaymentForm';
+import PaymentDetailModal from '../components/PaymentDetailModal';
+import FinanceCard from '../components/FinanceCard';
+import MetricCard from '../components/MetricCard';
 import { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -26,6 +29,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
 
   const [searchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<any>(null);
   const [preSelectedInvoice, setPreSelectedInvoice] = useState<{ id: number; number: string; type: 'tax_invoice' | 'proforma_invoice' } | null>(null);
   const [refreshList, setRefreshList] = useState(0);
@@ -92,6 +96,18 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
     setShowForm(true);
   };
 
+  const handleViewPayment = async (payment: any) => {
+    try {
+      // Fetch full payment details
+      const response = await apiClient.getFinancePayment(payment.id, { session_key: sessionKey });
+      setSelectedPayment(response.data);
+      setShowDetailModal(true);
+    } catch (error) {
+      console.error('Error fetching payment details:', error);
+      toast.error('Failed to load payment details');
+    }
+  };
+
   const handleFormClose = () => {
     setShowForm(false);
     setSelectedPayment(null);
@@ -113,92 +129,49 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6">
+      <FinanceCard>
         <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
           Payments
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
           Record and track payment transactions
         </p>
-      </div>
+      </FinanceCard>
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Payments */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Total Payments</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {loading ? '...' : stats.total_payments}
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                ₹{loading ? '...' : parseFloat(stats.total_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-              </p>
-            </div>
-            <div className="p-3 bg-blue-500 rounded-lg">
-              <CreditCard className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </div>
-
-        {/* Completed Payments */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-green-600 dark:text-green-400">Completed</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {loading ? '...' : stats.completed_payments}
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                ₹{loading ? '...' : parseFloat(stats.completed_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-              </p>
-            </div>
-            <div className="p-3 bg-green-500 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </div>
-
-        {/* Pending Payments */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">Pending</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {loading ? '...' : stats.pending_payments}
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                ₹{loading ? '...' : parseFloat(stats.pending_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-              </p>
-            </div>
-            <div className="p-3 bg-yellow-500 rounded-lg">
-              <Clock className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </div>
-
-        {/* Failed Payments */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-red-600 dark:text-red-400">Failed</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {loading ? '...' : stats.failed_payments}
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                ₹{loading ? '...' : parseFloat(stats.failed_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-              </p>
-            </div>
-            <div className="p-3 bg-red-500 rounded-lg">
-              <AlertCircle className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </div>
+        <MetricCard
+          title="Total Payments"
+          value={loading ? '...' : stats.total_payments.toString()}
+          subtitle={`₹${loading ? '...' : parseFloat(stats.total_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+          icon={CreditCard}
+          color="blue"
+        />
+        <MetricCard
+          title="Completed"
+          value={loading ? '...' : stats.completed_payments.toString()}
+          subtitle={`₹${loading ? '...' : parseFloat(stats.completed_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+          icon={CheckCircle}
+          color="green"
+        />
+        <MetricCard
+          title="Pending"
+          value={loading ? '...' : stats.pending_payments.toString()}
+          subtitle={`₹${loading ? '...' : parseFloat(stats.pending_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+          icon={Clock}
+          color="orange"
+        />
+        <MetricCard
+          title="Failed"
+          value={loading ? '...' : stats.failed_payments.toString()}
+          subtitle={`₹${loading ? '...' : parseFloat(stats.failed_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+          icon={AlertCircle}
+          color="red"
+        />
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <FinanceCard>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
@@ -231,16 +204,16 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
             Review Failed Payments
           </button>
         </div>
-      </div>
+      </FinanceCard>
 
       {/* Payment Insights */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Payment Success Rate */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Success Rate</h3>
+        <FinanceCard>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Payment Success Rate</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Completed</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Completed</span>
               <span className="text-sm font-medium text-green-600">
                 {stats.total_payments > 0 
                   ? `${((stats.completed_payments / stats.total_payments) * 100).toFixed(1)}%`
@@ -248,7 +221,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
                 }
               </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
               <div 
                 className="bg-green-500 h-2 rounded-full transition-all duration-300"
                 style={{ 
@@ -260,7 +233,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
             </div>
             
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Pending</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Pending</span>
               <span className="text-sm font-medium text-yellow-600">
                 {stats.total_payments > 0 
                   ? `${((stats.pending_payments / stats.total_payments) * 100).toFixed(1)}%`
@@ -268,7 +241,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
                 }
               </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
               <div 
                 className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
                 style={{ 
@@ -280,7 +253,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Failed</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Failed</span>
               <span className="text-sm font-medium text-red-600">
                 {stats.total_payments > 0 
                   ? `${((stats.failed_payments / stats.total_payments) * 100).toFixed(1)}%`
@@ -288,7 +261,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
                 }
               </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
               <div 
                 className="bg-red-500 h-2 rounded-full transition-all duration-300"
                 style={{ 
@@ -299,43 +272,43 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
               ></div>
             </div>
           </div>
-        </div>
+        </FinanceCard>
 
         {/* Payment Amount Distribution */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Amount Distribution</h3>
+        <FinanceCard>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Amount Distribution</h3>
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+            <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
               <div className="flex items-center">
                 <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
-                <span className="text-sm font-medium text-gray-900">Completed</span>
+                <span className="text-sm font-medium text-gray-900 dark:text-white">Completed</span>
               </div>
               <span className="text-sm font-bold text-green-600">
                 ₹{parseFloat(stats.completed_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}
               </span>
             </div>
             
-            <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+            <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
               <div className="flex items-center">
                 <Clock className="w-5 h-5 text-yellow-500 mr-2" />
-                <span className="text-sm font-medium text-gray-900">Pending</span>
+                <span className="text-sm font-medium text-gray-900 dark:text-white">Pending</span>
               </div>
               <span className="text-sm font-bold text-yellow-600">
                 ₹{parseFloat(stats.pending_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}
               </span>
             </div>
             
-            <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+            <div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
               <div className="flex items-center">
                 <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
-                <span className="text-sm font-medium text-gray-900">Failed</span>
+                <span className="text-sm font-medium text-gray-900 dark:text-white">Failed</span>
               </div>
               <span className="text-sm font-bold text-red-600">
                 ₹{parseFloat(stats.failed_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}
               </span>
             </div>
           </div>
-        </div>
+        </FinanceCard>
       </div>
 
       {/* Payment List */}
@@ -343,6 +316,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
         key={refreshList}
         onAddPayment={() => toast.success('Update payments via Invoice/Proforma Invoice lists → Update Payment button')}
         onEditPayment={handleEditPayment}
+        onViewPayment={handleViewPayment}
         sessionKey={sessionKey}
       />
 
@@ -354,6 +328,21 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
           onSave={handleFormSave}
           sessionKey={sessionKey}
           preSelectedInvoice={preSelectedInvoice || undefined}
+        />
+      )}
+
+      {/* Payment Detail Modal */}
+      {showDetailModal && selectedPayment && (
+        <PaymentDetailModal
+          payment={selectedPayment}
+          onClose={() => {
+            setShowDetailModal(false);
+            setSelectedPayment(null);
+          }}
+          onEdit={() => {
+            setShowDetailModal(false);
+            handleEditPayment(selectedPayment);
+          }}
         />
       )}
     </div>

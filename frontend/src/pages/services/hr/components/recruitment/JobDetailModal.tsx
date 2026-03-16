@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, Briefcase, MapPin, DollarSign, Users, FileText, Clock, Share2 } from 'lucide-react'
+import { X, Briefcase, MapPin, IndianRupee, Users, FileText, Clock, Share2 } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { JobPosting } from '../../types/hrTypes'
 import JobShareModal from './JobShareModal'
@@ -69,7 +69,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({ isOpen, onClose, job })
               </div>
               
               <div className="flex items-center space-x-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <DollarSign className="h-5 w-5 text-gray-500" />
+                <IndianRupee className="h-5 w-5 text-gray-500" />
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Salary Range</p>
                   <p className="font-medium text-gray-900 dark:text-white">

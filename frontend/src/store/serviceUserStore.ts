@@ -103,17 +103,11 @@ export const useServiceUserStore = create<ServiceUserState>()(
       logout: async () => {
         const { sessionKey } = get()
         
-        if (sessionKey) {
-          try {
-            await apiClient.serviceUserLogout(sessionKey)
-          } catch (error) {
-            console.error('Logout error:', error)
-          }
-        }
-
-        // Clear session key from sessionStorage
-        sessionStorage.removeItem('service_session_key')
+        // Clear ALL storage FIRST to prevent any issues
+        sessionStorage.clear()
+        localStorage.removeItem('service-user-storage')
         
+        // Clear state immediately
         set({
           serviceUser: null,
           sessionKey: null,
@@ -122,17 +116,30 @@ export const useServiceUserStore = create<ServiceUserState>()(
           lastActivity: null,
           error: null
         })
-
-        // Clear session monitoring
+        
+        // Stop monitoring
         get().stopSessionMonitoring()
-
-        // Clear browser history to prevent back button access
-        if (window.history.length > 1) {
-          window.history.replaceState(null, '', '/service-login')
+        
+        // Call logout API silently (don't wait for response)
+        if (sessionKey) {
+          try {
+            // Use fetch instead of apiClient to avoid interceptor issues
+            fetch('/api/auth/service-user/logout/', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ session_key: sessionKey })
+            }).catch(() => {
+              // Ignore any errors - logout should always succeed on frontend
+            })
+          } catch (error) {
+            // Ignore errors during logout API call
+          }
         }
 
-        // Redirect to service login
-        window.location.replace('/service-login')
+        // Force redirect immediately
+        window.location.href = '/service-login'
       },
 
       refreshSession: async () => {

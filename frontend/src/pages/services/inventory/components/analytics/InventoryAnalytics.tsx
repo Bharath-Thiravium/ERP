@@ -9,7 +9,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
-  DollarSign,
+  IndianRupee,
   Calendar,
   Activity,
   PieChart,
@@ -547,7 +547,7 @@ const InventoryAnalytics: React.FC<InventoryAnalyticsProps> = ({ onNavigate }) =
           value={`${analyticsData?.carryingCost}%`}
           change={timeRange === '7' ? 2.1 : -1.5}
           trend={timeRange === '7' ? 'up' : 'down'}
-          icon={<DollarSign className="w-6 h-6" />}
+          icon={<IndianRupee className="w-6 h-6" />}
           color="from-purple-500 to-purple-600"
           description="Cost of holding inventory"
         />

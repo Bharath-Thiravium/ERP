@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { apiClient } from '../../../../lib/api'
+import api from '../../../../lib/api'
 import { toast } from 'react-hot-toast'
 import {
   FileText,
@@ -9,7 +10,7 @@ import {
   Eye,
   Edit,
   Calendar,
-  DollarSign,
+  IndianRupee,
   CheckCircle,
   Clock,
   XCircle,
@@ -25,6 +26,7 @@ import SimpleProformaForm from './SimpleProformaForm'
 import UpdatePaymentModal from './UpdatePaymentModal'
 import SendEmailModal from './SendEmailModal'
 import RejectInvoiceModal from './RejectInvoiceModal'
+import CreateNewInvoiceModal from './CreateNewInvoiceModal'
 import MetricCard from './MetricCard'
 
 
@@ -36,6 +38,11 @@ interface ProformaInvoice {
   customer_name: string
   customer_code: string
   customer_project_area: string
+  customer_shipping_addresses?: Array<{
+    type: string
+    address: string
+    is_default?: boolean
+  }>
   po_number: string
   status: string
   payment_status: string
@@ -135,6 +142,14 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
       console.log('Proforma Invoice API Response:', response.data) // Debug log
 
       const invoices = response.data.results || []
+      
+      // Debug: Check if customer_shipping_addresses is in the response
+      console.log('First Proforma customer data:', invoices[0] ? {
+        customer_name: invoices[0].customer_name,
+        customer_shipping_addresses: invoices[0].customer_shipping_addresses,
+        hasAddresses: invoices[0].customer_shipping_addresses && invoices[0].customer_shipping_addresses.length > 0
+      } : 'No proforma invoices found')
+      
       setProformaInvoices(invoices)
       setTotalPages(Math.ceil(response.data.count / 5))
       
@@ -174,6 +189,11 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
   const [selectedForEmail, setSelectedForEmail] = useState<ProformaInvoice | null>(null)
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [selectedForReject, setSelectedForReject] = useState<ProformaInvoice | null>(null)
+  const [showCreateNewModal, setShowCreateNewModal] = useState(false)
+  const [selectedForNewInvoice, setSelectedForNewInvoice] = useState<ProformaInvoice | null>(null)
+  const [hoveredProforma, setHoveredProforma] = useState<number | string | null>(null)
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
+  const [proformaItemsCache, setProformaItemsCache] = useState<{ [key: number]: any[] }>({})
   const [metrics, setMetrics] = useState({
     total: 0,
     draft: 0,
@@ -182,6 +202,25 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
     totalValue: 0,
     collectionRate: 0
   })
+
+  const fetchProformaItems = async (proformaId: number) => {
+    if (proformaItemsCache[proformaId]) {
+      return proformaItemsCache[proformaId];
+    }
+    
+    try {
+      const response = await api.get(`/api/finance/proforma-invoices/${proformaId}/`, {
+        params: { session_key: sessionKey }
+      });
+      
+      const items = response.data.proforma_items || [];
+      setProformaItemsCache(prev => ({ ...prev, [proformaId]: items }));
+      return items;
+    } catch (error) {
+      console.error('Error fetching proforma items:', error);
+      return [];
+    }
+  };
 
   
   const handleUpdatePayment = (proformaInvoice: ProformaInvoice) => {
@@ -221,8 +260,13 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
     setShowRejectModal(true)
   }
 
-  const handleReverseProforma = async (proforma: ProformaInvoice) => {
-    if (!confirm(`Are you sure you want to reverse proforma ${proforma.proforma_number}? This will allow you to edit it once more.`)) {
+  const handleCreateNewInvoice = (proforma: ProformaInvoice) => {
+    setSelectedForNewInvoice(proforma)
+    setShowCreateNewModal(true)
+  }
+
+  const handleReviseProforma = async (proforma: ProformaInvoice) => {
+    if (!confirm(`Are you sure you want to revise proforma ${proforma.proforma_number}? This will allow you to edit it once more.`)) {
       return
     }
 
@@ -247,14 +291,14 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
       })
 
       if (!response.ok) {
-        throw new Error('Failed to reverse proforma')
+        throw new Error('Failed to revise proforma')
       }
 
-      toast.success('Proforma reversed successfully! You can now edit it.')
+      toast.success('Proforma revised successfully! You can now edit it.')
       fetchProformaInvoices()
     } catch (error) {
       console.error('Error reversing proforma:', error)
-      toast.error('Failed to reverse proforma')
+      toast.error('Failed to revise proforma')
     }
   }
 
@@ -440,20 +484,118 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                               </span>
                             )}
                           </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                          <div 
+                               onMouseEnter={(e) => {
+                                 setHoveredProforma(proforma.id)
+                                 setMousePosition({ x: e.clientX, y: e.clientY })
+                                 if (!proformaItemsCache[proforma.id]) {
+                                   fetchProformaItems(proforma.id).catch(err => {
+                                     console.error('Failed to fetch items:', err)
+                                     toast.error('Failed to load proforma items')
+                                   })
+                                 }
+                               }}
+                               onMouseLeave={() => setHoveredProforma(null)}
+                               onMouseMove={(e) => {
+                                 if (hoveredProforma === proforma.id) {
+                                   setMousePosition({ x: e.clientX, y: e.clientY })
+                                 }
+                               }}
+                               className="text-sm text-gray-500 dark:text-gray-400 cursor-help relative"
+                          >
                             {proforma.item_count} item{proforma.item_count !== 1 ? 's' : ''}
+                            
+                            {hoveredProforma === proforma.id && (
+                              <div className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 max-w-2xl pointer-events-none"
+                                   style={{
+                                     left: `${Math.min(mousePosition.x + 15, window.innerWidth - 600)}px`,
+                                     top: `${Math.max(mousePosition.y - 50, 10)}px`,
+                                   }}>
+                                <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Items in this proforma:</div>
+                                <div className="space-y-1 max-h-96 overflow-y-auto">
+                                  {proformaItemsCache[proforma.id] && proformaItemsCache[proforma.id].length > 0 ? (
+                                    proformaItemsCache[proforma.id].map((item, index) => (
+                                      <div key={index} className="text-xs">
+                                        <div className="font-medium text-gray-900 dark:text-white">{item.product_name}</div>
+                                        {item.description && (
+                                          <div className="text-gray-500 dark:text-gray-400 text-xs">{item.description}</div>
+                                        )}
+                                        <div className="text-gray-500 dark:text-gray-400">
+                                          {parseFloat(item.quantity || 0).toFixed(2)} {item.unit} x ₹{parseFloat(item.unit_price || 0).toFixed(2)} = ₹{parseFloat(item.line_total || 0).toFixed(2)}
+                                        </div>
+                                      </div>
+                                    ))
+                                  ) : proformaItemsCache[proforma.id] ? (
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">No items found</div>
+                                  ) : (
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">Loading items...</div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          {proforma.customer_name}
-                        </div>
+                        {/* Customer Name with Tooltip */}
+                        {proforma.customer_shipping_addresses && proforma.customer_shipping_addresses.length > 0 ? (
+                          <div 
+                            className="text-sm font-medium text-blue-600 cursor-pointer border-b border-dotted border-blue-600 hover:text-blue-800"
+                            onMouseEnter={(e) => {
+                              setHoveredProforma(`customer-${proforma.id}` as any)
+                              setMousePosition({ x: e.clientX, y: e.clientY })
+                            }}
+                            onMouseLeave={() => setHoveredProforma(null)}
+                            onMouseMove={(e) => {
+                              if (hoveredProforma === `customer-${proforma.id}`) {
+                                setMousePosition({ x: e.clientX, y: e.clientY })
+                              }
+                            }}
+                          >
+                            {proforma.customer_name}
+                          </div>
+                        ) : (
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                            {proforma.customer_name}
+                          </div>
+                        )}
                         <div className="text-sm text-gray-500 dark:text-gray-400">
                           {proforma.customer_code} • {proforma.customer_project_area}
                         </div>
+                        
+                        {/* Customer Address Tooltip */}
+                        {hoveredProforma === `customer-${proforma.id}` && proforma.customer_shipping_addresses && proforma.customer_shipping_addresses.length > 0 && (
+                          <div className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 max-w-2xl pointer-events-none"
+                               style={{
+                                 left: `${Math.min(mousePosition.x + 15, window.innerWidth - 600)}px`,
+                                 top: `${Math.max(mousePosition.y - 50, 10)}px`,
+                               }}>
+                            <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3 pb-2 border-b border-gray-200 dark:border-gray-600">
+                              {proforma.customer_name}
+                            </div>
+                            <div className="space-y-2 max-h-96 overflow-y-auto">
+                              {proforma.customer_shipping_addresses.map((addr, index) => (
+                                <div key={index} className="text-xs">
+                                  <div className={`font-semibold mb-1 flex items-center gap-1 ${
+                                    addr.type === 'Billing' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'
+                                  }`}>
+                                    {addr.type === 'Billing' ? '🏠' : '🏢'} {addr.type}
+                                    {addr.is_default && (
+                                      <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-1 py-0.5 rounded text-xs font-medium">
+                                        DEFAULT
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-gray-700 dark:text-gray-300 leading-relaxed pl-4">
+                                    {addr.address}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -490,14 +632,23 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
                         {proforma.is_rejected ? (
-                          // Only show view button for rejected proforma invoices
-                          <button
-                            onClick={() => handleView(proforma)}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                            title="View"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                          // Show view and create new invoice buttons for rejected proforma invoices
+                          <>
+                            <button
+                              onClick={() => handleView(proforma)}
+                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                              title="View"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleCreateNewInvoice(proforma)}
+                              className="text-green-600 hover:text-green-800 transition-colors"
+                              title="Create New Invoice"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </>
                         ) : (
                           // Show all buttons for non-rejected proforma invoices
                           <>
@@ -506,7 +657,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                               className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
                               title="Update Payment"
                             >
-                              <DollarSign className="w-4 h-4" />
+                              <IndianRupee className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleView(proforma)}
@@ -516,13 +667,17 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                               <Eye className="w-4 h-4" />
                             </button>
 
-                            <button
-                              onClick={() => handleSendEmail(proforma)}
-                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                              title="Send Email"
-                            >
-                              <Mail className="w-4 h-4" />
-                            </button>
+                            {/* Send Email - Only show for draft status */}
+                            {proforma.status === 'draft' && (
+                              <button
+                                onClick={() => handleSendEmail(proforma)}
+                                className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                                title="Send Email"
+                              >
+                                <Mail className="w-4 h-4" />
+                              </button>
+                            )}
+                            
                             <button
                               onClick={() => handleDownloadPDF(proforma.id, proforma.proforma_number)}
                               className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
@@ -544,12 +699,12 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                             {/* Sent/Active status buttons */}
                             {(proforma.status === 'sent' || proforma.status === 'active') && (
                               <>
-                                {/* Only allow reverse if not already revised */}
+                                {/* Only allow revise if not already revised */}
                                 {!proforma.is_revised && (
                                   <button
-                                    onClick={() => handleReverseProforma(proforma)}
+                                    onClick={() => handleReviseProforma(proforma)}
                                     className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
-                                    title="Reverse Proforma (Edit Once)"
+                                    title="Revise Proforma (Edit Once)"
                                   >
                                     <RotateCcw className="w-4 h-4" />
                                   </button>
@@ -731,6 +886,31 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
           invoiceId={selectedForReject.id}
           invoiceNumber={selectedForReject.proforma_number}
           invoiceType="proforma"
+          sessionKey={sessionKey}
+        />
+      )}
+
+      {/* Create New Invoice Modal */}
+      {showCreateNewModal && selectedForNewInvoice && (
+        <CreateNewInvoiceModal
+          isOpen={showCreateNewModal}
+          onClose={() => {
+            setShowCreateNewModal(false)
+            setSelectedForNewInvoice(null)
+          }}
+          onSuccess={() => {
+            setShowCreateNewModal(false)
+            setSelectedForNewInvoice(null)
+            fetchProformaInvoices()
+          }}
+          rejectedInvoice={{
+            id: selectedForNewInvoice.id,
+            invoice_number: selectedForNewInvoice.proforma_number,
+            purchase_order: selectedForNewInvoice.po_number ? {
+              id: parseInt(selectedForNewInvoice.po_number.split('/')[0]) || 0,
+              internal_po_number: selectedForNewInvoice.po_number
+            } : undefined
+          }}
           sessionKey={sessionKey}
         />
       )}

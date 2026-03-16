@@ -4,6 +4,7 @@ from .views import (
     LeadViewSet, ContactViewSet, AccountViewSet, OpportunityViewSet,
     ActivityViewSet, CampaignViewSet, SalesTargetViewSet, DashboardViewSet
 )
+from . import viewsets
 from .marketing_views import (
     EmailTemplateViewSet, MarketingCampaignViewSet, AutomationWorkflowViewSet
 )
@@ -31,15 +32,15 @@ from .reporting_views import (
 )
 
 router = DefaultRouter()
-# Core CRM
-router.register(r'leads', LeadViewSet)
-router.register(r'contacts', ContactViewSet)
-router.register(r'accounts', AccountViewSet)
-router.register(r'opportunities', OpportunityViewSet)
-router.register(r'activities', ActivityViewSet)
-router.register(r'campaigns', CampaignViewSet)
-router.register(r'sales-targets', SalesTargetViewSet)
-router.register(r'dashboard', DashboardViewSet, basename='dashboard')
+# Core CRM - New ViewSets with centralized tenant enforcement
+router.register(r'leads', viewsets.LeadViewSet)
+router.register(r'contacts', viewsets.ContactViewSet)
+router.register(r'accounts', viewsets.AccountViewSet)
+router.register(r'opportunities', viewsets.OpportunityViewSet)
+router.register(r'activities', viewsets.ActivityViewSet)
+router.register(r'campaigns', viewsets.CampaignViewSet)
+router.register(r'sales-targets', viewsets.SalesTargetViewSet)
+router.register(r'dashboard', viewsets.DashboardViewSet, basename='dashboard')
 
 # Customer Support
 router.register(r'tickets', TicketViewSet)

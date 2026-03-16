@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Target, DollarSign, Calendar, Edit, Trash2 } from 'lucide-react'
+import { Plus, Search, Target, IndianRupee, Calendar, Edit, Trash2 } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -181,7 +181,7 @@ export const OpportunitiesPage: React.FC = () => {
             {/* Opportunity Details */}
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
-                <DollarSign className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                <IndianRupee className="h-4 w-4 text-gray-400 flex-shrink-0" />
                 <div className="flex items-center space-x-2 min-w-0 flex-1">
                   <span className="text-sm font-medium text-gray-900 dark:text-white">
                     ₹{opportunity.amount.toLocaleString()}

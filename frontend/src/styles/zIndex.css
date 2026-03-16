@@ -1,0 +1,10 @@
+:root {
+  --z-overlay: 4000;
+  --z-sidebar: 4500;
+  --z-modal: 6000;
+  --z-modal-panel: 6010;
+  --z-dropdown: 7000;
+  --z-tooltip: 8000;
+  --z-modal-overlay: var(--z-modal);
+  --z-modal-content: var(--z-modal-panel);
+}

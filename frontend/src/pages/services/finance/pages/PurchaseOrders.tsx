@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { Plus } from 'lucide-react'
 // import { useThemeStore } from '../../../../store/themeStore' // Removed unused import
 import PurchaseOrderList from '../components/PurchaseOrderList'
 import PurchaseOrderForm from '../components/PurchaseOrderForm'
@@ -320,14 +321,25 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
+      {/* Page Header with Action Button */}
       <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-          Purchase Orders / Work Orders
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Manage your purchase orders and work orders from client quotations
-        </p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+              Purchase Orders / Work Orders
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">
+              Manage your purchase orders and work orders from client quotations
+            </p>
+          </div>
+          <button
+            onClick={handleAddPO}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+          >
+            <Plus className="w-5 h-5" />
+            New PO/WO
+          </button>
+        </div>
       </div>
 
       {/* PO List */}

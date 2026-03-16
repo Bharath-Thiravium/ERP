@@ -16,12 +16,13 @@ import logging
 # Set up logging
 logger = logging.getLogger(__name__)
 from authentication.models import ServiceUserSession, CompanyServiceUser
-from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment
+from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment, NumberingRule, NumberingCounter, FINANCE_NUMBERING_MODULE_CHOICES, CustomerShippingAddress
 from .unit_models import Unit
 from .email_utils import send_invoice_email, send_proforma_email, send_quotation_email, send_purchase_order_email
 from .serializers import (
     CustomerListSerializer, CustomerDetailSerializer,
     CustomerCreateSerializer, CustomerUpdateSerializer,
+    CustomerShippingAddressSerializer,
     ProductListSerializer, ProductDetailSerializer,
     ProductCreateSerializer, ProductUpdateSerializer,
     HSNCodeSerializer, SACCodeSerializer,
@@ -38,6 +39,8 @@ from .serializers import (
     PaymentCreateSerializer, PaymentUpdateSerializer,
     WorldClassPaymentCreateSerializer, WorldClassPaymentListSerializer
 )
+from .serializers import NumberingRuleSerializer, FINANCE_DEFAULT_TEMPLATES
+from finance.numbering import _scope_key
 
 
 class CustomerPagination(PageNumberPagination):
@@ -115,12 +118,12 @@ class CustomerListCreateView(ListCreateAPIView):
         
         # Validate session key format to prevent path traversal and injection
         if session_key:
-            # Remove any potentially dangerous characters
-            session_key = re.sub(r'[^a-zA-Z0-9_-]', '', str(session_key))
+            # Remove any potentially dangerous characters (allow alphanumeric, underscore, hyphen, and colon)
+            session_key = re.sub(r'[^a-zA-Z0-9_:-]', '', str(session_key))
             # Limit length to prevent buffer overflow
             session_key = session_key[:64] if len(session_key) > 64 else session_key
-            # Validate format
-            if not re.match(r'^[a-zA-Z0-9_-]+$', session_key):
+            # Validate format (allow colon for session key format)
+            if not re.match(r'^[a-zA-Z0-9_:-]+$', session_key):
                 return None
         return session_key
 
@@ -491,20 +494,26 @@ class ProductListCreateView(ListCreateAPIView):
                 except (HSNCode.DoesNotExist, SACCode.DoesNotExist, ValueError):
                     pass
 
-            # Set manual override flag BEFORE saving to prevent GST rate overwrite
-            if manual_gst_override:
-                # Create product instance without triggering save
-                product = Product(
-                    company=service_user.company,
-                    created_by=service_user,
-                    **{k: v for k, v in serializer.validated_data.items()}
-                )
-                product._manual_gst_override = True
-                product.save()
-            else:
-                product = serializer.save(
-                    company=service_user.company,
-                    created_by=service_user
+            try:
+                # Set manual override flag BEFORE saving to prevent GST rate overwrite
+                if manual_gst_override:
+                    # Create product instance without triggering save
+                    product = Product(
+                        company=service_user.company,
+                        created_by=service_user,
+                        **{k: v for k, v in serializer.validated_data.items()}
+                    )
+                    product._manual_gst_override = True
+                    product.save()
+                else:
+                    product = serializer.save(
+                        company=service_user.company,
+                        created_by=service_user
+                    )
+            except IntegrityError:
+                return Response(
+                    {'error': 'Product code already exists for this company. Please use a different code or edit the existing product.'},
+                    status=status.HTTP_400_BAD_REQUEST
                 )
 
             # Return detailed product data
@@ -881,9 +890,16 @@ class ProductSearchView(APIView):
 
             # Get products for this company only
             queryset = Product.objects.filter(
-                company=service_user.company,
-                is_active=True
+                company=service_user.company
             )
+
+            # Add filtering for is_active (consistent with ProductListCreateView)
+            is_active = request.query_params.get('is_active', '')
+            if is_active:
+                queryset = queryset.filter(is_active=is_active.lower() == 'true')
+            else:
+                # Default to showing only active products if no filter is specified
+                queryset = queryset.filter(is_active=True)
 
             if search:
                 queryset = queryset.filter(
@@ -1416,6 +1432,10 @@ class PurchaseOrderListCreateView(ListCreateAPIView):
                 quotation.po_created = True
                 quotation.po_created_at = timezone.now()
                 quotation.save()
+                
+                # Set PO status to active when created from quotation
+                purchase_order.status = 'active'
+                purchase_order.save(update_fields=['status'])
 
             # Return detailed purchase order data
             detail_serializer = PurchaseOrderDetailSerializer(purchase_order)
@@ -2389,17 +2409,14 @@ def payment_stats(request):
         return Response({'error': str(e)}, status=500)
 
 
-@api_view(['GET'])
-@authentication_classes([])
-@permission_classes([])
-def customer_ledger(request):
+def _customer_ledger_impl(request):
     """Get customer ledger with transaction history"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not session_key:
         session_key = request.query_params.get('session_key')
 
     if not session_key:
-        return Response({'error': 'Session key required'}, status=400)
+        return Response({'error': 'Session key required'}, status=401)
 
     customer_id = request.query_params.get('customer_id')
     if not customer_id:
@@ -2469,7 +2486,7 @@ def customer_ledger(request):
                     'debit_amount': float(customer.opening_balance) if customer.opening_balance > 0 else 0,
                     'credit_amount': float(abs(customer.opening_balance)) if customer.opening_balance < 0 else 0,
                     'balance': 0,  # Will be calculated later
-                    'status': 'confirmed',
+                    'status': 'active',
                 })
 
         # Get invoices for this customer
@@ -2495,6 +2512,31 @@ def customer_ledger(request):
                 'credit_amount': 0,
                 'balance': 0,  # Will be calculated later
                 'status': invoice.payment_status,
+            })
+
+        # Get proforma invoices for this customer
+        proforma_invoices = ProformaInvoice.objects.filter(
+            customer=customer,
+            company=service_user.company
+        )
+
+        if start_date:
+            proforma_invoices = proforma_invoices.filter(proforma_date__gte=start_date)
+        if end_date:
+            proforma_invoices = proforma_invoices.filter(proforma_date__lte=end_date)
+
+        # Add proforma invoice entries (debit entries)
+        for proforma in proforma_invoices:
+            entries.append({
+                'id': f'proforma_{proforma.id}',
+                'date': proforma.proforma_date.isoformat(),
+                'document_type': 'Proforma Invoice',
+                'document_number': proforma.proforma_number,
+                'description': f'Proforma Invoice for services/products',
+                'debit_amount': float(proforma.total_amount) if str(proforma.total_amount).lower() != "nan" else 0.0,
+                'credit_amount': 0,
+                'balance': 0,  # Will be calculated later
+                'status': proforma.status,
             })
 
         # Get payments for this customer
@@ -2543,6 +2585,8 @@ def customer_ledger(request):
 
         # Calculate summary statistics
         total_invoiced = sum(float(inv.total_amount) if str(inv.total_amount).lower() != "nan" else 0.0 for inv in invoices)
+        total_proforma = sum(float(pi.total_amount) if str(pi.total_amount).lower() != "nan" else 0.0 for pi in proforma_invoices)
+        total_invoiced += total_proforma
         total_paid = sum(float(pay.amount) if str(pay.amount).lower() != "nan" else 0.0 for pay in payments if pay.status == 'completed')
         outstanding_amount = total_invoiced - total_paid
 
@@ -2569,7 +2613,7 @@ def customer_ledger(request):
         })
 
     except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session'}, status=404)
+        return Response({'error': 'Invalid session', 'detail': 'Authentication credentials were not provided.'}, status=401)
     except Customer.DoesNotExist:
         return Response({'error': 'Customer not found'}, status=404)
     except Exception as e:
@@ -2616,7 +2660,7 @@ def generate_invoice_pdf(request, invoice_id):
         return response
 
     except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session'}, status=404)
+        return Response({'error': 'Invalid session', 'detail': 'Authentication credentials were not provided.'}, status=401)
     except Invoice.DoesNotExist:
         return Response({'error': 'Invoice not found'}, status=404)
     except Exception as e:
@@ -2663,7 +2707,7 @@ def generate_quotation_pdf(request, quotation_id):
         return response
 
     except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session'}, status=404)
+        return Response({'error': 'Invalid session', 'detail': 'Authentication credentials were not provided.'}, status=401)
     except Quotation.DoesNotExist:
         return Response({'error': 'Quotation not found'}, status=404)
     except Exception as e:
@@ -2707,7 +2751,7 @@ def generate_purchase_order_pdf(request, purchase_order_id):
         return response
 
     except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session'}, status=404)
+        return Response({'error': 'Invalid session', 'detail': 'Authentication credentials were not provided.'}, status=401)
     except PurchaseOrder.DoesNotExist:
         return Response({'error': 'Purchase order not found'}, status=404)
     except Exception as e:
@@ -2759,7 +2803,7 @@ def generate_proforma_pdf(request, proforma_id):
         return response
 
     except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session'}, status=404)
+        return Response({'error': 'Invalid session', 'detail': 'Authentication credentials were not provided.'}, status=401)
     except ProformaInvoice.DoesNotExist:
         return Response({'error': 'Proforma invoice not found'}, status=404)
     except Exception as e:
@@ -3031,7 +3075,7 @@ def world_class_payment_summary(request):
         })
 
     except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session'}, status=404)
+        return Response({'error': 'Invalid session', 'detail': 'Authentication credentials were not provided.'}, status=401)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 
@@ -3127,7 +3171,7 @@ def world_class_po_payment_dashboard(request, po_id):
         })
 
     except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session'}, status=404)
+        return Response({'error': 'Invalid session', 'detail': 'Authentication credentials were not provided.'}, status=401)
     except PurchaseOrder.DoesNotExist:
         return Response({'error': 'Purchase order not found'}, status=404)
     except Exception as e:
@@ -3213,7 +3257,7 @@ def sophisticated_po_claiming_status(request, po_id):
         })
 
     except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session'}, status=404)
+        return Response({'error': 'Invalid session', 'detail': 'Authentication credentials were not provided.'}, status=401)
     except PurchaseOrder.DoesNotExist:
         return Response({'error': 'Purchase order not found'}, status=404)
     except Exception as e:
@@ -3537,4 +3581,178 @@ def reject_quotation(request, quotation_id):
         return Response({'error': str(e)}, status=500)
 
 
+# ---------------------------------------------------------------------------
+# Finance numbering rule management (Company Dashboard)
+# ---------------------------------------------------------------------------
+class FinanceNumberingRuleView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
 
+    def _get_company(self, request):
+        user = getattr(request, 'user', None)
+        if user and hasattr(user, 'company_user'):
+            return user.company_user.company
+        return None
+
+    def get(self, request):
+        company = self._get_company(request)
+        if not company:
+            return Response({'error': 'Company context required'}, status=status.HTTP_403_FORBIDDEN)
+
+        data = []
+        for module, _label in FINANCE_NUMBERING_MODULE_CHOICES:
+            defaults = FINANCE_DEFAULT_TEMPLATES.get(module, {})
+            defaults = {
+                'template': defaults.get('template', '{PREFIX}-{YY}-{SEQ}'),
+                'prefix': defaults.get('prefix', ''),
+                'separator': defaults.get('separator', '-'),
+                'padding': defaults.get('padding', 6),
+                'reset_scope': defaults.get('reset_scope', 'yearly'),
+                'start_from': defaults.get('start_from', 1),
+                'allow_manual_override': defaults.get('allow_manual_override', False),
+            }
+            rule, _ = NumberingRule.objects.get_or_create(
+                company=company,
+                module=module,
+                defaults=defaults
+            )
+            data.append(NumberingRuleSerializer(rule).data)
+        return Response(data)
+
+    def patch(self, request, module):
+        company = self._get_company(request)
+        if not company:
+            return Response({'error': 'Company context required'}, status=status.HTTP_403_FORBIDDEN)
+
+        if module not in dict(FINANCE_NUMBERING_MODULE_CHOICES):
+            return Response({'error': 'Invalid module'}, status=status.HTTP_400_BAD_REQUEST)
+
+        defaults = FINANCE_DEFAULT_TEMPLATES.get(module, {})
+        defaults = {
+            'template': defaults.get('template', '{PREFIX}-{YY}-{SEQ}'),
+            'prefix': defaults.get('prefix', ''),
+            'separator': defaults.get('separator', '-'),
+            'padding': defaults.get('padding', 6),
+            'reset_scope': defaults.get('reset_scope', 'yearly'),
+            'start_from': defaults.get('start_from', 1),
+            'allow_manual_override': defaults.get('allow_manual_override', False),
+        }
+        rule, _ = NumberingRule.objects.get_or_create(
+            company=company,
+            module=module,
+            defaults=defaults
+        )
+
+        serializer = NumberingRuleSerializer(rule, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        
+        # Validate start_from if provided
+        if 'start_from' in request.data:
+            start_from = request.data['start_from']
+            if start_from < 1:
+                return Response({'error': 'start_from must be at least 1'}, status=status.HTTP_400_BAD_REQUEST)
+            if start_from > 999999:
+                return Response({'error': 'start_from cannot exceed 999999'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer.save()
+        return Response(serializer.data)
+
+
+class FinanceNumberingPreviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_company(self, request):
+        user = getattr(request, 'user', None)
+        if user and hasattr(user, 'company_user'):
+            return user.company_user.company
+        return None
+
+    def post(self, request, module):
+        company = self._get_company(request)
+        if not company:
+            return Response({'error': 'Company context required'}, status=status.HTTP_403_FORBIDDEN)
+
+        if module not in dict(FINANCE_NUMBERING_MODULE_CHOICES):
+            return Response({'error': 'Invalid module'}, status=status.HTTP_400_BAD_REQUEST)
+
+        defaults = FINANCE_DEFAULT_TEMPLATES.get(module, {})
+        defaults = {
+            'template': defaults.get('template', '{PREFIX}-{YY}-{SEQ}'),
+            'prefix': defaults.get('prefix', ''),
+            'separator': defaults.get('separator', '-'),
+            'padding': defaults.get('padding', 6),
+            'reset_scope': defaults.get('reset_scope', 'yearly'),
+            'start_from': defaults.get('start_from', 1),
+            'allow_manual_override': defaults.get('allow_manual_override', False),
+        }
+        rule, _ = NumberingRule.objects.get_or_create(
+            company=company,
+            module=module,
+            defaults=defaults
+        )
+
+        dt = timezone.now()
+        scope_key = _scope_key(rule.reset_scope, dt)
+        counter = NumberingCounter.objects.filter(
+            company=company, module=module, scope_key=scope_key
+        ).first()
+        seq = counter.next_value if counter else rule.start_from
+        tokens = {
+            'PREFIX': rule.prefix or '',
+            'SEP': rule.separator or '',
+            'YY': dt.strftime('%y'),
+            'YYYY': dt.strftime('%Y'),
+            'MM': dt.strftime('%m'),
+            'SEQ': str(seq).zfill(rule.padding),
+        }
+        preview = rule.template.format(**tokens)
+        return Response({'preview': preview})
+
+class CustomerShippingAddressDetailView(APIView):
+    """Retrieve customer shipping address details"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, address_id):
+        """Get shipping address details"""
+        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = request.query_params.get('session_key')
+
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            service_user = session.service_user
+
+            # Get shipping address for this company only
+            shipping_address = CustomerShippingAddress.objects.get(
+                id=address_id,
+                customer__company=service_user.company
+            )
+
+            serializer = CustomerShippingAddressSerializer(shipping_address)
+            return Response(serializer.data)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except CustomerShippingAddress.DoesNotExist:
+            return Response({'error': 'Shipping address not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# -----------------------------------------------------------------------------
+# Customer Ledger (compat endpoint)
+# -----------------------------------------------------------------------------
+# NOTE: Legacy endpoint kept for backward compatibility with clients/tests.
+# It must preserve session_key-based auth used across finance frontend calls.
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([])
+def customer_ledger(request):
+    """
+    Legacy customer-ledger endpoint.
+    Delegates to the existing ledger implementation that validates service sessions.
+    """
+    return _customer_ledger_impl(request)

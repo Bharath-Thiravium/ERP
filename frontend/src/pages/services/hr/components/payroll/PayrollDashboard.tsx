@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { DollarSign, Users, Calendar, TrendingUp, FileText, Plus, Clock } from 'lucide-react'
+import { IndianRupee, Users, Calendar, TrendingUp, FileText, Plus, Clock } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -144,7 +144,7 @@ const PayrollDashboard: React.FC<PayrollDashboardProps> = ({ onCreateCycle, onVi
                 <p className="text-2xl font-bold">{formatCurrency(dashboardData.total_gross_amount)}</p>
                 <p className="text-xs opacity-75">Current cycle</p>
               </div>
-              <DollarSign className="h-8 w-8 opacity-80" />
+              <IndianRupee className="h-8 w-8 opacity-80" />
             </div>
           </div>
 

@@ -9,6 +9,7 @@ interface UpdatePaymentModalProps {
     invoice_number: string;
     total_amount: string;
     outstanding_amount: string;
+    subtotal?: string;
   };
   onClose: () => void;
   onSuccess: () => void;
@@ -29,41 +30,43 @@ const UpdatePaymentModal: React.FC<UpdatePaymentModalProps> = ({
     amount_received: '',
     tds_percentage: '10',
     tds_amount: '',
+    receivable_amount: '',
+    pending_amount: '',
     net_amount: '',
+    is_tds_received: false,
     payment_method: 'bank_transfer',
     reference_number: '',
     notes: ''
   });
 
-  const calculateTDS = (amount: number, percentage: number) => {
-    return (amount * percentage) / 100;
-  };
-
-  const handleAmountChange = (amount: string) => {
-    const amountNum = parseFloat(amount) || 0;
-    const tdsPercentage = parseFloat(formData.tds_percentage) || 0;
-    const tdsAmount = calculateTDS(amountNum, tdsPercentage);
-    const netAmount = amountNum - tdsAmount;
-
-    setFormData(prev => ({
-      ...prev,
-      amount_received: amount,
-      tds_amount: tdsAmount.toFixed(2),
-      net_amount: netAmount.toFixed(2)
-    }));
-  };
-
   const handleTDSPercentageChange = (percentage: string) => {
     const percentageNum = parseFloat(percentage) || 0;
-    const amount = parseFloat(formData.amount_received) || 0;
-    const tdsAmount = calculateTDS(amount, percentageNum);
-    const netAmount = amount - tdsAmount;
+    const subtotal = parseFloat(invoice?.subtotal || invoice?.total_amount || '0') || 0;
+    const invoiceTotal = parseFloat(invoice?.total_amount || '0') || 0;
+    const tdsAmount = (subtotal * percentageNum) / 100;
+    const receivableAmount = invoiceTotal - tdsAmount;
 
     setFormData(prev => ({
       ...prev,
       tds_percentage: percentage,
       tds_amount: tdsAmount.toFixed(2),
-      net_amount: netAmount.toFixed(2)
+      receivable_amount: receivableAmount.toFixed(2),
+      net_amount: receivableAmount.toFixed(2)
+    }));
+  };
+
+  const handleAmountChange = (amount: string) => {
+    const amountNum = parseFloat(amount) || 0;
+    const invoiceTotal = parseFloat(invoice?.total_amount || '0') || 0;
+    const tdsAmount = parseFloat(formData.tds_amount) || 0;
+    // Total Payment = Amount Received + TDS
+    const totalPayment = amountNum + tdsAmount;
+    const pending = invoiceTotal - totalPayment;
+
+    setFormData(prev => ({
+      ...prev,
+      amount_received: amount,
+      pending_amount: pending.toFixed(2)
     }));
   };
 
@@ -72,13 +75,16 @@ const UpdatePaymentModal: React.FC<UpdatePaymentModalProps> = ({
     setLoading(true);
 
     try {
-      // Use the correct payment creation endpoint based on invoice type
+      // Total payment amount = Amount Received + TDS Amount
+      const totalPaymentAmount = parseFloat(formData.amount_received) + (parseFloat(formData.tds_amount) || 0);
+      
       const paymentData: any = {
         payment_date: formData.payment_date,
-        amount: parseFloat(formData.amount_received),
+        amount: totalPaymentAmount, // Total payment including TDS
         tds_amount: parseFloat(formData.tds_amount) || 0,
         tds_percentage: parseFloat(formData.tds_percentage) || 0,
-        net_amount_received: parseFloat(formData.net_amount),
+        net_amount_received: parseFloat(formData.amount_received), // What you actually received
+        is_tds_received: formData.is_tds_received,
         payment_method: formData.payment_method,
         reference_number: formData.reference_number,
         notes: formData.notes,
@@ -164,7 +170,7 @@ const UpdatePaymentModal: React.FC<UpdatePaymentModalProps> = ({
               <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">TDS Calculation</span>
             </div>
             
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-yellow-700 dark:text-yellow-300 mb-1">TDS %</label>
                 <input
@@ -184,16 +190,38 @@ const UpdatePaymentModal: React.FC<UpdatePaymentModalProps> = ({
                   className="w-full px-2 py-1 text-sm bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-600 rounded text-gray-900 dark:text-white"
                 />
               </div>
+              <div>
+                <label className="block text-xs text-green-700 dark:text-green-300 mb-1">Receivable Amount</label>
+                <input
+                  type="text"
+                  value={formData.receivable_amount || formData.net_amount}
+                  readOnly
+                  className="w-full px-2 py-1 text-sm bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-600 rounded text-gray-900 dark:text-white font-medium"
+                />
+              </div>
             </div>
             
             <div className="mt-2">
-              <label className="block text-xs text-green-700 dark:text-green-300 mb-1">Net Amount Received</label>
+              <label className="block text-xs text-blue-700 dark:text-blue-300 mb-1">Pending Amount</label>
               <input
                 type="text"
-                value={formData.net_amount}
+                value={formData.pending_amount || '0.00'}
                 readOnly
-                className="w-full px-2 py-1 text-sm bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-600 rounded text-gray-900 dark:text-white font-medium"
+                className="w-full px-2 py-1 text-sm bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-600 rounded text-gray-900 dark:text-white font-medium"
               />
+            </div>
+            
+            <div className="mt-3 flex items-center">
+              <input
+                type="checkbox"
+                id="tds_received"
+                checked={formData.is_tds_received}
+                onChange={(e) => setFormData(prev => ({ ...prev, is_tds_received: e.target.checked }))}
+                className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+              />
+              <label htmlFor="tds_received" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                TDS Received
+              </label>
             </div>
           </div>
 

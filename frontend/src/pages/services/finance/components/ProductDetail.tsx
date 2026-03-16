@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, Edit, Package, Tag, DollarSign, BarChart3, Calendar, User } from 'lucide-react'
+import { X, Edit, Package, Tag, IndianRupee, BarChart3, Calendar, User } from 'lucide-react'
 
 
 interface Product {
@@ -173,7 +173,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  <IndianRupee className="w-5 h-5 text-green-600 dark:text-green-400" />
                   <h4 className="font-medium text-gray-900 dark:text-white">Selling Price</h4>
                 </div>
                 <p className="text-2xl font-bold text-green-600 dark:text-green-400">
@@ -184,7 +184,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
               {product.purchase_price > 0 && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <DollarSign className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <IndianRupee className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                     <h4 className="font-medium text-gray-900 dark:text-white">Purchase Price</h4>
                   </div>
                   <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">

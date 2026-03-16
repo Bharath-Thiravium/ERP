@@ -83,6 +83,11 @@ class ProformaInvoicePDFService:
                 'has_discount': proforma.discount_amount > 0,
                 'has_shipping': proforma.shipping_charges > 0,
                 'has_other_charges': proforma.other_charges > 0,
+                'has_specific_shipping': proforma.shipping_address is not None,
+                'shipping_info': {
+                    'label': proforma.shipping_address.label if proforma.shipping_address else 'Same as Billing Address',
+                    'address': proforma.shipping_address.full_address if proforma.shipping_address else proforma.customer.full_billing_address
+                }
             })
             
             return context

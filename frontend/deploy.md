@@ -18,6 +18,7 @@ cp .env.example .env.production
 ```env
 VITE_API_URL=https://your-api-domain.com/api
 VITE_WS_URL=wss://your-api-domain.com/ws
+VITE_BASE_PATH=/            # Use /dashboard/ if app is hosted under /dashboard
 VITE_NODE_ENV=production
 VITE_ENABLE_DEVTOOLS=false
 ```
@@ -55,6 +56,9 @@ pnpm run preview
    ```apache
    RewriteEngine On
    RewriteBase /
+
+   # Never rewrite static asset requests to index.html
+   RewriteRule ^assets/ - [L]
    
    # Handle client-side routing
    RewriteCond %{REQUEST_FILENAME} !-f

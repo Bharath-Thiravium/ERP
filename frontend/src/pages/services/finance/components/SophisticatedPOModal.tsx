@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, DollarSign, Receipt, CreditCard, AlertCircle } from 'lucide-react';
+import { X, IndianRupee, Receipt, CreditCard, AlertCircle } from 'lucide-react';
 import { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -307,13 +307,13 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
                   )}
                   {totalProformaOutstanding > 0 && (
                     <div className="flex items-center text-sm">
-                      <DollarSign className="w-4 h-4 text-red-500 mr-2" />
+                      <IndianRupee className="w-4 h-4 text-red-500 mr-2" />
                       <span>Collect ₹{totalProformaOutstanding.toLocaleString()} from proformas</span>
                     </div>
                   )}
                   {totalInvoiceOutstanding > 0 && (
                     <div className="flex items-center text-sm">
-                      <DollarSign className="w-4 h-4 text-red-500 mr-2" />
+                      <IndianRupee className="w-4 h-4 text-red-500 mr-2" />
                       <span>Collect ₹{totalInvoiceOutstanding.toLocaleString()} from invoices</span>
                     </div>
                   )}

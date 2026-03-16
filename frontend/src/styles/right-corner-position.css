@@ -1,0 +1,34 @@
+/* Right corner positioning utility */
+.right-corner-element {
+  position: fixed !important;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  pointer-events: auto;
+}
+
+/* Ensure content doesn't get hidden */
+.main-content {
+  padding-right: 80px; /* Adjust based on element width */
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .right-corner-element {
+    top: 15px;
+    right: 15px;
+  }
+  
+  .main-content {
+    padding-right: 60px;
+  }
+}
+
+/* Alternative: Bottom right corner */
+.bottom-right-corner {
+  position: fixed !important;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  pointer-events: auto;
+}

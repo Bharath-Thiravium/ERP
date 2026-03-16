@@ -8,11 +8,56 @@
     <meta name="keywords" content="SAP, ERP, Enterprise, Resource Planning, Business Management" />
     <meta name="author" content="SAP System Team" />
     <title>SAP System - Modern Enterprise Solution</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <style>
+      /* Prevent FOUC */
+      #root { visibility: hidden; }
+      #root.loaded { visibility: visible; }
+      /* Loading spinner */
+      .loading-spinner {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        0% { transform: translate(-50%, -50%) rotate(0deg); }
+        100% { transform: translate(-50%, -50%) rotate(360deg); }
+      }
+    </style>
+    <script>
+      (function () {
+        try {
+          var density = localStorage.getItem("app_density");
+          if (!density) density = "compact";
+          document.documentElement.setAttribute("data-density", density);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body class="antialiased">
+    <div class="loading-spinner"></div>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="modal-root"></div>
+    <script type="module" src="/src/main.tsx" onerror="handleScriptError(event)"></script>
+    <script>
+      function handleScriptError(event) {
+        console.error('Script loading failed:', event);
+        document.body.innerHTML = '<div style="text-align:center;padding:50px;"><h2>Loading Error</h2><p>Please refresh the page or contact support.</p></div>';
+      }
+      
+      // Remove loading spinner when app loads
+      window.addEventListener('load', function() {
+        const spinner = document.querySelector('.loading-spinner');
+        const root = document.getElementById('root');
+        if (spinner) spinner.style.display = 'none';
+        if (root) root.classList.add('loaded');
+      });
+    </script>
   </body>
 </html>

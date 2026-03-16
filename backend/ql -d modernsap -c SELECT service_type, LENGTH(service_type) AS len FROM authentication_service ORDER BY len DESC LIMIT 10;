@@ -1,0 +1,21 @@
+                                                            List of databases
+         Name         |    Owner    | Encoding | Locale Provider | Collate |  Ctype  | ICU Locale | ICU Rules |    Access privileges     
+----------------------+-------------+----------+-----------------+---------+---------+------------+-----------+--------------------------
+ Rayzen               | rayzen-demo | UTF8     | libc            | C.UTF-8 | C.UTF-8 |            |           | 
+ athens_control_plane | athens_user | UTF8     | libc            | C.UTF-8 | C.UTF-8 |            |           | 
+ athens_db            | postgres    | UTF8     | libc            | C.UTF-8 | C.UTF-8 |            |           | =Tc/postgres            +
+                      |             |          |                 |         |         |            |           | postgres=CTc/postgres   +
+                      |             |          |                 |         |         |            |           | athens_user=CTc/postgres
+ athens_ehs           | postgres    | UTF8     | libc            | C.UTF-8 | C.UTF-8 |            |           | =Tc/postgres            +
+                      |             |          |                 |         |         |            |           | postgres=CTc/postgres   +
+                      |             |          |                 |         |         |            |           | athens_user=CTc/postgres
+ modernsap            | postgres    | UTF8     | libc            | C.UTF-8 | C.UTF-8 |            |           | 
+ postgres             | postgres    | UTF8     | libc            | C.UTF-8 | C.UTF-8 |            |           | 
+ template0            | postgres    | UTF8     | libc            | C.UTF-8 | C.UTF-8 |            |           | =c/postgres             +
+                      |             |          |                 |         |         |            |           | postgres=CTc/postgres
+ template1            | postgres    | UTF8     | libc            | C.UTF-8 | C.UTF-8 |            |           | =c/postgres             +
+                      |             |          |                 |         |         |            |           | postgres=CTc/postgres
+ test_athens_db       | athens_user | UTF8     | libc            | C.UTF-8 | C.UTF-8 |            |           | 
+ test_modernsap       | postgres    | UTF8     | libc            | C.UTF-8 | C.UTF-8 |            |           | 
+(10 rows)
+

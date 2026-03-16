@@ -10,7 +10,7 @@ import {
   MessageSquare, 
   AlertTriangle,
   CheckCircle,
-  DollarSign,
+  IndianRupee,
   Lightbulb,
   Zap,
   Eye,
@@ -135,7 +135,7 @@ const AIAnalyticsDashboard: React.FC = () => {
           {[
             { id: 'overview', label: 'Overview', icon: Brain },
             { id: 'leads', label: 'Lead Intelligence', icon: Users },
-            { id: 'forecast', label: 'Sales Forecast', icon: DollarSign },
+            { id: 'forecast', label: 'Sales Forecast', icon: IndianRupee },
             { id: 'conversations', label: 'Conversations', icon: MessageSquare }
           ].map(({ id, label, icon: Icon }) => (
             <button
@@ -205,7 +205,7 @@ const AIAnalyticsDashboard: React.FC = () => {
             </div>
             <div className="bg-white rounded-lg border p-4">
               <div className="flex items-center space-x-2">
-                <DollarSign className="h-5 w-5 text-green-500" />
+                <IndianRupee className="h-5 w-5 text-green-500" />
                 <div>
                   <p className="text-sm text-gray-600">Pipeline Value</p>
                   <p className="text-2xl font-bold">$2.4M</p>

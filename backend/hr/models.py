@@ -943,8 +943,11 @@ from .banking_models import BankVerification, SalaryPayment, DigitalSignature, S
 # Import ESI medical models
 from .esi_medical_models import ESIMedicalBenefit
 
-# Import interview models
-from .interview_models import Interview, InterviewFeedback, InterviewScheduleTemplate
-
-# Import offer models
-from .offer_models import JobOffer, OfferTemplate
+# Import workflow models
+from .workflow_models import (
+    EmployeeWorkflowStatus,
+    EmployeeProfileCompletion,
+    InductionTraining,
+    EmployeeInductionProgress,
+    EmployeeAccessLog
+)

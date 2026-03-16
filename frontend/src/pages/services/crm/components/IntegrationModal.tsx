@@ -3,6 +3,7 @@ import { X, Plug } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
 import toast from 'react-hot-toast'
+import { Modal } from '../../../../components/ui/Modal'
 
 interface IntegrationModalProps {
   isOpen: boolean
@@ -83,8 +84,14 @@ export const IntegrationModal: React.FC<IntegrationModalProps> = ({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      size="lg"
+      className="max-w-2xl"
+      bodyClassName="p-0"
+    >
+      <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center">
             <Plug className="h-6 w-6 text-orange-500 mr-3" />
@@ -240,6 +247,6 @@ export const IntegrationModal: React.FC<IntegrationModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </Modal>
   )
 }

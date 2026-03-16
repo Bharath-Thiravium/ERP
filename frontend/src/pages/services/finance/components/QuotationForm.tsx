@@ -150,6 +150,22 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
     }
   }, [quotation])
 
+  // Load shipping address details when editing quotation
+  useEffect(() => {
+    if (formData.shipping_address && selectedCustomer) {
+      console.log('Checking shipping address:', formData.shipping_address, 'for customer:', selectedCustomer.id)
+      // Find the shipping address in customer's addresses
+      const shippingAddr = selectedCustomer.shipping_addresses?.find(addr => addr.id === formData.shipping_address)
+      if (!shippingAddr && formData.shipping_address) {
+        // If not found in customer addresses, try to load it separately
+        console.log('Shipping address not found in customer addresses, loading separately')
+        loadShippingAddressDetails(formData.shipping_address)
+      } else if (shippingAddr) {
+        console.log('Shipping address found in customer addresses:', shippingAddr)
+      }
+    }
+  }, [formData.shipping_address, selectedCustomer])
+
   // Load full customer details when editing
   const loadCustomerDetails = async (customerId: number) => {
     if (!sessionKey || !customerId) {
@@ -165,6 +181,33 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
     } catch (error) {
       console.error('Error loading customer details:', error)
       toast.error('Failed to load customer details')
+    }
+  }
+
+  // Load shipping address details separately if not found in customer addresses
+  const loadShippingAddressDetails = async (shippingAddressId: number) => {
+    if (!sessionKey || !shippingAddressId) return
+
+    try {
+      console.log('Loading shipping address details for ID:', shippingAddressId)
+      const response = await apiClient.get(`/api/finance/customers/shipping-addresses/${shippingAddressId}/`, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+
+      const shippingAddress = response.data
+      console.log('Loaded shipping address details:', shippingAddress)
+      
+      // Add the shipping address to the selected customer's addresses if not already present
+      if (selectedCustomer && !selectedCustomer.shipping_addresses?.find(addr => addr.id === shippingAddressId)) {
+        setSelectedCustomer(prev => prev ? {
+          ...prev,
+          shipping_addresses: [...(prev.shipping_addresses || []), shippingAddress]
+        } : prev)
+      }
+    } catch (error) {
+      console.error('Error loading shipping address details:', error)
+      toast.error('Failed to load shipping address details')
     }
   }
 
@@ -232,11 +275,23 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       const response = await apiClient.getFinanceCustomer(customer.id, { session_key: sessionKey })
       const fullCustomer = response.data
       setSelectedCustomer(fullCustomer)
-      setFormData(prev => ({
-        ...prev,
-        customer: fullCustomer.id,
-        shipping_address: fullCustomer.shipping_addresses?.find((addr: ShippingAddress) => addr.is_default)?.id || null
-      }))
+      
+      // Only set default shipping address if no shipping address is already set
+      // This preserves shipping addresses when editing quotations
+      if (!formData.shipping_address) {
+        const defaultShippingAddress = fullCustomer.shipping_addresses?.find((addr: ShippingAddress) => addr.is_default)?.id || null
+        setFormData(prev => ({
+          ...prev,
+          customer: fullCustomer.id,
+          shipping_address: defaultShippingAddress
+        }))
+      } else {
+        // Just update the customer ID without changing shipping address
+        setFormData(prev => ({
+          ...prev,
+          customer: fullCustomer.id
+        }))
+      }
     } catch (error) {
       console.error('Error fetching customer details:', error)
       toast.error('Failed to load customer details, using basic info')

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Plus, Search, Edit, Trash2, Eye,
-  Building2, User, Phone, Mail, MapPin, ChevronLeft, ChevronRight
+  Building2, User, Phone, Mail, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown
 } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { apiClient } from '../../../../lib/api'
@@ -52,6 +52,17 @@ const CustomerList: React.FC<CustomerListProps> = ({
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterActive, setFilterActive] = useState('')
+  const [sortBy, setSortBy] = useState('-created_at')
+
+  const handleSort = (field: string) => {
+    setSortBy(prev => prev === `-${field}` ? field : `-${field}`)
+    setCurrentPage(1)
+  }
+  const SortIcon = ({ field }: { field: string }) => (
+    sortBy === field ? <ChevronUp className="w-3 h-3 inline ml-1" /> :
+    sortBy === `-${field}` ? <ChevronDown className="w-3 h-3 inline ml-1" /> :
+    <ChevronUp className="w-3 h-3 inline ml-1 opacity-30" />
+  )
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -72,7 +83,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
   // Fetch customers when debounced search term, filters, or page changes
   useEffect(() => {
     fetchCustomers()
-  }, [debouncedSearchTerm, filterType, filterActive, currentPage])
+  }, [debouncedSearchTerm, filterType, filterActive, currentPage, sortBy])
 
   const fetchCustomers = async () => {
     try {
@@ -93,6 +104,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
       if (debouncedSearchTerm) params.append('search', debouncedSearchTerm)
       if (filterType) params.append('customer_type', filterType)
       if (filterActive) params.append('is_active', filterActive)
+      params.append('ordering', sortBy)
 
       // Add pagination parameters
       params.append('page', currentPage.toString())
@@ -268,24 +280,12 @@ const CustomerList: React.FC<CustomerListProps> = ({
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Customer
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Contact
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Tax Info
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Credit Limit
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  <th onClick={() => handleSort('name')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Customer <SortIcon field="name" /></th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contact</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tax Info</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Credit Limit</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">

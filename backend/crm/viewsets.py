@@ -424,7 +424,15 @@ class SalesTargetViewSet(CompanyScopedModelViewSet):
 class DashboardViewSet(CompanyScopedModelViewSet):
     """CRM Dashboard with centralized tenant enforcement"""
     queryset = Lead.objects.none()  # Dummy queryset
+    serializer_class = DashboardStatsSerializer
     is_global_model = True  # Skip company filtering for dashboard
+
+    def list(self, request, *args, **kwargs):
+        """Return dashboard stats instead of a queryset list"""
+        company = self.get_company()
+        from .query_optimizations import CRMQueryOptimizer
+        stats = CRMQueryOptimizer.get_dashboard_stats_optimized(company)
+        return Response(DashboardStatsSerializer(stats).data)
 
     @action(detail=False)
     def stats(self, request):

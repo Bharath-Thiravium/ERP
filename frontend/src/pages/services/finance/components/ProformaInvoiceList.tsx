@@ -18,7 +18,10 @@ import {
   Mail,
   Send,
   TrendingUp,
-  RotateCcw
+  RotateCcw,
+  RefreshCw,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react'
 // import ProformaInvoiceForm from './ProformaInvoiceForm' // Removed - using simplified forms
 import ProformaInvoiceView from './ProformaInvoiceView'
@@ -28,6 +31,7 @@ import SendEmailModal from './SendEmailModal'
 import RejectInvoiceModal from './RejectInvoiceModal'
 import CreateNewInvoiceModal from './CreateNewInvoiceModal'
 import MetricCard from './MetricCard'
+import { isOverdue, getOverdueDate } from '../../../../utils/overdueUtils'
 
 
 interface ProformaInvoice {
@@ -91,20 +95,39 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
   const [proformaInvoices, setProformaInvoices] = useState<ProformaInvoice[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [sortBy, setSortBy] = useState('-proforma_date')
+
+  const handleSort = (field: string) => {
+    setSortBy(prev => prev === `-${field}` ? field : `-${field}`)
+    setCurrentPage(1)
+  }
+  const SortIcon = ({ field }: { field: string }) => (
+    sortBy === field ? <ChevronUp className="w-3 h-3 inline ml-1" /> :
+    sortBy === `-${field}` ? <ChevronDown className="w-3 h-3 inline ml-1" /> :
+    <ChevronUp className="w-3 h-3 inline ml-1 opacity-30" />
+  )
   const [showForm, setShowForm] = useState(false)
   const [selectedProformaInvoice, setSelectedProformaInvoice] = useState<ProformaInvoice | null>(null)
   const [showEditForm, setShowEditForm] = useState(false)
   const [selectedForEdit, setSelectedForEdit] = useState<ProformaInvoice | null>(null)
 
-  const statusOptions = [
-    { value: '', label: 'All Status' },
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await fetchProformaInvoices()
+    setRefreshing(false)
+  }
+
+  const paymentStatusOptions = [
+    { value: '', label: 'All' },
+    { value: 'overdue', label: 'Overdue' },
     { value: 'unpaid', label: 'Unpaid' },
     { value: 'partially_paid', label: 'Partially Paid' },
-    { value: 'paid', label: 'Paid' },
-    { value: 'overdue', label: 'Overdue' }
+    { value: 'paid', label: 'Paid' }
   ]
 
   const getPaymentStatusIcon = (paymentStatus: string) => {
@@ -135,7 +158,8 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
         session_key: sessionKey
       })
 
-      if (statusFilter) params.append('payment_status', statusFilter)
+      if (paymentStatusFilter) params.append('payment_status', paymentStatusFilter)
+      params.append('ordering', sortBy)
 
       console.log('Fetching proforma invoices with params:', params.toString()) // Debug log
       const response = await apiClient.getFinanceProformaInvoices(Object.fromEntries(new URLSearchParams(params)))
@@ -143,23 +167,28 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
 
       const invoices = response.data.results || []
       
+      // Apply overdue logic to proforma invoices
+      const processedInvoices = invoices.map((invoice: any) => ({
+        ...invoice
+      }))
+      
       // Debug: Check if customer_shipping_addresses is in the response
-      console.log('First Proforma customer data:', invoices[0] ? {
-        customer_name: invoices[0].customer_name,
-        customer_shipping_addresses: invoices[0].customer_shipping_addresses,
-        hasAddresses: invoices[0].customer_shipping_addresses && invoices[0].customer_shipping_addresses.length > 0
+      console.log('First Proforma customer data:', processedInvoices[0] ? {
+        customer_name: processedInvoices[0].customer_name,
+        customer_shipping_addresses: processedInvoices[0].customer_shipping_addresses,
+        hasAddresses: processedInvoices[0].customer_shipping_addresses && processedInvoices[0].customer_shipping_addresses.length > 0
       } : 'No proforma invoices found')
       
-      setProformaInvoices(invoices)
+      setProformaInvoices(processedInvoices)
       setTotalPages(Math.ceil(response.data.count / 5))
       
       // Calculate metrics
-      const total = invoices.length
-      const draft = invoices.filter((inv: ProformaInvoice) => inv.status === 'draft').length
-      const sent = invoices.filter((inv: ProformaInvoice) => inv.status === 'sent').length
-      const rejected = invoices.filter((inv: ProformaInvoice) => inv.is_rejected).length
-      const totalValue = invoices.reduce((sum: number, inv: ProformaInvoice) => sum + parseFloat(inv.total_amount?.toString() || '0'), 0)
-      const paidAmount = invoices.reduce((sum: number, inv: ProformaInvoice) => sum + parseFloat(inv.paid_amount?.toString() || '0'), 0)
+      const total = processedInvoices.length
+      const draft = processedInvoices.filter((inv: ProformaInvoice) => inv.status === 'draft').length
+      const sent = processedInvoices.filter((inv: ProformaInvoice) => inv.status === 'sent').length
+      const rejected = processedInvoices.filter((inv: ProformaInvoice) => inv.is_rejected).length
+      const totalValue = processedInvoices.reduce((sum: number, inv: ProformaInvoice) => sum + parseFloat(inv.total_amount?.toString() || '0'), 0)
+      const paidAmount = processedInvoices.reduce((sum: number, inv: ProformaInvoice) => sum + parseFloat(inv.paid_amount?.toString() || '0'), 0)
       const collectionRate = totalValue > 0 ? ((paidAmount / totalValue) * 100) : 0
       
       setMetrics({ total, draft, sent, rejected, totalValue, collectionRate })
@@ -181,7 +210,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
 
   useEffect(() => {
     fetchProformaInvoices()
-  }, [currentPage, statusFilter, sessionKey])
+  }, [currentPage, paymentStatusFilter, sessionKey, sortBy])
 
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedForPayment, setSelectedForPayment] = useState<ProformaInvoice | null>(null)
@@ -417,15 +446,24 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
         <div className="flex items-center gap-2">
           <Filter className="w-4 h-4 text-gray-400" />
           <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            value={paymentStatusFilter}
+            onChange={(e) => setPaymentStatusFilter(e.target.value)}
             className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           >
-            {statusOptions.map(option => (
+            {paymentStatusOptions.map(option => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
         </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-2 disabled:opacity-50"
+          title="Refresh invoice statuses"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
       </div>
 
       {/* Proforma Invoice List */}
@@ -441,27 +479,16 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Proforma Invoice
+                  <th onClick={() => handleSort('proforma_number')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">
+                    <span onClick={() => handleSort('proforma_number')} className="cursor-pointer hover:text-gray-700 dark:hover:text-white select-none">Proforma# <SortIcon field="proforma_number" /></span>
+                    <span className="mx-1 text-gray-300">|</span>
+                    <span onClick={() => handleSort('proforma_date')} className="cursor-pointer hover:text-gray-700 dark:hover:text-white select-none">Date <SortIcon field="proforma_date" /></span>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Customer
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Amount
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Payment Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  <th onClick={() => handleSort('customer_name')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Customer <SortIcon field="customer_name" /></th>
+                  <th onClick={() => handleSort('total_amount')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Amount <SortIcon field="total_amount" /></th>
+                  <th onClick={() => handleSort('payment_status')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Payment Status <SortIcon field="payment_status" /></th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -599,17 +626,6 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        proforma.is_rejected 
-                          ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
-                          : proforma.status === 'paid' 
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
-                            : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
-                      }`}>
-                        {proforma.is_rejected ? 'Rejected' : proforma.status?.replace('_', ' ') || 'Active'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900 dark:text-white">
                         ₹{parseFloat(proforma.total_amount?.toString() || '0').toFixed(2)}
                       </div>
@@ -618,10 +634,25 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPaymentStatusColor(proforma.payment_status || 'unpaid')}`}>
-                        {getPaymentStatusIcon(proforma.payment_status || 'unpaid')}
-                        <span className="ml-1 capitalize">{(proforma.payment_status || 'unpaid').replace('_', ' ')}</span>
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        {proforma.is_rejected ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300">
+                            REJECTED
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            isOverdue(proforma.proforma_date, proforma.payment_status)
+                              ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+                              : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+                          }`}>
+                            {isOverdue(proforma.proforma_date, proforma.payment_status) ? 'OVERDUE' : `DUE ${getOverdueDate(proforma.proforma_date)?.toLocaleDateString()}`}
+                          </span>
+                        )}
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPaymentStatusColor(proforma.payment_status === 'overdue' ? 'unpaid' : (proforma.payment_status || 'unpaid'))}`}>
+                          {getPaymentStatusIcon(proforma.payment_status === 'overdue' ? 'unpaid' : (proforma.payment_status || 'unpaid'))}
+                          <span className="ml-1 capitalize">{(proforma.payment_status === 'overdue' ? 'unpaid' : (proforma.payment_status || 'unpaid')).replace('_', ' ')}</span>
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                       <div className="flex items-center">

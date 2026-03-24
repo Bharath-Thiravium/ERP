@@ -261,15 +261,14 @@ class QuotationViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         """Reject quotation using tenant-safe object access"""
-        quotation = self.get_object()  # Uses tenant filtering
-        
-        quotation.status = 'rejected'
-        quotation.rejected_at = timezone.now()
-        quotation.rejected_by = request.service_user
-        quotation.save()
-        
-        serializer = self.get_serializer(quotation)
-        return Response(serializer.data)
+        quotation = self.get_object()
+        rejection_reason = request.data.get('rejection_reason', '').strip()
+        if not rejection_reason:
+            return Response({'error': 'Rejection reason is required'}, status=400)
+        if not quotation.can_be_rejected:
+            return Response({'error': 'This quotation cannot be rejected'}, status=400)
+        quotation.reject_quotation(rejection_reason, request.service_user)
+        return Response({'message': 'Quotation rejected successfully', 'quotation_number': quotation.quotation_number})
 
 
 class PurchaseOrderViewSet(CompanyScopedModelViewSet):
@@ -325,6 +324,25 @@ class PurchaseOrderViewSet(CompanyScopedModelViewSet):
             quotation.po_created = True
             quotation.po_created_at = timezone.now()
             quotation.save()
+
+    @action(detail=False, methods=['post'])
+    def sync_statuses(self, request):
+        """Recalculate and sync all PO statuses based on actual invoice data"""
+        from decimal import Decimal
+        pos = self.get_queryset().prefetch_related('invoices', 'proforma_invoices')
+        fixed = 0
+        for po in pos:
+            old_status = po.status
+            # Fix POs manually set to completed with no invoices
+            if po.status == 'completed' and not po.invoices.filter(is_rejected=False).exists():
+                po.remaining_proforma_balance = po.subtotal
+                po.remaining_invoice_balance = po.total_amount
+                po.save(update_fields=['remaining_proforma_balance', 'remaining_invoice_balance'])
+            po.update_balance_tracking()
+            po.refresh_from_db()
+            if po.status != old_status:
+                fixed += 1
+        return Response({'synced': pos.count(), 'status_changed': fixed})
 
     @action(detail=True, methods=['get'])
     def pdf(self, request, pk=None):
@@ -399,6 +417,10 @@ class ProformaInvoiceViewSet(CompanyScopedModelViewSet):
         if customer_id:
             queryset = queryset.filter(customer_id=customer_id)
 
+        purchase_order_id = self.request.query_params.get('purchase_order_id', '')
+        if purchase_order_id:
+            queryset = queryset.filter(purchase_order_id=purchase_order_id)
+
         return queryset.order_by('-created_at')
 
     def perform_create(self, serializer):
@@ -456,15 +478,14 @@ class ProformaInvoiceViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         """Reject proforma invoice using tenant-safe object access"""
-        proforma = self.get_object()  # Uses tenant filtering
-        
-        proforma.status = 'rejected'
-        proforma.rejected_at = timezone.now()
-        proforma.rejected_by = request.service_user
-        proforma.save()
-        
-        serializer = self.get_serializer(proforma)
-        return Response(serializer.data)
+        proforma = self.get_object()
+        rejection_reason = request.data.get('rejection_reason', '').strip()
+        if not rejection_reason:
+            return Response({'error': 'Rejection reason is required'}, status=400)
+        if not proforma.can_be_rejected:
+            return Response({'error': 'This proforma invoice cannot be rejected'}, status=400)
+        proforma.reject_proforma(rejection_reason, request.service_user)
+        return Response({'message': 'Proforma invoice rejected successfully', 'proforma_number': proforma.proforma_number})
 
 
 class InvoiceViewSet(CompanyScopedModelViewSet):
@@ -501,7 +522,9 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
                 Q(customer__name__icontains=search) |
                 Q(customer__customer_code__icontains=search) |
                 Q(proforma_invoice__proforma_number__icontains=search) |
-                Q(reference__icontains=search)
+                Q(reference__icontains=search) |
+                Q(purchase_order__po_number__icontains=search) |
+                Q(purchase_order__internal_po_number__icontains=search)
             )
 
         # Add filtering
@@ -516,6 +539,10 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
         customer_id = self.request.query_params.get('customer', '')
         if customer_id:
             queryset = queryset.filter(customer_id=customer_id)
+
+        purchase_order_id = self.request.query_params.get('purchase_order_id', '')
+        if purchase_order_id:
+            queryset = queryset.filter(purchase_order_id=purchase_order_id)
 
         return queryset.order_by('-created_at')
 
@@ -573,15 +600,65 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         """Reject invoice using tenant-safe object access"""
-        invoice = self.get_object()  # Uses tenant filtering
-        
-        invoice.status = 'rejected'
-        invoice.rejected_at = timezone.now()
-        invoice.rejected_by = request.service_user
-        invoice.save()
-        
-        serializer = self.get_serializer(invoice)
-        return Response(serializer.data)
+        invoice = self.get_object()
+        rejection_reason = request.data.get('rejection_reason', '').strip()
+        if not rejection_reason:
+            return Response({'error': 'Rejection reason is required'}, status=400)
+        if not invoice.can_be_rejected:
+            return Response({'error': 'This invoice cannot be rejected'}, status=400)
+        invoice.reject_invoice(rejection_reason, request.service_user)
+        return Response({'message': 'Invoice rejected successfully', 'invoice_number': invoice.invoice_number})
+
+    @action(detail=True, methods=['post'])
+    def mark_completed(self, request, pk=None):
+        """Mark work as completed — does not affect payment status"""
+        invoice = self.get_object()
+        if invoice.is_rejected:
+            return Response({'error': 'Rejected invoices cannot be marked as completed'}, status=400)
+        if invoice.is_work_completed:
+            return Response({'error': 'Work is already marked as completed'}, status=400)
+        invoice.is_work_completed = True
+        invoice.save(update_fields=['is_work_completed'])
+        return Response({'message': 'Work marked as completed', 'invoice_number': invoice.invoice_number})
+
+    @action(detail=True, methods=['post'])
+    def mark_gst_payment(self, request, pk=None):
+        """Mark GST payment status for an invoice"""
+        invoice = self.get_object()
+        if invoice.is_rejected:
+            return Response({'error': 'Cannot update GST status on rejected invoice'}, status=400)
+
+        gst_status = request.data.get('gst_payment_status')
+        if gst_status not in ('pending', 'paid', 'not_applicable'):
+            return Response({'error': 'Invalid gst_payment_status. Use: pending, paid, not_applicable'}, status=400)
+
+        invoice.gst_payment_status = gst_status
+        invoice.gst_paid_date = request.data.get('gst_paid_date') or None
+        invoice.gst_payment_reference = request.data.get('gst_payment_reference', '').strip()
+        invoice.save(update_fields=['gst_payment_status', 'gst_paid_date', 'gst_payment_reference'])
+        return Response({
+            'message': f'GST payment status updated to {gst_status}',
+            'invoice_number': invoice.invoice_number,
+            'gst_payment_status': invoice.gst_payment_status,
+            'gst_paid_date': invoice.gst_paid_date,
+            'gst_payment_reference': invoice.gst_payment_reference,
+        })
+
+    @action(detail=False, methods=['get'])
+    def gst_payment_summary(self, request):
+        """Summary of GST payment status across all invoices"""
+        qs = self.get_queryset().exclude(is_rejected=True).exclude(gst_type='exempt')
+        from django.db.models import Sum, Count
+        summary = qs.values('gst_payment_status').annotate(
+            count=Count('id'),
+            total_gst=Sum('total_tax')
+        )
+        result = {s['gst_payment_status']: {'count': s['count'], 'total_gst': float(s['total_gst'] or 0)} for s in summary}
+        totals = qs.aggregate(total_gst=Sum('total_tax'), total_cgst=Sum('cgst_amount'), total_sgst=Sum('sgst_amount'), total_igst=Sum('igst_amount'))
+        return Response({
+            'by_status': result,
+            'totals': {k: float(v or 0) for k, v in totals.items()}
+        })
 
 
 class PaymentViewSet(CompanyScopedModelViewSet):

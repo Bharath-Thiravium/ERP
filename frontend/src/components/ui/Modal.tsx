@@ -173,18 +173,6 @@ export const Modal: React.FC<ModalProps> = ({
     }
   }
 
-  if (!isModalOpen && !keepMounted) {
-    return trigger ? (
-      <div onClick={() => setInternalOpen(true)}>
-        {trigger}
-      </div>
-    ) : null
-  }
-
-  if (!isModalOpen && keepMounted) {
-    return null
-  }
-
   const wrapperStyle = useMemo(() => {
     if (scope === 'content' && contentRect) {
       return {
@@ -200,6 +188,18 @@ export const Modal: React.FC<ModalProps> = ({
       inset: 0
     }
   }, [scope, contentRect])
+
+  if (!isModalOpen && !keepMounted) {
+    return trigger ? (
+      <div onClick={() => setInternalOpen(true)}>
+        {trigger}
+      </div>
+    ) : null
+  }
+
+  if (!isModalOpen && keepMounted) {
+    return null
+  }
 
   const modalContent = (
     <div

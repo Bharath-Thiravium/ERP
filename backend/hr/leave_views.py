@@ -2,7 +2,9 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.utils import timezone
-from datetime import datetime
+from datetime import datetime, date
+from decimal import Decimal
+import calendar as cal_module
 from django.core.exceptions import ValidationError
 
 from authentication.models import ServiceUserSession
@@ -70,17 +72,77 @@ class LeaveTypeViewSet(viewsets.ModelViewSet):
                 session_key = self.request.data.get('session_key')
         return session_key
 
+    def _check_duplicate(self, company, name, code, exclude_pk=None):
+        """Check for duplicate name or code within the company, optionally excluding current instance."""
+        qs = LeaveType.objects.filter(company=company)
+        if exclude_pk:
+            qs = qs.exclude(pk=exclude_pk)
+        if qs.filter(code__iexact=code).exists():
+            return f'Leave type with code "{code.upper()}" already exists.'
+        if qs.filter(name__iexact=name).exists():
+            return f'Leave type with name "{name}" already exists.'
+        return None
+
     def create(self, request, *args, **kwargs):
         session_key = self.get_session_key()
         if not session_key:
             return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+            error = self._check_duplicate(
+                company,
+                request.data.get('name', ''),
+                request.data.get('code', '')
+            )
+            if error:
+                return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
             serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            serializer.save(company=session.service_user.company)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            serializer.save(company=company)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    def update(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+            instance = self.get_object()
+            # For PATCH, fall back to existing values if field not provided
+            name = request.data.get('name', instance.name)
+            code = request.data.get('code', instance.code)
+            error = self._check_duplicate(company, name, code, exclude_pk=instance.pk)
+            if error:
+                return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
+            partial = kwargs.pop('partial', False)
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            serializer.save()
+            return Response(serializer.data)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'])
+    def toggle_active(self, request, pk=None):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            leave_type = self.get_object()
+            leave_type.is_active = not leave_type.is_active
+            leave_type.save()
+            return Response({'id': leave_type.id, 'is_active': leave_type.is_active})
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -174,7 +236,7 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
         
         return response
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='initialize')
     def initialize_balances(self, request):
         session_key = self.get_session_key()
         if not session_key:
@@ -212,7 +274,7 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='recalculate')
     def recalculate_balances(self, request):
         session_key = self.get_session_key()
         if not session_key:
@@ -302,32 +364,29 @@ class LeaveApplicationViewSet(viewsets.ModelViewSet):
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             application = self.get_object()
             
+            if application.status == 'approved':
+                return Response({'message': 'Leave already approved'})
+
             application.status = 'approved'
             application.approved_date = timezone.now()
             application.save()
-            
-            # Update leave balance
-            try:
-                balance = LeaveBalance.objects.get(
-                    employee=application.employee,
-                    leave_type=application.leave_type,
-                    year=application.from_date.year
-                )
-                from decimal import Decimal
-                balance.used += Decimal(str(application.total_days))
+
+            days = Decimal(str(application.total_days))
+            balance, created = LeaveBalance.objects.get_or_create(
+                employee=application.employee,
+                leave_type=application.leave_type,
+                year=application.from_date.year,
+                defaults={
+                    'opening_balance': 0,
+                    'credited': application.leave_type.days_per_year,
+                    'used': days,
+                    'closing_balance': application.leave_type.days_per_year - days,
+                }
+            )
+            if not created:
+                balance.used += days
                 balance.calculate_balance()
-            except LeaveBalance.DoesNotExist:
-                # Create balance if it doesn't exist
-                LeaveBalance.objects.create(
-                    employee=application.employee,
-                    leave_type=application.leave_type,
-                    year=application.from_date.year,
-                    opening_balance=0,
-                    credited=application.leave_type.days_per_year,
-                    used=Decimal(str(application.total_days)),
-                    closing_balance=application.leave_type.days_per_year - Decimal(str(application.total_days))
-                )
-            
+
             return Response({'message': 'Leave approved successfully'})
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -379,30 +438,41 @@ class LeaveApplicationViewSet(viewsets.ModelViewSet):
             if month_param:
                 try:
                     month = validate_month_param(month_param)
-                    queryset = queryset.filter(from_date__month=month)
+                    # Fix #6: include leaves that span into this month, not just start in it
+                    if year_param:
+                        yr = int(year_param)
+                        last_day = cal_module.monthrange(yr, month)[1]
+                        month_start = date(yr, month, 1)
+                        month_end = date(yr, month, last_day)
+                        queryset = self.get_queryset().filter(
+                            from_date__lte=month_end,
+                            to_date__gte=month_start
+                        )
+                    else:
+                        queryset = queryset.filter(from_date__month=month)
                 except ValidationError:
                     return Response({'error': 'Invalid month parameter'}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             if status_filter and status_filter in ['pending', 'approved', 'rejected', 'cancelled']:
                 queryset = queryset.filter(status=status_filter)
-            
+
             if employee:
                 try:
                     employee_id = int(employee)
                     queryset = queryset.filter(employee_id=employee_id)
                 except (ValueError, TypeError):
                     return Response({'error': 'Invalid employee parameter'}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             # Handle export
             export_format = request.query_params.get('export')
             if export_format in ['pdf', 'excel', 'csv']:
                 return self.export_data(queryset, export_format)
-            
+
             serializer = self.get_serializer(queryset, many=True)
             return Response({'results': serializer.data})
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
-    
+
     def get_statistics(self, queryset):
         from django.db.models import Count, Sum
         
@@ -456,29 +526,74 @@ class LeaveApplicationViewSet(viewsets.ModelViewSet):
     
     def export_data(self, queryset, format_type):
         import csv
+        import io
         from django.http import HttpResponse
-        
+
+        headers = ['Employee', 'Leave Type', 'From Date', 'To Date', 'Days', 'Status', 'Reason']
+        rows = [
+            [
+                str(app.employee.full_name)[:100],
+                str(app.leave_type.name)[:50],
+                str(app.from_date),
+                str(app.to_date),
+                str(app.total_days),
+                app.status,
+                str(app.reason)[:200] if app.reason else '',
+            ]
+            for app in queryset
+        ]
+
         if format_type == 'csv':
             response = HttpResponse(content_type='text/csv')
-            filename = sanitize_filename('leave_applications.csv')
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
+            response['Content-Disposition'] = f'attachment; filename="{sanitize_filename("leave_applications.csv")}"'
             writer = csv.writer(response)
-            writer.writerow(['Employee', 'Leave Type', 'From Date', 'To Date', 'Days', 'Status', 'Reason'])
-            
-            for app in queryset:
-                writer.writerow([
-                    str(app.employee.full_name)[:100],
-                    str(app.leave_type.name)[:50],
-                    app.from_date,
-                    app.to_date,
-                    app.total_days,
-                    app.status,
-                    str(app.reason)[:200] if app.reason else ''
-                ])
-            
+            writer.writerow(headers)
+            writer.writerows(rows)
             return response
-        
+
+        if format_type == 'excel':
+            import openpyxl
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Leave Applications'
+            ws.append(headers)
+            for row in rows:
+                ws.append(row)
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            response = HttpResponse(
+                buf.read(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{sanitize_filename("leave_applications.xlsx")}"'
+            return response
+
+        if format_type == 'pdf':
+            from reportlab.lib.pagesizes import landscape, A4
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+            from reportlab.lib import colors
+            from reportlab.lib.styles import getSampleStyleSheet
+            buf = io.BytesIO()
+            doc = SimpleDocTemplate(buf, pagesize=landscape(A4))
+            styles = getSampleStyleSheet()
+            elements = [Paragraph('Leave Applications Report', styles['Title'])]
+            t = Table([headers] + rows, repeatRows=1)
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F81BD')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#DCE6F1')]),
+            ]))
+            elements.append(t)
+            doc.build(elements)
+            buf.seek(0)
+            response = HttpResponse(buf.read(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{sanitize_filename("leave_applications.pdf")}"'
+            return response
+
         return Response({'error': 'Export format not supported'}, status=status.HTTP_400_BAD_REQUEST)
     
     def create(self, request, *args, **kwargs):

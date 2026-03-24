@@ -19,7 +19,7 @@ class CRMSecurityValidator:
     # SQL injection patterns
     SQL_INJECTION_PATTERNS = [
         r'(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION)\b)',
-        r'(--|#|/\*|\*/)',
+        r'(--|/\*|\*/)',
         r'(\bOR\b.*=.*\bOR\b)',
         r'(\bAND\b.*=.*\bAND\b)',
         r'(\'.*\bOR\b.*\')',

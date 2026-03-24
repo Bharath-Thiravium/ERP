@@ -158,7 +158,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
     other_charges: Number(quotation?.other_charges) || 0,
     notes: quotation?.notes || '',
     terms_and_conditions: quotation?.terms_and_conditions || '',
-    status: 'draft',
+    status: 'confirmed', // Default to confirmed - entering PO means order is confirmed
     claim_type: '',
     po_items: quotation?.quotation_items || []
   })
@@ -374,7 +374,7 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       const approaches = [
         { name: 'searchFinanceProducts (no limit)', call: () => apiClient.searchFinanceProducts({ session_key: sessionKey }) },
         { name: 'searchFinanceProducts (limit 500)', call: () => apiClient.searchFinanceProducts({ session_key: sessionKey, limit: 500 }) },
-        { name: 'getFinanceProducts', call: () => apiClient.getFinanceProducts({ session_key: sessionKey }) }
+        { name: 'getFinanceProducts', call: () => apiClient.getFinanceProducts({ session_key: sessionKey, page_size: 200 }) }
       ]
       
       for (const approach of approaches) {
@@ -1485,22 +1485,20 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
               </div>
             )}
 
-            {/* Status */}
+            {/* Status - Read-only, managed automatically */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Status
+                PO Status (Auto-managed)
               </label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value="draft">Draft</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+              <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white">
+                {formData.status === 'confirmed' && 'Confirmed - Order confirmed, ready for invoicing'}
+                {formData.status === 'in_progress' && 'In Progress - Invoices/Proformas raised'}
+                {formData.status === 'completed' && 'Completed - 100% claimed'}
+                {formData.status === 'cancelled' && 'Cancelled'}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Status updates automatically: Confirmed → In Progress (when invoice raised) → Completed (when 100% claimed)
+              </p>
             </div>
 
             {/* Notes and Terms */}

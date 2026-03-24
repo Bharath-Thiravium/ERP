@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, X, ShoppingCart, IndianRupee, CheckCircle, Clock, TrendingUp, XCircle } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, X, ShoppingCart, IndianRupee, CheckCircle, Clock, TrendingUp, XCircle, ChevronUp, ChevronDown } from 'lucide-react'
 import QuotationEdit from './QuotationEdit'
 import SendEmailModal from './SendEmailModal'
 import RejectInvoiceModal from './RejectInvoiceModal'
@@ -72,6 +72,17 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
   const { sessionKey } = useServiceUserStore()
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [loading, setLoading] = useState(true)
+  const [sortBy, setSortBy] = useState('-quotation_date')
+
+  const handleSort = (field: string) => {
+    setSortBy(prev => prev === `-${field}` ? field : `-${field}`)
+    setCurrentPage(1)
+  }
+  const SortIcon = ({ field }: { field: string }) => (
+    sortBy === field ? <ChevronUp className="w-3 h-3 inline ml-1" /> :
+    sortBy === `-${field}` ? <ChevronDown className="w-3 h-3 inline ml-1" /> :
+    <ChevronUp className="w-3 h-3 inline ml-1 opacity-30" />
+  )
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -135,6 +146,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
       params.append('page_size', QUOTATIONS_PAGE_SIZE.toString())
       if (debouncedSearchTerm) params.append('search', debouncedSearchTerm)
       if (statusFilter) params.append('status', statusFilter)
+      params.append('ordering', sortBy)
 
       const response = await apiClient.getFinanceQuotations(Object.fromEntries(params))
 
@@ -448,23 +460,15 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Quotation
+                      <span onClick={() => handleSort('quotation_number')} className="cursor-pointer hover:text-gray-700 dark:hover:text-white select-none">Quote# <SortIcon field="quotation_number" /></span>
+                      <span className="mx-1 text-gray-300">|</span>
+                      <span onClick={() => handleSort('quotation_date')} className="cursor-pointer hover:text-gray-700 dark:hover:text-white select-none">Date <SortIcon field="quotation_date" /></span>
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Customer
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Date & Validity
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Status & GST
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Amount
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      Actions
-                    </th>
+                    <th onClick={() => handleSort('customer_name')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Customer <SortIcon field="customer_name" /></th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date &amp; Validity</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status & GST</th>
+                    <th onClick={() => handleSort('total_amount')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Amount <SortIcon field="total_amount" /></th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">

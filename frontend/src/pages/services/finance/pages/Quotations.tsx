@@ -6,7 +6,7 @@ import QuotationDetail from '../components/QuotationDetail'
 import QuotationEdit from '../components/QuotationEdit'
 import RaiseInvoiceModal from '../components/RaiseInvoiceModal'
 import SimpleProformaForm from '../components/SimpleProformaForm'
-import SimpleTaxInvoiceForm from '../components/SimpleTaxInvoiceForm'
+import DynamicTaxInvoiceForm from '../components/DynamicTaxInvoiceForm'
 
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import toast from 'react-hot-toast'
@@ -265,10 +265,9 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
       )}
       
       {/* Tax Invoice Form */}
-      {showTaxInvoiceForm && invoiceQuotation && invoiceData && (
-        <SimpleTaxInvoiceForm
+      {showTaxInvoiceForm && invoiceQuotation && (
+        <DynamicTaxInvoiceForm
           quotation={invoiceQuotation}
-          invoiceData={invoiceData}
           onClose={handleInvoiceClose}
           onSuccess={handleInvoiceSuccess}
         />

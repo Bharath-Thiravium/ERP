@@ -21,7 +21,7 @@ class LeadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lead
         fields = '__all__'
-        read_only_fields = ['lead_id', 'created_at', 'updated_at']
+        read_only_fields = ['lead_id', 'created_at', 'updated_at', 'created_by', 'company']
 
     def create(self, validated_data):
         # The lead_id will be auto-generated in the model's save method
@@ -35,7 +35,7 @@ class ContactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contact
         fields = '__all__'
-        read_only_fields = ['contact_id', 'created_at', 'updated_at']
+        read_only_fields = ['contact_id', 'created_at', 'updated_at', 'created_by', 'company']
 
     def create(self, validated_data):
         # The contact_id will be auto-generated in the model's save method
@@ -47,11 +47,12 @@ class AccountSerializer(serializers.ModelSerializer):
     account_manager_name = serializers.CharField(source='account_manager.get_full_name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     opportunities_count = serializers.IntegerField(source='opportunities.count', read_only=True)
+    website = serializers.URLField(max_length=500, required=False, allow_blank=True)
 
     class Meta:
         model = Account
         fields = '__all__'
-        read_only_fields = ['account_id', 'created_at', 'updated_at']
+        read_only_fields = ['account_id', 'created_at', 'updated_at', 'created_by', 'company']
 
     def create(self, validated_data):
         # The account_id will be auto-generated in the model's save method
@@ -69,7 +70,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Opportunity
         fields = '__all__'
-        read_only_fields = ['opportunity_id', 'created_at', 'updated_at']
+        read_only_fields = ['opportunity_id', 'created_at', 'updated_at', 'created_by', 'company']
 
     def create(self, validated_data):
         # The opportunity_id will be auto-generated in the model's save method
@@ -89,7 +90,7 @@ class ActivitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Activity
         fields = '__all__'
-        read_only_fields = ['activity_id', 'created_at', 'updated_at']
+        read_only_fields = ['activity_id', 'created_at', 'updated_at', 'created_by', 'company']
 
     def create(self, validated_data):
         # The activity_id will be auto-generated in the model's save method
@@ -105,7 +106,7 @@ class CampaignSerializer(serializers.ModelSerializer):
     class Meta:
         model = Campaign
         fields = '__all__'
-        read_only_fields = ['campaign_id', 'created_at', 'updated_at']
+        read_only_fields = ['campaign_id', 'created_at', 'updated_at', 'created_by', 'company']
 
     def create(self, validated_data):
         # The campaign_id will be auto-generated in the model's save method

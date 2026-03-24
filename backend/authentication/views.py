@@ -311,7 +311,7 @@ class CompanyDetailView(RetrieveUpdateDestroyAPIView):
                             company=instance,
                             service=service,
                             assigned_by=request.user,
-                            service_password=User.objects.make_random_password(),
+                            service_password=''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12)),
                             password_expires_at=timezone.now() + timedelta(days=365)
                         )
                     except Service.DoesNotExist:

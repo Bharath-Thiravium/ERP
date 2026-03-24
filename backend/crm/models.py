@@ -188,7 +188,7 @@ class Account(models.Model):
     name = models.CharField(max_length=200)
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES, default='prospect')
     industry = models.CharField(max_length=20, choices=INDUSTRY_CHOICES, default='other')
-    website = models.URLField(blank=True)
+    website = models.URLField(max_length=500, blank=True)
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     
@@ -865,8 +865,8 @@ class CustomerInteraction(models.Model):
     interaction_id = models.CharField(max_length=50, unique=True)
     
     # Relationships
-    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='interactions')
-    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='interactions')
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, null=True, blank=True, related_name='interactions')
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, null=True, blank=True, related_name='interactions')
     deal = models.ForeignKey(Deal, on_delete=models.SET_NULL, null=True, blank=True, related_name='interactions')
     
     # Interaction Details

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Plus } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
@@ -51,12 +51,34 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
     }
   }, [isOpen, sessionKey])
 
+  const [showQuickAccount, setShowQuickAccount] = useState(false)
+  const [quickAccountName, setQuickAccountName] = useState('')
+  const [creatingAccount, setCreatingAccount] = useState(false)
+
   const fetchAccounts = async () => {
     try {
       const response = await crmApi.getAccounts(sessionKey!)
       setAccounts(response.data.results || response.data)
     } catch (error) {
       console.error('Error fetching accounts:', error)
+    }
+  }
+
+  const handleQuickCreateAccount = async () => {
+    if (!quickAccountName.trim()) return
+    setCreatingAccount(true)
+    try {
+      const response = await crmApi.createAccount(sessionKey!, { name: quickAccountName.trim(), account_type: 'prospect' })
+      const newAccount = response.data
+      setAccounts(prev => [...prev, newAccount])
+      setFormData(prev => ({ ...prev, account: newAccount.id.toString() }))
+      setQuickAccountName('')
+      setShowQuickAccount(false)
+      toast.success(`Account "${newAccount.name}" created`)
+    } catch (error) {
+      toast.error('Failed to create account')
+    } finally {
+      setCreatingAccount(false)
     }
   }
 
@@ -200,17 +222,42 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({ isOpen, onCl
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Account *
               </label>
-              <select
-                required
-                value={formData.account}
-                onChange={(e) => setFormData(prev => ({ ...prev, account: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              >
-                <option value="">Select Account</option>
-                {accounts.map((account: any) => (
-                  <option key={account.id} value={account.id}>{account.name}</option>
-                ))}
-              </select>
+              {!showQuickAccount ? (
+                <div className="flex gap-2">
+                  <select
+                    required
+                    value={formData.account}
+                    onChange={(e) => setFormData(prev => ({ ...prev, account: e.target.value }))}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  >
+                    <option value="">{accounts.length === 0 ? 'No accounts — create one →' : 'Select Account'}</option>
+                    {accounts.map((account: any) => (
+                      <option key={account.id} value={account.id}>{account.name}</option>
+                    ))}
+                  </select>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setShowQuickAccount(true)} title="Create new account">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    type="text"
+                    placeholder="Account name"
+                    value={quickAccountName}
+                    onChange={(e) => setQuickAccountName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleQuickCreateAccount() } if (e.key === 'Escape') setShowQuickAccount(false) }}
+                    className="flex-1 px-3 py-2 border border-orange-400 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  />
+                  <Button type="button" size="sm" onClick={handleQuickCreateAccount} disabled={creatingAccount}>
+                    {creatingAccount ? '...' : 'Add'}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setShowQuickAccount(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

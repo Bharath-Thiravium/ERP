@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, FileText, User, IndianRupee, Eye, Edit, XCircle, Download, Mail, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Plus, Search, FileText, User, IndianRupee, Eye, Edit, XCircle, Download, Mail, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react';
 
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
@@ -10,6 +10,7 @@ import UpdatePaymentModal from './UpdatePaymentModal';
 import SendEmailModal from './SendEmailModal';
 import RejectInvoiceModal from './RejectInvoiceModal';
 import CreateNewInvoiceModal from './CreateNewInvoiceModal';
+import { isOverdue, getOverdueDate } from '../../../../utils/overdueUtils';
 
 
 interface Invoice {
@@ -127,9 +128,20 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState('-invoice_date');
+
+  const handleSort = (field: string) => {
+    setSortBy(prev => prev === `-${field}` ? field : `-${field}`);
+    setCurrentPage(1);
+  };
+  const SortIcon = ({ field }: { field: string }) => (
+    sortBy === field ? <ChevronUp className="w-3 h-3 inline ml-1" /> :
+    sortBy === `-${field}` ? <ChevronDown className="w-3 h-3 inline ml-1" /> :
+    <ChevronUp className="w-3 h-3 inline ml-1 opacity-30" />
+  );
+  const [searching, setSearching] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -150,111 +162,78 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
   const [showDirectInvoiceForm, setShowDirectInvoiceForm] = useState(false);
   const [invoiceItemsCache, setInvoiceItemsCache] = useState<{ [key: number]: any[] }>({});
 
+  const [refreshing, setRefreshing] = useState(false);
 
-  const statusOptions = [
-    { value: '', label: 'All Invoice Status' },
-    { value: 'active', label: 'Active' },
-    { value: 'partially_completed', label: 'Partially Completed' },
-    { value: 'completed', label: 'Completed' },
-    { value: 'rejected', label: 'Rejected' },
-  ];
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchInvoices(currentPage);
+    setRefreshing(false);
+  };
 
   const paymentStatusOptions = [
-    { value: '', label: 'All Payment Status' },
+    { value: '', label: 'All' },
+    { value: 'overdue', label: 'Overdue' },
     { value: 'unpaid', label: 'Unpaid' },
     { value: 'partially_paid', label: 'Partially Paid' },
     { value: 'paid', label: 'Paid' },
-    { value: 'overdue', label: 'Overdue' },
   ];
 
-  // Debounce search term
+  // Debounce — exact same pattern as PurchaseOrderList
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
-
-  const fetchInvoices = async () => {
-    if (!sessionKey) {
-      console.log('🔍 InvoiceList - No sessionKey available');
-      return;
+    if (searchTerm !== debouncedSearchTerm) {
+      setSearching(true)
     }
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+      setCurrentPage(1)
+      setSearching(false)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [searchTerm, debouncedSearchTerm])
 
+  // Reset page on filter change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [paymentStatusFilter])
+
+  const fetchInvoices = useCallback(async (page: number) => {
+    if (!sessionKey) return;
+    if (invoices.length === 0) setLoading(true);
     try {
-      setLoading(true);
-      console.log('🔍 InvoiceList - Making API call with sessionKey');
-      
       const params = new URLSearchParams({
-        page: currentPage.toString(),
+        page: page.toString(),
         page_size: '10',
-        session_key: sessionKey
+        session_key: sessionKey,
+        ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
+        ...(paymentStatusFilter && { payment_status: paymentStatusFilter }),
+        ordering: sortBy,
       });
-
-      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
-      if (statusFilter) params.append('status', statusFilter);
-      if (paymentStatusFilter) params.append('payment_status', paymentStatusFilter);
-
-      console.log('🔍 InvoiceList - API URL:', `/api/finance/invoices/?${params.toString()}`);
-      
       const response = await api.get(`/api/finance/invoices/?${params.toString()}`);
-      
-      console.log('🔍 InvoiceList - API response:', response.data);
-
-      const invoices = response.data.results || [];
-      
-      // Add safety checks for invoice data and derive status from available fields
-      const safeInvoices = invoices.map((invoice: any) => {
-        // Derive status from available fields
-        let derivedStatus = 'active'; // default status
-        
-        if (invoice.is_rejected) {
-          derivedStatus = 'rejected';
-        } else if (invoice.payment_status === 'paid') {
-          derivedStatus = 'completed';
-        } else if (invoice.payment_status === 'partially_paid') {
-          derivedStatus = 'partially_completed';
-        }
-        
-        return {
-          ...invoice,
-          status: derivedStatus, // Use derived status
-          payment_status: invoice.payment_status || 'unpaid',
-          customer_name: invoice.customer_name || 'Unknown Customer',
-          invoice_number: invoice.invoice_number || 'No Number',
-          total_amount: invoice.total_amount || '0',
-          outstanding_amount: invoice.outstanding_amount || '0'
-        };
-      });
-      
-      // Debug: Check if customer_shipping_addresses is in the response
-      console.log('First Invoice customer data:', safeInvoices[0] ? {
-        customer_name: safeInvoices[0].customer_name,
-        customer_shipping_addresses: safeInvoices[0].customer_shipping_addresses,
-        hasAddresses: safeInvoices[0].customer_shipping_addresses && safeInvoices[0].customer_shipping_addresses.length > 0
-      } : 'No invoices found');
-      
+      const results = response.data.results || [];
+      const safeInvoices = results.map((invoice: any) => ({
+        ...invoice,
+        customer_name: invoice.customer_name || 'Unknown Customer',
+        invoice_number: invoice.invoice_number || 'No Number',
+        total_amount: invoice.total_amount || '0',
+        outstanding_amount: invoice.outstanding_amount || '0',
+      }));
       setInvoices(safeInvoices);
       setTotalPages(Math.ceil(response.data.count / 10));
     } catch (error: any) {
-      console.error('🔍 InvoiceList - Error fetching invoices:', error);
-      console.error('🔍 InvoiceList - Error response:', error.response?.data);
       toast.error('Failed to fetch invoices');
     } finally {
       setLoading(false);
     }
-  };
+  }, [sessionKey, debouncedSearchTerm, paymentStatusFilter, sortBy]);
 
   useEffect(() => {
-    fetchInvoices();
-  }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter, paymentStatusFilter]);
+    fetchInvoices(currentPage);
+  }, [currentPage, fetchInvoices]);
 
   const fetchInvoiceItems = async (invoiceId: number) => {
     if (invoiceItemsCache[invoiceId]) {
       return invoiceItemsCache[invoiceId];
     }
-    
     try {
       const response = await api.get(`/api/finance/invoices/${invoiceId}/`, {
         params: { session_key: sessionKey }
@@ -286,43 +265,6 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
     setShowCreateNewModal(true);
   };
 
-  const handleReviseInvoice = async (invoice: Invoice) => {
-    if (!confirm(`Are you sure you want to revise invoice ${invoice.invoice_number}? This will allow you to edit it once more.`)) {
-      return;
-    }
-
-    try {
-      // Create mutable copy of request data
-      const requestData = {
-        status: 'draft',
-        is_revised: true,
-        revision_count: (invoice.revision_count || 0) + 1,
-        revised_at: new Date().toISOString(),
-        invoice_date: invoice.invoice_date,
-        due_date: invoice.due_date
-      }
-
-      const response = await fetch(`/api/finance/invoices/${invoice.id}/`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionKey}`
-        },
-        body: JSON.stringify({ ...requestData, session_key: sessionKey })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to revise invoice')
-      }
-
-      toast.success('Invoice revised successfully! You can now edit it.');
-      fetchInvoices();
-    } catch (error) {
-      console.error('Error reversing invoice:', error);
-      toast.error('Failed to revise invoice');
-    }
-  };
-
   const handleDownloadPDF = async (id: number, invoiceNumber: string) => {
     try {
       const response = await api.get(`/api/finance/invoices/${id}/pdf/`, {
@@ -350,16 +292,6 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
   const handleSendEmail = (invoice: Invoice) => {
     setSelectedForEmail(invoice);
     setShowEmailModal(true);
-  };
-
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      active: 'bg-green-100 text-green-800',
-      partially_completed: 'bg-yellow-100 text-yellow-800',
-      completed: 'bg-blue-100 text-blue-800',
-      rejected: 'bg-red-100 text-red-800',
-    };
-    return statusConfig[status as keyof typeof statusConfig] || 'bg-gray-100 text-gray-800';
   };
 
   const getPaymentStatusBadge = (paymentStatus: string) => {
@@ -405,9 +337,16 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
                     {currentInvoice.customer_shipping_addresses.map((addr, index) => (
                       <div key={index} className="text-xs">
                         <div className={`font-semibold mb-1 flex items-center gap-1 ${
-                          addr.type === 'Billing' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'
+                          addr.type === 'Billing Address' ? 'text-gray-500 dark:text-gray-400' :
+                          addr.type === 'Reference' ? 'text-purple-600 dark:text-purple-400' :
+                          addr.type?.startsWith('Invoice Shipping') ? 'text-green-600 dark:text-green-400' :
+                          addr.type?.startsWith('PO Shipping') ? 'text-orange-600 dark:text-orange-400' :
+                          'text-blue-600 dark:text-blue-400'
                         }`}>
-                          {addr.type === 'Billing' ? '🏠' : '🏢'} {addr.type}
+                          {addr.type === 'Billing Address' ? '🏠' :
+                           addr.type === 'Reference' ? '📋' :
+                           addr.type?.startsWith('Invoice Shipping') ? '📦' :
+                           addr.type?.startsWith('PO Shipping') ? '🏭' : '🚚'} {addr.type}
                           {addr.is_default && (
                             <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-1 py-0.5 rounded text-xs font-medium">
                               DEFAULT
@@ -457,44 +396,55 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
       )}
       {/* Filters */}
       <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="relative">
+        <div className="flex flex-col md:flex-row gap-4">
+          {/* Search */}
+          <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Search invoices..."
+              placeholder="Search by invoice number, customer, PO number..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300/50 dark:border-gray-600/50 rounded-xl focus:ring-2 focus:ring-athenas-blue/50 focus:border-athenas-blue/50 bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 backdrop-blur-sm transition-all duration-200"
             />
+            {searching && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-athenas-blue"></div>
+              </div>
+            )}
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300/50 dark:border-gray-600/50 rounded-xl focus:ring-2 focus:ring-athenas-blue/50 focus:border-athenas-blue/50 bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white backdrop-blur-sm transition-all duration-200"
+
+          {/* Payment Status Filter */}
+          <div className="flex items-center gap-2">
+            <select
+              value={paymentStatusFilter}
+              onChange={(e) => setPaymentStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300/50 dark:border-gray-600/50 rounded-xl focus:ring-2 focus:ring-athenas-blue/50 focus:border-athenas-blue/50 bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white backdrop-blur-sm transition-all duration-200"
+            >
+              {paymentStatusOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors backdrop-blur-sm flex items-center gap-2 disabled:opacity-50"
+            title="Refresh invoice statuses"
           >
-            {statusOptions.map(option => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-          <select
-            value={paymentStatusFilter}
-            onChange={(e) => setPaymentStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300/50 dark:border-gray-600/50 rounded-xl focus:ring-2 focus:ring-athenas-blue/50 focus:border-athenas-blue/50 bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white backdrop-blur-sm transition-all duration-200"
-          >
-            {paymentStatusOptions.map(option => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+
           <button
             onClick={() => {
               setSearchTerm('');
               setDebouncedSearchTerm('');
-              setStatusFilter('');
               setPaymentStatusFilter('');
               setCurrentPage(1);
             }}
-            className="px-4 py-2 bg-gray-100/50 dark:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-200/50 dark:hover:bg-gray-500/50 transition-colors backdrop-blur-sm"
+            className="px-4 py-2 bg-gray-100/50 dark:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-200/50 dark:hover:bg-gray-500/50 transition-colors backdrop-blur-sm whitespace-nowrap"
           >
             Clear Filters
           </button>
@@ -523,12 +473,15 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Invoice</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Customer</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <span onClick={() => handleSort('invoice_number')} className="cursor-pointer hover:text-gray-700 dark:hover:text-white select-none">Invoice# <SortIcon field="invoice_number" /></span>
+                    <span className="mx-1 text-gray-300">|</span>
+                    <span onClick={() => handleSort('invoice_date')} className="cursor-pointer hover:text-gray-700 dark:hover:text-white select-none">Date <SortIcon field="invoice_date" /></span>
+                  </th>
+                  <th onClick={() => handleSort('customer_name')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Customer <SortIcon field="customer_name" /></th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Payment</th>
+                  <th onClick={() => handleSort('total_amount')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Amount <SortIcon field="total_amount" /></th>
+                  <th onClick={() => handleSort('payment_status')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Payment Status <SortIcon field="payment_status" /></th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -630,7 +583,10 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
                         {invoice.item_count} item{invoice.item_count !== 1 ? 's' : ''}
                       </div>
                       <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Due: {new Date(invoice.due_date).toLocaleDateString()}
+                        Due: {(() => {
+                          const overdueDate = getOverdueDate(invoice.invoice_date);
+                          return overdueDate ? overdueDate.toLocaleDateString() : 'N/A';
+                        })()}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -647,84 +603,128 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(invoice.status || 'unknown')}`}>
-                        {(invoice.status || 'unknown').replace('_', ' ').toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentStatusBadge(invoice.payment_status || 'unknown')}`}>
-                        {(invoice.payment_status || 'unknown').replace('_', ' ').toUpperCase()}
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        {invoice.is_rejected ? (
+                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">
+                            REJECTED
+                          </span>
+                        ) : (
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            isOverdue(invoice.invoice_date, invoice.payment_status)
+                              ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                              : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+                          }`}>
+                            {isOverdue(invoice.invoice_date, invoice.payment_status) ? 'OVERDUE' : `DUE ${getOverdueDate(invoice.invoice_date)?.toLocaleDateString()}`}
+                          </span>
+                        )}
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentStatusBadge(invoice.payment_status === 'overdue' ? 'unpaid' : (invoice.payment_status || 'unpaid'))}`}>
+                          {(invoice.payment_status === 'overdue' ? 'unpaid' : (invoice.payment_status || 'unpaid')).replace(/_/g, ' ').toUpperCase()}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
-                        {invoice.is_rejected ? (
-                          // Show view and create new invoice buttons for rejected invoices
-                          <>
-                            <button
-                              onClick={() => {
-                                setSelectedInvoice(invoice);
-                                setShowInvoiceView(true);
-                              }}
-                              className="text-athenas-blue hover:text-blue-600 transition-colors"
-                              title="View Invoice"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleCreateNewInvoice(invoice)}
-                              className="text-green-600 hover:text-green-800 transition-colors"
-                              title="Create New Invoice"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
-                          </>
-                        ) : (invoice.status === 'completed' && invoice.payment_status === 'paid') ? (
-                          // For COMPLETED+PAID invoices, only show view and download buttons
-                          <>
-                            <button
-                              onClick={() => {
-                                setSelectedInvoice(invoice);
-                                setShowInvoiceView(true);
-                              }}
-                              className="text-athenas-blue hover:text-blue-600 transition-colors"
-                              title="View Invoice"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            
-                            <button
-                              onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}
-                              className="text-orange-600 hover:text-orange-800 transition-colors"
-                              title="Download PDF"
-                            >
-                              <Download className="w-4 h-4" />
-                            </button>
-                          </>
-                        ) : (
-                          // Show all buttons for non-rejected, non-completed invoices
-                          <>
-                            <button
-                              onClick={() => handleUpdatePayment(invoice)}
-                              className="text-green-600 hover:text-green-800 transition-colors"
-                              title="Update Payment"
-                            >
-                              <IndianRupee className="w-4 h-4" />
-                            </button>
+                        {(() => {
+                          const paymentStarted = parseFloat(invoice.paid_amount || '0') > 0;
+                          const fullyPaid = invoice.payment_status === 'paid';
 
-                            <button
-                              onClick={() => {
-                                setSelectedInvoice(invoice);
-                                setShowInvoiceView(true);
-                              }}
-                              className="text-athenas-blue hover:text-blue-600 transition-colors"
-                              title="View Invoice"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
+                          // REJECTED — view + create new only
+                          if (invoice.is_rejected) {
+                            return (
+                              <>
+                                <button
+                                  onClick={() => { setSelectedInvoice(invoice); setShowInvoiceView(true); }}
+                                  className="text-athenas-blue hover:text-blue-600 transition-colors"
+                                  title="View Invoice"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleCreateNewInvoice(invoice)}
+                                  className="text-green-600 hover:text-green-800 transition-colors"
+                                  title="Create New Invoice"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </button>
+                              </>
+                            );
+                          }
 
-                            {/* Send Email - Only show for active status */}
-                            {invoice.status === 'active' && (
+                          // FULLY PAID — view + download only
+                          if (fullyPaid) {
+                            return (
+                              <>
+                                <button
+                                  onClick={() => { setSelectedInvoice(invoice); setShowInvoiceView(true); }}
+                                  className="text-athenas-blue hover:text-blue-600 transition-colors"
+                                  title="View Invoice"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}
+                                  className="text-orange-600 hover:text-orange-800 transition-colors"
+                                  title="Download PDF"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
+                              </>
+                            );
+                          }
+
+                          // PAYMENT STARTED (partially paid) — update payment + view + download + email only
+                          if (paymentStarted) {
+                            return (
+                              <>
+                                <button
+                                  onClick={() => handleUpdatePayment(invoice)}
+                                  className="text-green-600 hover:text-green-800 transition-colors"
+                                  title="Update Payment"
+                                >
+                                  <IndianRupee className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => { setSelectedInvoice(invoice); setShowInvoiceView(true); }}
+                                  className="text-athenas-blue hover:text-blue-600 transition-colors"
+                                  title="View Invoice"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleSendEmail(invoice)}
+                                  className="text-blue-600 hover:text-blue-800 transition-colors"
+                                  title="Send Email"
+                                >
+                                  <Mail className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}
+                                  className="text-orange-600 hover:text-orange-800 transition-colors"
+                                  title="Download PDF"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
+                              </>
+                            );
+                          }
+
+                          // NO PAYMENT YET (unpaid / active) — full action set
+                          return (
+                            <>
+                              <button
+                                onClick={() => handleUpdatePayment(invoice)}
+                                className="text-green-600 hover:text-green-800 transition-colors"
+                                title="Update Payment"
+                              >
+                                <IndianRupee className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => { setSelectedInvoice(invoice); setShowInvoiceView(true); }}
+                                className="text-athenas-blue hover:text-blue-600 transition-colors"
+                                title="View Invoice"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
                               <button
                                 onClick={() => handleSendEmail(invoice)}
                                 className="text-blue-600 hover:text-blue-800 transition-colors"
@@ -732,74 +732,39 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
                               >
                                 <Mail className="w-4 h-4" />
                               </button>
-                            )}
-                            
-                            <button
-                              onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}
-                              className="text-orange-600 hover:text-orange-800 transition-colors"
-                              title="Download PDF"
-                            >
-                              <Download className="w-4 h-4" />
-                            </button>
-                            {/* Active status buttons */}
-                            {invoice.status === 'active' && (
+                              <button
+                                onClick={() => handleDownloadPDF(invoice.id, invoice.invoice_number)}
+                                className="text-orange-600 hover:text-orange-800 transition-colors"
+                                title="Download PDF"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
                               <button
                                 onClick={async () => {
                                   try {
-                                    console.log('Fetching invoice details for edit:', invoice.id)
-                                    // Fetch complete invoice data with items
                                     const response = await api.get(`/api/finance/invoices/${invoice.id}/`, {
                                       params: { session_key: sessionKey }
-                                    })
-                                    
-                                    console.log('Invoice API response:', response.data)
-                                    
+                                    });
                                     if (response.status === 200 && response.data) {
-                                      // Ensure the data has required fields
-                                      const invoiceData = {
+                                      setSelectedForEdit({
                                         ...response.data,
                                         id: response.data.id || invoice.id,
                                         invoice_number: response.data.invoice_number || invoice.invoice_number,
-                                        customer_name: response.data.customer_name || invoice.customer_name
-                                      }
-                                      
-                                      console.log('Setting invoice data for edit:', invoiceData)
-                                      setSelectedForEdit(invoiceData)
-                                      setShowEditForm(true)
+                                        customer_name: response.data.customer_name || invoice.customer_name,
+                                      });
+                                      setShowEditForm(true);
                                     } else {
-                                      console.error('Invalid API response:', response)
-                                      toast.error('Failed to load invoice details')
+                                      toast.error('Failed to load invoice details');
                                     }
                                   } catch (error) {
-                                    console.error('Error fetching invoice details:', error)
-                                    toast.error('Failed to load invoice details')
+                                    toast.error('Failed to load invoice details');
                                   }
                                 }}
                                 className="text-green-600 hover:text-green-800 transition-colors"
-                                title="Edit"
+                                title="Edit Invoice"
                               >
                                 <Edit className="w-4 h-4" />
                               </button>
-                            )}
-                            
-                            {/* Partially completed/completed status buttons */}
-                            {(invoice.status === 'partially_completed' || invoice.status === 'completed') && invoice.payment_status !== 'paid' && (
-                              <>
-                                {/* Only allow revise if not already revised */}
-                                {!invoice.is_revised && (
-                                  <button
-                                    onClick={() => handleReviseInvoice(invoice)}
-                                    className="text-orange-600 hover:text-orange-800 transition-colors"
-                                    title="Revise Invoice (Edit Once)"
-                                  >
-                                    <RotateCcw className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </>
-                            )}
-                            
-                            {/* Reject button - only show if not paid */}
-                            {invoice.payment_status !== 'paid' && (
                               <button
                                 onClick={() => handleReject(invoice)}
                                 className="text-red-600 hover:text-red-800 transition-colors"
@@ -807,9 +772,9 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
                               >
                                 <XCircle className="w-4 h-4" />
                               </button>
-                            )}
-                          </>
-                        )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </td>
                   </tr>
@@ -829,6 +794,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
             setShowInvoiceView(false);
             setSelectedInvoice(null);
           }}
+          onStatusChange={() => fetchInvoices(currentPage)}
         />
       )}
 
@@ -849,7 +815,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
           onSuccess={() => {
             setShowPaymentModal(false);
             setSelectedForPayment(null);
-            fetchInvoices();
+            fetchInvoices(currentPage);
           }}
           sessionKey={sessionKey}
         />
@@ -870,7 +836,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
           onSuccess={() => {
             setShowEmailModal(false);
             setSelectedForEmail(null);
-            fetchInvoices();
+            fetchInvoices(currentPage);
           }}
         />
       )}
@@ -886,7 +852,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
           onSuccess={() => {
             setShowRejectModal(false);
             setSelectedForReject(null);
-            fetchInvoices();
+            fetchInvoices(currentPage);
           }}
           invoiceId={selectedForReject.id}
           invoiceNumber={selectedForReject.invoice_number}
@@ -906,7 +872,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
           onSuccess={() => {
             setShowCreateNewModal(false);
             setSelectedForNewInvoice(null);
-            fetchInvoices();
+            fetchInvoices(currentPage);
           }}
           rejectedInvoice={{
             id: selectedForNewInvoice.id,
@@ -932,7 +898,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
         onClose={() => setShowDirectInvoiceForm(false)}
         onSuccess={() => {
           setShowDirectInvoiceForm(false);
-          fetchInvoices();
+          fetchInvoices(currentPage);
         }}
       />
 
@@ -947,7 +913,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
           onSave={() => {
             setShowEditForm(false);
             setSelectedForEdit(null);
-            fetchInvoices();
+            fetchInvoices(currentPage);
           }}
         />
       )}

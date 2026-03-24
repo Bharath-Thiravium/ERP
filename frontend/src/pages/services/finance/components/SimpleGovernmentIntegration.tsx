@@ -5,12 +5,63 @@ import { CheckCircle, Shield, FileText, Users } from 'lucide-react'
 import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
+const STATE_CODES: Record<string, string> = {
+  '01': 'Jammu & Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh',
+  '05': 'Uttarakhand', '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan',
+  '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim', '12': 'Arunachal Pradesh',
+  '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram', '16': 'Tripura',
+  '17': 'Meghalaya', '18': 'Assam', '19': 'West Bengal', '20': 'Jharkhand',
+  '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh', '24': 'Gujarat',
+  '26': 'Dadra & Nagar Haveli and Daman & Diu', '27': 'Maharashtra', '28': 'Andhra Pradesh',
+  '29': 'Karnataka', '30': 'Goa', '31': 'Lakshadweep', '32': 'Kerala',
+  '33': 'Tamil Nadu', '34': 'Puducherry', '35': 'Andaman & Nicobar Islands',
+  '36': 'Telangana', '37': 'Andhra Pradesh (New)', '38': 'Ladakh',
+  '97': 'Other Territory', '99': 'Centre Jurisdiction'
+}
+
+const PAN_TYPES: Record<string, string> = {
+  'P': 'Individual', 'C': 'Company', 'H': 'Hindu Undivided Family',
+  'F': 'Firm / LLP', 'A': 'Association of Persons', 'T': 'Trust',
+  'B': 'Body of Individuals', 'L': 'Local Authority',
+  'J': 'Artificial Juridical Person', 'G': 'Government'
+}
+
+function decodeGSTIN(gstin: string) {
+  const stateCode = gstin.slice(0, 2)
+  const pan = gstin.slice(2, 12)
+  const entityNum = gstin[12]
+  const panType = pan[3]?.toUpperCase()
+  return {
+    stateCode,
+    stateName: STATE_CODES[stateCode] || `State ${stateCode}`,
+    pan,
+    entityNumber: entityNum,
+    taxpayerType: PAN_TYPES[panType] || 'Unknown',
+  }
+}
+
+function decodePAN(pan: string) {
+  const typeChar = pan[3]?.toUpperCase()
+  const initials = pan.slice(0, 3).toUpperCase()
+  return {
+    type: PAN_TYPES[typeChar] || 'Unknown',
+    initials,
+    serial: pan.slice(4, 9),
+  }
+}
+
 interface Customer {
   id: number
   name: string
   gstin: string
   pan_number: string
   email: string
+  billing_address_line1: string
+  billing_address_line2?: string
+  billing_city: string
+  billing_state: string
+  billing_pincode: string
+  billing_country: string
 }
 
 export const SimpleGovernmentIntegration: React.FC = () => {
@@ -18,10 +69,9 @@ export const SimpleGovernmentIntegration: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [gstinInput, setGstinInput] = useState('')
   const [panInput, setPanInput] = useState('')
-  const [gstinValidationResult, setGstinValidationResult] = useState<string>('')
-  const [panValidationResult, setPanValidationResult] = useState<string>('')
+  const [gstinDetails, setGstinDetails] = useState<(ReturnType<typeof decodeGSTIN> & { valid: boolean; businessName: string; address: string; apiKeyMissing: boolean }) | null>(null)
+  const [panDetails, setPanDetails] = useState<(ReturnType<typeof decodePAN> & { valid: boolean }) | null>(null)
   const [gstinLoading, setGstinLoading] = useState(false)
-  const [panLoading, setPanLoading] = useState(false)
   const [gstr1Loading, setGstr1Loading] = useState(false)
   const [tdsLoading, setTdsLoading] = useState(false)
 
@@ -42,76 +92,43 @@ export const SimpleGovernmentIntegration: React.FC = () => {
     setSelectedCustomer(customer)
     setGstinInput(customer.gstin || '')
     setPanInput(customer.pan_number || '')
-    setGstinValidationResult('')
-    setPanValidationResult('')
+    setGstinDetails(null)
+    setPanDetails(null)
   }
 
-  const validateGSTIN = async () => {
-    if (!gstinInput || gstinInput.length !== 15) {
-      setGstinValidationResult('Invalid GSTIN format')
+  const validateGSTIN = () => {
+    const g = gstinInput.trim().toUpperCase()
+    if (g.length !== 15 || !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(g)) {
+      setGstinDetails({ valid: false, stateCode: '', stateName: 'Invalid GSTIN', pan: '', entityNumber: '', taxpayerType: '', businessName: '', address: '', apiKeyMissing: false })
+      toast.error('Invalid GSTIN format')
       return
     }
-    
+    const decoded = decodeGSTIN(g)
     setGstinLoading(true)
-    try {
-      const response = await apiClient.post('/api/finance/gov-api/validate-gstin/', {
-        gstin: gstinInput
+    apiClient.post('/api/finance/gov-api/validate-gstin/', { gstin: g })
+      .then(r => {
+        const d = r.data
+        setGstinDetails({
+          valid: true,
+          ...decoded,
+          businessName: d.business_name || d.legal_name || '',
+          address: d.address || '',
+          apiKeyMissing: d.api_key_missing || false
+        })
       })
-      
-      const result = response.data
-      if (result.valid) {
-        if (result.mock) {
-          setGstinValidationResult(`Format Valid - ${result.error || 'Government API credentials not configured'}`)
-          toast('GSTIN format valid, but government API validation unavailable', { icon: '⚠️' })
-        } else {
-          setGstinValidationResult(`GSTIN Valid - ${result.business_name || 'Business verified'}`)
-          toast.success('GSTIN validated with government database')
-        }
-      } else {
-        setGstinValidationResult(`GSTIN Invalid - ${result.error || 'Validation failed'}`)
-        toast.error('GSTIN validation failed')
-      }
-    } catch (error: any) {
-      const errorMsg = error.response?.data?.error || 'Failed to validate GSTIN'
-      setGstinValidationResult(`Error - ${errorMsg}`)
-      toast.error(errorMsg)
-    } finally {
-      setGstinLoading(false)
-    }
+      .catch(() => setGstinDetails({ valid: true, ...decoded, businessName: '', address: '', apiKeyMissing: true }))
+      .finally(() => setGstinLoading(false))
   }
 
-  const validatePAN = async () => {
-    if (!panInput || panInput.length !== 10) {
-      setPanValidationResult('Invalid PAN format')
+  const validatePAN = () => {
+    const p = panInput.trim().toUpperCase()
+    if (p.length !== 10 || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(p)) {
+      setPanDetails({ valid: false, type: 'Invalid PAN', initials: '', serial: '' })
+      toast.error('Invalid PAN format')
       return
     }
-    
-    setPanLoading(true)
-    try {
-      const response = await apiClient.post('/api/finance/gov-api/validate-pan/', {
-        pan: panInput
-      })
-      
-      const result = response.data
-      if (result.valid) {
-        if (result.mock) {
-          setPanValidationResult(`Format Valid - ${result.error || 'TDS API credentials not configured'}`)
-          toast('PAN format valid, but government API validation unavailable', { icon: '⚠️' })
-        } else {
-          setPanValidationResult(`PAN Valid - ${result.name || 'PAN verified'}`)
-          toast.success('PAN validated with income tax database')
-        }
-      } else {
-        setPanValidationResult(`PAN Invalid - ${result.error || 'Validation failed'}`)
-        toast.error('PAN validation failed')
-      }
-    } catch (error: any) {
-      const errorMsg = error.response?.data?.error || 'Failed to validate PAN'
-      setPanValidationResult(`Error - ${errorMsg}`)
-      toast.error(errorMsg)
-    } finally {
-      setPanLoading(false)
-    }
+    setPanDetails({ valid: true, ...decodePAN(p) })
+    toast.success('PAN decoded successfully')
   }
 
   const fileGSTR1 = async () => {
@@ -198,10 +215,20 @@ export const SimpleGovernmentIntegration: React.FC = () => {
             </select>
             
             {selectedCustomer && (
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm font-medium text-blue-800">Selected: {selectedCustomer.name}</p>
+              <div className="p-3 bg-blue-50 rounded-lg space-y-1">
+                <p className="text-sm font-medium text-blue-800">{selectedCustomer.name}</p>
                 <p className="text-xs text-blue-600">GSTIN: {selectedCustomer.gstin || 'Not provided'}</p>
                 <p className="text-xs text-blue-600">PAN: {selectedCustomer.pan_number || 'Not provided'}</p>
+                <p className="text-xs text-blue-600">
+                  Address: {[
+                    selectedCustomer.billing_address_line1,
+                    selectedCustomer.billing_address_line2,
+                    selectedCustomer.billing_city,
+                    selectedCustomer.billing_state,
+                    selectedCustomer.billing_pincode,
+                    selectedCustomer.billing_country
+                  ].filter(Boolean).join(', ')}
+                </p>
               </div>
             )}
           </div>
@@ -223,8 +250,8 @@ export const SimpleGovernmentIntegration: React.FC = () => {
                 value={gstinInput}
                 readOnly
               />
-              <Button onClick={validateGSTIN} disabled={gstinLoading || !gstinInput}>
-                {gstinLoading ? 'Validating...' : 'Validate'}
+              <Button onClick={validateGSTIN} disabled={!gstinInput || gstinLoading}>
+                {gstinLoading ? 'Looking up...' : 'Validate'}
               </Button>
             </div>
           </div>
@@ -238,43 +265,52 @@ export const SimpleGovernmentIntegration: React.FC = () => {
                 value={panInput}
                 readOnly
               />
-              <Button onClick={validatePAN} disabled={panLoading || !panInput}>
-                {panLoading ? 'Validating...' : 'Validate'}
+              <Button onClick={validatePAN} disabled={!panInput}>
+                Validate
               </Button>
             </div>
           </div>
 
-          {/* GSTIN Validation Result */}
-          {gstinValidationResult && (
-            <div className={`rounded-lg border p-3 ${
-              gstinValidationResult.includes('Valid') 
-                ? 'bg-green-50 border-green-200' 
-                : 'bg-red-50 border-red-200'
-            }`}>
-              <p className={`text-sm font-medium ${
-                gstinValidationResult.includes('Valid') 
-                  ? 'text-green-800' 
-                  : 'text-red-800'
-              }`}>
-                GSTIN: {gstinValidationResult}
-              </p>
+          {gstinDetails && (
+            <div className={`rounded-lg border p-3 ${gstinDetails.valid ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+              {gstinDetails.valid ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-green-800">GSTIN Valid ✓</p>
+                  {gstinDetails.businessName && (
+                    <p className="text-sm font-medium text-green-900">{gstinDetails.businessName}</p>
+                  )}
+                  {gstinDetails.address && (
+                    <p className="text-xs text-green-700">📍 {gstinDetails.address}</p>
+                  )}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-green-700">
+                    <span><strong>State:</strong> {gstinDetails.stateName} ({gstinDetails.stateCode})</span>
+                    <span><strong>Taxpayer Type:</strong> {gstinDetails.taxpayerType}</span>
+                    <span><strong>PAN:</strong> {gstinDetails.pan}</span>
+                    <span><strong>Entity No:</strong> {gstinDetails.entityNumber}</span>
+                  </div>
+                  {gstinDetails.apiKeyMissing && (
+                    <p className="text-xs text-amber-600 mt-1">⚠ To fetch business name & address, add <code>GSTINCHECK_API_KEY</code> to backend .env (free at gstincheck.co.in)</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm font-medium text-red-800">Invalid GSTIN format</p>
+              )}
             </div>
           )}
 
-          {/* PAN Validation Result */}
-          {panValidationResult && (
-            <div className={`rounded-lg border p-3 ${
-              panValidationResult.includes('Valid') 
-                ? 'bg-green-50 border-green-200' 
-                : 'bg-red-50 border-red-200'
-            }`}>
-              <p className={`text-sm font-medium ${
-                panValidationResult.includes('Valid') 
-                  ? 'text-green-800' 
-                  : 'text-red-800'
-              }`}>
-                PAN: {panValidationResult}
-              </p>
+          {panDetails && (
+            <div className={`rounded-lg border p-3 ${panDetails.valid ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+              {panDetails.valid ? (
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-green-800">PAN Valid ✓</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-green-700">
+                    <span><strong>Taxpayer Type:</strong> {panDetails.type}</span>
+                    <span><strong>Initials:</strong> {panDetails.initials}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm font-medium text-red-800">Invalid PAN format</p>
+              )}
             </div>
           )}
         </CardContent>

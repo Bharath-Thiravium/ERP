@@ -4,6 +4,7 @@ import { X, CreditCard, User, MapPin, Calculator, Package, ChevronDown } from 'l
 import toast from 'react-hot-toast'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import api from '../../../../lib/api'
+import { handlePostInvoiceStatusUpdate } from '../utils/poStatusUtils'
 
 interface SimpleTaxInvoiceFormProps {
   purchaseOrder?: any
@@ -239,6 +240,12 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
       }
       
       await response.json()
+      
+      // Auto-update PO status if this is from a PO
+      if (purchaseOrder?.id && sessionKey) {
+        console.log('🔄 Updating PO status after tax invoice creation...')
+        await handlePostInvoiceStatusUpdate(purchaseOrder.id, sessionKey)
+      }
       
       toast.success(editingInvoice ? 'Tax Invoice updated successfully!' : 'Tax Invoice created successfully!')
       onSuccess()

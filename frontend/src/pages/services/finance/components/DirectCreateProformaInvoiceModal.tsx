@@ -93,7 +93,7 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
 
   const fetchProducts = async () => {
     try {
-      const response = await apiClient.getFinanceProducts({ session_key: sessionKey })
+      const response = await apiClient.getFinanceProducts({ session_key: sessionKey, page_size: 200 })
       setProducts(response.data.results || [])
     } catch (error) {
       console.error('Error fetching products:', error)

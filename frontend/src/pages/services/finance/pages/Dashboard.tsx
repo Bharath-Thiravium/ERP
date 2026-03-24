@@ -42,9 +42,7 @@ import Invoices from './Invoices'
 import Payments from './Payments'
 import CustomerLedger from '../components/CustomerLedger'
 import ComplianceDashboard from './ComplianceDashboard'
-import TestInvoices from '../../../../components/TestInvoices'
-import ErrorCatcher from '../../../../components/ErrorCatcher'
-import SimpleInvoiceList from '../../../../components/SimpleInvoiceList'
+
 
 // Purchase & Expense Management Pages
 import Vendors from './Vendors'
@@ -1259,17 +1257,7 @@ const handlePOCreated = () => {
         return <ProformaInvoices sessionKey={sessionKey || ''} />
       case 'invoices':
         console.log('🔍 Dashboard - Rendering Invoices with sessionKey:', sessionKey ? 'Present' : 'Missing');
-        return (
-          <div className="space-y-4">
-            <TestInvoices />
-            <ErrorCatcher name="SimpleInvoiceList">
-              <SimpleInvoiceList sessionKey={sessionKey || ''} />
-            </ErrorCatcher>
-            <ErrorCatcher name="OriginalInvoices">
-              <Invoices sessionKey={sessionKey || ''} />
-            </ErrorCatcher>
-          </div>
-        )
+        return <Invoices sessionKey={sessionKey || ''} />
       case 'payments':
         return <Payments sessionKey={sessionKey || ''} />
       case 'customer-ledger':

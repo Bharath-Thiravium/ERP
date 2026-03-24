@@ -21,6 +21,7 @@ import { SimpleGovernmentIntegration } from '../components/SimpleGovernmentInteg
 import { AdvancedAnalyticsDashboard } from '../components/AdvancedAnalyticsDashboard'
 import { ReportsManager } from '../components/ReportsManager'
 import { AIFeaturesManager } from '../components/AIFeaturesManager'
+import { GSTPaymentTracker } from '../components/GSTPaymentTracker'
 
 interface ComplianceData {
   period: string
@@ -316,20 +317,20 @@ interface CalculatorTabsProps {
 }
 
 const CalculatorTabs: React.FC<CalculatorTabsProps> = ({ sessionKey }) => {
-  const [activeTab, setActiveTab] = useState<'summary' | 'gst' | 'tds' | 'government' | 'analytics' | 'reports' | 'ai-features'>('summary')
+  const [activeTab, setActiveTab] = useState<'overview' | 'gst' | 'tds' | 'gst-tracker' | 'government' | 'analytics' | 'reports' | 'ai-features'>('overview')
 
   return (
     <FinanceCard>
       <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
         <button 
-          onClick={() => setActiveTab('summary')}
+          onClick={() => setActiveTab('overview')}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === 'summary' 
+            activeTab === 'overview' 
               ? 'text-green-600 border-b-2 border-green-600' 
               : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
           }`}
         >
-          Phase 2 Summary
+          Overview
         </button>
         <button 
           onClick={() => setActiveTab('gst')}
@@ -340,6 +341,16 @@ const CalculatorTabs: React.FC<CalculatorTabsProps> = ({ sessionKey }) => {
           }`}
         >
           GST Calculator
+        </button>
+        <button 
+          onClick={() => setActiveTab('gst-tracker')}
+          className={`px-4 py-2 text-sm font-medium ml-4 transition-colors ${
+            activeTab === 'gst-tracker' 
+              ? 'text-green-600 border-b-2 border-green-600' 
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+          }`}
+        >
+          GST Payment Tracker
         </button>
         <button 
           onClick={() => setActiveTab('tds')}
@@ -398,8 +409,9 @@ const CalculatorTabs: React.FC<CalculatorTabsProps> = ({ sessionKey }) => {
 
       </div>
       
-      {activeTab === 'summary' && <Phase2Summary sessionKey={sessionKey} />}
+      {activeTab === 'overview' && <Phase2Summary sessionKey={sessionKey} />}
       {activeTab === 'gst' && <GSTCalculator sessionKey={sessionKey} />}
+      {activeTab === 'gst-tracker' && <GSTPaymentTracker />}
       {activeTab === 'tds' && <TDSCalculator sessionKey={sessionKey} />}
       {activeTab === 'government' && <SimpleGovernmentIntegration />}
       {activeTab === 'analytics' && <AdvancedAnalyticsDashboard sessionKey={sessionKey} />}

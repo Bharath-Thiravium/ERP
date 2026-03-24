@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Plus, Edit, Eye, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Plus, Edit, Eye, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { apiClient } from '../../../../lib/api'
 
@@ -49,6 +49,17 @@ const ProductList: React.FC<ProductListProps> = ({
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterActive, setFilterActive] = useState('')
+  const [sortBy, setSortBy] = useState('-created_at')
+
+  const handleSort = (field: string) => {
+    setSortBy(prev => prev === `-${field}` ? field : `-${field}`)
+    setCurrentPage(1)
+  }
+  const SortIcon = ({ field }: { field: string }) => (
+    sortBy === field ? <ChevronUp className="w-3 h-3 inline ml-1" /> :
+    sortBy === `-${field}` ? <ChevronDown className="w-3 h-3 inline ml-1" /> :
+    <ChevronUp className="w-3 h-3 inline ml-1 opacity-30" />
+  )
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -69,7 +80,7 @@ const ProductList: React.FC<ProductListProps> = ({
   // Fetch products when debounced search term, filters, or page changes
   useEffect(() => {
     fetchProducts()
-  }, [debouncedSearchTerm, filterType, filterActive, currentPage])
+  }, [debouncedSearchTerm, filterType, filterActive, currentPage, sortBy])
 
   const fetchProducts = async () => {
     try {
@@ -90,6 +101,7 @@ const ProductList: React.FC<ProductListProps> = ({
       if (debouncedSearchTerm) params.append('search', debouncedSearchTerm)
       if (filterType) params.append('product_type', filterType)
       if (filterActive) params.append('is_active', filterActive)
+      params.append('ordering', sortBy)
 
       // Add pagination parameters
       params.append('page', currentPage.toString())
@@ -242,30 +254,14 @@ const ProductList: React.FC<ProductListProps> = ({
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Product/Service
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    HSN/SAC Code
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    GST Rate
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    GST Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Selling Price
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  <th onClick={() => handleSort('name')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none">Product/Service <SortIcon field="name" /></th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">HSN/SAC Code</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">GST Rate</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">GST Type</th>
+                  <th onClick={() => handleSort('selling_price')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none">Selling Price <SortIcon field="selling_price" /></th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">

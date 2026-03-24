@@ -31,7 +31,7 @@ def master_admin_email_settings_view(request):
                 master_admin=master_admin,
                 provider='gmail',
                 email_address='',
-                email_password=User.objects.make_random_password(),  # Generate secure password
+                email_password=__import__('secrets').token_urlsafe(12),  # Generate secure password
                 from_name='SAP System Security',
                 is_active=False
             )

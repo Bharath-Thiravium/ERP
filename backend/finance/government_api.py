@@ -91,63 +91,92 @@ class GSTAPIService:
                 
         return token
     
-    def validate_gstin(self, gstin):
-        """Validate GSTIN with government database"""
-        # Check if API credentials are configured
-        if not all([self.client_id, self.client_secret, self.username]):
-            logger.warning("GST API credentials not configured - format validation only")
-            # Format validation only when no credentials
-            if len(gstin) == 15 and gstin.isalnum():
-                return {
-                    'valid': True,
-                    'business_name': 'Format Valid - No API Credentials',
-                    'legal_name': 'Please configure GST API credentials', 
-                    'status': 'Format Valid',
-                    'registration_date': '',
-                    'state_code': gstin[:2],
-                    'taxpayer_type': 'Unknown',
-                    'mock': True,
-                    'error': 'GST API credentials not configured'
-                }
-            else:
-                return {'valid': False, 'error': 'Invalid GSTIN format'}
-        
-        # Real API validation with stored credentials
-        token = self.get_auth_token()
-        if not token:
-            return {'valid': False, 'error': 'GST API authentication failed'}
-            
+    def _public_gstin_lookup(self, gstin):
+        """Try free public GSTIN lookup via gstincheck.co.in (requires free API key)"""
+        api_key = os.getenv('GSTINCHECK_API_KEY', '')
+        if not api_key:
+            return None
         try:
-            headers = {
-                'Authorization': f'Bearer {token}',
-                'Content-Type': 'application/json'
-            }
-            
             response = requests.get(
-                f"{self.base_url}/taxpayerapi/v1.0/authenticate",
-                headers=headers,
-                params={'gstin': gstin},
-                timeout=30
+                f"https://sheet.gstincheck.co.in/check/{api_key}/{gstin}",
+                timeout=10,
+                headers={'User-Agent': 'Mozilla/5.0'}
             )
-            
             if response.status_code == 200:
                 data = response.json()
-                return {
-                    'valid': True,
-                    'business_name': data.get('tradeNam', ''),
-                    'legal_name': data.get('lgnm', ''),
-                    'status': data.get('sts', ''),
-                    'registration_date': data.get('rgdt', ''),
-                    'state_code': data.get('stj', ''),
-                    'taxpayer_type': data.get('dty', '')
-                }
-            else:
-                return {'valid': False, 'error': 'GSTIN not found'}
-                
+                if data.get('flag') and data.get('data'):
+                    d = data['data']
+                    pradr = d.get('pradr', {}).get('addr', {})
+                    address_parts = [
+                        pradr.get('bnm', ''), pradr.get('st', ''), pradr.get('loc', ''),
+                        pradr.get('dst', ''), pradr.get('stcd', ''), pradr.get('pncd', '')
+                    ]
+                    address = ', '.join(p for p in address_parts if p)
+                    return {
+                        'valid': True,
+                        'business_name': d.get('tradeNam') or d.get('lgnm', ''),
+                        'legal_name': d.get('lgnm', ''),
+                        'status': d.get('sts', ''),
+                        'registration_date': d.get('rgdt', ''),
+                        'state_code': gstin[:2],
+                        'taxpayer_type': d.get('dty', ''),
+                        'address': address,
+                        'mock': False
+                    }
         except Exception as e:
-            logger.error(f"GSTIN validation error: {str(e)}")
-            return {'valid': False, 'error': str(e)}
-    
+            logger.debug(f"Public GSTIN lookup failed: {e}")
+        return None
+
+    def validate_gstin(self, gstin):
+        """Validate GSTIN with government database"""
+        # Basic format check first
+        if not (len(gstin) == 15 and gstin.isalnum()):
+            return {'valid': False, 'error': 'Invalid GSTIN format'}
+
+        # Try paid credentials first
+        if all([self.client_id, self.client_secret, self.username]):
+            token = self.get_auth_token()
+            if token:
+                try:
+                    headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+                    response = requests.get(
+                        f"{self.base_url}/taxpayerapi/v1.0/authenticate",
+                        headers=headers, params={'gstin': gstin}, timeout=30
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        return {
+                            'valid': True,
+                            'business_name': data.get('tradeNam', ''),
+                            'legal_name': data.get('lgnm', ''),
+                            'status': data.get('sts', ''),
+                            'registration_date': data.get('rgdt', ''),
+                            'state_code': data.get('stj', ''),
+                            'taxpayer_type': data.get('dty', ''),
+                            'mock': False
+                        }
+                except Exception as e:
+                    logger.error(f"GSTIN paid API error: {e}")
+
+        # Fall back to free public lookup
+        public_result = self._public_gstin_lookup(gstin)
+        if public_result:
+            return public_result
+
+        # Format-only fallback
+        return {
+            'valid': True,
+            'business_name': '',
+            'legal_name': '',
+            'status': '',
+            'registration_date': '',
+            'state_code': gstin[:2],
+            'taxpayer_type': '',
+            'address': '',
+            'mock': True,
+            'api_key_missing': not bool(os.getenv('GSTINCHECK_API_KEY', ''))
+        }
+        
     def get_gst_rates(self, hsn_code):
         """Get current GST rates for HSN code"""
         try:

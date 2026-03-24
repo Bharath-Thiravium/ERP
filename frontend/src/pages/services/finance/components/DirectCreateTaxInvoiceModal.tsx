@@ -43,11 +43,14 @@ const DirectCreateTaxInvoiceModal: React.FC<DirectCreateTaxInvoiceModalProps> = 
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
+  const [shippingAddresses, setShippingAddresses] = useState<{id: number|null, label: string, address: string}[]>([])
   const [formData, setFormData] = useState({
     customer: '',
+    invoice_number: '',
     invoice_date: new Date().toISOString().split('T')[0],
     due_date: '',
     reference: '',
+    shipping_address: '' as string | number,
     notes: '',
     terms_and_conditions: '',
     discount_percentage: 0,
@@ -93,12 +96,32 @@ const DirectCreateTaxInvoiceModal: React.FC<DirectCreateTaxInvoiceModalProps> = 
 
   const fetchProducts = async () => {
     try {
-      const response = await apiClient.getFinanceProducts({ session_key: sessionKey })
+      const response = await apiClient.getFinanceProducts({ session_key: sessionKey, page_size: 200 })
       setProducts(response.data.results || [])
     } catch (error) {
       console.error('Error fetching products:', error)
       toast.error('Failed to fetch products')
     }
+  }
+
+  const fetchShippingAddresses = async (customerId: string) => {
+    if (!customerId) { setShippingAddresses([]); return }
+    try {
+      const response = await apiClient.get(`/api/finance/customers/${customerId}/`, { params: { session_key: sessionKey } })
+      const c = response.data
+      const addrs: { id: number | null; label: string; address: string }[] = [
+        { id: null, label: 'Billing Address (Default)', address: [c.billing_address_line1, c.billing_city, c.billing_state, c.billing_pincode].filter(Boolean).join(', ') }
+      ]
+      ;(c.shipping_addresses || []).forEach((a: any) => {
+        addrs.push({ id: a.id, label: a.label || 'Shipping Address', address: a.full_address })
+      })
+      setShippingAddresses(addrs)
+    } catch { setShippingAddresses([]) }
+  }
+
+  const handleCustomerChange = (customerId: string) => {
+    setFormData(prev => ({ ...prev, customer: customerId, shipping_address: '' }))
+    fetchShippingAddresses(customerId)
   }
 
   const handleProductChange = (index: number, productId: number) => {
@@ -236,7 +259,7 @@ const DirectCreateTaxInvoiceModal: React.FC<DirectCreateTaxInvoiceModalProps> = 
               </label>
               <select
                 value={formData.customer}
-                onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
+                onChange={(e) => handleCustomerChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               >
@@ -247,6 +270,19 @@ const DirectCreateTaxInvoiceModal: React.FC<DirectCreateTaxInvoiceModalProps> = 
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Invoice Number
+              </label>
+              <input
+                type="text"
+                value={formData.invoice_number}
+                onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Auto-generated if empty"
+              />
             </div>
 
             <div>
@@ -276,15 +312,31 @@ const DirectCreateTaxInvoiceModal: React.FC<DirectCreateTaxInvoiceModalProps> = 
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reference
+                Customer PO / Reference
               </label>
               <input
                 type="text"
                 value={formData.reference}
                 onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Reference number or description"
+                placeholder="Customer PO number or reference"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Shipping Address
+              </label>
+              <select
+                value={formData.shipping_address}
+                onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">-- Select Shipping Address --</option>
+                {shippingAddresses.map((a, i) => (
+                  <option key={i} value={a.id ?? ''}>{a.label} — {a.address}</option>
+                ))}
+              </select>
             </div>
           </div>
 

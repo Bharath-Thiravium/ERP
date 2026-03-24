@@ -43,6 +43,30 @@ from .serializers import NumberingRuleSerializer, FINANCE_DEFAULT_TEMPLATES
 from finance.numbering import _scope_key
 
 
+# Allowed ordering fields per model (whitelist to prevent arbitrary field injection)
+_ORDERING_FIELDS = {
+    'customer':  {'name': 'name', 'created_at': 'created_at', 'customer_code': 'customer_code'},
+    'product':   {'name': 'name', 'created_at': 'created_at', 'selling_price': 'selling_price'},
+    'quotation': {'quotation_date': 'quotation_date', 'created_at': 'created_at', 'total_amount': 'total_amount', 'customer_name': 'customer__name', 'quotation_number': 'quotation_number'},
+    'po':        {'po_date': 'po_date', 'created_at': 'created_at', 'total_amount': 'total_amount', 'customer_name': 'customer__name', 'internal_po_number': 'internal_po_number'},
+    'proforma':  {'proforma_date': 'proforma_date', 'created_at': 'created_at', 'total_amount': 'total_amount', 'customer_name': 'customer__name', 'proforma_number': 'proforma_number', 'payment_status': 'payment_status'},
+    'invoice':   {'invoice_date': 'invoice_date', 'created_at': 'created_at', 'total_amount': 'total_amount', 'customer_name': 'customer__name', 'invoice_number': 'invoice_number', 'payment_status': 'payment_status'},
+    'payment':   {'payment_date': 'payment_date', 'created_at': 'created_at', 'amount': 'amount', 'payment_number': 'payment_number'},
+}
+
+def _apply_ordering(queryset, request, model_key, default='-created_at'):
+    ordering = request.query_params.get('ordering', '').strip()
+    if not ordering:
+        return queryset.order_by(default)
+    desc = ordering.startswith('-')
+    field_key = ordering.lstrip('-')
+    allowed = _ORDERING_FIELDS.get(model_key, {})
+    db_field = allowed.get(field_key)
+    if not db_field:
+        return queryset.order_by(default)
+    return queryset.order_by(f'-{db_field}' if desc else db_field)
+
+
 class CustomerPagination(PageNumberPagination):
     """Custom pagination for customers"""
     page_size = 5
@@ -102,7 +126,7 @@ class CustomerListCreateView(ListCreateAPIView):
             if is_active:
                 queryset = queryset.filter(is_active=is_active.lower() == 'true')
 
-            return queryset.order_by('-created_at')
+            return _apply_ordering(queryset, self.request, 'customer')
 
         except ServiceUserSession.DoesNotExist:
             return Customer.objects.none()
@@ -384,7 +408,7 @@ class ProductPagination(PageNumberPagination):
     """Custom pagination for products"""
     page_size = 100
     page_size_query_param = 'page_size'
-    max_page_size = 100
+    max_page_size = 500
 
 
 class ProductListCreateView(ListCreateAPIView):
@@ -440,7 +464,7 @@ class ProductListCreateView(ListCreateAPIView):
             if is_active:
                 queryset = queryset.filter(is_active=is_active.lower() == 'true')
 
-            return queryset.order_by('-created_at')
+            return _apply_ordering(queryset, self.request, 'product')
 
         except ServiceUserSession.DoesNotExist:
             return Product.objects.none()
@@ -1053,7 +1077,7 @@ class QuotationListCreateView(ListCreateAPIView):
             if customer_id:
                 queryset = queryset.filter(customer_id=customer_id)
 
-            return queryset.order_by('-created_at')
+            return _apply_ordering(queryset, self.request, 'quotation')
 
         except ServiceUserSession.DoesNotExist:
             return Quotation.objects.none()
@@ -1386,7 +1410,7 @@ class PurchaseOrderListCreateView(ListCreateAPIView):
             if customer_id:
                 queryset = queryset.filter(customer_id=customer_id)
 
-            return queryset.order_by('-created_at')
+            return _apply_ordering(queryset, self.request, 'po')
 
         except ServiceUserSession.DoesNotExist:
             return PurchaseOrder.objects.none()
@@ -1598,7 +1622,7 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
             if customer_id:
                 queryset = queryset.filter(customer_id=customer_id)
 
-            return queryset.order_by('-created_at')
+            return _apply_ordering(queryset, self.request, 'proforma')
 
         except ServiceUserSession.DoesNotExist:
             return ProformaInvoice.objects.none()
@@ -1856,7 +1880,7 @@ class InvoiceListCreateView(ListCreateAPIView):
             if customer_id:
                 queryset = queryset.filter(customer_id=customer_id)
 
-            return queryset.order_by('-created_at')
+            return _apply_ordering(queryset, self.request, 'invoice')
 
         except ServiceUserSession.DoesNotExist:
             return Invoice.objects.none()
@@ -2160,7 +2184,7 @@ class PaymentListCreateView(ListCreateAPIView):
             if invoice_id:
                 queryset = queryset.filter(invoice_id=invoice_id)
 
-            return queryset.order_by('-created_at')
+            return _apply_ordering(queryset, self.request, 'payment')
 
         except ServiceUserSession.DoesNotExist:
             return Payment.objects.none()
@@ -2449,6 +2473,7 @@ def _customer_ledger_impl(request):
                 period_invoices = Invoice.objects.filter(
                     customer=customer,
                     company=service_user.company,
+                    is_rejected=False,
                     invoice_date__gte=customer.opening_balance_date,
                     invoice_date__lt=start_date
                 )
@@ -2489,10 +2514,11 @@ def _customer_ledger_impl(request):
                     'status': 'active',
                 })
 
-        # Get invoices for this customer
+        # Get invoices for this customer (exclude rejected)
         invoices = Invoice.objects.filter(
             customer=customer,
-            company=service_user.company
+            company=service_user.company,
+            is_rejected=False
         )
 
         if start_date:
@@ -2514,10 +2540,11 @@ def _customer_ledger_impl(request):
                 'status': invoice.payment_status,
             })
 
-        # Get proforma invoices for this customer
+        # Get proforma invoices for this customer (exclude rejected)
         proforma_invoices = ProformaInvoice.objects.filter(
             customer=customer,
-            company=service_user.company
+            company=service_user.company,
+            is_rejected=False
         )
 
         if start_date:

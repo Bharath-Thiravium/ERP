@@ -1,7 +1,67 @@
-import React, { useState, useEffect } from 'react';
-import { X, FileText, IndianRupee, Printer, Building, User, MapPin, Calendar, Hash, CreditCard } from 'lucide-react';
+import React, { useState, useEffect, ErrorInfo } from 'react';
+import { X, FileText, IndianRupee, Printer, Building, User, MapPin, Calendar, Hash, CreditCard, RefreshCw } from 'lucide-react';
+import { isOverdue, getOverdueDate } from '../../../../utils/overdueUtils';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
+import { sanitizeText } from '../../../../utils/sanitize';
+
+// Error Boundary Component
+class InvoiceViewErrorBoundary extends React.Component<
+  { children: React.ReactNode; onError?: () => void },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode; onError?: () => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('InvoiceView Error Boundary caught an error:', {
+      message: error.message,
+      stack: error.stack?.substring(0, 500), // Limit stack trace
+      componentStack: errorInfo.componentStack?.substring(0, 500)
+    });
+    
+    if (this.props.onError) {
+      this.props.onError();
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 max-w-md mx-4 text-center">
+            <div className="text-red-500 mb-4">
+              <FileText className="w-12 h-12 mx-auto" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              Unable to Load Invoice
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              There was an error displaying the invoice details. This might be due to missing data or a temporary issue.
+            </p>
+            <button
+              onClick={() => {
+                this.setState({ hasError: false, error: undefined });
+                if (this.props.onError) this.props.onError();
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 interface InvoiceItem {
   id: number;
@@ -74,6 +134,7 @@ interface Invoice {
   effective_shipping_address?: EffectiveShippingAddress;
   status: string;
   payment_status: string;
+  is_work_completed: boolean;
   gst_type: string;
   subtotal: string;
   total_tax: string;
@@ -107,31 +168,81 @@ interface InvoiceViewProps {
   invoice: Invoice;
   onClose: () => void;
   onPrint?: (invoice: Invoice) => void;
+  onStatusChange?: () => void;
   sessionKey?: string;
 }
 
 const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, sessionKey }) => {
   const [detailedInvoice, setDetailedInvoice] = useState<Invoice>(invoice);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchDetailedInvoice = async () => {
-      if (!sessionKey) return;
+  const fetchDetailedInvoice = async () => {
+      if (!sessionKey) {
+        console.error('No sessionKey provided to InvoiceView');
+        setError('Session expired. Please login again.');
+        toast.error('Session expired. Please login again.');
+        return;
+      }
+      
+      if (!invoice?.id) {
+        console.error('No invoice ID provided');
+        setError('Invalid invoice data provided.');
+        toast.error('Invalid invoice data provided.');
+        return;
+      }
       
       try {
         setLoading(true);
+        setError(null);
+        console.log('Fetching detailed invoice:', sanitizeText(invoice.id?.toString() || ''), 'with sessionKey:', sessionKey ? 'Present' : 'Missing');
+        
         const response = await api.get(`/api/finance/invoices/${invoice.id}/`, {
           params: { session_key: sessionKey }
         });
-        setDetailedInvoice(response.data);
-      } catch (error) {
-        console.error('Error fetching detailed invoice:', error);
-        toast.error('Failed to load detailed invoice data');
+        
+        if (!response.data) {
+          throw new Error('No data received from server');
+        }
+        
+        console.log('Invoice API response received successfully');
+        // Merge: keep flat fields from prop (customer_name, purchase_order, status)
+        // that the detail serializer doesn't return, but override everything else
+        const merged = {
+          ...invoice,           // base: has customer_name, purchase_order, status
+          ...response.data,     // override with full detail data
+          // Restore flat fields the detail serializer omits
+          customer_name: response.data.customer_details?.name || invoice.customer_name,
+          customer_code: response.data.customer_details?.customer_code || invoice.customer_code,
+          customer_gstin: response.data.customer_gstin || invoice.customer_gstin,
+          customer_project_area: response.data.customer_details?.project_area || invoice.customer_project_area,
+          // purchase_order_details → purchase_order for source display
+          purchase_order: response.data.purchase_order_details ? {
+            internal_po_number: response.data.purchase_order_details.internal_po_number,
+            po_number: response.data.purchase_order_details.po_number,
+            po_date: response.data.purchase_order_details.po_date,
+          } : invoice.purchase_order,
+          // status is not in detail serializer — keep from prop
+          status: invoice.status,
+          is_rejected: response.data.is_rejected ?? invoice.is_rejected,
+        };
+        setDetailedInvoice(merged);
+      } catch (error: any) {
+        console.error('Error fetching detailed invoice - Status:', error.response?.status || 'Unknown');
+        console.error('Error details:', error.response?.data?.message || 'No additional details');
+        
+        const errorMessage = error.response?.data?.message || 
+                            error.response?.data?.error || 
+                            error.response?.data?.detail ||
+                            'Failed to load detailed invoice data';
+        setError(errorMessage);
+        toast.error(errorMessage);
       } finally {
         setLoading(false);
       }
-    };
+  };
 
+  useEffect(() => {
     fetchDetailedInvoice();
   }, [invoice.id, sessionKey]);
 
@@ -166,12 +277,48 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
     return addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
   };
 
+  if (error) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-8 max-w-md mx-4 text-center">
+          <div className="text-red-500 mb-4">
+            <FileText className="w-12 h-12 mx-auto" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            Error Loading Invoice
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            {error}
+          </p>
+          <div className="flex space-x-3 justify-center">
+            <button
+              onClick={() => {
+                setError(null);
+                setLoading(false);
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              Retry
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-8">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-8 max-w-md mx-4">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
           <p className="text-center mt-4 text-gray-600 dark:text-gray-400">Loading invoice details...</p>
+          <p className="text-center mt-2 text-sm text-gray-500 dark:text-gray-500">Invoice #{invoice.invoice_number}</p>
         </div>
       </div>
     );
@@ -200,7 +347,15 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
               )}
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2">
+            <button
+              onClick={() => fetchDetailedInvoice()}
+              className="flex items-center space-x-2 px-4 py-2 bg-white/80 hover:bg-white text-blue-600 border border-blue-200 rounded-lg transition-colors"
+              title="Refresh invoice status"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Refresh</span>
+            </button>
             <button
               onClick={handlePrint}
               className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
@@ -258,7 +413,7 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
                 <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800">
                   <div className="space-y-2">
                     <div className="text-lg font-bold text-gray-900 dark:text-white">
-                      {detailedInvoice.customer_name}
+                      {sanitizeText(detailedInvoice.customer_name) || 'Unknown Customer'}
                     </div>
                     <div className="text-sm">
                       <span className="font-medium text-gray-700 dark:text-gray-300">Code:</span>
@@ -347,7 +502,7 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Invoice Date</span>
                 </div>
                 <div className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {new Date(detailedInvoice.invoice_date).toLocaleDateString()}
+                  {detailedInvoice?.invoice_date ? new Date(detailedInvoice.invoice_date).toLocaleDateString() : 'N/A'}
                 </div>
               </div>
 
@@ -357,7 +512,7 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Due Date</span>
                 </div>
                 <div className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {new Date(detailedInvoice.due_date).toLocaleDateString()}
+                  {detailedInvoice?.due_date ? new Date(detailedInvoice.due_date).toLocaleDateString() : 'N/A'}
                 </div>
               </div>
 
@@ -384,23 +539,29 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
                 </div>
                 <div className="flex flex-col space-y-1">
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    detailedInvoice.is_rejected 
-                      ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
-                      : detailedInvoice.status === 'paid' 
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+                  {detailedInvoice.is_rejected ? (
+                    <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300">
+                      REJECTED
+                    </span>
+                  ) : (
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                      isOverdue(detailedInvoice.invoice_date, detailedInvoice.payment_status)
+                        ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
                         : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
-                  }`}>
-                    {detailedInvoice.is_rejected ? 'REJECTED' : detailedInvoice.status.replace('_', ' ').toUpperCase()}
-                  </span>
+                    }`}>
+                      {isOverdue(detailedInvoice.invoice_date, detailedInvoice.payment_status)
+                        ? 'OVERDUE'
+                        : `DUE ${getOverdueDate(detailedInvoice.invoice_date)?.toLocaleDateString()}`}
+                    </span>
+                  )}
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    detailedInvoice.payment_status === 'paid' 
+                    detailedInvoice.payment_status === 'paid'
                       ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
                       : detailedInvoice.payment_status === 'partially_paid'
                         ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'
                         : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
                   }`}>
-                    {detailedInvoice.payment_status.replace('_', ' ').toUpperCase()}
+                    {(detailedInvoice.payment_status === 'overdue' ? 'UNPAID' : (detailedInvoice.payment_status || 'UNPAID')).replace(/_/g, ' ').toUpperCase()}
                   </span>
                 </div>
               </div>
@@ -688,4 +849,13 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
   );
 };
 
-export default InvoiceView;
+// Wrapped component with error boundary
+const InvoiceViewWithErrorBoundary: React.FC<InvoiceViewProps> = (props) => {
+  return (
+    <InvoiceViewErrorBoundary onError={props.onClose}>
+      <InvoiceView {...props} />
+    </InvoiceViewErrorBoundary>
+  );
+};
+
+export default InvoiceViewWithErrorBoundary;

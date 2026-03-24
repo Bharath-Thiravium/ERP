@@ -92,8 +92,25 @@ class CompanyScopedModelViewSet(viewsets.ModelViewSet):
             
         # Inject created_by if field exists
         if self.created_by_field_name and self._model_has_field(model, self.created_by_field_name):
-            save_kwargs[self.created_by_field_name] = service_user
-        
+            field = model._meta.get_field(self.created_by_field_name)
+            related_model = field.related_model
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            if related_model == User:
+                # Field expects a Django User — use the Django User who created the service user
+                save_kwargs[self.created_by_field_name] = service_user.created_by
+            else:
+                save_kwargs[self.created_by_field_name] = service_user
+
+        # Inject assigned_to if field exists and not already provided
+        if self._model_has_field(model, 'assigned_to'):
+            field = model._meta.get_field('assigned_to')
+            related_model = field.related_model
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            if related_model == User and 'assigned_to' not in serializer.validated_data:
+                save_kwargs['assigned_to'] = service_user.created_by
+
         serializer.save(**save_kwargs)
     
     def perform_update(self, serializer):

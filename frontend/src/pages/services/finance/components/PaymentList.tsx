@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, CreditCard, User, IndianRupee, Eye, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, CreditCard, User, IndianRupee, Eye, Edit, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 
 import { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
@@ -33,6 +33,17 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('-payment_date');
+
+  const handleSort = (field: string) => {
+    setSortBy(prev => prev === `-${field}` ? field : `-${field}`);
+    setCurrentPage(1);
+  };
+  const SortIcon = ({ field }: { field: string }) => (
+    sortBy === field ? <ChevronUp className="w-3 h-3 inline ml-1" /> :
+    sortBy === `-${field}` ? <ChevronDown className="w-3 h-3 inline ml-1" /> :
+    <ChevronUp className="w-3 h-3 inline ml-1 opacity-30" />
+  );
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -79,6 +90,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
       if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
       if (statusFilter) params.append('status', statusFilter);
       if (paymentMethodFilter) params.append('payment_method', paymentMethodFilter);
+      params.append('ordering', sortBy);
 
       const response = await apiClient.getFinancePayments(Object.fromEntries(params));
 
@@ -94,7 +106,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
 
   useEffect(() => {
     fetchPayments();
-  }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter, paymentMethodFilter]);
+  }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter, paymentMethodFilter, sortBy]);
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this payment?')) return;
@@ -223,10 +235,14 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <span onClick={() => handleSort('payment_number')} className="cursor-pointer hover:text-gray-700 select-none">Payment# <SortIcon field="payment_number" /></span>
+                    <span className="mx-1 text-gray-300">|</span>
+                    <span onClick={() => handleSort('payment_date')} className="cursor-pointer hover:text-gray-700 select-none">Date <SortIcon field="payment_date" /></span>
+                  </th>
+                  <th onClick={() => handleSort('customer_name')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none">Customer <SortIcon field="customer_name" /></th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                  <th onClick={() => handleSort('amount')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none">Amount <SortIcon field="amount" /></th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>

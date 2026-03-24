@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '../../../../lib/api'
-
-import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, Package, ShoppingCart, Receipt, CheckCircle, TrendingUp, XCircle, User } from 'lucide-react'
+import api from '../../../../lib/api'
 import MetricCard from './MetricCard'
 import toast from 'react-hot-toast'
+
+import { Search, Plus, Eye, Edit, Trash2, Filter, FileText, Package, ShoppingCart, Receipt, CheckCircle, TrendingUp, XCircle, User, RefreshCw, ChevronUp, ChevronDown } from 'lucide-react'
 
 interface PurchaseOrder {
   id: number
@@ -54,6 +55,17 @@ interface PurchaseOrderListProps {
 const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCreateNew, onEdit, onView, onViewDetails, onRaiseInvoice, onDelete }) => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
+  const [sortBy, setSortBy] = useState('-po_date')
+
+  const handleSort = (field: string) => {
+    setSortBy(prev => prev === `-${field}` ? field : `-${field}`)
+    setCurrentPage(1)
+  }
+  const SortIcon = ({ field }: { field: string }) => (
+    sortBy === field ? <ChevronUp className="w-3 h-3 inline ml-1" /> :
+    sortBy === `-${field}` ? <ChevronDown className="w-3 h-3 inline ml-1" /> :
+    <ChevronUp className="w-3 h-3 inline ml-1 opacity-30" />
+  )
   const [searching, setSearching] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
@@ -70,6 +82,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
     totalValue: 0,
     avgDealSize: 0
   })
+  const [updatingStatuses, setUpdatingStatuses] = useState(false)
 
   // Debounce search term and reset pagination
   useEffect(() => {
@@ -103,7 +116,8 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
         page: page.toString(),
         session_key: sessionKey,
         ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
-        ...(statusFilter && { status: statusFilter })
+        ...(statusFilter && { status: statusFilter }),
+        ordering: sortBy,
       })
 
       const response = await apiClient.getFinancePurchaseOrders(Object.fromEntries(new URLSearchParams(params)))
@@ -127,7 +141,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
       // Calculate metrics from all data, not just current page
       const total = response.data.count
       const draft = pos.filter((po: PurchaseOrder) => po.status === 'draft').length
-      const confirmed = pos.filter((po: PurchaseOrder) => po.status === 'confirmed').length
+      const confirmed = pos.filter((po: PurchaseOrder) => ['confirmed', 'in_progress'].includes(po.status)).length
       const cancelled = pos.filter((po: PurchaseOrder) => po.status === 'cancelled').length
       const totalValue = pos.reduce((sum: number, po: PurchaseOrder) => sum + parseFloat(po.total_amount || '0'), 0)
       const avgDealSize = total > 0 ? (totalValue / total) : 0
@@ -139,11 +153,35 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
     } finally {
       setLoading(false)
     }
-  }, [sessionKey, debouncedSearchTerm, statusFilter, currentPage])
+  }, [sessionKey, debouncedSearchTerm, statusFilter, currentPage, sortBy])
 
   useEffect(() => {
     fetchPurchaseOrders(currentPage)
   }, [currentPage, fetchPurchaseOrders])
+
+  const handleBulkStatusUpdate = async () => {
+    if (!sessionKey) {
+      toast.error('Session expired. Please login again.')
+      return
+    }
+    if (!confirm('Recalculate all PO statuses based on their actual invoice data? This will fix any status discrepancies.')) {
+      return
+    }
+    setUpdatingStatuses(true)
+    try {
+      const response = await api.post(
+        `/api/finance/purchase-orders/sync_statuses/?session_key=${sessionKey}`
+      )
+      const { synced, status_changed } = response.data
+      toast.success(`Synced ${synced} POs — ${status_changed} status(es) corrected`)
+      fetchPurchaseOrders(currentPage)
+    } catch (error) {
+      console.error('Error syncing PO statuses:', error)
+      toast.error('Failed to sync PO statuses')
+    } finally {
+      setUpdatingStatuses(false)
+    }
+  }
 
   const handleDelete = async (po: PurchaseOrder) => {
     if (!confirm(`Are you sure you want to delete PO ${po.internal_po_number}?`)) {
@@ -200,16 +238,34 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
       draft: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
       confirmed: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
       in_progress: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+      active: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+      partially_completed: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
       completed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-      cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+      cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+    }
+
+    const statusLabels = {
+      draft: 'Draft',
+      confirmed: 'Confirmed',
+      in_progress: 'In Progress',
+      active: 'Active',
+      partially_completed: 'Partially Completed',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
     }
 
     return (
       <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusColors[status as keyof typeof statusColors] || statusColors.draft}`}>
-        {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
+        {statusLabels[status as keyof typeof statusLabels] || status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
       </span>
     )
   }
+
+  const canRaiseInvoice = (status: string) => {
+    return ['confirmed', 'active', 'in_progress', 'partially_completed'].includes(status)
+  }
+
+
 
   const getGstTypeBadge = (gstType: string) => {
     const gstColors = {
@@ -346,16 +402,16 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
         <MetricCard
           title="Draft"
           value={metrics.draft}
-          subtitle={`${metrics.draft} in draft status`}
+          subtitle={`${metrics.draft} awaiting confirmation`}
           icon={Edit}
           color="orange"
         />
         <MetricCard
           title="Confirmed"
           value={metrics.confirmed}
-          subtitle={`${metrics.confirmed} orders confirmed`}
+          subtitle={`${metrics.confirmed} ready for invoicing`}
           icon={CheckCircle}
-          color="green"
+          color="blue"
         />
         <MetricCard
           title="Cancelled"
@@ -371,6 +427,40 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
           icon={TrendingUp}
           color="purple"
         />
+      </div>
+
+      {/* Status Management */}
+      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">PO Status Management</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              PO statuses are automatically managed based on invoice claims
+            </p>
+          </div>
+          <button
+            onClick={handleBulkStatusUpdate}
+            disabled={updatingStatuses}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${updatingStatuses ? 'animate-spin' : ''}`} />
+            {updatingStatuses ? 'Updating...' : 'Sync All Statuses'}
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+            <span><strong>Confirmed:</strong> No invoices raised yet</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+            <span><strong>In Progress:</strong> Partially claimed (&lt;100%)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+            <span><strong>Completed:</strong> Fully claimed (100%)</span>
+          </div>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -402,9 +492,8 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
               className="px-3 py-2 border border-gray-300/50 dark:border-gray-600/50 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white backdrop-blur-sm transition-all duration-200"
             >
               <option value="">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="in_progress">In Progress</option>
+              <option value="active">Active</option>
+              <option value="partially_completed">Partially Completed</option>
               <option value="completed">Completed</option>
               <option value="cancelled">Cancelled</option>
             </select>
@@ -438,23 +527,15 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                 <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700">
                   <tr>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                      PO Details
+                      <span onClick={() => handleSort('internal_po_number')} className="cursor-pointer hover:text-gray-900 dark:hover:text-white select-none">PO# <SortIcon field="internal_po_number" /></span>
+                      <span className="mx-1 text-gray-300">|</span>
+                      <span onClick={() => handleSort('po_date')} className="cursor-pointer hover:text-gray-900 dark:hover:text-white select-none">Date <SortIcon field="po_date" /></span>
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                      Customer
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                      Amount
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                      Actions
-                    </th>
+                    <th onClick={() => handleSort('customer_name')} className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 select-none">Customer <SortIcon field="customer_name" /></th>
+                    <th onClick={() => handleSort('po_date')} className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 select-none">Date <SortIcon field="po_date" /></th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                    <th onClick={() => handleSort('total_amount')} className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 select-none">Amount <SortIcon field="total_amount" /></th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white/50 dark:bg-gray-800/50 divide-y divide-gray-200/50 dark:divide-gray-700/50">
@@ -532,7 +613,24 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="space-y-1">
-                          {getStatusBadge(po.status)}
+                          <div className="flex items-center gap-2">
+                            {getStatusBadge(po.status)}
+                            {(po.status === 'confirmed' || po.status === 'active') && (
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+                                Ready for Invoice
+                              </span>
+                            )}
+                            {(po.status === 'in_progress' || po.status === 'partially_completed') && (
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
+                                Partially Claimed
+                              </span>
+                            )}
+                            {po.status === 'completed' && (
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                                100% Claimed
+                              </span>
+                            )}
+                          </div>
                           {getGstTypeBadge(po.gst_type)}
                         </div>
                       </td>
@@ -548,14 +646,32 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
-
-                          <button
-                            onClick={() => onRaiseInvoice(po)}
-                            className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
-                            title="Raise Invoice"
-                          >
-                            <Receipt className="w-4 h-4" />
-                          </button>
+                          {/* Raise Invoice Button - Only for appropriate statuses */}
+                          {canRaiseInvoice(po.status) ? (
+                            <button
+                              onClick={() => onRaiseInvoice(po)}
+                              className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
+                              title="Raise Invoice"
+                            >
+                              <Receipt className="w-4 h-4" />
+                            </button>
+                          ) : po.status === 'completed' ? (
+                            <button
+                              disabled
+                              className="text-gray-400 cursor-not-allowed"
+                              title="PO is 100% completed - no more invoices can be raised"
+                            >
+                              <Receipt className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              className="text-gray-400 cursor-not-allowed"
+                              title={`Cannot raise invoice for ${po.status} PO`}
+                            >
+                              <Receipt className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => onViewDetails(po)}
                             className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"

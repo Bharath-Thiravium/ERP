@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Check, X } from 'lucide-react'
+import { Plus, Check, X, Trash2 } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -57,11 +57,8 @@ const LeaveApplications: React.FC = () => {
     
     setLoading(true)
     try {
-      const response = await api.get('/api/hr/leave-applications/', {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
-      })
-      setApplications(response.data.results || [])
+      const response = await api.get('/api/hr/leave-applications/')
+      setApplications(response.data.results || response.data || [])
     } catch (error: any) {
       console.error('Error fetching applications:', error)
       toast.error('Failed to fetch leave applications')
@@ -74,11 +71,8 @@ const LeaveApplications: React.FC = () => {
     if (!sessionKey) return
     
     try {
-      const response = await api.get('/api/hr/leave-types/', {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
-      })
-      setLeaveTypes(response.data.results || [])
+      const response = await api.get('/api/hr/leave-types/')
+      setLeaveTypes(response.data.results || response.data || [])
     } catch (error: any) {
       console.error('Error fetching leave types:', error)
       toast.error('Failed to fetch leave types')
@@ -89,11 +83,8 @@ const LeaveApplications: React.FC = () => {
     if (!sessionKey) return
     
     try {
-      const response = await api.get('/api/hr/employees/', {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
-      })
-      setEmployees(response.data.results || [])
+      const response = await api.get('/api/hr/employees/')
+      setEmployees(response.data.results || response.data || [])
     } catch (error: any) {
       console.error('Error fetching employees:', error)
       toast.error('Failed to fetch employees')
@@ -122,9 +113,7 @@ const LeaveApplications: React.FC = () => {
         session_key: sessionKey
       }
       
-      await api.post('/api/hr/leave-applications/', payload, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
-      })
+      await api.post('/api/hr/leave-applications/', payload)
       
       toast.success('Leave application submitted successfully')
       setShowModal(false)
@@ -145,10 +134,7 @@ const LeaveApplications: React.FC = () => {
     if (!sessionKey) return
     
     try {
-      await api.post(`/api/hr/leave-applications/${id}/approve/`, 
-        { session_key: sessionKey },
-        { headers: { Authorization: `Bearer ${sessionKey}` } }
-      )
+      await api.post(`/api/hr/leave-applications/${id}/approve/`, {})
       toast.success('Leave approved successfully')
       fetchApplications()
     } catch (error: any) {
@@ -163,14 +149,35 @@ const LeaveApplications: React.FC = () => {
     if (!reason) return
     
     try {
-      await api.post(`/api/hr/leave-applications/${id}/reject/`, 
-        { reason, session_key: sessionKey },
-        { headers: { Authorization: `Bearer ${sessionKey}` } }
-      )
+      await api.post(`/api/hr/leave-applications/${id}/reject/`, { reason })
       toast.success('Leave rejected successfully')
       fetchApplications()
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to reject leave')
+    }
+  }
+
+  const handleCancel = async (id: number) => {
+    if (!sessionKey) return
+    if (!confirm('Cancel this leave application?')) return
+    try {
+      await api.post(`/api/hr/leave-applications/${id}/cancel/`, {})
+      toast.success('Leave cancelled')
+      fetchApplications()
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to cancel leave')
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    if (!sessionKey) return
+    if (!confirm('Delete this leave application?')) return
+    try {
+      await api.delete(`/api/hr/leave-applications/${id}/`)
+      toast.success('Leave application deleted')
+      fetchApplications()
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to delete')
     }
   }
 
@@ -245,24 +252,40 @@ const LeaveApplications: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-3">
-                        {app.status === 'pending' && (
-                          <div className="flex space-x-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleApprove(app.id)}
-                              className="bg-green-600 hover:bg-green-700"
+                        <div className="flex items-center gap-2">
+                          {app.status === 'pending' && (
+                            <>
+                              <button
+                                onClick={() => handleApprove(app.id)}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700"
+                              >
+                                <Check className="h-3 w-3" /> Approve
+                              </button>
+                              <button
+                                onClick={() => handleReject(app.id)}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700"
+                              >
+                                <X className="h-3 w-3" /> Reject
+                              </button>
+                            </>
+                          )}
+                          {(app.status === 'pending' || app.status === 'approved') && (
+                            <button
+                              onClick={() => handleCancel(app.id)}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-yellow-500 text-white hover:bg-yellow-600"
                             >
-                              <Check className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => handleReject(app.id)}
-                              className="bg-red-600 hover:bg-red-700"
+                              <X className="h-3 w-3" /> Cancel
+                            </button>
+                          )}
+                          {(app.status === 'rejected' || app.status === 'cancelled') && (
+                            <button
+                              onClick={() => handleDelete(app.id)}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-gray-500 text-white hover:bg-gray-600"
                             >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
+                              <Trash2 className="h-3 w-3" /> Delete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

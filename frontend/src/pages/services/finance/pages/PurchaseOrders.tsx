@@ -4,10 +4,10 @@ import { Plus } from 'lucide-react'
 import PurchaseOrderList from '../components/PurchaseOrderList'
 import PurchaseOrderForm from '../components/PurchaseOrderForm'
 import PurchaseOrderView from '../components/PurchaseOrderView'
-import PODetailsModal from '../components/SophisticatedPOModal'
+import PODetailsModal from '../components/PODetailsModal'
 import RaiseInvoiceModal from '../components/RaiseInvoiceModal'
 import SimpleProformaForm from '../components/SimpleProformaForm'
-import SimpleTaxInvoiceForm from '../components/SimpleTaxInvoiceForm'
+import DynamicTaxInvoiceForm from '../components/DynamicTaxInvoiceForm'
 
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { apiClient } from '../../../../lib/api'
@@ -403,10 +403,9 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
       )}
 
       {/* Tax Invoice Form */}
-      {showInvoiceForm && selectedPO && invoiceData && (
-        <SimpleTaxInvoiceForm
+      {showInvoiceForm && selectedPO && (
+        <DynamicTaxInvoiceForm
           purchaseOrder={selectedPO}
-          invoiceData={invoiceData}
           onClose={handleInvoiceFormClose}
           onSuccess={handleInvoiceSuccess}
         />

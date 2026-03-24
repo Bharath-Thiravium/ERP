@@ -69,15 +69,27 @@ def _ensure_numbering_rule(company, module):
     return rule
 
 
+# Maps each module to the date field in validated_data that should drive numbering
+_MODULE_DATE_FIELD = {
+    'quotation': 'quotation_date',
+    'purchase_order': 'po_date',
+    'proforma_invoice': 'proforma_date',
+    'invoice': 'invoice_date',
+    'customer_payment': 'payment_date',
+    'purchase_request': 'request_date',
+    'purchase_payment': 'payment_date',
+    'vendor_invoice': 'invoice_date',
+}
+
+
 def assign_number(validated_data, serializer, module, field_name, model_cls):
     """Assign or validate document number based on numbering rule with uniqueness check."""
     request = serializer.context.get('request')
     company, creator = _resolve_company_and_creator(request)
-    
-    # If company couldn't be resolved from request, try to get it from context directly
+
     if not company:
         company = serializer.context.get('company')
-    
+
     if not company:
         raise serializers.ValidationError({field_name: ['Company could not be determined for numbering']})
 
@@ -90,7 +102,6 @@ def assign_number(validated_data, serializer, module, field_name, model_cls):
         provided = None
 
     if provided:
-        # Manual entry - validate uniqueness
         if model_cls.objects.filter(company=company, **{field_name: provided}).exists():
             if field_name == 'invoice_number':
                 raise serializers.ValidationError({field_name: [f'Invoice number "{provided}" is already used. Please choose a different invoice number.']})
@@ -98,8 +109,10 @@ def assign_number(validated_data, serializer, module, field_name, model_cls):
                 raise serializers.ValidationError({field_name: [f'Document number "{provided}" already exists. Please use a different number.']})
         validated_data[field_name] = provided
     else:
-        # Auto-generate number (already checks for highest existing)
-        validated_data[field_name] = generate_number(company, module)
+        # Use the document's own date so {YY}/{FY} tokens reflect the actual document date
+        date_field = _MODULE_DATE_FIELD.get(module)
+        doc_date = validated_data.get(date_field) if date_field else None
+        validated_data[field_name] = generate_number(company, module, dt=doc_date)
 
     validated_data['company'] = company
     if creator and 'created_by' in [f.name for f in model_cls._meta.fields]:
@@ -460,13 +473,14 @@ class ProductListSerializer(serializers.ModelSerializer):
     hsn_code_display = serializers.CharField(source='hsn_code.code', read_only=True)
     sac_code_display = serializers.CharField(source='sac_code.code', read_only=True)
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    unit_ref_code = serializers.CharField(source='unit_ref.code', read_only=True, default='')
 
     class Meta:
         model = Product
         fields = [
             'id', 'product_code', 'name', 'product_type', 'description',
             'hsn_code_display', 'sac_code_display', 'gst_rate',
-            'unit', 'selling_price', 'purchase_price',
+            'unit', 'unit_ref_code', 'selling_price', 'purchase_price',
             'track_inventory', 'current_stock', 'minimum_stock',
             'is_active', 'created_at', 'created_by_name'
         ]
@@ -873,33 +887,59 @@ class QuotationCreateSerializer(serializers.ModelSerializer):
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
     """Serializer for PO items"""
     claimed_percentage = serializers.SerializerMethodField()
+    claimed_amount = serializers.SerializerMethodField()
+    rejected_claimed_amount = serializers.SerializerMethodField()
+    claimable_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = PurchaseOrderItem
         fields = [
             'id', 'product', 'product_name', 'product_code', 'description', 'hsn_sac_code',
-            'quantity', 'unit', 'unit_price', 'line_total', 'gst_rate', 'line_number', 'claimed_percentage'
+            'quantity', 'unit', 'unit_price', 'line_total', 'gst_rate', 'line_number',
+            'claimed_percentage', 'claimed_amount', 'rejected_claimed_amount', 'claimable_amount'
         ]
         read_only_fields = [
             'id', 'product_name', 'product_code', 'description', 'hsn_sac_code',
-            'line_total', 'gst_rate', 'unit', 'claimed_percentage'
+            'line_total', 'gst_rate', 'unit', 'claimed_percentage', 'claimed_amount',
+            'rejected_claimed_amount', 'claimable_amount'
         ]
-    
-    def get_claimed_percentage(self, obj):
-        """Calculate claimed percentage for this item from TAX INVOICES ONLY"""
+
+    def _get_item_amounts(self, obj):
+        """Return (active_claimed, rejected_claimed) for this PO item."""
         from decimal import Decimal
-        
-        total_claimed_percentage = Decimal('0')
-        
-        # ONLY count tax invoices - proforma invoices don't reduce item availability
+        active = Decimal('0')
+        rejected = Decimal('0')
         for invoice in obj.purchase_order.invoices.all():
             for inv_item in invoice.invoice_items.filter(product=obj.product):
-                # Calculate percentage of this item claimed in this tax invoice
-                if obj.line_total > 0:
-                    item_percentage = (inv_item.line_total / obj.line_total) * 100
-                    total_claimed_percentage += item_percentage
-        
-        return float(min(total_claimed_percentage, Decimal('100')))
+                if invoice.is_rejected:
+                    rejected += inv_item.line_total
+                else:
+                    active += inv_item.line_total
+        return active, rejected
+
+    def get_claimed_percentage(self, obj):
+        """Claimed % based on active (non-rejected) invoices only."""
+        from decimal import Decimal
+        if not obj.line_total:
+            return 0.0
+        active, _ = self._get_item_amounts(obj)
+        return float(min((active / obj.line_total) * 100, Decimal('100')))
+
+    def get_claimed_amount(self, obj):
+        """Amount claimed via active invoices."""
+        active, _ = self._get_item_amounts(obj)
+        return float(active)
+
+    def get_rejected_claimed_amount(self, obj):
+        """Amount claimed via rejected invoices (freed back up)."""
+        _, rejected = self._get_item_amounts(obj)
+        return float(rejected)
+
+    def get_claimable_amount(self, obj):
+        """Remaining claimable amount (PO item total minus active claimed)."""
+        from decimal import Decimal
+        active, _ = self._get_item_amounts(obj)
+        return float(max(obj.line_total - active, Decimal('0')))
 
 
 class PurchaseOrderListSerializer(serializers.ModelSerializer):
@@ -956,7 +996,7 @@ class PurchaseOrderListSerializer(serializers.ModelSerializer):
         total_claimed_percentage = Decimal('0')
         
         # ONLY count tax invoices - proforma invoices don't reduce item availability
-        for invoice in item.purchase_order.invoices.all():
+        for invoice in item.purchase_order.invoices.filter(is_rejected=False):
             for inv_item in invoice.invoice_items.filter(product=item.product):
                 if item.line_total > 0:
                     item_percentage = (inv_item.line_total / item.line_total) * 100
@@ -1323,7 +1363,7 @@ class ProformaInvoiceListSerializer(serializers.ModelSerializer):
         model = ProformaInvoice
         fields = [
             'id', 'proforma_number', 'proforma_date', 'due_date', 'customer_name', 'customer_code',
-            'customer_project_area', 'po_number', 'status', 'payment_status', 'paid_amount', 'outstanding_amount', 'gst_type',
+            'customer_project_area', 'po_number', 'payment_status', 'paid_amount', 'outstanding_amount', 'gst_type',
             'subtotal', 'total_tax', 'total_amount', 'item_count', 'proforma_items', 'is_rejected', 'rejection_reason',
             'is_revised', 'revision_count', 'revised_at', 'revised_by_name',
             'created_at', 'created_by_name', 'customer_shipping_addresses'
@@ -1963,8 +2003,10 @@ class InvoiceListSerializer(serializers.ModelSerializer):
             'customer_code', 'customer_project_area', 'customer_email', 'customer_phone',
             'proforma_number', 'purchase_order', 'quotation', 'payment_status', 'gst_type', 'subtotal', 'total_tax', 'total_amount',
             'paid_amount', 'outstanding_amount', 'item_count', 'is_rejected', 'rejection_reason',
-            'is_revised', 'revision_count', 'revised_at', 'revised_by_name', 'created_at',
-            'created_by_name', 'customer_shipping_addresses'
+            'is_work_completed', 'is_revised', 'revision_count', 'revised_at', 'revised_by_name', 'created_at',
+            'created_by_name', 'customer_shipping_addresses',
+            'gst_payment_status', 'gst_paid_date', 'gst_payment_reference',
+            'cgst_amount', 'sgst_amount', 'igst_amount'
         ]
 
     def get_purchase_order(self, obj):
@@ -1992,57 +2034,62 @@ class InvoiceListSerializer(serializers.ModelSerializer):
     def get_customer_shipping_addresses(self, obj):
         """Get invoice-specific shipping address and reference with PO/WO details"""
         addresses = []
-        
-        # Add the specific shipping address used in this invoice (if any)
+
+        # 1. Invoice-specific shipping address (highest priority)
         if obj.shipping_address:
             addresses.append({
                 'type': f'Invoice Shipping - {obj.shipping_address.label}' if obj.shipping_address.label else 'Invoice Shipping',
                 'address': obj.shipping_address.full_address,
                 'is_default': obj.shipping_address.is_default
             })
-        
-        # Add Purchase Order shipping address if invoice was created from PO
+
+        # 2. PO shipping address
         if obj.purchase_order and obj.purchase_order.shipping_address:
             addresses.append({
                 'type': f'PO Shipping - {obj.purchase_order.shipping_address.label}' if obj.purchase_order.shipping_address.label else 'PO Shipping Address',
                 'address': obj.purchase_order.shipping_address.full_address,
                 'is_default': False
             })
-        
-        # Add Quotation shipping address if invoice was created from quotation
+
+        # 3. Quotation shipping address
         if obj.quotation and obj.quotation.shipping_address:
             addresses.append({
                 'type': f'Quotation Shipping - {obj.quotation.shipping_address.label}' if obj.quotation.shipping_address.label else 'Quotation Shipping Address',
                 'address': obj.quotation.shipping_address.full_address,
                 'is_default': False
             })
-        
-        # Add invoice reference if available
-        if obj.reference:
-            addresses.append({
-                'type': 'Invoice Reference',
-                'address': obj.reference,
-                'is_default': False
-            })
-        
-        # If no specific shipping address or reference, show customer's default addresses
-        if not addresses and obj.customer:
-            # Add customer's primary shipping addresses
-            for addr in obj.customer.shipping_addresses.all()[:3]:  # Limit to 3 addresses
+
+        # 4. Customer shipping addresses — only when no invoice/PO/quotation shipping address exists
+        if obj.customer and not obj.shipping_address and not (obj.purchase_order and obj.purchase_order.shipping_address) and not (obj.quotation and obj.quotation.shipping_address):
+            for addr in obj.customer.shipping_addresses.all()[:3]:
                 addresses.append({
                     'type': f'Customer Shipping - {addr.label}' if addr.label else 'Customer Shipping',
                     'address': addr.full_address,
                     'is_default': addr.is_default
                 })
-        
-        # If still no addresses, show a message
+            # Billing address as final fallback
+            if obj.customer.full_billing_address:
+                addresses.append({
+                    'type': 'Billing Address',
+                    'address': obj.customer.full_billing_address,
+                    'is_default': False
+                })
+
+        # 5. Reference field (always shown if present)
+        if obj.reference:
+            addresses.append({
+                'type': 'Reference',
+                'address': obj.reference,
+                'is_default': False
+            })
+
         if not addresses:
             addresses.append({
                 'type': 'No shipping details',
-                'address': 'No shipping address or reference specified for this invoice',
+                'address': 'No shipping address specified for this invoice',
                 'is_default': False
             })
-        
+
         return addresses
 
 class InvoiceDetailSerializer(serializers.ModelSerializer):
@@ -2069,8 +2116,10 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
             'gst_type', 'subtotal', 'total_tax', 'total_amount', 'cgst_amount', 'sgst_amount', 
             'igst_amount', 'discount_percentage', 'discount_amount', 'shipping_charges', 
             'other_charges', 'payment_status', 'paid_amount', 'outstanding_amount', 
-            'notes', 'terms_and_conditions', 'payment_terms', 'invoice_items', 'created_at', 
-            'created_by_name'
+            'notes', 'terms_and_conditions', 'payment_terms', 'invoice_items', 'is_rejected',
+            'is_work_completed', 'created_at', 'created_by_name',
+            'gst_payment_status', 'gst_paid_date', 'gst_payment_reference',
+            'cgst_amount', 'sgst_amount', 'igst_amount', 'total_tax'
         ]
     
     def get_company_name(self, obj):
@@ -2174,14 +2223,15 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
     claim_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=0)
     selected_items = serializers.DictField(required=False)
     item_percentages = serializers.DictField(required=False)
+    item_claim_methods = serializers.DictField(required=False)
 
     class Meta:
         model = Invoice
         fields = [
             'purchase_order', 'quotation', 'customer', 'invoice_date', 'due_date', 'reference',
             'shipping_address', 'discount_percentage', 'discount_amount',
-            'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions', 'status',
-            'claim_type', 'claim_percentage', 'selected_items', 'item_percentages', 'invoice_items',
+            'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions',
+            'claim_type', 'claim_percentage', 'selected_items', 'item_percentages', 'item_claim_methods', 'invoice_items',
             'invoice_number'
         ]
         extra_kwargs = {
@@ -2594,6 +2644,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         claim_percentage = validated_data.pop('claim_percentage', 0)
         selected_items = validated_data.pop('selected_items', {})
         item_percentages = validated_data.pop('item_percentages', {})
+        item_claim_methods = validated_data.pop('item_claim_methods', {})
         validated_data.pop('invoice_items', None)  # Remove direct items for PO-based creation
 
         # Set customer and GST information from purchase order
@@ -2620,7 +2671,50 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         # WORLD-CLASS SOPHISTICATED CLAIMING LOGIC
         items_to_create = []
         
-        if claim_type == 'quantity' and selected_items:
+        # DYNAMIC CLAIMING: Use item_claim_methods if provided
+        if item_claim_methods:
+            for po_item in purchase_order.po_items.all():
+                item_id_str = str(po_item.id)
+                claim_method = item_claim_methods.get(item_id_str, 'quantity')
+                
+                if claim_method == 'quantity' and item_id_str in selected_items and selected_items[item_id_str] > 0:
+                    selected_quantity = Decimal(str(selected_items[item_id_str]))
+                    claim_line_total = selected_quantity * po_item.unit_price
+
+                    items_to_create.append(InvoiceItem(
+                        invoice=invoice,
+                        product=po_item.product,
+                        product_name=po_item.product_name,
+                        product_code=po_item.product_code,
+                        description=po_item.description,
+                        hsn_sac_code=po_item.hsn_sac_code,
+                        quantity=selected_quantity,
+                        unit=po_item.unit,
+                        unit_price=po_item.unit_price,
+                        line_total=claim_line_total,
+                        gst_rate=po_item.gst_rate,
+                        line_number=po_item.line_number
+                    ))
+                elif claim_method == 'percentage' and item_id_str in item_percentages and float(item_percentages[item_id_str]) > 0:
+                    item_percentage = Decimal(str(item_percentages[item_id_str]))
+                    claim_line_total = (po_item.line_total * item_percentage) / Decimal('100')
+                    claim_quantity = (po_item.quantity * item_percentage) / Decimal('100')
+
+                    items_to_create.append(InvoiceItem(
+                        invoice=invoice,
+                        product=po_item.product,
+                        product_name=po_item.product_name,
+                        product_code=po_item.product_code,
+                        description=po_item.description,
+                        hsn_sac_code=po_item.hsn_sac_code,
+                        quantity=claim_quantity,
+                        unit=po_item.unit,
+                        unit_price=po_item.unit_price,
+                        line_total=claim_line_total,
+                        gst_rate=po_item.gst_rate,
+                        line_number=po_item.line_number
+                    ))
+        elif claim_type == 'quantity' and selected_items:
             # QUANTITY-BASED CLAIMING: Create invoice for selected quantities
             for po_item in purchase_order.po_items.all():
                 item_id_str = str(po_item.id)
@@ -2740,13 +2834,19 @@ class InvoiceUpdateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
+    # PO-based claiming fields
+    selected_items = serializers.DictField(required=False, write_only=True)
+    item_percentages = serializers.DictField(required=False, write_only=True)
+    item_claim_methods = serializers.DictField(required=False, write_only=True)
+    claim_type = serializers.CharField(required=False, write_only=True)
 
     class Meta:
         model = Invoice
         fields = [
             'customer', 'invoice_number', 'invoice_date', 'due_date', 'reference', 'shipping_address',
             'discount_percentage', 'discount_amount', 'shipping_charges',
-            'other_charges', 'notes', 'terms_and_conditions', 'status', 'invoice_items'
+            'other_charges', 'notes', 'terms_and_conditions', 'invoice_items',
+            'selected_items', 'item_percentages', 'item_claim_methods', 'claim_type'
         ]
 
     def validate(self, data):
@@ -2774,23 +2874,24 @@ class InvoiceUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         from decimal import Decimal
-        
-        # Extract invoice items data
+
+        # Extract PO-claiming fields
         invoice_items_data = validated_data.pop('invoice_items', None)
-        
+        selected_items = validated_data.pop('selected_items', None)
+        item_percentages = validated_data.pop('item_percentages', None)
+        item_claim_methods = validated_data.pop('item_claim_methods', None)
+        validated_data.pop('claim_type', None)
+
         # Update customer and recalculate GST information if customer changed
         if 'customer' in validated_data:
             customer = validated_data['customer']
             company = instance.company
-            
-            # Recalculate GST type and GSTIN information
             if customer.gstin and hasattr(company, 'gst_number') and company.gst_number:
                 customer_state_code = customer.gstin[:2]
                 company_state_code = company.gst_number[:2]
                 validated_data['gst_type'] = 'cgst_sgst' if customer_state_code == company_state_code else 'igst'
             else:
                 validated_data['gst_type'] = 'exempt'
-            
             validated_data['customer_gstin'] = customer.gstin or ''
             validated_data['company_gstin'] = getattr(company, 'gst_number', '') or ''
 
@@ -2799,31 +2900,73 @@ class InvoiceUpdateSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
 
-        # Update invoice items if provided
-        if invoice_items_data is not None:
-            # Delete existing items
+        # PO-based claiming: rebuild items from PO using claim methods
+        if item_claim_methods and instance.purchase_order:
+            purchase_order = instance.purchase_order
             instance.invoice_items.all().delete()
+            items_to_create = []
+            for po_item in purchase_order.po_items.all():
+                item_id_str = str(po_item.id)
+                claim_method = item_claim_methods.get(item_id_str, 'quantity')
 
-            # Create new items
+                if claim_method == 'quantity' and selected_items and item_id_str in selected_items:
+                    qty = Decimal(str(selected_items[item_id_str]))
+                    if qty <= 0:
+                        continue
+                    line_total = qty * po_item.unit_price
+                    items_to_create.append(InvoiceItem(
+                        invoice=instance,
+                        product=po_item.product,
+                        product_name=po_item.product_name,
+                        product_code=po_item.product_code,
+                        description=po_item.description,
+                        hsn_sac_code=po_item.hsn_sac_code,
+                        quantity=qty,
+                        unit=po_item.unit,
+                        unit_price=po_item.unit_price,
+                        line_total=line_total,
+                        gst_rate=po_item.gst_rate,
+                        line_number=po_item.line_number
+                    ))
+                elif claim_method == 'percentage' and item_percentages and item_id_str in item_percentages:
+                    pct = Decimal(str(item_percentages[item_id_str]))
+                    if pct <= 0:
+                        continue
+                    line_total = (po_item.line_total * pct) / Decimal('100')
+                    qty = (po_item.quantity * pct) / Decimal('100')
+                    items_to_create.append(InvoiceItem(
+                        invoice=instance,
+                        product=po_item.product,
+                        product_name=po_item.product_name,
+                        product_code=po_item.product_code,
+                        description=po_item.description,
+                        hsn_sac_code=po_item.hsn_sac_code,
+                        quantity=qty,
+                        unit=po_item.unit,
+                        unit_price=po_item.unit_price,
+                        line_total=line_total,
+                        gst_rate=po_item.gst_rate,
+                        line_number=po_item.line_number
+                    ))
+            if items_to_create:
+                InvoiceItem.objects.bulk_create(items_to_create)
+
+        # Direct mode: replace items from invoice_items list
+        elif invoice_items_data is not None:
+            instance.invoice_items.all().delete()
             items_to_create = []
             for index, item_data in enumerate(invoice_items_data, 1):
                 product_id = item_data.get('product')
                 quantity = item_data.get('quantity', 1)
                 unit_price = item_data.get('unit_price', 0)
-
                 try:
                     product = Product.objects.get(id=product_id)
-
-                    # Calculate line total
                     line_total = Decimal(str(quantity)) * Decimal(str(unit_price))
-
-                    # Get HSN/SAC code
                     hsn_sac_code = ''
                     if product.hsn_code:
                         hsn_sac_code = product.hsn_code.code
                     elif product.sac_code:
                         hsn_sac_code = product.sac_code.code
-
                     items_to_create.append(InvoiceItem(
                         invoice=instance,
                         product=product,
@@ -2840,13 +2983,9 @@ class InvoiceUpdateSerializer(serializers.ModelSerializer):
                     ))
                 except Product.DoesNotExist:
                     continue
-
-            # Use bulk_create to avoid individual save() calls
             InvoiceItem.objects.bulk_create(items_to_create)
 
-        # Recalculate totals after items are updated
         instance.calculate_totals()
-
         return instance
 
 
@@ -2863,7 +3002,11 @@ class PaymentListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'payment_number', 'payment_date', 'amount', 'payment_method',
             'customer_name', 'customer_code', 'invoice_number', 'reference_number',
-            'bank_name', 'status', 'created_at', 'created_by_name'
+            'bank_name', 'status', 'created_at', 'created_by_name',
+            'gross_payment_amount', 'tds_applicable', 'tds_rate', 'tds_amount',
+            'tds_section', 'net_amount_received',
+            'tds_deposited', 'tds_certificate_received',
+            'form16a_number', 'tds_deposited_date', 'tds_challan_number',
         ]
 
 
@@ -2884,10 +3027,20 @@ class PaymentDetailSerializer(serializers.ModelSerializer):
             'invoice_number', 'invoice_type', 'reference_number', 'bank_name',
             'notes', 'status', 'created_at', 'created_by_name',
             # TDS fields
-            'tds_amount', 'tds_percentage', 'tds_section', 'net_amount_received',
-            'tds_certificate_number', 'tds_certificate_date', 'is_tds_received'
+            'tds_amount', 'tds_rate', 'tds_section', 'net_amount_received',
+            'tds_certificate_received', 'form16a_number',
+            # CA-level TDS tracking fields
+            'ca_name', 'ca_firm', 'ca_membership_number', 'submitted_to_ca_date',
+            'ca_acknowledgment_number', 'ca_submission_status', 'ca_notes',
+            # New CA-level fields
+            'gross_payment_amount', 'tds_applicable', 'tds_deposited',
         ]
-    
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['tds_percentage'] = ret.get('tds_rate', 0)
+        return ret
+
     def get_invoice_number(self, obj):
         """Get invoice number (either tax invoice or proforma)"""
         if obj.invoice:
@@ -2908,7 +3061,13 @@ class PaymentDetailSerializer(serializers.ModelSerializer):
 class PaymentCreateSerializer(serializers.ModelSerializer):
     """World-Class Payment Creation with TDS Support"""
     payment_number = serializers.CharField(required=False, allow_blank=True)
-    
+    amount = serializers.DecimalField(max_digits=15, decimal_places=2, required=False, allow_null=True)
+    ca_name = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    ca_firm = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    ca_membership_number = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    ca_acknowledgment_number = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    ca_notes = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+
     # Make proforma_invoice optional and handle null values
     proforma_invoice = serializers.PrimaryKeyRelatedField(
         queryset=ProformaInvoice.objects.all(),
@@ -2927,24 +3086,54 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
         fields = [
             'invoice', 'proforma_invoice', 'payment_date', 'amount', 'payment_method',
             'reference_number', 'bank_name', 'notes', 'status',
-            # World-Class TDS Fields
-            'tds_amount', 'tds_percentage', 'tds_section', 'net_amount_received',
-            'tds_certificate_number', 'tds_certificate_date', 'is_tds_received',
+            # TDS Fields
+            'tds_amount', 'tds_rate', 'tds_section', 'net_amount_received',
+            'tds_certificate_received', 'form16a_number',
+            # CA-level TDS tracking fields
+            'ca_name', 'ca_firm', 'ca_membership_number', 'submitted_to_ca_date',
+            'ca_acknowledgment_number', 'ca_submission_status', 'ca_notes',
             'payment_number'
         ]
 
     def validate_amount(self, value):
         """Validate payment amount"""
-        if value <= 0:
+        if value is not None and value <= 0:
             raise serializers.ValidationError("Payment amount must be greater than 0")
         return value
 
     def to_internal_value(self, data):
         """Override to handle conflicting invoice fields before validation"""
-        # Create a mutable copy of the data
-        if hasattr(data, '_mutable'):
-            data._mutable = True
-        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"[PaymentCreateSerializer] raw incoming data: {dict(data) if hasattr(data, 'items') else data}")
+
+        try:
+            data = data.copy() if hasattr(data, 'copy') else dict(data)
+        except Exception:
+            data = dict(data)
+
+        # Map gross_payment_amount -> amount for frontend compatibility
+        if 'gross_payment_amount' in data and 'amount' not in data:
+            data['amount'] = data['gross_payment_amount']
+
+        # Map tds_percentage -> tds_rate for frontend compatibility
+        if 'tds_percentage' in data:
+            data['tds_rate'] = data.pop('tds_percentage')
+
+        # Strip empty string values for optional numeric/date fields only
+        for field in ('tds_amount', 'tds_rate', 'net_amount_received', 'submitted_to_ca_date'):
+            if field in data and (data[field] == '' or data[field] is None):
+                data.pop(field)
+
+        # Coerce None CA fields to empty string
+        for field in ('ca_name', 'ca_firm', 'ca_membership_number', 'ca_acknowledgment_number', 'ca_notes'):
+            if data.get(field) is None:
+                data[field] = ''
+
+        # Strip unknown frontend-only fields
+        for field in ('tds_certificate_number', 'tds_certificate_date', 'is_tds_received', 'invoice_type', 'session_key'):
+            data.pop(field, None)
+
         # Clean up empty or invalid invoice fields
         if 'invoice' in data and (not data['invoice'] or data['invoice'] == '' or data['invoice'] == 'null'):
             data.pop('invoice', None)
@@ -2953,15 +3142,12 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
             data.pop('proforma_invoice', None)
         
         return super().to_internal_value(data)
-    
+
     def validate(self, attrs):
         """Cross-field validation"""
         invoice = attrs.get('invoice')
         proforma_invoice = attrs.get('proforma_invoice')
         amount = attrs.get('amount')
-
-        # Debug logging
-        print(f"Payment validation - invoice: {invoice}, proforma_invoice: {proforma_invoice}")
 
         # Ensure payment is linked to either invoice or proforma invoice
         if not invoice and not proforma_invoice:
@@ -2974,6 +3160,13 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Payment cannot be linked to both Invoice and Proforma Invoice"
             )
+
+        import logging
+        logging.getLogger(__name__).error(f"[PaymentCreateSerializer.validate] attrs={attrs}")
+
+        # Ensure amount is provided
+        if not amount:
+            raise serializers.ValidationError({"amount": "Payment amount is required and must be greater than 0"})
 
         # Validate payment amount against outstanding amount (allow 1 rupee tolerance for rounding)
         if invoice and amount:
@@ -3032,8 +3225,8 @@ class PaymentUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'payment_date', 'amount', 'payment_method', 'reference_number',
             'bank_name', 'notes', 'status',
-            'tds_amount', 'tds_percentage', 'tds_section', 'net_amount_received',
-            'tds_certificate_number', 'tds_certificate_date', 'is_tds_received'
+            'tds_amount', 'tds_rate', 'tds_section', 'net_amount_received',
+            'tds_certificate_received', 'form16a_number'
         ]
 
     def update(self, instance, validated_data):
@@ -3052,7 +3245,13 @@ class PaymentUpdateSerializer(serializers.ModelSerializer):
 # World-Class Payment Serializers
 class WorldClassPaymentCreateSerializer(serializers.ModelSerializer):
     """World-Class Payment Creation - Links payments to specific invoice numbers"""
-    
+    amount = serializers.DecimalField(max_digits=15, decimal_places=2, required=False, allow_null=True)
+    ca_name = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    ca_firm = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    ca_membership_number = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    ca_acknowledgment_number = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    ca_notes = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+
     # Make proforma_invoice optional and handle null values
     proforma_invoice = serializers.PrimaryKeyRelatedField(
         queryset=ProformaInvoice.objects.all(),
@@ -3072,17 +3271,45 @@ class WorldClassPaymentCreateSerializer(serializers.ModelSerializer):
             'customer', 'purchase_order', 'invoice', 'proforma_invoice',
             'payment_date', 'amount', 'payment_method', 'reference_number',
             'transaction_id', 'bank_name', 'notes', 'status',
-            # World-Class TDS Fields
-            'tds_amount', 'tds_percentage', 'tds_section', 'net_amount_received',
-            'tds_certificate_number', 'tds_certificate_date', 'is_tds_received'
+            # TDS Fields
+            'tds_amount', 'tds_rate', 'tds_section', 'net_amount_received',
+            'tds_certificate_received', 'form16a_number',
+            # CA-level TDS tracking fields
+            'ca_name', 'ca_firm', 'ca_membership_number', 'submitted_to_ca_date',
+            'ca_acknowledgment_number', 'ca_submission_status', 'ca_notes',
+            # New CA-level fields
+            'gross_payment_amount', 'tds_applicable', 'tds_deposited',
         ]
 
     def to_internal_value(self, data):
         """Override to handle non-existent invoice IDs before validation"""
-        # Create a mutable copy of the data
-        if hasattr(data, '_mutable'):
-            data._mutable = True
-        
+        try:
+            data = data.copy() if hasattr(data, 'copy') else dict(data)
+        except Exception:
+            data = dict(data)
+
+        # Map gross_payment_amount -> amount for frontend compatibility
+        if 'gross_payment_amount' in data and 'amount' not in data:
+            data['amount'] = data['gross_payment_amount']
+
+        # Map tds_percentage -> tds_rate for frontend compatibility
+        if 'tds_percentage' in data:
+            data['tds_rate'] = data.pop('tds_percentage')
+
+        # Strip empty string values for optional numeric/date fields only
+        for field in ('tds_amount', 'tds_rate', 'net_amount_received', 'submitted_to_ca_date'):
+            if field in data and (data[field] == '' or data[field] is None):
+                data.pop(field)
+
+        # Coerce None CA fields to empty string
+        for field in ('ca_name', 'ca_firm', 'ca_membership_number', 'ca_acknowledgment_number', 'ca_notes'):
+            if data.get(field) is None:
+                data[field] = ''
+
+        # Strip unknown frontend-only fields
+        for field in ('tds_certificate_number', 'tds_certificate_date', 'is_tds_received', 'invoice_type', 'session_key'):
+            data.pop(field, None)
+
         # If proforma_invoice is provided, check if it exists before field validation
         if data.get('proforma_invoice'):
             try:
@@ -3165,7 +3392,7 @@ class WorldClassPaymentCreateSerializer(serializers.ModelSerializer):
 
     def validate_amount(self, value):
         """Validate payment amount"""
-        if value <= 0:
+        if value is not None and value <= 0:
             raise serializers.ValidationError("Payment amount must be greater than 0")
         return value
 
@@ -3194,9 +3421,14 @@ class WorldClassPaymentListSerializer(serializers.ModelSerializer):
             'reference_number', 'transaction_id', 'bank_name', 'status',
             'created_at',
             # World-Class TDS Fields
-            'tds_amount', 'tds_percentage', 'tds_section', 'net_amount_received',
-            'tds_certificate_number', 'tds_certificate_date', 'is_tds_received'
+            'tds_amount', 'tds_rate', 'tds_section', 'net_amount_received',
+            'tds_certificate_received', 'form16a_number'
         ]
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['tds_percentage'] = ret.get('tds_rate', 0)
+        return ret
 
     def get_invoice_number(self, obj):
         """Get invoice number (either tax invoice or proforma)"""

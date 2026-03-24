@@ -140,6 +140,65 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
     queryFn: () => apiClient.getMasterAdminProfile(),
   })
 
+  // System monitoring queries
+  const { data: systemOverview, isLoading: systemLoading } = useQuery({
+    queryKey: ['system-overview'],
+    queryFn: () => apiClient.get('/api/analytics/system-overview/'),
+    refetchInterval: 300000,
+  })
+
+  const { data: serviceMetrics } = useQuery({
+    queryKey: ['service-metrics'],
+    queryFn: () => apiClient.get('/api/analytics/service-metrics/'),
+    refetchInterval: 300000,
+  })
+
+  const { data: systemAlerts, refetch: refetchAlerts } = useQuery({
+    queryKey: ['system-alerts'],
+    queryFn: () => apiClient.get('/api/analytics/system-alerts/'),
+    refetchInterval: 300000,
+  })
+
+  const [realtimeAlerts, setRealtimeAlerts] = useState<any[]>([])
+
+  // WebSocket for real-time system monitoring
+  const { isConnected: systemWsConnected } = useWebSocket('system-monitor/', {
+    onMessage: (data) => {
+      if (data.type === 'system_update') {
+        setRealTimeData(data.data)
+      }
+    },
+    onOpen: () => {
+      setWsConnected(true)
+      console.log('System monitor WebSocket connected')
+    },
+    onClose: () => {
+      setWsConnected(false)
+      console.log('System monitor WebSocket disconnected')
+    },
+    onError: (error) => {
+      console.error('System monitor WebSocket error:', error)
+    }
+  })
+
+  // WebSocket for real-time alerts
+  const { isConnected: alertsWsConnected } = useWebSocket('alerts/', {
+    onMessage: (data) => {
+      if (data.type === 'alert') {
+        setRealtimeAlerts(prev => [data.message, ...prev.slice(0, 9)])
+        toast.error(`System Alert: ${data.message.title}`)
+      }
+    },
+    onOpen: () => {}
+  })
+
+  // Derived data
+  const systemData = systemOverview?.data || {}
+  const serviceData = serviceMetrics?.data || {}
+  const currentSystemData = realTimeData || systemData
+  const alertsData = systemAlerts?.data?.alerts || []
+  const allAlerts = [...realtimeAlerts, ...alertsData]
+
   const companiesData = companies?.data?.results || []
   const notificationsData = notifications?.data?.results || []
   const servicesData = services?.data?.results || []
@@ -716,45 +775,6 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
     </div>
   )
 
-  // Fetch system monitoring data
-  const { data: systemOverview, isLoading: systemLoading } = useQuery({
-    queryKey: ['system-overview'],
-    queryFn: () => apiClient.get('/api/analytics/system-overview/'),
-    refetchInterval: 300000, // Refresh every 5 minutes
-  })
-
-  const { data: serviceMetrics } = useQuery({
-    queryKey: ['service-metrics'],
-    queryFn: () => apiClient.get('/api/analytics/service-metrics/'),
-    refetchInterval: 300000, // Refresh every 5 minutes
-  })
-
-  const systemData = systemOverview?.data || {}
-  const serviceData = serviceMetrics?.data || {}
-
-  // WebSocket for real-time system monitoring
-  const { isConnected: systemWsConnected } = useWebSocket('system-monitor/', {
-    onMessage: (data) => {
-      if (data.type === 'system_update') {
-        setRealTimeData(data.data)
-      }
-    },
-    onOpen: () => {
-      setWsConnected(true)
-      console.log('System monitor WebSocket connected')
-    },
-    onClose: () => {
-      setWsConnected(false)
-      console.log('System monitor WebSocket disconnected')
-    },
-    onError: (error) => {
-      console.error('System monitor WebSocket error:', error)
-    }
-  })
-
-  // Use real-time data if available, fallback to API data
-  const currentSystemData = realTimeData || systemData
-
   // System Monitoring Section
   const renderSystemMonitoringSection = () => (
     <div className="space-y-6">
@@ -964,7 +984,7 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
               </div>
               <div className="p-6">
                 <div className="space-y-6">
-                  {serviceData.companies.map((company: any) => (
+                  {(serviceData.companies || []).map((company: any) => (
                     <div key={company.company_id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-4">
                         <h4 className="text-lg font-medium text-gray-900 dark:text-white">{company.company_name}</h4>
@@ -978,15 +998,15 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
                           <div className="space-y-2 text-xs">
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Invoices</span>
-                              <span className="font-medium">{company.finance.total_invoices}</span>
+                              <span className="font-medium">{company.finance?.total_invoices ?? 0}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Pending</span>
-                              <span className="font-medium text-yellow-600">{company.finance.pending_payments}</span>
+                              <span className="font-medium text-yellow-600">{company.finance?.pending_payments ?? 0}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Revenue</span>
-                              <span className="font-medium text-green-600">₹{company.finance.total_revenue.toLocaleString()}</span>
+                              <span className="font-medium text-green-600">₹{(company.finance?.total_revenue ?? 0).toLocaleString()}</span>
                             </div>
                           </div>
                         </div>
@@ -997,15 +1017,15 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
                           <div className="space-y-2 text-xs">
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Employees</span>
-                              <span className="font-medium">{company.hr.total_employees}</span>
+                              <span className="font-medium">{company.hr?.total_employees ?? 0}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Present</span>
-                              <span className="font-medium text-green-600">{company.hr.present_today}</span>
+                              <span className="font-medium text-green-600">{company.hr?.present_today ?? 0}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">On Leave</span>
-                              <span className="font-medium text-orange-600">{company.hr.on_leave}</span>
+                              <span className="font-medium text-orange-600">{company.hr?.on_leave ?? 0}</span>
                             </div>
                           </div>
                         </div>
@@ -1016,15 +1036,15 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
                           <div className="space-y-2 text-xs">
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Products</span>
-                              <span className="font-medium">{company.inventory.total_products}</span>
+                              <span className="font-medium">{company.inventory?.total_products ?? 0}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Low Stock</span>
-                              <span className="font-medium text-red-600">{company.inventory.low_stock_items}</span>
+                              <span className="font-medium text-red-600">{company.inventory?.low_stock_items ?? 0}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Out of Stock</span>
-                              <span className="font-medium text-red-600">{company.inventory.out_of_stock}</span>
+                              <span className="font-medium text-red-600">{company.inventory?.out_of_stock ?? 0}</span>
                             </div>
                           </div>
                         </div>
@@ -1039,31 +1059,6 @@ const EnhancedMasterAdminDashboard: React.FC = () => {
       )}
     </div>
   )
-
-  // Fetch system alerts
-  const { data: systemAlerts, refetch: refetchAlerts } = useQuery({
-    queryKey: ['system-alerts'],
-    queryFn: () => apiClient.get('/api/analytics/system-alerts/'),
-    refetchInterval: 300000, // Refresh every 5 minutes
-  })
-
-  const [realtimeAlerts, setRealtimeAlerts] = useState<any[]>([])
-
-  // WebSocket for real-time alerts
-  const { isConnected: alertsWsConnected } = useWebSocket('alerts/', {
-    onMessage: (data) => {
-      if (data.type === 'alert') {
-        setRealtimeAlerts(prev => [data.message, ...prev.slice(0, 9)]) // Keep last 10 alerts
-        toast.error(`System Alert: ${data.message.title}`)
-      }
-    },
-    onOpen: () => {
-      // WebSocket connected
-    }
-  })
-
-  const alertsData = systemAlerts?.data?.alerts || []
-  const allAlerts = [...realtimeAlerts, ...alertsData]
 
   // Alert Center Section
   const renderAlertCenterSection = () => (

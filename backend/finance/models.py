@@ -2175,6 +2175,19 @@ class Invoice(models.Model):
         help_text="Type of invoice"
     )
 
+    # GST Payment Tracking
+    GST_PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('paid', 'Paid'),
+        ('not_applicable', 'Not Applicable'),
+    ]
+    gst_payment_status = models.CharField(
+        max_length=20, choices=GST_PAYMENT_STATUS_CHOICES, default='pending',
+        help_text="Whether GST collected on this invoice has been remitted to government"
+    )
+    gst_paid_date = models.DateField(null=True, blank=True, help_text="Date GST was remitted to government")
+    gst_payment_reference = models.CharField(max_length=100, blank=True, help_text="Challan/reference number for GST payment")
+
     # Notes
     notes = models.TextField(blank=True)
     terms_and_conditions = models.TextField(blank=True)
@@ -2195,6 +2208,7 @@ class Invoice(models.Model):
     # Rejection tracking fields
     is_rejected = models.BooleanField(default=False, help_text="Whether this invoice has been rejected")
     rejection_reason = models.TextField(blank=True, null=True, help_text="Reason for rejection")
+    is_work_completed = models.BooleanField(default=False, help_text="Whether the work/service for this invoice has been completed")
     rejected_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='rejected_invoices')
     rejected_at = models.DateTimeField(null=True, blank=True, help_text="When this invoice was rejected")
     
@@ -2219,6 +2233,8 @@ class Invoice(models.Model):
         return escape(f"{self.invoice_number} - {self.customer.name}")
 
     def save(self, *args, **kwargs):
+        update_fields = kwargs.get('update_fields')
+
         # Generate invoice number if not provided
         if not self.invoice_number:
             try:
@@ -2252,24 +2268,26 @@ class Invoice(models.Model):
                 else:
                     self.invoice_number = f"INV-{timezone.now().year}-000001"
 
-        # Calculate outstanding amount
-        from decimal import Decimal
-        # Ensure both values are Decimal
-        total_amount = Decimal(str(self.total_amount)) if self.total_amount is not None else Decimal('0')
-        paid_amount = Decimal(str(self.paid_amount)) if self.paid_amount is not None else Decimal('0')
-        self.outstanding_amount = total_amount - paid_amount
+        # Skip recalculation when called with update_fields (targeted saves from payment status updates)
+        if not update_fields:
+            # Calculate outstanding amount
+            from decimal import Decimal
+            # Ensure both values are Decimal
+            total_amount = Decimal(str(self.total_amount)) if self.total_amount is not None else Decimal('0')
+            paid_amount = Decimal(str(self.paid_amount)) if self.paid_amount is not None else Decimal('0')
+            self.outstanding_amount = total_amount - paid_amount
 
-        # Update payment status based on amounts
-        if self.paid_amount == 0:
-            self.payment_status = 'unpaid'
-        elif self.paid_amount >= self.total_amount:
-            self.payment_status = 'paid'
-        else:
-            self.payment_status = 'partially_paid'
+            # Update payment status based on amounts
+            if self.paid_amount == 0:
+                self.payment_status = 'unpaid'
+            elif self.paid_amount >= self.total_amount:
+                self.payment_status = 'paid'
+            else:
+                self.payment_status = 'partially_paid'
 
-        # Check if overdue (only if due_date is set)
-        if self.payment_status != 'paid' and self.due_date and self.due_date < timezone.now().date():
-            self.payment_status = 'overdue'
+            # Check if overdue (only if due_date is set)
+            if self.payment_status != 'paid' and self.due_date and self.due_date < timezone.now().date():
+                self.payment_status = 'overdue'
 
         # Automatically set status to active when creating invoice
         if self.pk is None:  # New invoice
@@ -2443,17 +2461,18 @@ class Payment(models.Model):
     # Payment Details
     payment_number = models.CharField(max_length=50, db_index=True)
     payment_date = models.DateField()
-    amount = models.DecimalField(max_digits=15, decimal_places=2)
+    amount = models.DecimalField(max_digits=15, decimal_places=2)  # Keep for backward compatibility
+    gross_payment_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00, help_text="Gross amount customer is paying")
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
 
-    # World-Class TDS (Tax Deducted at Source) Fields
+    # CA-Level TDS Fields (Professional Accounting)
+    tds_applicable = models.BooleanField(default=False, help_text="Whether TDS applies to this payment")
+    tds_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="TDS rate percentage")
     tds_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00, help_text="TDS amount deducted")
-    tds_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="TDS percentage applied")
-    tds_section = models.CharField(max_length=20, blank=True, help_text="TDS section (194C, 194J, etc.)")
     net_amount_received = models.DecimalField(max_digits=15, decimal_places=2, default=0.00, help_text="Amount received after TDS deduction")
-    tds_certificate_number = models.CharField(max_length=100, blank=True, help_text="TDS certificate number")
-    tds_certificate_date = models.DateField(null=True, blank=True, help_text="TDS certificate date")
-    is_tds_received = models.BooleanField(default=False, help_text="Whether TDS certificate/refund is received")
+    tds_deposited = models.BooleanField(default=False, help_text="Whether TDS has been deposited to government")
+    tds_certificate_received = models.BooleanField(default=False, help_text="Whether TDS certificate (Form 16A) has been received")
+    tds_section = models.CharField(max_length=20, blank=True, help_text="TDS section (194C, 194J, etc.)")
     
     # Additional Indian Compliance TDS Fields
     tds_section_code = models.CharField(max_length=10, blank=True, help_text="TDS section code (194A, 194C, etc.)")
@@ -2462,6 +2481,25 @@ class Payment(models.Model):
     form16a_number = models.CharField(max_length=50, blank=True, help_text="Form 16A certificate number")
     tds_deposited_date = models.DateField(null=True, blank=True, help_text="Date when TDS was deposited")
     tds_challan_number = models.CharField(max_length=50, blank=True, help_text="TDS challan number")
+
+    # CA-Level TDS Tracking Fields (Professional Accounting)
+    ca_name = models.CharField(max_length=100, blank=True, help_text="Name of Chartered Accountant")
+    ca_firm = models.CharField(max_length=200, blank=True, help_text="CA Firm name")
+    ca_membership_number = models.CharField(max_length=20, blank=True, help_text="ICAI membership number")
+    submitted_to_ca_date = models.DateField(null=True, blank=True, help_text="Date when TDS certificate was submitted to CA")
+    ca_acknowledgment_number = models.CharField(max_length=50, blank=True, help_text="CA acknowledgment/reference number")
+    ca_submission_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('not_submitted', 'Not Submitted'),
+            ('submitted', 'Submitted to CA'),
+            ('acknowledged', 'Acknowledged by CA'),
+            ('returned', 'Returned by CA'),
+        ],
+        default='not_submitted',
+        help_text="Status of TDS certificate submission to CA"
+    )
+    ca_notes = models.TextField(blank=True, help_text="Notes about CA submission, follow-ups, quarterly filings, etc.")
 
     # Payment Reference Information
     reference_number = models.CharField(max_length=100, blank=True, help_text="Bank reference, cheque number, etc.")
@@ -2522,40 +2560,49 @@ class Payment(models.Model):
                 else:
                     self.payment_number = f"PAY-{timezone.now().year}-000001"
 
-        # World-Class TDS Calculation - Ensure all Decimal operations
+        # World-Class TDS Calculation - Handle both old and new field structures
         from decimal import Decimal
         
-        # Convert to Decimal for calculations
-        amount = Decimal(str(self.amount)) if self.amount is not None else Decimal('0')
-        tds_percentage = Decimal(str(self.tds_percentage)) if self.tds_percentage is not None else Decimal('0')
+        # Use gross_payment_amount if provided, otherwise fall back to amount
+        amount = Decimal(str(self.gross_payment_amount)) if self.gross_payment_amount and self.gross_payment_amount > 0 else Decimal(str(self.amount)) if self.amount is not None else Decimal('0')
+        tds_percentage = Decimal(str(self.tds_rate)) if self.tds_rate is not None else Decimal(str(self.tds_percentage)) if self.tds_percentage is not None else Decimal('0')
         tds_amount = Decimal(str(self.tds_amount)) if self.tds_amount is not None else Decimal('0')
         net_amount_received = Decimal(str(self.net_amount_received)) if self.net_amount_received is not None else Decimal('0')
         
-        # If net_amount_received is provided (from frontend), preserve it and calculate other values
-        if net_amount_received > 0 and tds_amount > 0:
-            # Frontend provided both net amount and TDS amount - preserve both
-            # Calculate total amount if not provided
-            if amount == 0:
-                self.amount = net_amount_received + tds_amount
-            # Calculate TDS percentage if not provided
-            if tds_percentage == 0 and amount > 0:
-                self.tds_percentage = (tds_amount / amount) * Decimal('100')
-        elif tds_percentage > 0 and amount > 0:
-            # Calculate TDS amount from percentage
-            self.tds_amount = (amount * tds_percentage) / Decimal('100')
-            # Only calculate net_amount_received if not already provided
-            if net_amount_received == 0:
+        # Ensure backward compatibility - set gross_payment_amount if not set
+        if not self.gross_payment_amount or self.gross_payment_amount == 0:
+            self.gross_payment_amount = amount
+        
+        # Ensure TDS applicable flag is set based on TDS amount/rate
+        if not hasattr(self, 'tds_applicable') or self.tds_applicable is None:
+            self.tds_applicable = tds_amount > 0 or tds_percentage > 0
+        
+        # If TDS is applicable, ensure rate is set
+        if self.tds_applicable and tds_percentage == 0 and amount > 0 and tds_amount > 0:
+            self.tds_rate = (tds_amount / amount) * Decimal('100')
+            tds_percentage = self.tds_rate
+        
+        # Calculate TDS amounts based on CA-level logic
+        if self.tds_applicable:
+            if tds_percentage > 0 and amount > 0:
+                # Calculate TDS amount from percentage
+                self.tds_amount = (amount * tds_percentage) / Decimal('100')
+                # Calculate net amount received
                 self.net_amount_received = amount - self.tds_amount
-        elif tds_amount > 0:
-            # If TDS amount is provided directly, calculate net amount if not provided
-            if net_amount_received == 0:
+            elif tds_amount > 0:
+                # TDS amount provided directly
                 self.net_amount_received = amount - tds_amount
-            if amount > 0:
-                self.tds_percentage = (tds_amount / amount) * Decimal('100')
-        else:
-            # No TDS - net amount equals total amount
-            if net_amount_received == 0:
+                if amount > 0:
+                    self.tds_rate = (tds_amount / amount) * Decimal('100')
+            else:
+                # TDS applicable but no amounts - set defaults
+                self.tds_amount = Decimal('0')
                 self.net_amount_received = amount
+        else:
+            # No TDS
+            self.tds_amount = Decimal('0')
+            self.net_amount_received = amount
+            self.tds_rate = Decimal('0')
 
         super().save(*args, **kwargs)
 
@@ -2567,10 +2614,16 @@ class Payment(models.Model):
         from decimal import Decimal
         
         if self.invoice:
-            # Calculate direct payments for this invoice
+            # Calculate direct payments for this invoice - use gross_payment_amount or amount
             direct_payments = self.invoice.payments.filter(status='completed').aggregate(
-                total=models.Sum('amount')
+                total=models.Sum('gross_payment_amount')
             )['total'] or Decimal('0')
+            
+            # Fallback to amount field if gross_payment_amount is not set
+            if direct_payments == 0:
+                direct_payments = self.invoice.payments.filter(status='completed').aggregate(
+                    total=models.Sum('amount')
+                )['total'] or Decimal('0')
 
             # Calculate proforma advances (if invoice was created from PO with proformas)
             proforma_advances = Decimal('0')
@@ -2595,15 +2648,25 @@ class Payment(models.Model):
                 self.invoice.payment_status = 'partially_paid'
             else:
                 self.invoice.payment_status = 'unpaid'
+            # Overdue only applies when fully unpaid and past due date
+            if (self.invoice.payment_status == 'unpaid' and
+                    self.invoice.due_date and self.invoice.due_date < timezone.now().date()):
+                self.invoice.payment_status = 'overdue'
 
             self.invoice.last_payment_date = self.payment_date
             self.invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'last_payment_date'])
 
         elif self.proforma_invoice:
-            # Calculate total payments for this proforma
+            # Calculate total payments for this proforma - use gross_payment_amount or amount
             total_payments = self.proforma_invoice.payments.filter(status='completed').aggregate(
-                total=models.Sum('amount')
+                total=models.Sum('gross_payment_amount')
             )['total'] or Decimal('0')
+            
+            # Fallback to amount field if gross_payment_amount is not set
+            if total_payments == 0:
+                total_payments = self.proforma_invoice.payments.filter(status='completed').aggregate(
+                    total=models.Sum('amount')
+                )['total'] or Decimal('0')
 
             self.proforma_invoice.paid_amount = total_payments
             # Ensure proper Decimal conversion
@@ -2656,6 +2719,10 @@ class Payment(models.Model):
                 invoice.payment_status = 'partially_paid'
             else:
                 invoice.payment_status = 'unpaid'
+            # Overdue only applies when fully unpaid and past due date
+            if (invoice.payment_status == 'unpaid' and
+                    invoice.due_date and invoice.due_date < timezone.now().date()):
+                invoice.payment_status = 'overdue'
             
             # Get last payment date from remaining payments
             last_payment = invoice.payments.filter(status='completed').order_by('-payment_date').first()

@@ -653,6 +653,12 @@ export const apiClient = {
   sendInvoiceEmail: (id: number, data?: any) =>
     api.post(`/api/finance/invoices/${id}/send_email/`, data),
 
+  markInvoiceGSTPayment: (id: number, data: { gst_payment_status: string; gst_paid_date?: string; gst_payment_reference?: string }) =>
+    api.post(`/api/finance/invoices/${id}/mark_gst_payment/`, data),
+
+  getInvoiceGSTPaymentSummary: (params?: any) =>
+    api.get('/api/finance/invoices/gst_payment_summary/', { params }),
+
   updateInvoicePayment: (id: number, data: any) =>
     api.post(`/api/finance/invoices/${id}/payments/`, data),
 

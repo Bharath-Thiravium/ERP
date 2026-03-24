@@ -4,6 +4,7 @@ import { X, FileText, User, MapPin, Package, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import api from '../../../../lib/api'
+import { handlePostInvoiceStatusUpdate } from '../utils/poStatusUtils'
 
 interface SimpleProformaFormProps {
   purchaseOrder?: any
@@ -167,6 +168,12 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
       }
       
       await response.json()
+      
+      // Auto-update PO status if this is from a PO
+      if (purchaseOrder?.id && sessionKey) {
+        console.log('🔄 Updating PO status after proforma creation...')
+        await handlePostInvoiceStatusUpdate(purchaseOrder.id, sessionKey)
+      }
       
       toast.success(editingInvoice ? 'Proforma Invoice updated successfully!' : 'Proforma Invoice created successfully!')
       onSuccess()

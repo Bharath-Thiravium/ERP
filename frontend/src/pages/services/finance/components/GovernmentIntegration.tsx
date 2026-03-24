@@ -187,12 +187,15 @@ export const GovernmentIntegration: React.FC = () => {
                     {validationResults.gstin.valid ? (
                       <div className="flex items-center gap-2 text-green-600">
                         <CheckCircle className="h-4 w-4" />
-                        Valid GSTIN - {validationResults.gstin.business_name}
+                        {validationResults.gstin.mock
+                          ? 'Format Valid ✓'
+                          : `Verified ✓ — ${validationResults.gstin.business_name}`
+                        }
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 text-red-600">
                         <XCircle className="h-4 w-4" />
-                        {validationResults.gstin.error}
+                        Invalid — {validationResults.gstin.error}
                       </div>
                     )}
                   </div>
@@ -219,12 +222,15 @@ export const GovernmentIntegration: React.FC = () => {
                     {validationResults.pan.valid ? (
                       <div className="flex items-center gap-2 text-green-600">
                         <CheckCircle className="h-4 w-4" />
-                        Valid PAN - {validationResults.pan.name}
+                        {validationResults.pan.mock
+                          ? 'Format Valid ✓'
+                          : `Verified ✓ — ${validationResults.pan.name}`
+                        }
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 text-red-600">
                         <XCircle className="h-4 w-4" />
-                        {validationResults.pan.error}
+                        Invalid — {validationResults.pan.error}
                       </div>
                     )}
                   </div>

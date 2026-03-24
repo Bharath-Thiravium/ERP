@@ -176,7 +176,7 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
                 company=company,
                 service=service,
                 assigned_by=self.context['request'].user,
-                service_password=User.objects.make_random_password(),
+                service_password=self.generate_service_password(),
                 password_expires_at=timezone.now() + timedelta(days=365)  # Extended expiry
             )
 

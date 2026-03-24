@@ -61,7 +61,7 @@ class ErrorBoundary extends Component<Props, State> {
                 We encountered an unexpected error. Please try refreshing the page or contact support if the problem persists.
               </p>
               
-              {process.env.NODE_ENV === 'development' && this.state.error && (
+              {this.state.error && (
                 <div className="mb-6 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg text-left">
                   <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
                     Error Details:

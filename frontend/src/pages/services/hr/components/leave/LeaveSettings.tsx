@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Calendar, Plus, Trash2 } from 'lucide-react'
+import { Calendar, Plus, Trash2, Pencil, ToggleLeft, ToggleRight, X } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -14,40 +14,56 @@ interface LeaveType {
   days_per_year: number
   carry_forward: boolean
   max_carry_forward: number
+  is_paid: boolean
+  requires_approval: boolean
+  min_days_notice: number
   is_active: boolean
 }
+
+const EMPTY_FORM: LeaveType = {
+  name: '',
+  code: '',
+  category: 'earned',
+  days_per_year: 12,
+  carry_forward: false,
+  max_carry_forward: 0,
+  is_paid: true,
+  requires_approval: true,
+  min_days_notice: 0,
+  is_active: true,
+}
+
+const CATEGORIES = [
+  { value: 'earned', label: 'Earned Leave' },
+  { value: 'casual', label: 'Casual Leave' },
+  { value: 'sick', label: 'Sick Leave' },
+  { value: 'maternity', label: 'Maternity Leave' },
+  { value: 'paternity', label: 'Paternity Leave' },
+  { value: 'compensatory', label: 'Compensatory Off' },
+  { value: 'unpaid', label: 'Unpaid Leave' },
+]
 
 const LeaveSettings: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [newLeaveType, setNewLeaveType] = useState<LeaveType>({
-    name: '',
-    code: '',
-    category: 'earned',
-    days_per_year: 12,
-    carry_forward: false,
-    max_carry_forward: 0,
-    is_active: true
-  })
+  const [newLeaveType, setNewLeaveType] = useState<LeaveType>(EMPTY_FORM)
 
-  useEffect(() => {
-    fetchLeaveTypes()
-  }, [sessionKey])
+  // Edit modal state
+  const [editTarget, setEditTarget] = useState<LeaveType | null>(null)
+  const [editForm, setEditForm] = useState<LeaveType>(EMPTY_FORM)
+  const [editSaving, setEditSaving] = useState(false)
+
+  useEffect(() => { fetchLeaveTypes() }, [sessionKey])
 
   const fetchLeaveTypes = async () => {
     if (!sessionKey) return
-    
     setLoading(true)
     try {
-      const response = await api.get('/api/hr/leave-types/', {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
-      })
-      setLeaveTypes(response.data.results || [])
-    } catch (error: any) {
-      console.error('Error fetching leave types:', error)
+      const response = await api.get('/api/hr/leave-types/')
+      setLeaveTypes(response.data.results || response.data || [])
+    } catch {
       toast.error('Failed to fetch leave types')
     } finally {
       setLoading(false)
@@ -59,24 +75,11 @@ const LeaveSettings: React.FC = () => {
       toast.error('Please fill all required fields')
       return
     }
-    
     setSaving(true)
     try {
-      const payload = { ...newLeaveType, session_key: sessionKey }
-      await api.post('/api/hr/leave-types/', payload, {
-        headers: { Authorization: `Bearer ${sessionKey}` }
-      })
-      
+      await api.post('/api/hr/leave-types/', newLeaveType)
       toast.success('Leave type added successfully')
-      setNewLeaveType({
-        name: '',
-        code: '',
-        category: 'earned',
-        days_per_year: 12,
-        carry_forward: false,
-        max_carry_forward: 0,
-        is_active: true
-      })
+      setNewLeaveType(EMPTY_FORM)
       fetchLeaveTypes()
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to add leave type')
@@ -85,19 +88,51 @@ const LeaveSettings: React.FC = () => {
     }
   }
 
-  const handleDeleteLeaveType = async (id: number) => {
-    if (!sessionKey) return
-    
-    if (!confirm('Are you sure you want to delete this leave type?')) {
+  const openEditModal = (lt: LeaveType) => {
+    setEditTarget(lt)
+    setEditForm({ ...lt })
+  }
+
+  const closeEditModal = () => {
+    setEditTarget(null)
+    setEditForm(EMPTY_FORM)
+  }
+
+  const handleEditSave = async () => {
+    if (!sessionKey || !editTarget?.id) return
+    if (!editForm.name || !editForm.code || !editForm.category) {
+      toast.error('Please fill all required fields')
       return
     }
-    
+    setEditSaving(true)
     try {
-      await api.delete(`/api/hr/leave-types/${id}/`, {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
-      })
-      
+      await api.patch(`/api/hr/leave-types/${editTarget.id}/`, editForm)
+      toast.success('Leave type updated successfully')
+      closeEditModal()
+      fetchLeaveTypes()
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to update leave type')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const handleToggleActive = async (lt: LeaveType) => {
+    if (!sessionKey || !lt.id) return
+    try {
+      const response = await api.post(`/api/hr/leave-types/${lt.id}/toggle_active/`, {})
+      toast.success(`Leave type ${response.data.is_active ? 'activated' : 'deactivated'}`)
+      fetchLeaveTypes()
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to toggle status')
+    }
+  }
+
+  const handleDeleteLeaveType = async (id: number) => {
+    if (!sessionKey) return
+    if (!confirm('Are you sure you want to delete this leave type?')) return
+    try {
+      await api.delete(`/api/hr/leave-types/${id}/`)
       toast.success('Leave type deleted successfully')
       fetchLeaveTypes()
     } catch (error: any) {
@@ -108,13 +143,14 @@ const LeaveSettings: React.FC = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
+      {/* ── Add Leave Type ── */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -125,7 +161,7 @@ const LeaveSettings: React.FC = () => {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium mb-2">Leave Type Name</label>
+              <label className="block text-sm font-medium mb-2">Leave Type Name *</label>
               <input
                 type="text"
                 value={newLeaveType.name}
@@ -135,7 +171,7 @@ const LeaveSettings: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Code</label>
+              <label className="block text-sm font-medium mb-2">Code *</label>
               <input
                 type="text"
                 value={newLeaveType.code}
@@ -145,19 +181,15 @@ const LeaveSettings: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Category</label>
+              <label className="block text-sm font-medium mb-2">Category *</label>
               <select
                 value={newLeaveType.category}
                 onChange={(e) => setNewLeaveType({ ...newLeaveType, category: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg"
               >
-                <option value="earned">Earned Leave</option>
-                <option value="casual">Casual Leave</option>
-                <option value="sick">Sick Leave</option>
-                <option value="maternity">Maternity Leave</option>
-                <option value="paternity">Paternity Leave</option>
-                <option value="compensatory">Compensatory Off</option>
-                <option value="unpaid">Unpaid Leave</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -183,7 +215,7 @@ const LeaveSettings: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center space-x-4 mb-4">
-            <label className="flex items-center space-x-2">
+            <label className="flex items-center space-x-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={newLeaveType.carry_forward}
@@ -192,7 +224,25 @@ const LeaveSettings: React.FC = () => {
               />
               <span className="text-sm">Allow Carry Forward</span>
             </label>
-            <label className="flex items-center space-x-2">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newLeaveType.is_paid}
+                onChange={(e) => setNewLeaveType({ ...newLeaveType, is_paid: e.target.checked })}
+                className="rounded"
+              />
+              <span className="text-sm">Paid Leave</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newLeaveType.requires_approval}
+                onChange={(e) => setNewLeaveType({ ...newLeaveType, requires_approval: e.target.checked })}
+                className="rounded"
+              />
+              <span className="text-sm">Requires Approval</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={newLeaveType.is_active}
@@ -209,6 +259,7 @@ const LeaveSettings: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* ── Leave Types Table ── */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -231,41 +282,61 @@ const LeaveSettings: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {leaveTypes.map((leaveType) => (
-                  <tr key={leaveType.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 font-medium">{leaveType.name}</td>
-                    <td className="p-3">{leaveType.code}</td>
+                {leaveTypes.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-6 text-center text-gray-500">No leave types found</td>
+                  </tr>
+                ) : leaveTypes.map((lt) => (
+                  <tr key={lt.id} className="border-b hover:bg-gray-50">
+                    <td className="p-3 font-medium">{lt.name}</td>
+                    <td className="p-3 font-mono text-sm">{lt.code}</td>
+                    <td className="p-3 capitalize">{lt.category?.replace('_', ' ')}</td>
+                    <td className="p-3">{lt.days_per_year}</td>
                     <td className="p-3">
-                      <span className="capitalize">{leaveType.category?.replace('_', ' ')}</span>
-                    </td>
-                    <td className="p-3">{leaveType.days_per_year}</td>
-                    <td className="p-3">
-                      {leaveType.carry_forward ? (
-                        <span className="text-green-600">
-                          Yes ({leaveType.max_carry_forward} max)
-                        </span>
-                      ) : (
-                        <span className="text-gray-500">No</span>
-                      )}
+                      {lt.carry_forward
+                        ? <span className="text-green-600">Yes ({lt.max_carry_forward} max)</span>
+                        : <span className="text-gray-500">No</span>}
                     </td>
                     <td className="p-3">
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        leaveType.is_active 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        lt.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
                       }`}>
-                        {leaveType.is_active ? 'Active' : 'Inactive'}
+                        {lt.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td className="p-3">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => leaveType.id && handleDeleteLeaveType(leaveType.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center space-x-1">
+                        {/* Edit */}
+                        <button
+                          onClick={() => openEditModal(lt)}
+                          title="Edit"
+                          className="p-1.5 rounded hover:bg-blue-50 text-blue-600 hover:text-blue-800 transition-colors"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        {/* Toggle Active / Inactive */}
+                        <button
+                          onClick={() => handleToggleActive(lt)}
+                          title={lt.is_active ? 'Deactivate' : 'Activate'}
+                          className={`p-1.5 rounded transition-colors ${
+                            lt.is_active
+                              ? 'hover:bg-yellow-50 text-yellow-600 hover:text-yellow-800'
+                              : 'hover:bg-green-50 text-green-600 hover:text-green-800'
+                          }`}
+                        >
+                          {lt.is_active
+                            ? <ToggleRight className="h-4 w-4" />
+                            : <ToggleLeft className="h-4 w-4" />}
+                        </button>
+                        {/* Delete */}
+                        <button
+                          onClick={() => lt.id && handleDeleteLeaveType(lt.id)}
+                          title="Delete"
+                          className="p-1.5 rounded hover:bg-red-50 text-red-600 hover:text-red-800 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -274,6 +345,126 @@ const LeaveSettings: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Edit Modal ── */}
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-semibold">Edit Leave Type</h2>
+              <button onClick={closeEditModal} className="p-1 rounded hover:bg-gray-100">
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Leave Type Name *</label>
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Code *</label>
+                  <input
+                    type="text"
+                    value={editForm.code}
+                    onChange={(e) => setEditForm({ ...editForm, code: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Category *</label>
+                  <select
+                    value={editForm.category}
+                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Days per Year</label>
+                  <input
+                    type="number"
+                    value={editForm.days_per_year}
+                    onChange={(e) => setEditForm({ ...editForm, days_per_year: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Min Days Notice</label>
+                  <input
+                    type="number"
+                    value={editForm.min_days_notice}
+                    onChange={(e) => setEditForm({ ...editForm, min_days_notice: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Max Carry Forward</label>
+                  <input
+                    type="number"
+                    value={editForm.max_carry_forward}
+                    onChange={(e) => setEditForm({ ...editForm, max_carry_forward: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                    disabled={!editForm.carry_forward}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.carry_forward}
+                    onChange={(e) => setEditForm({ ...editForm, carry_forward: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm">Allow Carry Forward</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.is_paid}
+                    onChange={(e) => setEditForm({ ...editForm, is_paid: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm">Paid Leave</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.requires_approval}
+                    onChange={(e) => setEditForm({ ...editForm, requires_approval: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm">Requires Approval</span>
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <Button variant="ghost" onClick={closeEditModal} disabled={editSaving}>
+                Cancel
+              </Button>
+              <Button onClick={handleEditSave} disabled={editSaving}>
+                {editSaving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

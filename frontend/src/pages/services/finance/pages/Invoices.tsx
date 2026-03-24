@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, FileText, IndianRupee, AlertCircle } from 'lucide-react';
 
+import DirectCreateTaxInvoiceModal from '../components/DirectCreateTaxInvoiceModal';
+
 import InvoiceList from '../components/InvoiceList';
 // import InvoiceForm from '../components/InvoiceForm'; // Removed - using simplified forms
 import { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import FinanceCard from '../components/FinanceCard';
 import MetricCard from '../components/MetricCard';
-import DebugAuth from '../../../../components/DebugAuth';
+import { getEffectivePaymentStatus } from '../../../../utils/overdueUtils';
+
 
 interface InvoicesProps {
   sessionKey: string;
@@ -40,6 +43,8 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
     thisMonthInvoices: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [showDirectInvoiceModal, setShowDirectInvoiceModal] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const fetchInvoiceStats = async () => {
     if (!sessionKey) {
@@ -82,8 +87,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
       const outstandingAmount = processedInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.outstanding_amount || 0), 0);
       
       const overdueInvoices = processedInvoices.filter((inv: any) => 
-        (inv.payment_status === 'overdue') || 
-        ((inv.payment_status !== 'paid' && inv.payment_status !== undefined) && inv.due_date && new Date(inv.due_date) < new Date())
+        getEffectivePaymentStatus(inv.payment_status, inv.invoice_date) === 'overdue'
       ).length;
 
       const thisMonthInvoices = processedInvoices.filter((inv: any) => {
@@ -116,8 +120,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
 
   return (
     <div className="space-y-6">
-      {/* Debug Authentication State */}
-      <DebugAuth />
+
       
       {/* Page Header */}
       <FinanceCard>
@@ -166,13 +169,13 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
-            onClick={() => toast.success('Create invoices directly using the Direct Invoice button')}
+            onClick={() => setShowDirectInvoiceModal(true)}
             className="flex items-center p-4 bg-gradient-to-r from-athenas-blue to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200"
           >
             <Plus className="w-5 h-5 mr-3" />
             <div className="text-left">
-              <div className="font-medium">Create Invoice</div>
-              <div className="text-sm opacity-90">Direct invoice creation</div>
+              <div className="font-medium">Direct Invoice</div>
+              <div className="text-sm opacity-90">Create invoice directly</div>
             </div>
           </button>
 
@@ -202,10 +205,21 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
 
       {/* Invoice List */}
       <InvoiceList
+        key={refreshKey}
         sessionKey={sessionKey}
       />
 
-      {/* Note: Invoice Form removed - using simplified forms via PO workflow */}
+      {/* Direct Invoice Modal */}
+      <DirectCreateTaxInvoiceModal
+        isOpen={showDirectInvoiceModal}
+        onClose={() => setShowDirectInvoiceModal(false)}
+        onSuccess={() => {
+          setShowDirectInvoiceModal(false);
+          setRefreshKey(prev => prev + 1);
+          fetchInvoiceStats();
+          toast.success('Invoice created successfully!');
+        }}
+      />
     </div>
   );
 };

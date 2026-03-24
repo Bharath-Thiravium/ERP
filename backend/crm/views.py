@@ -674,7 +674,6 @@ class DashboardViewSet(viewsets.ViewSet):
         return session_key
 
     def list(self, request):
-        """Override list to handle session authentication"""
         session_key = self.get_session_key(request)
         if not session_key:
             return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -685,11 +684,14 @@ class DashboardViewSet(viewsets.ViewSet):
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Get optimized dashboard statistics with caching
-        stats = CRMQueryOptimizer.get_dashboard_stats_optimized(company)
-        
-        serializer = DashboardStatsSerializer(stats)
-        return Response(serializer.data)
+        try:
+            stats = CRMQueryOptimizer.get_dashboard_stats_optimized(company)
+            serializer = DashboardStatsSerializer(stats)
+            return Response(serializer.data)
+        except Exception as e:
+            import traceback
+            print(f"Dashboard Error: {traceback.format_exc()}")
+            return Response({'error': f'Dashboard error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False)
     def recent_activities(self, request):

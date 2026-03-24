@@ -34,9 +34,14 @@ class RateLimitMiddleware(MiddlewareMixin):
             if not UltraSecurityManager.check_rate_limit(ip_address, 'auth', 200, 300):
                 return JsonResponse({'error': 'Too many authentication requests.'}, status=429)
         
+        elif request.path.startswith('/api/finance/'):
+            # Higher limit for finance endpoints (dashboard makes many calls)
+            if not UltraSecurityManager.check_rate_limit(ip_address, 'finance', 2000, 300):
+                return JsonResponse({'error': 'Too many finance API requests.'}, status=429)
+        
         elif request.path.startswith('/api/'):
-            # General API limit
-            if not UltraSecurityManager.check_rate_limit(ip_address, 'api', 300, 300):
+            # General API limit - Increased for dashboard usage
+            if not UltraSecurityManager.check_rate_limit(ip_address, 'api', 1000, 300):
                 return JsonResponse({'error': 'Rate limit exceeded.'}, status=429)
         
         return None

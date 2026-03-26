@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, CheckCircle } from 'lucide-react';
 import { PaymentRecord, PAYMENT_METHODS, fmt } from './types';
 
 interface Props {
   invoiceId: number;
   invoiceType: 'tax_invoice' | 'proforma_invoice';
   sessionKey: string;
-  cashOutstanding: number;
+  cashOutstanding: number;   // cashMax - cash already paid
   tdsApplicable: boolean;
   tdsSection: string;
   tdsRate: number;
+  tdsMax: number;            // subtotal × rate/100 — fixed for the invoice
   payments: PaymentRecord[];
   onRecorded: () => void;
 }
@@ -18,7 +19,7 @@ const today = () => new Date().toISOString().split('T')[0];
 
 const CashPaymentForm: React.FC<Props> = ({
   invoiceId, invoiceType, sessionKey,
-  cashOutstanding, tdsApplicable, tdsSection, tdsRate,
+  cashOutstanding, tdsApplicable, tdsSection, tdsRate, tdsMax,
   payments, onRecorded,
 }) => {
   const [date, setDate]     = useState(today());
@@ -30,23 +31,15 @@ const CashPaymentForm: React.FC<Props> = ({
 
   const net = parseFloat(amount) || 0;
 
-  // TDS back-calculation from net cash received:
-  // Customer deducts TDS on the full invoice amount (common practice).
-  // net = gross - TDS = gross - gross × rate/100 = gross × (1 - rate/100)
-  // => gross = net / (1 - rate/100) = net × 100 / (100 - rate)
-  // => TDS   = gross - net = net × rate / (100 - rate)
-  const tdsAmt = (() => {
-    if (!tdsApplicable || tdsRate <= 0 || net <= 0) return 0;
-    return parseFloat((net * tdsRate / (100 - tdsRate)).toFixed(2));
-  })();
-  const gross = parseFloat((net + tdsAmt).toFixed(2));
+  const cashHistory = payments.filter(p => parseFloat(p.net_amount_received || '0') > 0);
+  const totalCashPaid = cashHistory.reduce((s, p) => s + parseFloat(p.net_amount_received || '0'), 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (net <= 0) return;
-    if (gross > cashOutstanding + tdsAmt + 0.01) {
+    if (net > cashOutstanding + 0.01) {
       const { default: toast } = await import('react-hot-toast');
-      toast.error(`Amount ₹${fmt(gross)} exceeds cash outstanding ₹${fmt(cashOutstanding)}`);
+      toast.error(`₹${fmt(net)} exceeds cash outstanding ₹${fmt(cashOutstanding)}`);
       return;
     }
     setSaving(true);
@@ -55,13 +48,13 @@ const CashPaymentForm: React.FC<Props> = ({
       const { default: toast } = await import('react-hot-toast');
       const payload: Record<string, any> = {
         payment_date: date,
-        amount: gross,
-        gross_payment_amount: gross,
+        amount: net,
+        gross_payment_amount: net,
         net_amount_received: net,
-        tds_applicable: tdsApplicable,
-        tds_section: tdsSection,
-        tds_rate: tdsRate,
-        tds_amount: tdsAmt,
+        tds_applicable: false,   // cash entry — TDS tracked separately in TDS tab
+        tds_section: '',
+        tds_rate: 0,
+        tds_amount: 0,
         tds_deposited: false,
         tds_certificate_received: false,
         payment_method: method,
@@ -70,7 +63,7 @@ const CashPaymentForm: React.FC<Props> = ({
         status: 'completed',
       };
       payload[invoiceType === 'proforma_invoice' ? 'proforma_invoice' : 'invoice'] = invoiceId;
-      await api.post(`/api/finance/payments/`, payload, { params: { session_key: sessionKey } });
+      await api.post('/api/finance/payments/', payload, { params: { session_key: sessionKey } });
       toast.success('Payment recorded');
       setAmount(''); setRef(''); setNotes(''); setDate(today());
       onRecorded();
@@ -83,18 +76,17 @@ const CashPaymentForm: React.FC<Props> = ({
     }
   };
 
-  const cashHistory = payments.filter(p => parseFloat(p.net_amount_received || '0') > 0);
-  const totalCash   = cashHistory.reduce((s, p) => s + parseFloat(p.net_amount_received || '0'), 0);
-
   return (
     <div className="space-y-4">
 
-      {/* History */}
+      {/* Cash history */}
       {cashHistory.length > 0 && (
         <div>
           <div className="flex justify-between items-center mb-1.5">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cash Received</span>
-            <span className="text-xs font-bold text-green-600">₹{fmt(totalCash)}</span>
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              Cash Received
+            </span>
+            <span className="text-xs font-bold text-green-600">₹{fmt(totalCashPaid)}</span>
           </div>
           <div className="space-y-1">
             {cashHistory.map(p => (
@@ -111,7 +103,7 @@ const CashPaymentForm: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Outstanding badge */}
+      {/* Cash outstanding */}
       <div className="flex items-center justify-between px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg">
         <span className="text-xs text-gray-600 dark:text-gray-300">Cash Outstanding</span>
         <span className={`text-sm font-bold ${cashOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>
@@ -119,8 +111,8 @@ const CashPaymentForm: React.FC<Props> = ({
         </span>
       </div>
 
-      {/* New entry */}
-      {cashOutstanding > 0 && (
+      {/* New cash entry */}
+      {cashOutstanding > 0 ? (
         <form onSubmit={handleSubmit} className="space-y-3">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
             <Plus className="w-3.5 h-3.5" /> New Payment
@@ -134,34 +126,18 @@ const CashPaymentForm: React.FC<Props> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Amount Received *</label>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Amount Received * (max ₹{fmt(cashOutstanding)})
+              </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-                <input type="number" step="0.01" min="0.01" value={amount}
-                  onChange={e => setAmount(e.target.value)} required placeholder="0.00"
+                <input type="number" step="0.01" min="0.01" max={cashOutstanding}
+                  value={amount} onChange={e => setAmount(e.target.value)} required placeholder="0.00"
                   className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
               </div>
             </div>
           </div>
-
-          {/* TDS split preview */}
-          {tdsApplicable && tdsRate > 0 && net > 0 && (
-            <div className="grid grid-cols-3 gap-2 bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-800 rounded-lg p-2.5 text-center">
-              <div>
-                <p className="text-[10px] text-gray-500">Cash Received</p>
-                <p className="text-xs font-semibold text-green-600">₹{fmt(net)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-gray-500">TDS ({tdsRate}%)</p>
-                <p className="text-xs font-semibold text-orange-600">₹{fmt(tdsAmt)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-gray-500">Covers Invoice</p>
-                <p className="text-xs font-semibold text-blue-600">₹{fmt(gross)}</p>
-              </div>
-            </div>
-          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -193,10 +169,10 @@ const CashPaymentForm: React.FC<Props> = ({
             {saving ? 'Recording…' : 'Record Payment'}
           </button>
         </form>
-      )}
-
-      {cashOutstanding <= 0 && (
-        <p className="text-xs text-green-600 font-medium text-center py-2">✓ Cash fully received</p>
+      ) : (
+        <p className="text-xs text-green-600 font-medium text-center py-2 flex items-center justify-center gap-1">
+          <CheckCircle className="w-3.5 h-3.5" /> Cash fully received
+        </p>
       )}
     </div>
   );

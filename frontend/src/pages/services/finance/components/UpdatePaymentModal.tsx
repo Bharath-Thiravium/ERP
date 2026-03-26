@@ -20,36 +20,44 @@ const UpdatePaymentModal: React.FC<Props> = ({
   invoiceType = 'tax_invoice',
   initialTab = 'cash',
 }) => {
-  const [tab, setTab]           = useState<'cash' | 'tds'>(initialTab);
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [depositsMap, setDepositsMap] = useState<Record<number, TDSDeposit[]>>({});
-  const [loading, setLoading]   = useState(true);
+  const [tab, setTab]                   = useState<'cash' | 'tds'>(initialTab);
+  const [payments, setPayments]         = useState<PaymentRecord[]>([]);
+  const [depositsMap, setDepositsMap]   = useState<Record<number, TDSDeposit[]>>({});
+  const [loading, setLoading]           = useState(true);
 
-  // Invoice-level TDS config (editable, one-time declaration)
+  // Invoice-level TDS config
   const [tdsApplicable, setTdsApplicable] = useState(!!invoice.tds_applicable);
   const [tdsSection, setTdsSection]       = useState(invoice.tds_section || '');
   const [tdsRate, setTdsRate]             = useState(parseFloat(String(invoice.tds_rate || 0)));
 
-  // Derived outstanding values
   const totalOutstanding = parseFloat(invoice.outstanding_amount || '0');
   const totalAmount      = parseFloat(invoice.total_amount || '0');
   const subtotal         = parseFloat(invoice.subtotal || '0');
 
-  // Cash outstanding = total - all TDS portions - all cash received
-  // TDS outstanding  = sum of TDS on payments where cert not received
+  // tdsMax = subtotal × rate/100  (TDS on basic value only — Indian rule)
+  // cashMax = total − tdsMax
+  const tdsMax  = tdsApplicable && tdsRate > 0 && subtotal > 0
+    ? parseFloat((subtotal * tdsRate / 100).toFixed(2))
+    : 0;
+  const cashMax = parseFloat((totalAmount - tdsMax).toFixed(2));
+
+  // Cash outstanding = cashMax − cash already paid
   const cashOutstanding = (() => {
-    const cashPaid = payments.filter(p => p.status === 'completed')
+    const cashPaid = payments
+      .filter(p => p.status === 'completed')
       .reduce((s, p) => s + parseFloat(p.net_amount_received || '0'), 0);
-    const tdsPortion = payments.filter(p => p.status === 'completed' && p.tds_applicable)
-      .reduce((s, p) => s + parseFloat(p.tds_amount || '0'), 0);
-    return Math.max(0, totalAmount - tdsPortion - cashPaid);
+    return Math.max(0, parseFloat((cashMax - cashPaid).toFixed(2)));
   })();
 
-  const tdsOutstanding = payments
-    .filter(p => p.status === 'completed' && p.tds_applicable && !p.tds_certificate_received)
-    .reduce((s, p) => s + parseFloat(p.tds_amount || '0'), 0);
-
-  const hasTdsPayments = payments.some(p => parseFloat(p.tds_amount || '0') > 0);
+  // TDS outstanding = tdsMax − TDS cert-received so far
+  // (tracked via TDSDeposit.certificate_received, synced to Payment.tds_certificate_received)
+  const tdsOutstanding = (() => {
+    const allDeposits = Object.values(depositsMap).flat();
+    const certReceived = allDeposits
+      .filter(d => d.certificate_received)
+      .reduce((s, d) => s + parseFloat(d.amount || '0'), 0);
+    return Math.max(0, parseFloat((tdsMax - certReceived).toFixed(2)));
+  })();
 
   const fetchDeposits = useCallback(async (pmts: PaymentRecord[]) => {
     const withTds = pmts.filter(p => parseFloat(p.tds_amount || '0') > 0);
@@ -87,10 +95,11 @@ const UpdatePaymentModal: React.FC<Props> = ({
 
   const handleRecorded = () => { fetchPayments(); onSuccess(); };
 
-  // Status label
   const statusLabel = (() => {
-    if (cashOutstanding <= 0 && tdsOutstanding <= 0) return { text: 'PAID', cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' };
-    if (payments.length === 0) return { text: 'UNPAID', cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' };
+    if (cashOutstanding <= 0 && tdsOutstanding <= 0 && (payments.length > 0 || !tdsApplicable))
+      return { text: 'PAID', cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' };
+    if (payments.length === 0)
+      return { text: 'UNPAID', cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' };
     return { text: 'PARTIAL', cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300' };
   })();
 
@@ -98,7 +107,7 @@ const UpdatePaymentModal: React.FC<Props> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
           <div>
             <div className="flex items-center gap-2">
@@ -107,13 +116,10 @@ const UpdatePaymentModal: React.FC<Props> = ({
                 {statusLabel.text}
               </span>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              {invoice.invoice_number}
-            </p>
-            {/* Overall outstanding */}
-            <div className="flex items-center gap-3 mt-1.5">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{invoice.invoice_number}</p>
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                Overall outstanding:&nbsp;
+                Overall:&nbsp;
                 <span className={`font-semibold ${totalOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>
                   ₹{fmt(totalOutstanding)}
                 </span>
@@ -122,11 +128,17 @@ const UpdatePaymentModal: React.FC<Props> = ({
                 <>
                   <span className="text-gray-300 dark:text-gray-600">|</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Cash:&nbsp;<span className={`font-semibold ${cashOutstanding > 0 ? 'text-red-500' : 'text-green-600'}`}>₹{fmt(cashOutstanding)}</span>
+                    Cash:&nbsp;
+                    <span className={`font-semibold ${cashOutstanding > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                      ₹{fmt(cashOutstanding)}
+                    </span>
                   </span>
                   <span className="text-gray-300 dark:text-gray-600">|</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400">
-                    TDS:&nbsp;<span className={`font-semibold ${tdsOutstanding > 0 ? 'text-orange-500' : 'text-green-600'}`}>₹{fmt(tdsOutstanding)}</span>
+                    TDS:&nbsp;
+                    <span className={`font-semibold ${tdsOutstanding > 0 ? 'text-orange-500' : 'text-green-600'}`}>
+                      ₹{fmt(tdsOutstanding)}
+                    </span>
                   </span>
                 </>
               )}
@@ -137,7 +149,7 @@ const UpdatePaymentModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* ── TDS Config (always visible, above tabs) ── */}
+        {/* TDS Config */}
         <div className="px-5 pt-3 shrink-0">
           <TDSConfigPanel
             invoiceId={invoice.id}
@@ -149,10 +161,9 @@ const UpdatePaymentModal: React.FC<Props> = ({
           />
         </div>
 
-        {/* ── Tabs ── */}
+        {/* Tabs */}
         <div className="flex border-b border-gray-200 dark:border-gray-700 shrink-0 mt-3">
-          <button
-            onClick={() => setTab('cash')}
+          <button onClick={() => setTab('cash')}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
               tab === 'cash'
                 ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
@@ -169,8 +180,7 @@ const UpdatePaymentModal: React.FC<Props> = ({
           </button>
 
           {tdsApplicable && (
-            <button
-              onClick={() => setTab('tds')}
+            <button onClick={() => setTab('tds')}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
                 tab === 'tds'
                   ? 'border-b-2 border-orange-500 text-orange-600 dark:text-orange-400'
@@ -188,7 +198,7 @@ const UpdatePaymentModal: React.FC<Props> = ({
           )}
         </div>
 
-        {/* ── Tab content ── */}
+        {/* Tab content */}
         <div className="overflow-y-auto flex-1 px-5 py-4">
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -203,24 +213,25 @@ const UpdatePaymentModal: React.FC<Props> = ({
               tdsApplicable={tdsApplicable}
               tdsSection={tdsSection}
               tdsRate={tdsRate}
+              tdsMax={tdsMax}
               payments={payments}
               onRecorded={handleRecorded}
             />
           ) : (
             <TDSTracker
               sessionKey={sessionKey}
+              tdsMax={tdsMax}
               tdsOutstanding={tdsOutstanding}
-              payments={payments}
+              payments={payments as any}
               depositsMap={depositsMap}
               onChanged={() => { fetchPayments(); onSuccess(); }}
             />
           )}
         </div>
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <div className="flex justify-end px-5 py-3 border-t border-gray-200 dark:border-gray-700 shrink-0">
-          <button
-            type="button" onClick={onClose}
+          <button type="button" onClick={onClose}
             className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-500"
           >
             Close

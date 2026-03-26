@@ -107,6 +107,9 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
           total_amount: invRes.data.total_amount,
           outstanding_amount: invRes.data.outstanding_amount,
           subtotal: invRes.data.subtotal,
+          tds_applicable: invRes.data.tds_applicable,
+          tds_section: invRes.data.tds_section || '',
+          tds_rate: invRes.data.tds_rate || '0',
           invoiceType: 'tax_invoice',
         });
       } else if (full.proforma_invoice) {
@@ -361,6 +364,9 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
             total_amount: selectedInvoiceForModal.total_amount,
             outstanding_amount: selectedInvoiceForModal.outstanding_amount,
             subtotal: selectedInvoiceForModal.subtotal,
+            tds_applicable: selectedInvoiceForModal.tds_applicable,
+            tds_section: selectedInvoiceForModal.tds_section || '',
+            tds_rate: selectedInvoiceForModal.tds_rate || '0',
           }}
           invoiceType={selectedInvoiceForModal.invoiceType}
           onClose={handleFormClose}

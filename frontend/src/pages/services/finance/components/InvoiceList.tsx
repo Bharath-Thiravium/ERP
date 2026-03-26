@@ -825,7 +825,10 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
             invoice_number: selectedForPayment.invoice_number,
             total_amount: selectedForPayment.total_amount || '0',
             outstanding_amount: selectedForPayment.outstanding_amount || '0',
-            subtotal: selectedForPayment.subtotal || '0'
+            subtotal: selectedForPayment.subtotal || '0',
+            tds_applicable: selectedForPayment.tds_applicable,
+            tds_section: selectedForPayment.tds_section || '',
+            tds_rate: selectedForPayment.tds_rate || '0',
           }}
           initialTab={paymentModalInitialTab}
           onClose={() => {

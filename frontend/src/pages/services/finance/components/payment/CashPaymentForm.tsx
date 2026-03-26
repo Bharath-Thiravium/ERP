@@ -10,8 +10,6 @@ interface Props {
   tdsApplicable: boolean;
   tdsSection: string;
   tdsRate: number;
-  subtotal: number;
-  totalAmount: number;
   payments: PaymentRecord[];
   onRecorded: () => void;
 }
@@ -21,7 +19,7 @@ const today = () => new Date().toISOString().split('T')[0];
 const CashPaymentForm: React.FC<Props> = ({
   invoiceId, invoiceType, sessionKey,
   cashOutstanding, tdsApplicable, tdsSection, tdsRate,
-  subtotal, totalAmount, payments, onRecorded,
+  payments, onRecorded,
 }) => {
   const [date, setDate]     = useState(today());
   const [amount, setAmount] = useState('');
@@ -32,14 +30,13 @@ const CashPaymentForm: React.FC<Props> = ({
 
   const net = parseFloat(amount) || 0;
 
-  // Back-calculate TDS from net cash received
+  // TDS back-calculation from net cash received:
+  // Customer deducts TDS on the full invoice amount (common practice).
+  // net = gross - TDS = gross - gross × rate/100 = gross × (1 - rate/100)
+  // => gross = net / (1 - rate/100) = net × 100 / (100 - rate)
+  // => TDS   = gross - net = net × rate / (100 - rate)
   const tdsAmt = (() => {
     if (!tdsApplicable || tdsRate <= 0 || net <= 0) return 0;
-    if (subtotal > 0 && totalAmount > 0) {
-      const basicRatio = subtotal / totalAmount;
-      const gross = net / (1 - basicRatio * tdsRate / 100);
-      return parseFloat((gross * basicRatio * tdsRate / 100).toFixed(2));
-    }
     return parseFloat((net * tdsRate / (100 - tdsRate)).toFixed(2));
   })();
   const gross = parseFloat((net + tdsAmt).toFixed(2));

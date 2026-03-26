@@ -203,8 +203,6 @@ const UpdatePaymentModal: React.FC<Props> = ({
               tdsApplicable={tdsApplicable}
               tdsSection={tdsSection}
               tdsRate={tdsRate}
-              subtotal={subtotal}
-              totalAmount={totalAmount}
               payments={payments}
               onRecorded={handleRecorded}
             />

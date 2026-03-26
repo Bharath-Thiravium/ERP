@@ -3,11 +3,12 @@ import { CreditCard, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 
 import { useSearchParams } from 'react-router-dom';
 import PaymentList from '../components/PaymentList';
-import PaymentForm from '../components/PaymentForm';
+import UpdatePaymentModal from '../components/UpdatePaymentModal';
 import PaymentDetailModal from '../components/PaymentDetailModal';
 import FinanceCard from '../components/FinanceCard';
 import MetricCard from '../components/MetricCard';
 import { apiClient } from '../../../../lib/api';
+import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
 interface PaymentStats {
@@ -32,6 +33,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<any>(null);
   const [preSelectedInvoice, setPreSelectedInvoice] = useState<{ id: number; number: string; type: 'tax_invoice' | 'proforma_invoice' } | null>(null);
+  const [selectedInvoiceForModal, setSelectedInvoiceForModal] = useState<any>(null);
   const [refreshList, setRefreshList] = useState(0);
   const [stats, setStats] = useState<PaymentStats>({
     total_payments: 0,
@@ -91,8 +93,38 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
 
 
 
-  const handleEditPayment = (payment: any) => {
+  const handleEditPayment = async (payment: any) => {
     setSelectedPayment(payment);
+    try {
+      const res = await apiClient.getFinancePayment(payment.id, { session_key: sessionKey });
+      const full = res.data;
+      if (full.invoice) {
+        const invoiceId = typeof full.invoice === 'object' ? full.invoice.id : full.invoice;
+        const invRes = await api.get(`/api/finance/invoices/${invoiceId}/`, { params: { session_key: sessionKey } });
+        setSelectedInvoiceForModal({
+          id: invRes.data.id,
+          invoice_number: invRes.data.invoice_number,
+          total_amount: invRes.data.total_amount,
+          outstanding_amount: invRes.data.outstanding_amount,
+          subtotal: invRes.data.subtotal,
+          invoiceType: 'tax_invoice',
+        });
+      } else if (full.proforma_invoice) {
+        const proformaId = typeof full.proforma_invoice === 'object' ? full.proforma_invoice.id : full.proforma_invoice;
+        const invRes = await api.get(`/api/finance/proforma-invoices/${proformaId}/`, { params: { session_key: sessionKey } });
+        setSelectedInvoiceForModal({
+          id: invRes.data.id,
+          invoice_number: invRes.data.proforma_number,
+          total_amount: invRes.data.total_amount,
+          outstanding_amount: invRes.data.outstanding_amount,
+          subtotal: invRes.data.subtotal,
+          invoiceType: 'proforma_invoice',
+        });
+      }
+    } catch {
+      toast.error('Failed to load invoice details');
+      return;
+    }
     setShowForm(true);
   };
 
@@ -320,14 +352,20 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
         sessionKey={sessionKey}
       />
 
-      {/* Payment Form Modal */}
-      {showForm && (
-        <PaymentForm
-          payment={selectedPayment}
+      {/* Payment Modal */}
+      {showForm && selectedInvoiceForModal && (
+        <UpdatePaymentModal
+          invoice={{
+            id: selectedInvoiceForModal.id,
+            invoice_number: selectedInvoiceForModal.invoice_number,
+            total_amount: selectedInvoiceForModal.total_amount,
+            outstanding_amount: selectedInvoiceForModal.outstanding_amount,
+            subtotal: selectedInvoiceForModal.subtotal,
+          }}
+          invoiceType={selectedInvoiceForModal.invoiceType}
           onClose={handleFormClose}
-          onSave={handleFormSave}
+          onSuccess={handleFormSave}
           sessionKey={sessionKey}
-          preSelectedInvoice={preSelectedInvoice || undefined}
         />
       )}
 

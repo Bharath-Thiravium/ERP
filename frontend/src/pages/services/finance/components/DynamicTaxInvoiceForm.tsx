@@ -28,7 +28,9 @@ const DynamicTaxInvoiceForm: React.FC<DynamicTaxInvoiceFormProps> = ({
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({})
   const [itemPercentages, setItemPercentages] = useState<Record<number, number>>({})
   const [itemClaimMethods, setItemClaimMethods] = useState<Record<number, 'quantity' | 'percentage'>>({})
-  const [selectedShippingAddress] = useState<number | null>(null)
+  const [selectedShippingAddress, setSelectedShippingAddress] = useState<number | null>(
+    editingInvoice?.shipping_address ?? sourceData?.shipping_address?.id ?? null
+  )
   const [formData, setFormData] = useState({
     invoice_number: editingInvoice?.invoice_number || '',
     invoice_date: editingInvoice?.invoice_date?.split('T')[0] || new Date().toISOString().split('T')[0],
@@ -55,19 +57,21 @@ const DynamicTaxInvoiceForm: React.FC<DynamicTaxInvoiceFormProps> = ({
   useEffect(() => {
     const fetchShippingAddresses = async () => {
       if (!sessionKey || !sourceData?.customer_details?.id) return
-      
       try {
         await api.get(`/api/finance/customers/${sourceData.customer_details.id}/`, {
           params: { session_key: sessionKey }
         })
-        
-        // Use existing shipping address from editing invoice or source data
-        
+        // Auto-select PO shipping address for new invoices if not already set
+        if (!editingInvoice && !selectedShippingAddress) {
+          const poShipping = sourceData?.shipping_address_details || sourceData?.shipping_address
+          if (poShipping?.id) {
+            setSelectedShippingAddress(poShipping.id)
+          }
+        }
       } catch (error) {
         console.error('Error fetching shipping addresses:', error)
       }
     }
-    
     fetchShippingAddresses()
   }, [sessionKey, sourceData?.customer_details?.id, editingInvoice])
 

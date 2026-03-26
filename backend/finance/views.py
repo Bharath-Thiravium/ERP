@@ -16,7 +16,7 @@ import logging
 # Set up logging
 logger = logging.getLogger(__name__)
 from authentication.models import ServiceUserSession, CompanyServiceUser
-from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment, NumberingRule, NumberingCounter, FINANCE_NUMBERING_MODULE_CHOICES, CustomerShippingAddress
+from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment, NumberingRule, NumberingCounter, FINANCE_NUMBERING_MODULE_CHOICES, CustomerShippingAddress, TDSDeposit
 from .unit_models import Unit
 from .email_utils import send_invoice_email, send_proforma_email, send_quotation_email, send_purchase_order_email
 from .serializers import (
@@ -37,7 +37,8 @@ from .serializers import (
     InvoiceCreateSerializer, InvoiceUpdateSerializer,
     PaymentListSerializer, PaymentDetailSerializer,
     PaymentCreateSerializer, PaymentUpdateSerializer,
-    WorldClassPaymentCreateSerializer, WorldClassPaymentListSerializer
+    WorldClassPaymentCreateSerializer, WorldClassPaymentListSerializer,
+    TDSDepositSerializer
 )
 from .serializers import NumberingRuleSerializer, FINANCE_DEFAULT_TEMPLATES
 from finance.numbering import _scope_key
@@ -3783,3 +3784,70 @@ def customer_ledger(request):
     Delegates to the existing ledger implementation that validates service sessions.
     """
     return _customer_ledger_impl(request)
+
+
+class TDSDepositListCreateView(ListCreateAPIView):
+    """List and create split TDS deposits for a payment."""
+    serializer_class = TDSDepositSerializer
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def _get_service_user(self):
+        session_key = (
+            self.request.headers.get('Authorization', '').replace('Bearer ', '')
+            or self.request.query_params.get('session_key')
+            or self.request.data.get('session_key')
+        )
+        if not session_key:
+            return None
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return session.service_user
+        except ServiceUserSession.DoesNotExist:
+            return None
+
+    def get_queryset(self):
+        service_user = self._get_service_user()
+        if not service_user:
+            return TDSDeposit.objects.none()
+        payment_id = self.kwargs['payment_id']
+        return TDSDeposit.objects.filter(
+            company=service_user.company,
+            payment_id=payment_id
+        )
+
+    def perform_create(self, serializer):
+        service_user = self._get_service_user()
+        if not service_user:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Invalid session')
+        payment_id = self.kwargs['payment_id']
+        payment = Payment.objects.get(pk=payment_id, company=service_user.company)
+        serializer.save(company=service_user.company, payment=payment)
+
+
+class TDSDepositDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, delete a single TDS deposit."""
+    serializer_class = TDSDepositSerializer
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def _get_service_user(self):
+        session_key = (
+            self.request.headers.get('Authorization', '').replace('Bearer ', '')
+            or self.request.query_params.get('session_key')
+            or self.request.data.get('session_key')
+        )
+        if not session_key:
+            return None
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return session.service_user
+        except ServiceUserSession.DoesNotExist:
+            return None
+
+    def get_queryset(self):
+        service_user = self._get_service_user()
+        if not service_user:
+            return TDSDeposit.objects.none()
+        return TDSDeposit.objects.filter(company=service_user.company)

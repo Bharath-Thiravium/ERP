@@ -110,11 +110,15 @@ const DirectCreateTaxInvoiceModal: React.FC<DirectCreateTaxInvoiceModalProps> = 
       const response = await apiClient.get(`/api/finance/customers/${customerId}/`, { params: { session_key: sessionKey } })
       const c = response.data
       const addrs: { id: number | null; label: string; address: string }[] = [
-        { id: null, label: 'Billing Address (Default)', address: [c.billing_address_line1, c.billing_city, c.billing_state, c.billing_pincode].filter(Boolean).join(', ') }
+        { id: null, label: 'Billing Address', address: [c.billing_address_line1, c.billing_city, c.billing_state, c.billing_pincode].filter(Boolean).join(', ') }
       ]
-      ;(c.shipping_addresses || []).forEach((a: any) => {
-        addrs.push({ id: a.id, label: a.label || 'Shipping Address', address: a.full_address })
-      })
+      if ((c.shipping_addresses || []).length > 0) {
+        ;(c.shipping_addresses || []).forEach((a: any) => {
+          addrs.push({ id: a.id, label: a.label || 'Shipping Address', address: a.full_address })
+        })
+      } else if (c.shipping_address_line1) {
+        addrs.push({ id: null, label: 'Shipping Address', address: [c.shipping_address_line1, c.shipping_address_line2, c.shipping_city, c.shipping_state, c.shipping_pincode].filter(Boolean).join(', ') })
+      }
       setShippingAddresses(addrs)
     } catch { setShippingAddresses([]) }
   }
@@ -212,6 +216,12 @@ const DirectCreateTaxInvoiceModal: React.FC<DirectCreateTaxInvoiceModalProps> = 
     if (validItems.length === 0) {
       toast.error('Please add at least one valid item')
       return
+    }
+
+    if (!formData.shipping_address && shippingAddresses.length > 1) {
+      // Has shipping addresses available but none selected — warn but allow
+      const proceed = window.confirm('No shipping address selected. The invoice will use billing address. Continue?')
+      if (!proceed) return
     }
 
     setLoading(true)
@@ -330,11 +340,13 @@ const DirectCreateTaxInvoiceModal: React.FC<DirectCreateTaxInvoiceModalProps> = 
               <select
                 value={formData.shipping_address}
                 onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full min-w-0 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">-- Select Shipping Address --</option>
+                <option value="">— Same as Billing —</option>
                 {shippingAddresses.map((a, i) => (
-                  <option key={i} value={a.id ?? ''}>{a.label} — {a.address}</option>
+                  <option key={i} value={a.id ?? ''}>
+                    {a.label}{a.address ? ` — ${a.address.substring(0, 40)}${a.address.length > 40 ? '…' : ''}` : ''}
+                  </option>
                 ))}
               </select>
             </div>

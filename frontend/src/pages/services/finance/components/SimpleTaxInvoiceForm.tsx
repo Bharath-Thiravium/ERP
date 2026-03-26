@@ -34,7 +34,9 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
     editingInvoice ? { [sourceData.quotation_items?.[0]?.id || 1]: 100 } : {}
   )
   const [availableShippingAddresses, setAvailableShippingAddresses] = useState<any[]>([])
-  const [selectedShippingAddress, setSelectedShippingAddress] = useState<number | null>(null)
+  const [selectedShippingAddress, setSelectedShippingAddress] = useState<number | null>(
+    editingInvoice?.shipping_address ?? null
+  )
   const [effectiveShippingAddress, setEffectiveShippingAddress] = useState<any>(null)
   const [formData, setFormData] = useState({
     invoice_number: editingInvoice?.invoice_number || '',
@@ -64,13 +66,13 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
         addresses.push({
           id: null,
           type: 'billing',
-          label: 'Same as Billing Address',
-          address: `${customer.billing_address_line1}, ${customer.billing_city}, ${customer.billing_state} ${customer.billing_pincode}`,
+          label: 'Billing Address',
+          address: [customer.billing_address_line1, customer.billing_city, customer.billing_state, customer.billing_pincode].filter(Boolean).join(', '),
           is_default: true
         })
         
-        // Add customer shipping addresses
-        if (customer.shipping_addresses) {
+        // Add CustomerShippingAddress records
+        if (customer.shipping_addresses && customer.shipping_addresses.length > 0) {
           customer.shipping_addresses.forEach((addr: any) => {
             addresses.push({
               id: addr.id,
@@ -80,9 +82,38 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
               is_default: addr.is_default
             })
           })
+        } else if (customer.shipping_address_line1) {
+          // Fallback: customer has inline shipping address fields (legacy)
+          addresses.push({
+            id: null,
+            type: 'shipping',
+            label: 'Shipping Address',
+            address: [customer.shipping_address_line1, customer.shipping_address_line2, customer.shipping_city, customer.shipping_state, customer.shipping_pincode].filter(Boolean).join(', '),
+            is_default: false
+          })
         }
         
         setAvailableShippingAddresses(addresses)
+        
+        // If PO/Quotation has its own shipping address, add it and auto-select it
+        const poShipping = sourceData?.shipping_address_details || sourceData?.shipping_address
+        if (poShipping && poShipping.id) {
+          const alreadyIncluded = addresses.some(a => a.id === poShipping.id)
+          if (!alreadyIncluded) {
+            addresses.unshift({
+              id: poShipping.id,
+              type: 'po_shipping',
+              label: poShipping.label ? `PO Address — ${poShipping.label}` : 'PO Shipping Address',
+              address: poShipping.full_address || poShipping.address || '',
+              is_default: false
+            })
+            setAvailableShippingAddresses([...addresses])
+          }
+          // Auto-select PO shipping address for new invoices
+          if (!editingInvoice && !selectedShippingAddress) {
+            setSelectedShippingAddress(poShipping.id)
+          }
+        }
         
         // Set effective shipping address from editing invoice or source data
         if (editingInvoice?.effective_shipping_address) {
@@ -377,28 +408,25 @@ const SimpleTaxInvoiceForm: React.FC<SimpleTaxInvoiceFormProps> = ({
                 
                 {/* Shipping Address Selection */}
                 {availableShippingAddresses.length > 0 && (
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Override Shipping Address (Optional)
+                      Shipping Address
                     </label>
-                    <div className="relative">
+                    <div className="relative min-w-0">
                       <select
-                        value={selectedShippingAddress || ''}
+                        value={selectedShippingAddress ?? ''}
                         onChange={(e) => setSelectedShippingAddress(e.target.value ? parseInt(e.target.value) : null)}
-                        className="w-full px-3 py-2 pr-8 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white appearance-none"
+                        className="w-full min-w-0 px-3 py-2 pr-8 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white appearance-none truncate"
                       >
-                        <option value="">Use default from {effectiveShippingAddress?.source || 'source'}</option>
+                        <option value="">— Same as Billing —</option>
                         {availableShippingAddresses.map((addr) => (
-                          <option key={addr.id || 'billing'} value={addr.id || ''}>
-                            {addr.label} - {addr.address.substring(0, 50)}...
+                          <option key={addr.id ?? 'billing'} value={addr.id ?? ''}>
+                            {addr.label}{addr.address ? ` — ${addr.address.substring(0, 40)}${addr.address.length > 40 ? '…' : ''}` : ''}
                           </option>
                         ))}
                       </select>
                       <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Leave as default to use address from {effectiveShippingAddress?.source || 'source document'}
-                    </p>
                   </div>
                 )}
                 

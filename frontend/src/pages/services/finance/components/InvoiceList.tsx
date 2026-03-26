@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, FileText, User, IndianRupee, Eye, Edit, XCircle, Download, Mail, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react';
+import { Plus, Search, FileText, User, IndianRupee, Eye, Edit, XCircle, Download, Mail, ChevronUp, ChevronDown, RefreshCw, AlertTriangle } from 'lucide-react';
 
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
@@ -100,6 +100,7 @@ interface Invoice {
   revision_count?: number;
   revised_at?: string;
   revised_by_name?: string;
+  tds_pending_certificate?: string;
   notes?: string;
   terms_and_conditions?: string;
   payment_terms?: string;
@@ -151,6 +152,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
   const [selectedForEdit, setSelectedForEdit] = useState<Invoice | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedForPayment, setSelectedForPayment] = useState<Invoice | null>(null);
+  const [paymentModalInitialTab, setPaymentModalInitialTab] = useState<'cash' | 'tds'>('cash');
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [selectedForEmail, setSelectedForEmail] = useState<Invoice | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -250,6 +252,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
 
   const handleUpdatePayment = (invoice: Invoice) => {
     setSelectedForPayment(invoice);
+    setPaymentModalInitialTab('cash');
     setShowPaymentModal(true);
   };
 
@@ -327,42 +330,39 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
           {typeof hoveredInvoice === 'string' && hoveredInvoice.startsWith('customer-') && (() => {
             const invoiceId = parseInt(hoveredInvoice.replace('customer-', ''))
             const currentInvoice = invoices.find(inv => inv.id === invoiceId)
-            if (currentInvoice?.customer_shipping_addresses && currentInvoice.customer_shipping_addresses.length > 0) {
-              return (
-                <div>
-                  <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3 pb-2 border-b border-gray-200 dark:border-gray-600">
-                    {currentInvoice.customer_name}
-                  </div>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {currentInvoice.customer_shipping_addresses.map((addr, index) => (
-                      <div key={index} className="text-xs">
-                        <div className={`font-semibold mb-1 flex items-center gap-1 ${
-                          addr.type === 'Billing Address' ? 'text-gray-500 dark:text-gray-400' :
-                          addr.type === 'Reference' ? 'text-purple-600 dark:text-purple-400' :
-                          addr.type?.startsWith('Invoice Shipping') ? 'text-green-600 dark:text-green-400' :
-                          addr.type?.startsWith('PO Shipping') ? 'text-orange-600 dark:text-orange-400' :
-                          'text-blue-600 dark:text-blue-400'
-                        }`}>
-                          {addr.type === 'Billing Address' ? '🏠' :
-                           addr.type === 'Reference' ? '📋' :
-                           addr.type?.startsWith('Invoice Shipping') ? '📦' :
-                           addr.type?.startsWith('PO Shipping') ? '🏭' : '🚚'} {addr.type}
-                          {addr.is_default && (
-                            <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-1 py-0.5 rounded text-xs font-medium">
-                              DEFAULT
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-gray-700 dark:text-gray-300 leading-relaxed pl-4">
-                          {addr.address}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+            if (!currentInvoice) return null
+            const addrs = currentInvoice.customer_shipping_addresses || []
+            return (
+              <div className="min-w-[220px] max-w-[340px]">
+                <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2 pb-2 border-b border-gray-200 dark:border-gray-600">
+                  {currentInvoice.customer_name}
                 </div>
-              )
-            }
-            return null
+                <div className="space-y-2">
+                  {addrs.map((addr, index) => (
+                    <div key={index} className="text-xs">
+                      <div className={`font-semibold mb-0.5 flex items-center gap-1 ${
+                        addr.type === 'Billing Address' ? 'text-gray-400 dark:text-gray-500' :
+                        addr.type === 'Reference'       ? 'text-purple-600 dark:text-purple-400' :
+                        addr.type === 'PO Shipping'     ? 'text-orange-600 dark:text-orange-400' :
+                        addr.type === 'Shipping Address' ? 'text-green-600 dark:text-green-400' :
+                        'text-blue-600 dark:text-blue-400'
+                      }`}>
+                        {addr.type === 'Billing Address'  ? '🏠' :
+                         addr.type === 'Reference'        ? '📋' :
+                         addr.type === 'PO Shipping'      ? '🏭' :
+                         addr.type === 'Shipping Address' ? '📦' : '📍'} {addr.type}
+                      </div>
+                      <div className="text-gray-700 dark:text-gray-300 leading-relaxed pl-4 break-words">
+                        {addr.address}
+                      </div>
+                    </div>
+                  ))}
+                  {addrs.length === 0 && (
+                    <div className="text-xs text-gray-400">No details available</div>
+                  )}
+                </div>
+              </div>
+            )
           })()}
           
           {/* Items Tooltip */}
@@ -518,42 +518,39 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <User className="w-4 h-4 text-gray-400 mr-2" />
-                        <div>
-                          {/* Customer Name with Tooltip */}
-                          {invoice.customer_shipping_addresses && invoice.customer_shipping_addresses.length > 0 ? (
-                            <div 
-                              className="text-sm font-medium text-blue-600 dark:text-blue-400 cursor-pointer border-b border-dotted border-blue-600 dark:border-blue-400 hover:text-blue-800 dark:hover:text-blue-300 relative group"
-                              onMouseEnter={(e) => {
-                                setHoveredInvoice(`customer-${invoice.id}`)
+                        <div className="min-w-0">
+                          {/* Customer Name — always hoverable */}
+                          <div
+                            className="text-sm font-medium text-blue-600 dark:text-blue-400 cursor-pointer border-b border-dotted border-blue-600 dark:border-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                            onMouseEnter={(e) => {
+                              setHoveredInvoice(`customer-${invoice.id}`)
+                              setMousePosition({ x: e.clientX, y: e.clientY })
+                            }}
+                            onMouseLeave={() => setHoveredInvoice(null)}
+                            onMouseMove={(e) => {
+                              if (hoveredInvoice === `customer-${invoice.id}`) {
                                 setMousePosition({ x: e.clientX, y: e.clientY })
-                              }}
-                              onMouseLeave={() => setHoveredInvoice(null)}
-                              onMouseMove={(e) => {
-                                if (hoveredInvoice === `customer-${invoice.id}`) {
-                                  setMousePosition({ x: e.clientX, y: e.clientY })
-                                }
-                              }}
-                            >
-                              {invoice.customer_name ? invoice.customer_name.replace(/[<>"'&]/g, '') : ''}
-                            </div>
-                          ) : (
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              {invoice.customer_name ? invoice.customer_name.replace(/[<>"'&]/g, '') : ''}
-                            </div>
-                          )}
-                          {/* Show shipping address from multiple sources */}
-                          {(invoice.shipping_address || 
-                            (invoice.customer_details?.shipping_address_line1 && 
-                             `${invoice.customer_details.shipping_address_line1}, ${invoice.customer_details.shipping_city}, ${invoice.customer_details.shipping_state}`)) && (
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                              <span className="inline-block w-3 h-3 mr-1">📍</span>
-                              {invoice.shipping_address || 
-                               `${invoice.customer_details?.shipping_address_line1}, ${invoice.customer_details?.shipping_city}, ${invoice.customer_details?.shipping_state}`}
-                            </div>
-                          )}
+                              }
+                            }}
+                          >
+                            {invoice.customer_name ? invoice.customer_name.replace(/[<>"'&]/g, '') : ''}
+                          </div>
+                          {/* Show shipping address inline only when explicitly set on this invoice (type !== Billing Address and type !== Reference) */}
+                          {(() => {
+                            const shippingEntry = invoice.customer_shipping_addresses?.find(
+                              a => a.type !== 'Billing Address' && a.type !== 'Reference'
+                            )
+                            if (!shippingEntry) return null
+                            return (
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[200px]">
+                                <span className="mr-1">📦</span>
+                                {shippingEntry.address}
+                              </div>
+                            )
+                          })()}
                           {invoice.customer_project_area && (
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                              Project: {invoice.customer_project_area}
+                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
+                              {invoice.customer_project_area}
                             </div>
                           )}
                         </div>
@@ -594,11 +591,33 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
                         <IndianRupee className="w-4 h-4 text-gray-400 mr-2" />
                         <div>
                           <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            ₹{parseFloat(invoice.subtotal || '0').toFixed(2)}
+                            ₹{parseFloat(invoice.total_amount || '0').toFixed(2)}
+                          </div>
+                          <div className="text-xs text-gray-400 dark:text-gray-500">
+                            Base: ₹{parseFloat(invoice.subtotal || '0').toFixed(2)}
                           </div>
                           <div className="text-sm text-gray-500 dark:text-gray-400">
                             Outstanding: ₹{parseFloat(invoice.outstanding_amount || '0').toFixed(2)}
                           </div>
+                          {(() => {
+                            const tdsPending = parseFloat(invoice.tds_pending_certificate || '0');
+                            if (tdsPending <= 0) return null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedForPayment(invoice);
+                                  setPaymentModalInitialTab('tds');
+                                  setShowPaymentModal(true);
+                                }}
+                                className="mt-1 flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded px-1.5 py-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                                title="TDS certificate pending — click to confirm receipt"
+                              >
+                                <AlertTriangle className="w-3 h-3 shrink-0" />
+                                TDS ₹{tdsPending.toFixed(2)} pending cert — Mark Received
+                              </button>
+                            );
+                          })()}
                         </div>
                       </div>
                     </td>
@@ -808,13 +827,16 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
             outstanding_amount: selectedForPayment.outstanding_amount || '0',
             subtotal: selectedForPayment.subtotal || '0'
           }}
+          initialTab={paymentModalInitialTab}
           onClose={() => {
             setShowPaymentModal(false);
             setSelectedForPayment(null);
+            setPaymentModalInitialTab('cash');
           }}
           onSuccess={() => {
             setShowPaymentModal(false);
             setSelectedForPayment(null);
+            setPaymentModalInitialTab('cash');
             fetchInvoices(currentPage);
           }}
           sessionKey={sessionKey}

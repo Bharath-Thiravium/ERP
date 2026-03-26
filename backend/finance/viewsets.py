@@ -511,8 +511,9 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related(
-            'customer', 'proforma_invoice', 'created_by'
-        ).prefetch_related('invoice_items', 'payments')
+            'customer', 'proforma_invoice', 'created_by',
+            'purchase_order__shipping_address', 'shipping_address'
+        ).prefetch_related('invoice_items', 'payments', 'customer__shipping_addresses')
         
         # Add search functionality
         search = self.request.query_params.get('search', '').strip()
@@ -620,6 +621,27 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
         invoice.is_work_completed = True
         invoice.save(update_fields=['is_work_completed'])
         return Response({'message': 'Work marked as completed', 'invoice_number': invoice.invoice_number})
+
+    @action(detail=True, methods=['patch'], url_path='tds-config')
+    def tds_config(self, request, pk=None):
+        """Set or update invoice-level TDS configuration (one-time declaration, editable)."""
+        invoice = self.get_object()
+        tds_applicable = request.data.get('tds_applicable')
+        tds_section = request.data.get('tds_section', '').strip()
+        tds_rate = request.data.get('tds_rate', 0)
+        try:
+            tds_rate = float(tds_rate)
+        except (TypeError, ValueError):
+            return Response({'error': 'Invalid tds_rate'}, status=400)
+        invoice.tds_applicable = bool(tds_applicable)
+        invoice.tds_section = tds_section if invoice.tds_applicable else ''
+        invoice.tds_rate = tds_rate if invoice.tds_applicable else 0
+        invoice.save(update_fields=['tds_applicable', 'tds_section', 'tds_rate'])
+        return Response({
+            'tds_applicable': invoice.tds_applicable,
+            'tds_section': invoice.tds_section,
+            'tds_rate': str(invoice.tds_rate),
+        })
 
     @action(detail=True, methods=['post'])
     def mark_gst_payment(self, request, pk=None):

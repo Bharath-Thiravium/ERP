@@ -216,11 +216,15 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({ invoice, onClose, o
               const addrRes = await api.get(`/api/finance/customers/${custId}/`, { params: { session_key: sessionKey } })
               const c = addrRes.data
               const addrs: { id: number | null; label: string; address: string }[] = [
-                { id: null, label: 'Billing Address (Default)', address: [c.billing_address_line1, c.billing_city, c.billing_state, c.billing_pincode].filter(Boolean).join(', ') }
+                { id: null, label: 'Billing Address', address: [c.billing_address_line1, c.billing_city, c.billing_state, c.billing_pincode].filter(Boolean).join(', ') }
               ]
-              ;(c.shipping_addresses || []).forEach((a: any) => {
-                addrs.push({ id: a.id, label: a.label || 'Shipping Address', address: a.full_address })
-              })
+              if ((c.shipping_addresses || []).length > 0) {
+                ;(c.shipping_addresses || []).forEach((a: any) => {
+                  addrs.push({ id: a.id, label: a.label || 'Shipping Address', address: a.full_address })
+                })
+              } else if (c.shipping_address_line1) {
+                addrs.push({ id: null, label: 'Shipping Address', address: [c.shipping_address_line1, c.shipping_address_line2, c.shipping_city, c.shipping_state, c.shipping_pincode].filter(Boolean).join(', ') })
+              }
               setShippingAddresses(addrs)
             } catch { setShippingAddresses([]) }
           }
@@ -387,6 +391,11 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({ invoice, onClose, o
       return
     }
 
+    if (!formData.shipping_address && shippingAddresses.length > 1) {
+      const proceed = window.confirm('No shipping address selected. The invoice will use billing address. Continue?')
+      if (!proceed) return
+    }
+
     setLoading(true)
     try {
       const payload = {
@@ -401,7 +410,7 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({ invoice, onClose, o
         discount_amount: formData.discount_amount,
         shipping_charges: formData.shipping_charges,
         other_charges: formData.other_charges,
-        shipping_address: formData.shipping_address || null,
+        shipping_address: formData.shipping_address !== '' ? (formData.shipping_address || null) : undefined,
         invoice_items: validItems.map(item => ({
           ...(item.id ? { id: item.id } : {}),
           product: item.product,
@@ -831,11 +840,13 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({ invoice, onClose, o
                 <select
                   value={formData.shipping_address}
                   onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full min-w-0 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="">-- Select Shipping Address --</option>
+                  <option value="">— Same as Billing —</option>
                   {shippingAddresses.map((a, i) => (
-                    <option key={i} value={a.id ?? ''}>{a.label} — {a.address}</option>
+                    <option key={i} value={a.id ?? ''}>
+                      {a.label}{a.address ? ` — ${a.address.substring(0, 40)}${a.address.length > 40 ? '…' : ''}` : ''}
+                    </option>
                   ))}
                 </select>
               </div>

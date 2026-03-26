@@ -2211,7 +2211,12 @@ class Invoice(models.Model):
     is_work_completed = models.BooleanField(default=False, help_text="Whether the work/service for this invoice has been completed")
     rejected_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='rejected_invoices')
     rejected_at = models.DateTimeField(null=True, blank=True, help_text="When this invoice was rejected")
-    
+
+    # Invoice-level TDS Configuration (one-time declaration, editable)
+    tds_applicable = models.BooleanField(default=False, help_text="Whether TDS applies to payments on this invoice")
+    tds_section = models.CharField(max_length=20, blank=True, help_text="TDS section code (194C, 194J, etc.)")
+    tds_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="TDS rate percentage")
+
     # Audit fields
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_invoices')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2576,6 +2581,9 @@ class Payment(models.Model):
         # Ensure TDS applicable flag is set based on TDS amount/rate
         if not hasattr(self, 'tds_applicable') or self.tds_applicable is None:
             self.tds_applicable = tds_amount > 0 or tds_percentage > 0
+        # Force True if TDS was actually deducted, regardless of flag
+        if tds_amount > 0:
+            self.tds_applicable = True
         
         # If TDS is applicable, ensure rate is set
         if self.tds_applicable and tds_percentage == 0 and amount > 0 and tds_amount > 0:
@@ -2584,18 +2592,21 @@ class Payment(models.Model):
         
         # Calculate TDS amounts based on CA-level logic
         if self.tds_applicable:
-            if tds_percentage > 0 and amount > 0:
-                # Calculate TDS amount from percentage
+            if tds_amount > 0 and net_amount_received > 0:
+                # Frontend already computed correct values — trust them
+                self.tds_amount = tds_amount
+                self.net_amount_received = net_amount_received
+                if amount > 0:
+                    self.tds_rate = (tds_amount / amount) * Decimal('100')
+            elif tds_percentage > 0 and amount > 0:
+                # Only rate provided — recalculate (legacy path)
                 self.tds_amount = (amount * tds_percentage) / Decimal('100')
-                # Calculate net amount received
                 self.net_amount_received = amount - self.tds_amount
             elif tds_amount > 0:
-                # TDS amount provided directly
                 self.net_amount_received = amount - tds_amount
                 if amount > 0:
                     self.tds_rate = (tds_amount / amount) * Decimal('100')
             else:
-                # TDS applicable but no amounts - set defaults
                 self.tds_amount = Decimal('0')
                 self.net_amount_received = amount
         else:
@@ -2610,45 +2621,49 @@ class Payment(models.Model):
         self.update_invoice_payment_status()
 
     def update_invoice_payment_status(self):
-        """World-Class Payment Status Update - Includes proforma advances + direct payments"""
+        """Update invoice outstanding.
+        TDS logic: TDS amount counts toward paid only when tds_certificate_received=True.
+        Until then, only net_amount_received counts — keeping TDS portion in outstanding.
+        """
         from decimal import Decimal
-        
-        if self.invoice:
-            # Calculate direct payments for this invoice - use gross_payment_amount or amount
-            direct_payments = self.invoice.payments.filter(status='completed').aggregate(
-                total=models.Sum('gross_payment_amount')
-            )['total'] or Decimal('0')
-            
-            # Fallback to amount field if gross_payment_amount is not set
-            if direct_payments == 0:
-                direct_payments = self.invoice.payments.filter(status='completed').aggregate(
-                    total=models.Sum('amount')
-                )['total'] or Decimal('0')
 
-            # Calculate proforma advances (if invoice was created from PO with proformas)
+        def calc_paid(payments_qs):
+            """Sum what is actually settled: net received + TDS only if cert received."""
+            total = Decimal('0')
+            for p in payments_qs.filter(status='completed'):
+                net = Decimal(str(p.net_amount_received or 0))
+                tds = Decimal(str(p.tds_amount or 0))
+                if tds > 0:
+                    # Any payment with TDS deducted: TDS counts only when certificate received
+                    # Use net regardless of tds_applicable flag to prevent gross counting TDS twice
+                    total += net + (tds if p.tds_certificate_received else Decimal('0'))
+                else:
+                    # No TDS deducted — use gross_payment_amount or amount
+                    gross = Decimal(str(p.gross_payment_amount or p.amount or 0))
+                    total += gross
+            return total
+
+        if self.invoice:
+            direct_payments = calc_paid(self.invoice.payments)
+
             proforma_advances = Decimal('0')
             if self.invoice.purchase_order:
-                # Get proforma invoices that were paid as advances
                 proforma_advances = self.invoice.purchase_order.proforma_invoices.aggregate(
                     total=models.Sum('paid_amount')
                 )['total'] or Decimal('0')
 
-            # Total paid = Direct payments + Proforma advances
             total_paid = direct_payments + proforma_advances
+            invoice_total = Decimal(str(self.invoice.total_amount or 0))
 
             self.invoice.paid_amount = total_paid
-            # Ensure proper Decimal conversion
-            invoice_total = Decimal(str(self.invoice.total_amount)) if self.invoice.total_amount is not None else Decimal('0')
             self.invoice.outstanding_amount = invoice_total - total_paid
 
-            # Update payment status
             if self.invoice.outstanding_amount <= 0:
                 self.invoice.payment_status = 'paid'
             elif total_paid > 0:
                 self.invoice.payment_status = 'partially_paid'
             else:
                 self.invoice.payment_status = 'unpaid'
-            # Overdue only applies when fully unpaid and past due date
             if (self.invoice.payment_status == 'unpaid' and
                     self.invoice.due_date and self.invoice.due_date < timezone.now().date()):
                 self.invoice.payment_status = 'overdue'
@@ -2657,24 +2672,13 @@ class Payment(models.Model):
             self.invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'last_payment_date'])
 
         elif self.proforma_invoice:
-            # Calculate total payments for this proforma - use gross_payment_amount or amount
-            total_payments = self.proforma_invoice.payments.filter(status='completed').aggregate(
-                total=models.Sum('gross_payment_amount')
-            )['total'] or Decimal('0')
-            
-            # Fallback to amount field if gross_payment_amount is not set
-            if total_payments == 0:
-                total_payments = self.proforma_invoice.payments.filter(status='completed').aggregate(
-                    total=models.Sum('amount')
-                )['total'] or Decimal('0')
+            total_payments = calc_paid(self.proforma_invoice.payments)
+            proforma_total = Decimal(str(self.proforma_invoice.total_amount or 0))
 
             self.proforma_invoice.paid_amount = total_payments
-            # Ensure proper Decimal conversion
-            proforma_total = Decimal(str(self.proforma_invoice.total_amount)) if self.proforma_invoice.total_amount is not None else Decimal('0')
             self.proforma_invoice.outstanding_amount = proforma_total - total_payments
 
-            # Update payment status - Fixed logic for proforma invoices
-            if abs(self.proforma_invoice.outstanding_amount) <= Decimal('0.01'):  # Allow for small rounding differences
+            if abs(self.proforma_invoice.outstanding_amount) <= Decimal('0.01'):
                 self.proforma_invoice.payment_status = 'paid'
             elif total_payments > Decimal('0'):
                 self.proforma_invoice.payment_status = 'partially_paid'
@@ -2686,31 +2690,32 @@ class Payment(models.Model):
 
     def delete(self, *args, **kwargs):
         """Override delete to update invoice payment status after deletion"""
-        # Store invoice references before deletion
         invoice = self.invoice
         proforma_invoice = self.proforma_invoice
-        
-        # Delete the payment
         super().delete(*args, **kwargs)
-        
-        # Recalculate invoice payment status after deletion
         from decimal import Decimal
-        
+
+        def calc_paid(payments_qs):
+            total = Decimal('0')
+            for p in payments_qs.filter(status='completed'):
+                net = Decimal(str(p.net_amount_received or 0))
+                tds = Decimal(str(p.tds_amount or 0))
+                if tds > 0:
+                    total += net + (tds if p.tds_certificate_received else Decimal('0'))
+                else:
+                    total += Decimal(str(p.gross_payment_amount or p.amount or 0))
+            return total
+
         if invoice:
-            # Recalculate payments for this invoice
-            direct_payments = invoice.payments.filter(status='completed').aggregate(
-                total=models.Sum('amount')
-            )['total'] or Decimal('0')
-            
+            direct_payments = calc_paid(invoice.payments)
             proforma_advances = Decimal('0')
             if invoice.purchase_order:
                 proforma_advances = invoice.purchase_order.proforma_invoices.aggregate(
                     total=models.Sum('paid_amount')
                 )['total'] or Decimal('0')
-            
             total_paid = direct_payments + proforma_advances
             invoice.paid_amount = total_paid
-            invoice_total = Decimal(str(invoice.total_amount)) if invoice.total_amount is not None else Decimal('0')
+            invoice_total = Decimal(str(invoice.total_amount or 0))
             invoice.outstanding_amount = invoice_total - total_paid
             
             if invoice.outstanding_amount <= 0:
@@ -2731,26 +2736,18 @@ class Payment(models.Model):
             invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'last_payment_date'])
         
         elif proforma_invoice:
-            # Recalculate payments for this proforma
-            total_payments = proforma_invoice.payments.filter(status='completed').aggregate(
-                total=models.Sum('amount')
-            )['total'] or Decimal('0')
-            
+            total_payments = calc_paid(proforma_invoice.payments)
+            proforma_total = Decimal(str(proforma_invoice.total_amount or 0))
             proforma_invoice.paid_amount = total_payments
-            proforma_total = Decimal(str(proforma_invoice.total_amount)) if proforma_invoice.total_amount is not None else Decimal('0')
             proforma_invoice.outstanding_amount = proforma_total - total_payments
-            
             if abs(proforma_invoice.outstanding_amount) <= Decimal('0.01'):
                 proforma_invoice.payment_status = 'paid'
             elif total_payments > Decimal('0'):
                 proforma_invoice.payment_status = 'partially_paid'
             else:
                 proforma_invoice.payment_status = 'unpaid'
-            
-            # Get last payment date from remaining payments
             last_payment = proforma_invoice.payments.filter(status='completed').order_by('-payment_date').first()
             proforma_invoice.last_payment_date = last_payment.payment_date if last_payment else None
-            
             proforma_invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'last_payment_date'])
 
 
@@ -3330,3 +3327,63 @@ class PurchasePayment(models.Model):
         
         self.vendor_invoice.last_payment_date = self.payment_date
         self.vendor_invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'status', 'last_payment_date'])
+
+
+class TDSDeposit(models.Model):
+    """Tracks split TDS deposits made against a single Payment's TDS amount."""
+
+    payment = models.ForeignKey(
+        Payment,
+        on_delete=models.CASCADE,
+        related_name='tds_deposits',
+        help_text="The payment whose TDS this deposit covers"
+    )
+    company = models.ForeignKey(Company, on_delete=models.CASCADE)
+
+    deposit_date = models.DateField(help_text="Date TDS was deposited to government")
+    amount = models.DecimalField(max_digits=15, decimal_places=2, help_text="Amount deposited in this instalment")
+    challan_number = models.CharField(max_length=50, blank=True, help_text="BSR/Challan number")
+    form16a_number = models.CharField(max_length=50, blank=True, help_text="Form 16A certificate number for this deposit")
+    certificate_received = models.BooleanField(default=False, help_text="Whether Form 16A received for this deposit")
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_tds_deposits'
+        ordering = ['deposit_date', 'created_at']
+
+    def __str__(self):
+        return f"TDS Deposit ₹{self.amount} on {self.deposit_date} for {self.payment.payment_number}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_payment_tds_status()
+
+    def delete(self, *args, **kwargs):
+        payment = self.payment
+        super().delete(*args, **kwargs)
+        payment.tds_deposits.first()  # trigger queryset refresh
+        self._sync_payment_tds_status(payment=payment)
+
+    def _sync_payment_tds_status(self, payment=None):
+        """Auto-update parent Payment tds_deposited / tds_certificate_received flags,
+        then recalculate invoice outstanding so TDS stays in outstanding until
+        ALL TDS is covered by certificate-received deposits."""
+        p = payment or self.payment
+        deposits = p.tds_deposits.all()
+        tds_total = Decimal(str(p.tds_amount or 0))
+
+        total_deposited = deposits.aggregate(t=models.Sum('amount'))['t'] or Decimal('0')
+        total_cert_received = deposits.filter(certificate_received=True).aggregate(
+            t=models.Sum('amount'))['t'] or Decimal('0')
+
+        # tds_deposited: True only when fully deposited
+        p.tds_deposited = total_deposited >= tds_total and tds_total > 0
+        # tds_certificate_received: True only when cert covers full TDS amount
+        p.tds_certificate_received = total_cert_received >= tds_total and tds_total > 0
+        p.save(update_fields=['tds_deposited', 'tds_certificate_received'])
+
+        # Recalculate invoice outstanding so the change is reflected immediately
+        p.update_invoice_payment_status()

@@ -4,7 +4,7 @@ from django.db import transaction
 from authentication.models import ServiceUserSession
 from finance.numbering import generate_number, NumberingRule
 from finance.models import FINANCE_NUMBERING_MODULE_CHOICES
-from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment, Vendor, PurchaseRequest, PurchaseRequestItem, VendorInvoice, VendorInvoiceItem, PurchasePayment
+from .models import Customer, CustomerShippingAddress, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment, Vendor, PurchaseRequest, PurchaseRequestItem, VendorInvoice, VendorInvoiceItem, PurchasePayment, TDSDeposit
 from .indian_compliance import calculate_gst_for_invoice, calculate_tds_for_payment, get_indian_states
 from .security_validators import FinanceSecurityValidator
 
@@ -1995,6 +1995,9 @@ class InvoiceListSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source='created_by.user.get_full_name', read_only=True)
     revised_by_name = serializers.CharField(source='revised_by.user.get_full_name', read_only=True)
     customer_shipping_addresses = serializers.SerializerMethodField()
+    tds_pending_certificate = serializers.SerializerMethodField()
+    tds_cash_outstanding = serializers.SerializerMethodField()
+    tds_amount_outstanding = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -2006,7 +2009,9 @@ class InvoiceListSerializer(serializers.ModelSerializer):
             'is_work_completed', 'is_revised', 'revision_count', 'revised_at', 'revised_by_name', 'created_at',
             'created_by_name', 'customer_shipping_addresses',
             'gst_payment_status', 'gst_paid_date', 'gst_payment_reference',
-            'cgst_amount', 'sgst_amount', 'igst_amount'
+            'cgst_amount', 'sgst_amount', 'igst_amount', 'tds_pending_certificate',
+            'tds_applicable', 'tds_section', 'tds_rate',
+            'tds_cash_outstanding', 'tds_amount_outstanding',
         ]
 
     def get_purchase_order(self, obj):
@@ -2032,50 +2037,46 @@ class InvoiceListSerializer(serializers.ModelSerializer):
         return obj.invoice_items.count()
     
     def get_customer_shipping_addresses(self, obj):
-        """Get invoice-specific shipping address and reference with PO/WO details"""
+        """Return shipping address + reference for tooltip.
+        Always returns data so hover is always active on customer name.
+        """
         addresses = []
 
         # 1. Invoice-specific shipping address (highest priority)
         if obj.shipping_address:
             addresses.append({
-                'type': f'Invoice Shipping - {obj.shipping_address.label}' if obj.shipping_address.label else 'Invoice Shipping',
-                'address': obj.shipping_address.full_address,
+                'type': 'Shipping Address',
+                'address': obj.shipping_address.label
+                    + (' — ' + obj.shipping_address.full_address if obj.shipping_address.full_address else ''),
                 'is_default': obj.shipping_address.is_default
             })
-
-        # 2. PO shipping address
-        if obj.purchase_order and obj.purchase_order.shipping_address:
+        elif obj.purchase_order and obj.purchase_order.shipping_address:
             addresses.append({
-                'type': f'PO Shipping - {obj.purchase_order.shipping_address.label}' if obj.purchase_order.shipping_address.label else 'PO Shipping Address',
-                'address': obj.purchase_order.shipping_address.full_address,
+                'type': 'PO Shipping',
+                'address': (obj.purchase_order.shipping_address.label or '') +
+                    (' — ' + obj.purchase_order.shipping_address.full_address
+                     if obj.purchase_order.shipping_address.full_address else ''),
                 'is_default': False
             })
-
-        # 3. Quotation shipping address
-        if obj.quotation and obj.quotation.shipping_address:
+        elif obj.quotation and obj.quotation.shipping_address:
             addresses.append({
-                'type': f'Quotation Shipping - {obj.quotation.shipping_address.label}' if obj.quotation.shipping_address.label else 'Quotation Shipping Address',
-                'address': obj.quotation.shipping_address.full_address,
+                'type': 'Quotation Shipping',
+                'address': (obj.quotation.shipping_address.label or '') +
+                    (' — ' + obj.quotation.shipping_address.full_address
+                     if obj.quotation.shipping_address.full_address else ''),
                 'is_default': False
             })
+        else:
+            # No shipping address on invoice/PO/quotation — show all customer site addresses
+            if obj.customer:
+                for addr in obj.customer.shipping_addresses.all():
+                    addresses.append({
+                        'type': addr.label or 'Site Address',
+                        'address': addr.full_address,
+                        'is_default': addr.is_default
+                    })
 
-        # 4. Customer shipping addresses — only when no invoice/PO/quotation shipping address exists
-        if obj.customer and not obj.shipping_address and not (obj.purchase_order and obj.purchase_order.shipping_address) and not (obj.quotation and obj.quotation.shipping_address):
-            for addr in obj.customer.shipping_addresses.all()[:3]:
-                addresses.append({
-                    'type': f'Customer Shipping - {addr.label}' if addr.label else 'Customer Shipping',
-                    'address': addr.full_address,
-                    'is_default': addr.is_default
-                })
-            # Billing address as final fallback
-            if obj.customer.full_billing_address:
-                addresses.append({
-                    'type': 'Billing Address',
-                    'address': obj.customer.full_billing_address,
-                    'is_default': False
-                })
-
-        # 5. Reference field (always shown if present)
+        # 2. Reference field
         if obj.reference:
             addresses.append({
                 'type': 'Reference',
@@ -2083,14 +2084,47 @@ class InvoiceListSerializer(serializers.ModelSerializer):
                 'is_default': False
             })
 
-        if not addresses:
+        # 3. Billing address always shown so tooltip is never empty
+        if obj.customer and obj.customer.full_billing_address:
             addresses.append({
-                'type': 'No shipping details',
-                'address': 'No shipping address specified for this invoice',
+                'type': 'Billing Address',
+                'address': obj.customer.full_billing_address,
                 'is_default': False
             })
 
         return addresses
+
+    def get_tds_pending_certificate(self, obj):
+        """Total TDS where certificate not yet received."""
+        from decimal import Decimal
+        total = Decimal('0')
+        for p in obj.payments.filter(status='completed', tds_applicable=True):
+            if not p.tds_certificate_received and p.tds_amount:
+                total += Decimal(str(p.tds_amount))
+        return str(total)
+
+    def get_tds_cash_outstanding(self, obj):
+        """Outstanding for cash portion only (total - cash paid)."""
+        from decimal import Decimal
+        total = Decimal(str(obj.total_amount or 0))
+        cash_paid = Decimal('0')
+        tds_total = Decimal('0')
+        for p in obj.payments.filter(status='completed'):
+            net = Decimal(str(p.net_amount_received or 0))
+            tds = Decimal(str(p.tds_amount or 0))
+            cash_paid += net
+            tds_total += tds
+        # Cash outstanding = total - tds_portion - cash_paid
+        return str(max(Decimal('0'), total - tds_total - cash_paid))
+
+    def get_tds_amount_outstanding(self, obj):
+        """Outstanding TDS portion (not yet cert-received)."""
+        from decimal import Decimal
+        total = Decimal('0')
+        for p in obj.payments.filter(status='completed', tds_applicable=True):
+            if not p.tds_certificate_received:
+                total += Decimal(str(p.tds_amount or 0))
+        return str(total)
 
 class InvoiceDetailSerializer(serializers.ModelSerializer):
     """Serializer for invoice detail view"""
@@ -2875,6 +2909,12 @@ class InvoiceUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         from decimal import Decimal
 
+        # SAFETY: never wipe an existing shipping_address with null.
+        # Only update it when the request explicitly provides a non-null value.
+        if 'shipping_address' in validated_data and validated_data['shipping_address'] is None:
+            if instance.shipping_address_id is not None:
+                validated_data.pop('shipping_address')  # keep existing
+
         # Extract PO-claiming fields
         invoice_items_data = validated_data.pop('invoice_items', None)
         selected_items = validated_data.pop('selected_items', None)
@@ -3190,29 +3230,14 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
         elif validated_data.get('proforma_invoice'):
             validated_data['customer'] = validated_data['proforma_invoice'].customer
         
-        # Apply automatic TDS calculation if payment method requires it
+        # Normalize net_amount_received and gross_payment_amount
         payment_amount = validated_data.get('amount', 0)
-        if payment_amount > 0 and not validated_data.get('tds_amount'):
-            try:
-                # Default TDS section for payments (can be customized)
-                tds_section = validated_data.get('tds_section', '194A')
-                
-                # Calculate TDS with correct parameter format
-                tds_result = calculate_tds_for_payment({
-                    'amount': float(payment_amount),
-                    'tds_section': tds_section
-                })
-                
-                # Update payment with TDS details if applicable
-                if tds_result.get('is_above_threshold'):
-                    validated_data['tds_amount'] = tds_result['tds_amount']
-                    validated_data['tds_rate_applied'] = tds_result.get('tds_rate', 0)
-                    validated_data['tds_section_code'] = tds_section
-                    validated_data['net_amount_received'] = tds_result.get('net_amount', payment_amount)
-                    
-            except Exception as e:
-                # Log error but don't fail payment creation
-                print(f"TDS calculation failed for payment: {e}")
+        if not validated_data.get('tds_applicable'):
+            # Non-TDS payment: net received = gross = amount
+            validated_data['net_amount_received'] = payment_amount
+            validated_data['gross_payment_amount'] = payment_amount
+            validated_data['tds_amount'] = 0
+            validated_data['tds_rate'] = 0
 
         return super().create(validated_data)
 
@@ -3226,19 +3251,21 @@ class PaymentUpdateSerializer(serializers.ModelSerializer):
             'payment_date', 'amount', 'payment_method', 'reference_number',
             'bank_name', 'notes', 'status',
             'tds_amount', 'tds_rate', 'tds_section', 'net_amount_received',
-            'tds_certificate_received', 'form16a_number'
+            'gross_payment_amount', 'tds_applicable',
+            'tds_deposited', 'tds_certificate_received', 'form16a_number'
         ]
 
     def update(self, instance, validated_data):
         """Update payment and recalculate invoice status"""
+        # Normalize fields for non-TDS payments
+        if not validated_data.get('tds_applicable', instance.tds_applicable):
+            amt = validated_data.get('amount', instance.amount)
+            validated_data['net_amount_received'] = amt
+            validated_data['gross_payment_amount'] = amt
+            validated_data['tds_amount'] = 0
+            validated_data['tds_rate'] = 0
         payment = super().update(instance, validated_data)
-        
-        # Recalculate invoice payment status
-        if payment.invoice:
-            payment.invoice.update_payment_status()
-        elif payment.proforma_invoice:
-            payment.proforma_invoice.update_payment_status()
-        
+        payment.update_invoice_payment_status()
         return payment
 
 
@@ -3956,3 +3983,31 @@ class NumberingRuleSerializer(serializers.ModelSerializer):
         if value < 1:
             raise serializers.ValidationError("Start from must be at least 1")
         return value
+
+
+class TDSDepositSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TDSDeposit
+        fields = [
+            'id', 'payment', 'deposit_date', 'amount',
+            'challan_number', 'form16a_number',
+            'certificate_received', 'notes',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate(self, data):
+        from decimal import Decimal
+        from django.db.models import Sum
+        payment = data.get('payment') or (self.instance.payment if self.instance else None)
+        amount = Decimal(str(data.get('amount') or 0))
+        if payment and amount:
+            tds_total = Decimal(str(payment.tds_amount or 0))
+            existing = payment.tds_deposits.exclude(
+                pk=self.instance.pk if self.instance else None
+            ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+            if existing + amount > tds_total + Decimal('0.01'):
+                raise serializers.ValidationError(
+                    f"Total deposits (₹{existing + amount:.2f}) would exceed TDS amount (₹{tds_total:.2f})"
+                )
+        return data

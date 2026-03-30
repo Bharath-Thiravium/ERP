@@ -60,11 +60,12 @@ const UpdatePaymentModal: React.FC<Props> = ({
   })();
 
   const fetchDeposits = useCallback(async (pmts: PaymentRecord[]) => {
-    const withTds = pmts.filter(p => parseFloat(p.tds_amount || '0') > 0);
+    // Fetch deposits for all completed payments (tds_amount may be 0 if TDS is invoice-level)
+    const eligible = pmts.filter(p => p.status === 'completed');
     const map: Record<number, TDSDeposit[]> = {};
-    await Promise.all(withTds.map(async p => {
+    await Promise.all(eligible.map(async p => {
       try {
-        const res = await api.get(`/api/finance/payments/${p.id}/tds-deposits/`, { params: { session_key: sessionKey } });
+        const res = await api.get(`/api/finance/payment-tds/${p.id}/deposits/`, { params: { session_key: sessionKey } });
         map[p.id] = res.data.results ?? res.data;
       } catch { map[p.id] = []; }
     }));

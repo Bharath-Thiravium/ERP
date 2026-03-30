@@ -2627,24 +2627,34 @@ class Payment(models.Model):
         """
         from decimal import Decimal
 
-        def calc_paid(payments_qs):
-            """Sum what is actually settled: net received + TDS only if cert received."""
+        def calc_paid(payments_qs, invoice_obj=None):
+            """Sum what is actually settled: net received + TDS only if cert received.
+            Supports both payment-level TDS (tds_amount > 0) and invoice-level TDS
+            (invoice.tds_applicable=True, payment.tds_amount=0).
+            """
             total = Decimal('0')
             for p in payments_qs.filter(status='completed'):
                 net = Decimal(str(p.net_amount_received or 0))
                 tds = Decimal(str(p.tds_amount or 0))
+
                 if tds > 0:
-                    # Any payment with TDS deducted: TDS counts only when certificate received
-                    # Use net regardless of tds_applicable flag to prevent gross counting TDS twice
+                    # Payment-level TDS: count TDS only when cert received
                     total += net + (tds if p.tds_certificate_received else Decimal('0'))
+                elif invoice_obj and getattr(invoice_obj, 'tds_applicable', False) and getattr(invoice_obj, 'tds_rate', 0):
+                    # Invoice-level TDS: derive TDS from deposits on this payment
+                    from django.db.models import Sum as DSum
+                    cert_received = p.tds_deposits.filter(certificate_received=True).aggregate(
+                        t=DSum('amount'))['t'] or Decimal('0')
+                    total += net + cert_received
                 else:
-                    # No TDS deducted — use gross_payment_amount or amount
+                    # No TDS — use gross
                     gross = Decimal(str(p.gross_payment_amount or p.amount or 0))
                     total += gross
             return total
 
+
         if self.invoice:
-            direct_payments = calc_paid(self.invoice.payments)
+            direct_payments = calc_paid(self.invoice.payments, self.invoice)
 
             proforma_advances = Decimal('0')
             if self.invoice.purchase_order:
@@ -3364,26 +3374,30 @@ class TDSDeposit(models.Model):
     def delete(self, *args, **kwargs):
         payment = self.payment
         super().delete(*args, **kwargs)
-        payment.tds_deposits.first()  # trigger queryset refresh
         self._sync_payment_tds_status(payment=payment)
 
     def _sync_payment_tds_status(self, payment=None):
-        """Auto-update parent Payment tds_deposited / tds_certificate_received flags,
-        then recalculate invoice outstanding so TDS stays in outstanding until
-        ALL TDS is covered by certificate-received deposits."""
+        """Sync tds_deposited / tds_certificate_received on Payment,
+        then recalculate invoice outstanding so TDS stays outstanding
+        until ALL TDS is covered by cert-received deposits."""
+        from decimal import Decimal
         p = payment or self.payment
         deposits = p.tds_deposits.all()
-        tds_total = Decimal(str(p.tds_amount or 0))
+
+        # Use invoice-level TDS total when payment.tds_amount is 0
+        invoice = p.invoice or p.proforma_invoice
+        if invoice and getattr(invoice, 'tds_applicable', False) and getattr(invoice, 'tds_rate', 0):
+            tds_total = (Decimal(str(invoice.subtotal or 0)) * Decimal(str(invoice.tds_rate or 0)) / 100).quantize(Decimal('0.01'))
+        else:
+            tds_total = Decimal(str(p.tds_amount or 0))
 
         total_deposited = deposits.aggregate(t=models.Sum('amount'))['t'] or Decimal('0')
-        total_cert_received = deposits.filter(certificate_received=True).aggregate(
+        total_cert = deposits.filter(certificate_received=True).aggregate(
             t=models.Sum('amount'))['t'] or Decimal('0')
 
-        # tds_deposited: True only when fully deposited
-        p.tds_deposited = total_deposited >= tds_total and tds_total > 0
-        # tds_certificate_received: True only when cert covers full TDS amount
-        p.tds_certificate_received = total_cert_received >= tds_total and tds_total > 0
+        p.tds_deposited = tds_total > 0 and total_deposited >= tds_total
+        p.tds_certificate_received = tds_total > 0 and total_cert >= tds_total
         p.save(update_fields=['tds_deposited', 'tds_certificate_received'])
 
-        # Recalculate invoice outstanding so the change is reflected immediately
+        # Recalculate invoice outstanding
         p.update_invoice_payment_status()

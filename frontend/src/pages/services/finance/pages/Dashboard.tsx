@@ -54,6 +54,7 @@ import VendorLedger from './VendorLedger'
 import { EInvoiceManager } from '../components/EInvoiceManager'
 
 import Integration from './Integration'
+import TDSList from './TDSList'
 import FinanceCard from '../components/FinanceCard'
 
 const FinanceDashboard: React.FC = () => {
@@ -261,6 +262,7 @@ const handlePOCreated = () => {
         { id: 'vendor-ledger', label: 'Vendor Ledger', icon: User, description: 'Vendor account statements' }
       ]
     },
+    { id: 'tds', label: 'TDS Register', icon: FileText, description: 'TDS deductions & 26Q filing' },
     { id: 'compliance', label: 'Indian Compliance', icon: Shield, description: 'Tax and regulatory compliance' },
     { id: 'einvoice', label: 'E-Invoice', icon: Zap, description: 'Electronic invoice management' },
     { id: 'integration', label: 'Integration', icon: Zap, description: 'Third-party integrations' },
@@ -1272,6 +1274,8 @@ const handlePOCreated = () => {
         return <PurchasePayments />
       case 'vendor-ledger':
         return <VendorLedger />
+      case 'tds':
+        return <TDSList />
       case 'compliance':
         return <ComplianceDashboard sessionKey={sessionKey || ''} />
       case 'einvoice':

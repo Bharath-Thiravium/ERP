@@ -137,8 +137,13 @@ urlpatterns = [
     # Purchase Payment endpoints
     path('purchase-payments/', purchase_views.PurchasePaymentListCreateView.as_view(), name='purchase_payment_list_create'),
     path('purchase-payments/<int:pk>/', purchase_views.PurchasePaymentDetailView.as_view(), name='purchase_payment_detail'),
-    path('payments/<int:payment_id>/tds-deposits/', views.TDSDepositListCreateView.as_view(), name='tds_deposit_list_create'),
-    path('payments/<int:payment_id>/tds-deposits/<int:pk>/', views.TDSDepositDetailView.as_view(), name='tds_deposit_detail'),
+    path('payment-tds/<int:payment_id>/deposits/', views.TDSDepositListCreateView.as_view(), name='tds_deposit_list_create'),
+    path('payment-tds/<int:payment_id>/deposits/<int:pk>/', views.TDSDepositDetailView.as_view(), name='tds_deposit_detail'),
+    path('payment-tds/<int:payment_id>/mark-cert-received/', views.MarkTDSCertReceivedView.as_view(), name='tds_mark_cert_received'),
+    
+    # Global TDS Management
+    path('tds/', views.TDSPaymentsListView.as_view(), name='tds_list'),
+    path('tds/export/', views.TDSExportCSVView.as_view(), name='tds_export'),
     
     # Purchase & Expense Reports
     path('vendor-ledger/', purchase_views.vendor_ledger, name='vendor_ledger'),

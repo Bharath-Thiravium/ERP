@@ -55,8 +55,25 @@ const TDSTracker: React.FC<Props> = ({ sessionKey, tdsMax, tdsOutstanding, payme
   const remaining = Math.max(0, parseFloat((tdsMax - totalDeposited).toFixed(2)));
 
   // Use the first TDS-applicable payment as the parent for new deposits
-  const tdsPayment = payments.find(p => p.tds_applicable && parseFloat(p.tds_amount || '0') > 0)
-    || payments.find(p => p.status === 'completed');
+  const tdsPayment = payments.find(p => p.tds_applicable)
+    ?? payments.find(p => p.status === 'completed');
+
+  const handleMarkCertReceived = async (paymentId: number, current: boolean) => {
+    try {
+      const { default: api } = await import('../../../../../lib/api');
+      const { default: toast } = await import('react-hot-toast');
+      await api.patch(
+        `/api/finance/payment-tds/${paymentId}/mark-cert-received/`,
+        { certificate_received: !current },
+        { params: { session_key: sessionKey } }
+      );
+      toast.success(!current ? 'TDS certificate marked received' : 'Marked pending');
+      onChanged();
+    } catch {
+      const { default: toast } = await import('react-hot-toast');
+      toast.error('Failed to update');
+    }
+  };
 
   const handleAdd = async () => {
     const amt = parseFloat(form.amount);
@@ -77,7 +94,7 @@ const TDSTracker: React.FC<Props> = ({ sessionKey, tdsMax, tdsOutstanding, payme
       const { default: api } = await import('../../../../../lib/api');
       const { default: toast } = await import('react-hot-toast');
       await api.post(
-        `/api/finance/payments/${tdsPayment.id}/tds-deposits/`,
+        `/api/finance/payment-tds/${tdsPayment.id}/deposits/`,
         form,
         { params: { session_key: sessionKey } }
       );
@@ -95,7 +112,7 @@ const TDSTracker: React.FC<Props> = ({ sessionKey, tdsMax, tdsOutstanding, payme
       const { default: api } = await import('../../../../../lib/api');
       const { default: toast } = await import('react-hot-toast');
       await api.delete(
-        `/api/finance/payments/${paymentId}/tds-deposits/${depositId}/`,
+        `/api/finance/payment-tds/${paymentId}/deposits/${depositId}/`,
         { params: { session_key: sessionKey } }
       );
       toast.success('Entry removed'); onChanged();
@@ -110,7 +127,7 @@ const TDSTracker: React.FC<Props> = ({ sessionKey, tdsMax, tdsOutstanding, payme
       const { default: api } = await import('../../../../../lib/api');
       const { default: toast } = await import('react-hot-toast');
       await api.patch(
-        `/api/finance/payments/${paymentId}/tds-deposits/${depositId}/`,
+        `/api/finance/payment-tds/${paymentId}/deposits/${depositId}/`,
         { certificate_received: !current },
         { params: { session_key: sessionKey } }
       );
@@ -151,7 +168,33 @@ const TDSTracker: React.FC<Props> = ({ sessionKey, tdsMax, tdsOutstanding, payme
         </span>
       </div>
 
-      {/* Existing entries */}
+      {/* Per-payment cert received — for payments with no deposit entries */}
+      {payments.filter(p => p.status === 'completed' && parseFloat(p.tds_amount || '0') > 0).map(p => {
+        const hasDeposits = (depositsMap[p.id] || []).length > 0;
+        if (hasDeposits) return null; // handled via deposit toggle above
+        return (
+          <div key={p.id} className="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg px-3 py-2 text-xs">
+            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+              <span className="font-medium">{p.payment_number}</span>
+              <span className="text-gray-400">TDS ₹{fmt(p.tds_amount)}</span>
+            </div>
+            <button type="button"
+              onClick={() => handleMarkCertReceived(p.id, p.tds_certificate_received)}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                p.tds_certificate_received
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-200'
+                  : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 hover:bg-amber-100'
+              }`}
+            >
+              {p.tds_certificate_received
+                ? <><CheckCircle className="w-3 h-3" /> 16A Received</>
+                : <><Clock className="w-3 h-3" /> Mark 16A Received</>}
+            </button>
+          </div>
+        );
+      })}
+
+      {/* Existing deposit entries */}
       {allEntries.length > 0 && (
         <div className="space-y-1.5">
           {allEntries.map(d => (

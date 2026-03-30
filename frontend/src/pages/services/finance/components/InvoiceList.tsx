@@ -121,9 +121,10 @@ interface Invoice {
 
 interface InvoiceListProps {
   sessionKey: string;
+  initialPaymentStatus?: string;
 }
 
-const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
+const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentStatus = '' }) => {
   console.log('🔍 InvoiceList - Component initialized with sessionKey:', sessionKey ? 'Present' : 'Missing');
   console.log('🔍 InvoiceList - sessionKey length:', sessionKey?.length || 0);
 
@@ -143,7 +144,12 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
   const [searching, setSearching] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState(initialPaymentStatus);
+
+  useEffect(() => {
+    setPaymentStatusFilter(initialPaymentStatus);
+    setCurrentPage(1);
+  }, [initialPaymentStatus]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [showInvoiceView, setShowInvoiceView] = useState(false);
@@ -175,6 +181,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey }) => {
   const paymentStatusOptions = [
     { value: '', label: 'All' },
     { value: 'overdue', label: 'Overdue' },
+    { value: 'unpaid_or_partial', label: 'Unpaid & Partial' },
     { value: 'unpaid', label: 'Unpaid' },
     { value: 'partially_paid', label: 'Partially Paid' },
     { value: 'paid', label: 'Paid' },

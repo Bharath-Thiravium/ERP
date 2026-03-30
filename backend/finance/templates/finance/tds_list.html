@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TDS Management Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .quarter-tab { cursor: pointer; transition: all 0.3s; }
+        .quarter-tab.active { background: #0d6efd; color: white; }
+        .pending-16a { background: #fff3cd; }
+        .ca-pending { border-left: 4px solid #ffc107; }
+        .status-badge { font-size: 0.75em; }
+        .table-container { max-height: 70vh; overflow-y: auto; }
+        @media (max-width: 768px) { .quarter-tabs { flex-wrap: wrap; gap: 0.5rem; } }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h2><i class="bi bi-file-earmark-ruled text-primary"></i> TDS Management Dashboard</h2>
+                        <p class="text-muted mb-0">Track TDS deductions, Form16A certificates, CA submissions (Form 26Q compliant)</p>
+                    </div>
+                    <div class="btn-group" role="group">
+                        <button class="btn btn-outline-primary" onclick="exportCSV()">
+                            <i class="bi bi-download"></i> Export CSV
+                        </button>
+                        <button class="btn btn-primary" onclick="printTDSReport()">
+                            <i class="bi bi-printer"></i> Print
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="btn-group quarter-tabs w-100" role="group">
+                    <button class="btn btn-outline-primary quarter-tab active" data-quarter="Q1">
+                        <i class="bi bi-calendar3"></i> Q1 (Apr-Jun)
+                    </button>
+                    <button class="btn btn-outline-primary quarter-tab" data-quarter="Q2">
+                        Q2 (Jul-Sep)
+                    </button>
+                    <button class="btn btn-outline-primary quarter-tab" data-quarter="Q3">
+                        Q3 (Oct-Dec)
+                    </button>
+                    <button class="btn btn-outline-primary quarter-tab" data-quarter="Q4">
+                        Q4 (Jan-Mar)
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <select class="form-select" id="tdsSectionFilter">
+                            <option value="">All Sections</option>
+                            <option value="194C">194C (Contractors)</option>
+                            <option value="194J">194J (Professional)</option>
+                            <option value="194H">194H (Commission)</option>
+                            <option value="194I">194I (Rent)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="form16aPending">
+                            <label class="form-check-label" for="form16aPending">
+                                Form16A Pending
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" id="customerSearch" placeholder="Customer/PAN...">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row mb-4">
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-primary shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                    Total TDS (This Quarter)
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="totalTDS">₹0</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-rupee-sign fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-success shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                    Payments Processed
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="totalPayments">0</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-file-invoice-dollar fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-warning shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                    Form16A Pending
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="pending16a">0</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas bi bi-file-earmark-check fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-info shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                    CA Submission Status
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="caStatus">
+                                    <span class="badge bg-warning">Pending</span>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas bi bi-person-check fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DataTable -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">TDS Payments Register</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive table-container">
+                    <table id="tdsTable" class="table table-hover table-striped" style="width:100%">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Date</th>
+                                <th>Payment #</th>
+                                <th>Customer</th>
+                                <th>PAN</th>
+                                <th>Invoice</th>
+                                <th>Gross (₹)</th>
+                                <th>TDS Section</th>
+                                <th>Rate</th>
+                                <th>TDS (₹)</th>
+                                <th>Net Received</th>
+                                <th>Form16A</th>
+                                <th>CA Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    
+    <script>
+        let table, currentQuarter = 'Q1';
+        const API_BASE = '/finance/';
+        const SESSION_KEY = '{{ request.GET.session_key|default:"" }}';
+
+        $(document).ready(function() {
+            initQuarterTabs();
+            initFilters();
+            loadTDSPayments();
+        });
+
+        function initQuarterTabs() {
+            $('.quarter-tab').click(function() {
+                $('.quarter-tab').removeClass('active');
+                $(this).addClass('active');
+                currentQuarter = $(this).data('quarter');
+                loadTDSPayments();
+            });
+        }
+
+        function initFilters() {
+            $('#tdsSectionFilter, #form16aPending, #customerSearch').on('change keyup', debounce(loadTDSPayments, 300));
+        }
+
+        function loadTDSPayments() {
+            const params = new URLSearchParams({
+                quarter: currentQuarter,
+                session_key: SESSION_KEY
+            });
+
+            // Add filters
+            if ($('#tdsSectionFilter').val()) params.append('tds_section', $('#tdsSectionFilter').val());
+            if ($('#form16aPending').is(':checked')) params.append('form16a_pending', 'true');
+            if ($('#customerSearch').val()) params.append('customer', $('#customerSearch').val());
+
+            if ($.fn.DataTable.isDataTable('#tdsTable')) {
+                table.destroy();
+            }
+
+            table = $('#tdsTable').DataTable({
+                processing: true,
+                serverSide: true,
+                ajax: {
+                    url: API_BASE + 'tds/?' + params.toString(),
+                    dataSrc: function(json) {
+                        updateStats(json.data);
+                        return json.data;
+                    }
+                },
+                columns: [
+                    { data: 'payment_date', render: formatDate },
+                    { data: 'payment_number' },
+                    { data: 'customer_name' },
+                    { data: 'customer_pan' },
+                    { data: 'invoice_number' },
+                    { data: 'amount', render: formatCurrency },
+                    { data: 'tds_section_code', className: 'fw-bold' },
+                    { data: 'tds_rate_applied', render: formatRate },
+                    { data: 'tds_amount', render: formatCurrency },
+                    { data: 'net_amount_received', render: formatCurrency },
+                    { 
+                        data: null,
+                        render: function(data) {
+                            return data.tds_certificate_issued 
+                                ? `<span class="badge bg-success">Received</span>`
+                                : `<span class="badge bg-warning">Pending</span>`;
+                        }
+                    },
+                    { 
+                        data: 'ca_submission_status',
+                        render: function(data) {
+                            const status = data || 'Not Assigned';
+                            const badgeClass = status === 'submitted' ? 'bg-success' : 
+                                             status === 'pending' ? 'bg-warning' : 'bg-secondary';
+                            return `<span class="badge ${badgeClass}">${status}</span>`;
+                        }
+                    },
+                    {
+                        data: null,
+                        orderable: false,
+                        render: function(data) {
+                            return `
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button class="btn btn-outline-primary" onclick="viewPayment(${data.id})" title="View">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <a href="/finance/payments/${data.id}/" class="btn btn-outline-info" target="_blank">
+                                        <i class="bi bi-box-arrow-up-right"></i>
+                                    </a>
+                                </div>`;
+                        }
+                    }
+                ],
+                pageLength: 25,
+                responsive: true,
+                dom: 'Bfrtip',
+                buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
+                language: { search: "Search Payments:", emptyTable: "No TDS payments found for this quarter" },
+                drawCallback: function() {
+                    updateRowColors();
+                }
+            });
+        }
+
+        function formatDate(data) {
+            return new Date(data).toLocaleDateString('en-IN');
+        }
+
+        function formatCurrency(data) {
+            return new Intl.NumberFormat('en-IN', {
+                style: 'currency', currency: 'INR', minimumFractionDigits: 0
+            }).format(data || 0);
+        }
+
+        function formatRate(data) {
+            return data ? data + '%' : '—';
+        }
+
+        function updateStats(data) {
+            let totalTDS = 0, totalPayments = 0, pending16a = 0;
+            
+            data.forEach(row => {
+                totalTDS += parseFloat(row.tds_amount || 0);
+                totalPayments++;
+                if (!row.tds_certificate_issued) pending16a++;
+            });
+
+            $('#totalTDS').text(formatCurrency(totalTDS));
+            $('#totalPayments').text(totalPayments);
+            $('#pending16a').text(pending16a);
+
+            // Update CA status
+            const caPending = data.some(row => !row.ca_submission_status || row.ca_submission_status === 'pending');
+            $('#caStatus').html(caPending 
+                ? '<span class="badge bg-warning">CA Pending</span>'
+                : '<span class="badge bg-success">Submitted</span>');
+        }
+
+        function updateRowColors() {
+            $('#tdsTable tbody tr').each(function() {
+                const row = $(this);
+                if (row.find('.badge-warning').length > 0) {
+                    row.addClass('pending-16a');
+                }
+                if (row.find('[class*="bg-warning"]').length > 1) {
+                    row.addClass('ca-pending');
+                }
+            });
+        }
+
+        function exportCSV() {
+            const params = new URLSearchParams({
+                quarter: currentQuarter,
+                financial_year: getCurrentFY(),
+                session_key: SESSION_KEY
+            });
+            
+            // Add active filters
+            if ($('#tdsSectionFilter').val()) params.append('tds_section', $('#tdsSectionFilter').val());
+            
+            window.open(API_BASE + 'tds/export/?' + params.toString(), '_blank');
+        }
+
+        function getCurrentFY() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth() + 1;
+            return month >= 4 ? `${year}-${year+1}` : `${year-1}-${year}`;
+        }
+
+        function printTDSReport() {
+            window.print();
+        }
+
+        function viewPayment(id) {
+            // Modal or redirect to payment detail
+            window.open(`/finance/payments/${id}/`, '_blank');
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+    </script>
+</body>
+</html>

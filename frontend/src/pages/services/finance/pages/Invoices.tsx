@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, FileText, IndianRupee, AlertCircle } from 'lucide-react';
+import { Plus, FileText, IndianRupee, AlertCircle, List } from 'lucide-react';
 
 import DirectCreateTaxInvoiceModal from '../components/DirectCreateTaxInvoiceModal';
 
@@ -45,6 +45,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
   const [loading, setLoading] = useState(true);
   const [showDirectInvoiceModal, setShowDirectInvoiceModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [invoiceFilter, setInvoiceFilter] = useState('');
 
   const fetchInvoiceStats = async () => {
     if (!sessionKey) {
@@ -167,37 +168,60 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
       {/* Quick Actions */}
       <FinanceCard>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <button
-            onClick={() => setShowDirectInvoiceModal(true)}
-            className="flex items-center p-4 bg-gradient-to-r from-athenas-blue to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200"
+            onClick={() => { setInvoiceFilter(''); setShowDirectInvoiceModal(true); }}
+            className="flex items-center p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all duration-200"
           >
-            <Plus className="w-5 h-5 mr-3" />
+            <Plus className="w-5 h-5 mr-3 shrink-0" />
             <div className="text-left">
               <div className="font-medium">Direct Invoice</div>
-              <div className="text-sm opacity-90">Create invoice directly</div>
+              <div className="text-sm opacity-75">Create invoice directly</div>
             </div>
           </button>
 
           <button
-            onClick={() => toast.success('Filter functionality to be implemented')}
-            className="flex items-center p-4 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-200"
+            onClick={() => setInvoiceFilter('')}
+            className={`flex items-center p-4 border rounded-lg transition-all duration-200 ${
+              invoiceFilter === ''
+                ? 'bg-gray-200 dark:bg-gray-700 border-gray-400 dark:border-gray-500 text-gray-900 dark:text-white'
+                : 'bg-gray-50 dark:bg-gray-800/20 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/40'
+            }`}
           >
-            <AlertCircle className="w-5 h-5 mr-3" />
+            <List className="w-5 h-5 mr-3 shrink-0" />
+            <div className="text-left">
+              <div className="font-medium">All Invoices</div>
+              <div className="text-sm opacity-75">{stats.totalInvoices} total</div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setInvoiceFilter('overdue')}
+            className={`flex items-center p-4 border rounded-lg transition-all duration-200 ${
+              invoiceFilter === 'overdue'
+                ? 'bg-red-100 dark:bg-red-900/40 border-red-300 dark:border-red-700 text-red-800 dark:text-red-200'
+                : 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40'
+            }`}
+          >
+            <AlertCircle className="w-5 h-5 mr-3 shrink-0" />
             <div className="text-left">
               <div className="font-medium">View Overdue</div>
-              <div className="text-sm opacity-90">{stats.overdueInvoices} invoices</div>
+              <div className="text-sm opacity-75">{stats.overdueInvoices} invoices</div>
             </div>
           </button>
 
           <button
-            onClick={() => toast.success('Filter functionality to be implemented')}
-            className="flex items-center p-4 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all duration-200"
+            onClick={() => setInvoiceFilter('unpaid_or_partial')}
+            className={`flex items-center p-4 border rounded-lg transition-all duration-200 ${
+              invoiceFilter === 'unpaid_or_partial'
+                ? 'bg-orange-100 dark:bg-orange-900/40 border-orange-300 dark:border-orange-700 text-orange-800 dark:text-orange-200'
+                : 'bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-800 text-orange-700 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900/40'
+            }`}
           >
-            <IndianRupee className="w-5 h-5 mr-3" />
+            <IndianRupee className="w-5 h-5 mr-3 shrink-0" />
             <div className="text-left">
               <div className="font-medium">Unpaid Invoices</div>
-              <div className="text-sm opacity-90">Collect payments</div>
+              <div className="text-sm opacity-75">Unpaid &amp; partial payments</div>
             </div>
           </button>
         </div>
@@ -205,8 +229,9 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
 
       {/* Invoice List */}
       <InvoiceList
-        key={refreshKey}
+        key={`${refreshKey}-${invoiceFilter}`}
         sessionKey={sessionKey}
+        initialPaymentStatus={invoiceFilter}
       />
 
       {/* Direct Invoice Modal */}

@@ -534,7 +534,18 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
             queryset = queryset.filter(status=status_filter)
 
         payment_status_filter = self.request.query_params.get('payment_status', '')
-        if payment_status_filter:
+        if payment_status_filter == 'unpaid_or_partial':
+            queryset = queryset.filter(payment_status__in=['unpaid', 'partially_paid'])
+        elif payment_status_filter == 'overdue':
+            from django.utils import timezone as tz
+            import datetime
+            from dateutil.relativedelta import relativedelta
+            overdue_cutoff = tz.now().date() - relativedelta(months=1)
+            queryset = queryset.filter(
+                payment_status__in=['unpaid', 'partially_paid'],
+                invoice_date__lt=overdue_cutoff
+            )
+        elif payment_status_filter:
             queryset = queryset.filter(payment_status=payment_status_filter)
 
         customer_id = self.request.query_params.get('customer', '')

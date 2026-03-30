@@ -95,7 +95,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({ payment, onClos
           {/* Status Badge */}
           <div className="flex items-center justify-between">
             <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[payment.status] || statusColors.pending}`}>
-              {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+              {payment.status ? payment.status.charAt(0).toUpperCase() + payment.status.slice(1) : 'Completed'}
             </span>
             {onEdit && (
               <button

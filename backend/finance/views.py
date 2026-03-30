@@ -2,7 +2,7 @@ from rest_framework import status, permissions
 from django.utils._os import safe_join
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView, ListAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -38,9 +38,11 @@ from .serializers import (
     PaymentListSerializer, PaymentDetailSerializer,
     PaymentCreateSerializer, PaymentUpdateSerializer,
     WorldClassPaymentCreateSerializer, WorldClassPaymentListSerializer,
+    TDSPaymentSerializer,
     TDSDepositSerializer
 )
 from .serializers import NumberingRuleSerializer, FINANCE_DEFAULT_TEMPLATES
+from .report_generators import TDSReportGenerator
 from finance.numbering import _scope_key
 
 
@@ -1616,7 +1618,9 @@ class ProformaInvoiceListCreateView(ListCreateAPIView):
                 queryset = queryset.filter(status=status_filter)
 
             payment_status_filter = self.request.query_params.get('payment_status', '')
-            if payment_status_filter:
+            if payment_status_filter == 'unpaid_or_partial':
+                queryset = queryset.filter(payment_status__in=['unpaid', 'partially_paid'])
+            elif payment_status_filter:
                 queryset = queryset.filter(payment_status=payment_status_filter)
 
             customer_id = self.request.query_params.get('customer', '')
@@ -1874,7 +1878,9 @@ class InvoiceListCreateView(ListCreateAPIView):
                 queryset = queryset.filter(status=status_filter)
 
             payment_status_filter = self.request.query_params.get('payment_status', '')
-            if payment_status_filter:
+            if payment_status_filter == 'unpaid_or_partial':
+                queryset = queryset.filter(payment_status__in=['unpaid', 'partially_paid'])
+            elif payment_status_filter:
                 queryset = queryset.filter(payment_status=payment_status_filter)
 
             customer_id = self.request.query_params.get('customer', '')
@@ -3825,6 +3831,172 @@ class TDSDepositListCreateView(ListCreateAPIView):
         payment = Payment.objects.get(pk=payment_id, company=service_user.company)
         serializer.save(company=service_user.company, payment=payment)
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        service_user = self._get_service_user()
+        if service_user:
+            try:
+                payment_id = self.kwargs['payment_id']
+                context['payment'] = Payment.objects.get(pk=payment_id, company=service_user.company)
+            except Payment.DoesNotExist:
+                pass
+        return context
+
+
+class TDSPaymentsListView(ListAPIView):
+    """TDS Payments List - Quarter-wise grouping for Form 26Q"""
+    serializer_class = TDSPaymentSerializer
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    pagination_class = None  # Manual pagination via limit/offset
+
+    def _get_service_user(self):
+        session_key = (
+            self.request.headers.get('Authorization', '').replace('Bearer ', '')
+            or self.request.query_params.get('session_key')
+        )
+        if not session_key:
+            return None
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return session.service_user
+        except ServiceUserSession.DoesNotExist:
+            return None
+
+    def get_queryset(self):
+        service_user = self._get_service_user()
+        if not service_user:
+            return Payment.objects.none()
+
+        # Filter TDS payments: completed + tds_amount > 0
+        queryset = Payment.objects.filter(
+            company=service_user.company,
+            status='completed',
+            tds_amount__gt=0
+        ).select_related(
+            'customer', 'invoice', 'proforma_invoice', 'created_by'
+        ).order_by('-payment_date')
+
+        # Quarter filter
+        quarter = self.request.query_params.get('quarter')
+        if quarter and quarter in ['Q1', 'Q2', 'Q3', 'Q4']:
+            from dateutil.relativedelta import relativedelta
+            import calendar
+            
+            today = timezone.now().date()
+            fy_start = today.replace(month=4, day=1) if today.month >= 4 else (today.replace(year=today.year-1, month=4, day=1))
+            
+            quarter_ranges = {
+                'Q1': (fy_start, fy_start + relativedelta(months=3)),
+                'Q2': (fy_start + relativedelta(months=3), fy_start + relativedelta(months=6)),
+                'Q3': (fy_start + relativedelta(months=6), fy_start + relativedelta(months=9)),
+                'Q4': (fy_start + relativedelta(months=9), (fy_start + relativedelta(years=1)).replace(month=4, day=1))
+            }
+            
+            start_date, end_date = quarter_ranges[quarter]
+            queryset = queryset.filter(payment_date__range=[start_date, end_date])
+
+        # Customer filter
+        customer_id = self.request.query_params.get('customer')
+        if customer_id:
+            queryset = queryset.filter(customer_id=customer_id)
+
+        # TDS Section filter  
+        tds_section = self.request.query_params.get('tds_section')
+        if tds_section:
+            queryset = queryset.filter(tds_section=tds_section)
+
+        # Form16A pending filter
+        pending_16a = self.request.query_params.get('form16a_pending')
+        if pending_16a == 'true':
+            queryset = queryset.filter(tds_certificate_issued=False)
+
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        # Get stats from a lightweight count query before slicing
+        from django.db.models import Sum, Count, Q as DQ
+        agg = queryset.aggregate(
+            total_tds=Sum('tds_amount'),
+            count=Count('id'),
+            pending_16a=Count('id', filter=DQ(tds_certificate_issued=False)),
+            ca_pending=Count('id', filter=~DQ(ca_submission_status='submitted')),
+        )
+        # Apply manual pagination
+        limit = min(int(request.query_params.get('limit', 25)), 100)
+        page = max(int(request.query_params.get('page', 1)), 1)
+        offset = (page - 1) * limit
+        page_qs = queryset[offset:offset + limit]
+        serializer = self.get_serializer(page_qs, many=True)
+        return Response({
+            'results': serializer.data,
+            'count': agg['count'] or 0,
+            'total_tds': float(agg['total_tds'] or 0),
+            'pending_16a': agg['pending_16a'] or 0,
+            'ca_pending': agg['ca_pending'] or 0,
+        })
+
+
+class TDSExportCSVView(ListAPIView):
+    """Export TDS Report CSV for CA submission - Uses TDSReportGenerator"""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    renderer_classes = []  # We'll handle response manually
+
+    def _get_service_user(self):
+        session_key = (
+            self.request.headers.get('Authorization', '').replace('Bearer ', '')
+            or self.request.query_params.get('session_key')
+        )
+        if not session_key:
+            return None
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return session.service_user
+        except ServiceUserSession.DoesNotExist:
+            return None
+
+    def _export(self, quarter, financial_year, service_user):
+        from django.http import HttpResponse
+        try:
+            report_generator = TDSReportGenerator(company=service_user.company)
+            csv_data = report_generator.generate_quarterly_tds_report(
+                quarter=quarter,
+                financial_year=financial_year
+            )
+            response = HttpResponse(csv_data, content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="TDS_Report_{financial_year}_{quarter}.csv"'
+            return response
+        except Exception as e:
+            return Response({'error': f'TDS report generation failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def get(self, request):
+        service_user = self._get_service_user()
+        if not service_user:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        quarter = request.query_params.get('quarter')
+        financial_year = request.query_params.get('financial_year')
+        if not quarter or not financial_year:
+            return Response({'error': 'quarter and financial_year required'}, status=status.HTTP_400_BAD_REQUEST)
+        return self._export(quarter, financial_year, service_user)
+
+    def post(self, request):
+        service_user = self._get_service_user()
+        if not service_user:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Required params
+        quarter = request.data.get('quarter')  # Q1, Q2, Q3, Q4
+        financial_year = request.data.get('financial_year')  # 2024-25
+        
+        if not quarter or not financial_year:
+            return Response(
+                {'error': 'quarter (Q1-Q4) and financial_year (YYYY-YY) required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return self._export(quarter, financial_year, service_user)
+
 
 class TDSDepositDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, delete a single TDS deposit."""
@@ -3851,3 +4023,47 @@ class TDSDepositDetailView(RetrieveUpdateDestroyAPIView):
         if not service_user:
             return TDSDeposit.objects.none()
         return TDSDeposit.objects.filter(company=service_user.company)
+
+    def perform_update(self, serializer):
+        deposit = serializer.save()
+        # Sync certificate_received back to the parent Payment
+        payment = deposit.payment
+        all_deposits = payment.tds_deposits.all()
+        if all_deposits.exists():
+            payment.tds_certificate_received = all_deposits.filter(certificate_received=True).exists()
+        else:
+            payment.tds_certificate_received = deposit.certificate_received
+        payment.save(update_fields=['tds_certificate_received'])
+
+
+class MarkTDSCertReceivedView(APIView):
+    """PATCH /api/finance/payment-tds/{id}/mark-cert-received/ — toggle tds_certificate_received on a Payment directly."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def _get_service_user(self):
+        session_key = (
+            self.request.headers.get('Authorization', '').replace('Bearer ', '')
+            or self.request.query_params.get('session_key')
+            or self.request.data.get('session_key')
+        )
+        if not session_key:
+            return None
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return session.service_user
+        except ServiceUserSession.DoesNotExist:
+            return None
+
+    def patch(self, request, payment_id):
+        service_user = self._get_service_user()
+        if not service_user:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            payment = Payment.objects.get(pk=payment_id, company=service_user.company)
+        except Payment.DoesNotExist:
+            return Response({'error': 'Payment not found'}, status=status.HTTP_404_NOT_FOUND)
+        received = request.data.get('certificate_received', True)
+        payment.tds_certificate_received = bool(received)
+        payment.save(update_fields=['tds_certificate_received'])
+        return Response({'id': payment.id, 'tds_certificate_received': payment.tds_certificate_received})

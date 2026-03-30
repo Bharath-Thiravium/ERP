@@ -2095,36 +2095,42 @@ class InvoiceListSerializer(serializers.ModelSerializer):
         return addresses
 
     def get_tds_pending_certificate(self, obj):
-        """Total TDS where certificate not yet received."""
+        """TDS pending cert — capped at invoice-level TDS (subtotal × rate)."""
         from decimal import Decimal
-        total = Decimal('0')
+        if not obj.tds_applicable or not obj.tds_rate:
+            return '0'
+        invoice_tds = (Decimal(str(obj.subtotal or 0)) * Decimal(str(obj.tds_rate)) / 100).quantize(Decimal('0.01'))
+        cert_received = Decimal('0')
         for p in obj.payments.filter(status='completed', tds_applicable=True):
-            if not p.tds_certificate_received and p.tds_amount:
-                total += Decimal(str(p.tds_amount))
-        return str(total)
+            if p.tds_certificate_received and p.tds_amount:
+                cert_received += Decimal(str(p.tds_amount))
+        cert_received = min(cert_received, invoice_tds)
+        return str(max(Decimal('0'), invoice_tds - cert_received))
 
     def get_tds_cash_outstanding(self, obj):
-        """Outstanding for cash portion only (total - cash paid)."""
+        """Outstanding for cash portion only (total - tds_portion - cash paid)."""
         from decimal import Decimal
-        total = Decimal(str(obj.total_amount or 0))
+        if not obj.tds_applicable or not obj.tds_rate:
+            return str(max(Decimal('0'), Decimal(str(obj.outstanding_amount or 0))))
+        invoice_tds = (Decimal(str(obj.subtotal or 0)) * Decimal(str(obj.tds_rate)) / 100).quantize(Decimal('0.01'))
         cash_paid = Decimal('0')
-        tds_total = Decimal('0')
         for p in obj.payments.filter(status='completed'):
-            net = Decimal(str(p.net_amount_received or 0))
-            tds = Decimal(str(p.tds_amount or 0))
-            cash_paid += net
-            tds_total += tds
-        # Cash outstanding = total - tds_portion - cash_paid
-        return str(max(Decimal('0'), total - tds_total - cash_paid))
+            cash_paid += Decimal(str(p.net_amount_received or 0))
+        cash_max = Decimal(str(obj.total_amount or 0)) - invoice_tds
+        return str(max(Decimal('0'), cash_max - cash_paid))
 
     def get_tds_amount_outstanding(self, obj):
-        """Outstanding TDS portion (not yet cert-received)."""
+        """Outstanding TDS portion (invoice-level TDS minus cert-received)."""
         from decimal import Decimal
-        total = Decimal('0')
+        if not obj.tds_applicable or not obj.tds_rate:
+            return '0'
+        invoice_tds = (Decimal(str(obj.subtotal or 0)) * Decimal(str(obj.tds_rate)) / 100).quantize(Decimal('0.01'))
+        cert_received = Decimal('0')
         for p in obj.payments.filter(status='completed', tds_applicable=True):
-            if not p.tds_certificate_received:
-                total += Decimal(str(p.tds_amount or 0))
-        return str(total)
+            if p.tds_certificate_received and p.tds_amount:
+                cert_received += Decimal(str(p.tds_amount))
+        cert_received = min(cert_received, invoice_tds)
+        return str(max(Decimal('0'), invoice_tds - cert_received))
 
 class InvoiceDetailSerializer(serializers.ModelSerializer):
     """Serializer for invoice detail view"""
@@ -3985,6 +3991,51 @@ class NumberingRuleSerializer(serializers.ModelSerializer):
         return value
 
 
+class TDSPaymentSerializer(serializers.ModelSerializer):
+    """Serializer for TDS Payments API"""
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    customer_pan = serializers.CharField(source='customer.pan_number', read_only=True)
+    invoice_number = serializers.SerializerMethodField()
+    quarter = serializers.SerializerMethodField()
+    financial_year = serializers.SerializerMethodField()
+    # Map model fields tds_section/tds_rate -> frontend-expected names
+    tds_section_code = serializers.CharField(source='tds_section', read_only=True)
+    tds_rate_applied = serializers.DecimalField(source='tds_rate', max_digits=5, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = [
+            'id', 'payment_number', 'payment_date', 'amount', 'tds_amount',
+            'tds_rate_applied', 'tds_section_code', 'net_amount_received',
+            'customer_name', 'customer_pan', 'status', 'payment_method', 'reference_number', 'notes',
+            'invoice_number', 'quarter', 'financial_year', 'tds_certificate_issued',
+            'tds_deposited_date', 'form16a_number', 'ca_submission_status'
+        ]
+
+    def get_invoice_number(self, obj):
+        """Get invoice or proforma number"""
+        if hasattr(obj, 'invoice') and obj.invoice:
+            return obj.invoice.invoice_number
+        elif hasattr(obj, 'proforma_invoice') and obj.proforma_invoice:
+            return obj.proforma_invoice.proforma_number
+        return None
+
+    def get_quarter(self, obj):
+        """Get quarter Q1-Q4 based on payment_date"""
+        month = obj.payment_date.month
+        if 4 <= month <= 6: return 'Q1'
+        elif 7 <= month <= 9: return 'Q2'  
+        elif 10 <= month <= 12: return 'Q3'
+        else: return 'Q4'
+
+    def get_financial_year(self, obj):
+        """Get FY based on payment_date (Apr-Mar)"""
+        year = obj.payment_date.year
+        if obj.payment_date.month >= 4:
+            return f"{year}-{year+1}"
+        return f"{year-1}-{year}"
+
+
 class TDSDepositSerializer(serializers.ModelSerializer):
     class Meta:
         model = TDSDeposit
@@ -3994,20 +4045,35 @@ class TDSDepositSerializer(serializers.ModelSerializer):
             'certificate_received', 'notes',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'payment', 'created_at', 'updated_at']
 
     def validate(self, data):
         from decimal import Decimal
         from django.db.models import Sum
-        payment = data.get('payment') or (self.instance.payment if self.instance else None)
+        # payment comes from URL (read-only), get it from instance or context
+        payment = (
+            self.instance.payment if self.instance
+            else self.context.get('payment')
+        )
         amount = Decimal(str(data.get('amount') or 0))
         if payment and amount:
-            tds_total = Decimal(str(payment.tds_amount or 0))
-            existing = payment.tds_deposits.exclude(
-                pk=self.instance.pk if self.instance else None
-            ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
-            if existing + amount > tds_total + Decimal('0.01'):
-                raise serializers.ValidationError(
-                    f"Total deposits (₹{existing + amount:.2f}) would exceed TDS amount (₹{tds_total:.2f})"
-                )
+            # Use invoice-level TDS total (subtotal * rate) as the cap,
+            # falling back to payment.tds_amount if invoice data unavailable
+            invoice = payment.invoice or payment.proforma_invoice
+            if invoice and payment.tds_applicable is False:
+                # TDS config is at invoice level — derive tds_total from invoice
+                tds_rate = Decimal(str(getattr(invoice, 'tds_rate', 0) or 0))
+                subtotal = Decimal(str(getattr(invoice, 'subtotal', 0) or 0))
+                tds_total = (subtotal * tds_rate / 100).quantize(Decimal('0.01'))
+            else:
+                tds_total = Decimal(str(payment.tds_amount or 0))
+
+            if tds_total > 0:
+                existing = payment.tds_deposits.exclude(
+                    pk=self.instance.pk if self.instance else None
+                ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+                if existing + amount > tds_total + Decimal('0.01'):
+                    raise serializers.ValidationError(
+                        f"Total deposits (₹{existing + amount:.2f}) would exceed TDS amount (₹{tds_total:.2f})"
+                    )
         return data

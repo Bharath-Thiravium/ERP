@@ -46,15 +46,20 @@ const CashPaymentForm: React.FC<Props> = ({
     try {
       const { default: api } = await import('../../../../../lib/api');
       const { default: toast } = await import('react-hot-toast');
+      // When TDS is applicable, stamp the section/rate on the payment so the TDS Register picks it up.
+      // tds_amount on a cash payment = proportional share: net × (tdsRate / (100 - tdsRate))
+      const tdsProportion = tdsApplicable && tdsRate > 0
+        ? parseFloat((net * tdsRate / (100 - tdsRate)).toFixed(2))
+        : 0;
       const payload: Record<string, any> = {
         payment_date: date,
         amount: net,
-        gross_payment_amount: net,
+        gross_payment_amount: tdsApplicable ? net + tdsProportion : net,
         net_amount_received: net,
-        tds_applicable: false,   // cash entry — TDS tracked separately in TDS tab
-        tds_section: '',
-        tds_rate: 0,
-        tds_amount: 0,
+        tds_applicable: tdsApplicable,
+        tds_section: tdsApplicable ? tdsSection : '',
+        tds_rate: tdsApplicable ? tdsRate : 0,
+        tds_amount: tdsProportion,
         tds_deposited: false,
         tds_certificate_received: false,
         payment_method: method,

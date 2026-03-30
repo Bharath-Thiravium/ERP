@@ -1,5 +1,6 @@
 // Finance Service Module Exports
 export { default as FinanceDashboard } from './pages/Dashboard'
+export { default as TDSList } from './pages/TDSList'
 
 // Future exports will be added here as we expand the finance module
 // export { default as AccountsPage } from './pages/Accounts'

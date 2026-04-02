@@ -15,7 +15,10 @@ interface TemplateInfo {
 }
 
 interface POTemplateSettings {
+  selected_template: string;
   selected_po_template: string;
+  selected_proforma_template: string;
+  selected_invoice_template: string;
 }
 
 const POTemplateSettings: React.FC = () => {
@@ -41,21 +44,21 @@ const POTemplateSettings: React.FC = () => {
       setTemplates([
         {
           code: 'AS',
-          name: 'AS Template - Clean & Simple',
+          name: 'Clean & Simple Template',
           description: 'Clean and simple layout with right-aligned company info and professional styling',
           features: ['Right-aligned company info', 'Large PO title', 'Simple table design', 'Professional footer'],
           best_for: 'Companies preferring minimalist, clean design'
         },
         {
           code: 'BKGE', 
-          name: 'BKGE Template - Professional',
+          name: 'Professional Template',
           description: 'Modern professional template with centered header and structured table design',
           features: ['Centered PO header', 'Color-coded table headers', 'Structured vendor info', 'Professional totals section'],
           best_for: 'Businesses requiring modern, structured presentation'
         },
         {
           code: 'TC',
-          name: 'TC Template - Detailed Terms', 
+          name: 'Detailed Terms Template', 
           description: 'Detailed template with comprehensive terms and conditions section',
           features: ['Comprehensive company branding', 'Detailed information grid', 'Extensive terms and conditions', 'Professional signature box'],
           best_for: 'Contractors and service providers with detailed terms'
@@ -103,17 +106,12 @@ const POTemplateSettings: React.FC = () => {
   const showPreview = async (templateName: string) => {
     try {
       const response = await apiClient.previewPOTemplate(templateName);
-      
-      const htmlContent = response.data;
-      const newWindow = window.open('', '_blank', 'width=800,height=600');
-      if (newWindow) {
-        newWindow.document.write(htmlContent);
-        newWindow.document.close();
-      }
+      const blob = new Blob([response.data], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const newWindow = window.open(url, '_blank');
+      if (!newWindow) window.location.href = url;
     } catch (error: any) {
-      console.error('Error loading PO template preview:', error);
-      const errorMessage = error.response?.data?.message || 'Error loading PO template preview';
-      toast.error(errorMessage);
+      toast.error('Error loading PO template preview. Please try again.');
     }
   };
 

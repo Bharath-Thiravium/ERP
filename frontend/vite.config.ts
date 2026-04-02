@@ -34,18 +34,19 @@ export default defineConfig({
 
   // Development server configuration
   server: {
-    port: 3001,
+    port: 8004,
     host: true,
     open: true,
     cors: true,
+    allowedHosts: ['sap.athenas.co.in', 'localhost', '127.0.0.1'],
     proxy: {
       '/api': {
-        target: 'http://localhost:8006',
+        target: 'http://localhost:8005',
         changeOrigin: true,
         secure: false,
       },
       '/ws': {
-        target: 'ws://localhost:8006',
+        target: 'ws://localhost:8005',
         ws: true,
         changeOrigin: true,
       },

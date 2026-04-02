@@ -60,20 +60,6 @@ const LoginPage: React.FC = () => {
     resolver: zodResolver(loginSchema),
   })
 
-  // Auto-redirect when authentication state changes (only for successful login, not 2FA)
-  useEffect(() => {
-    console.log('🔍 Auth state changed:', { isAuthenticated, user, isLoading })
-    if (isAuthenticated && user && !isLoading) {
-      console.log('🔍 Redirecting user:', user)
-      // Force immediate navigation
-      if (user.is_master_admin) {
-        window.location.href = '/master-admin'
-      } else if (user.is_company_user) {
-        window.location.href = '/company'
-      }
-    }
-  }, [isAuthenticated, user, isLoading])
-
   useEffect(() => {
     setTimeout(() => setIsAnimating(false), 500)
   }, [])
@@ -87,17 +73,18 @@ const LoginPage: React.FC = () => {
     const result = await login(data, userType as 'master' | 'company', rememberDevice)
     
     if (result === true) {
-      reset()
-      setHasFailedAttempt(false)
-      // Navigation will be handled by useEffect when auth state updates
+      if (userType === 'master') {
+        navigate('/master-admin', { replace: true })
+      } else {
+        navigate('/company', { replace: true })
+      }
     } else if (result && typeof result === 'object' && 'requires_2fa' in result && result.requires_2fa === true) {
       setHasFailedAttempt(false)
       sessionStorage.setItem('2fa_credentials', JSON.stringify({
         credentials: data,
         userType: userType as 'master' | 'company'
       }))
-      // Force immediate navigation to 2FA page
-      window.location.replace('/2fa')
+      navigate('/2fa', { replace: true })
     } else {
       setHasFailedAttempt(true)
     }

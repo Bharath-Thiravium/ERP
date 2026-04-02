@@ -44,22 +44,21 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 }) => {
   const { isAuthenticated, user, firstLoginRequired, approvalPending, isLoading } = useAuthStore()
   const { isAuthenticated: isServiceUserAuthenticated, serviceUser } = useServiceUserStore()
-  
-  // Show loading while authentication is being processed
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-      </div>
-    )
-  }
 
-  // Enhanced authentication check with session validation
+  const hasPersistedAuth = React.useMemo(() => {
+    if (isAuthenticated) return false // already authenticated, no need to check
+    try {
+      const data = localStorage.getItem('auth-storage')
+      if (data) return JSON.parse(data)?.state?.isAuthenticated === true
+    } catch {}
+    return false
+  }, [isAuthenticated])
+
+  // All hooks must be before any conditional returns
   React.useEffect(() => {
     if (requireServiceUser) {
       const sessionKey = sessionStorage.getItem('service_session_key')
       if (!sessionKey) {
-        // Try to restore from store before redirecting
         try {
           const storeData = localStorage.getItem('service-user-storage')
           if (storeData) {
@@ -67,7 +66,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
             const storeSessionKey = parsed?.state?.sessionKey
             if (storeSessionKey) {
               sessionStorage.setItem('service_session_key', storeSessionKey)
-              return // Don't redirect if we restored the session
+              return
             }
           }
         } catch (error) {
@@ -77,6 +76,14 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       }
     }
   }, [requireServiceUser])
+
+  if (isLoading || (!isAuthenticated && hasPersistedAuth)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+      </div>
+    )
+  }
 
   // For service user routes, check service user authentication
   if (requireServiceUser) {
@@ -145,25 +152,14 @@ interface PublicRouteProps {
 const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
   const { isAuthenticated, user } = useAuthStore()
 
-  // Only handle 2FA page specifically
   if (window.location.pathname === '/2fa') {
     return <>{children}</>
   }
 
-  // For login page, don't interfere
-  if (window.location.pathname === '/login') {
-    return <>{children}</>
-  }
-
-  // Only redirect if user is authenticated and on root path
-  if (isAuthenticated && user && window.location.pathname === '/') {
-    if (user.is_master_admin) {
-      return <Navigate to="/master-admin" replace />
-    }
-    
-    if (user.is_company_user) {
-      return <Navigate to="/company" replace />
-    }
+  // Redirect away from login if already authenticated
+  if (isAuthenticated && user) {
+    if (user.is_master_admin) return <Navigate to="/master-admin" replace />
+    if (user.is_company_user) return <Navigate to="/company" replace />
   }
 
   return <>{children}</>

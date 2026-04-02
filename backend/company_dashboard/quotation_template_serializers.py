@@ -8,7 +8,7 @@ class CompanyQuotationTemplateSettingsSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = CompanyQuotationTemplateSettings
-        fields = ['selected_template', 'selected_po_template', 'template_choices', 'created_at', 'updated_at']
+        fields = ['selected_template', 'selected_po_template', 'selected_proforma_template', 'selected_invoice_template', 'template_choices', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
     
     def get_template_choices(self, obj):

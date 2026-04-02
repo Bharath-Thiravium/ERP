@@ -149,6 +149,12 @@ urlpatterns = [
     path('vendor-ledger/', purchase_views.vendor_ledger, name='vendor_ledger'),
     path('purchase-expense-stats/', purchase_views.purchase_expense_stats, name='purchase_expense_stats'),
 
+    # Customer Pending Payment Statement
+    path('customer-pending-statement/', views.customer_pending_statement, name='customer_pending_statement'),
+
+    # PO Consolidated Report
+    path('purchase-orders/<int:po_id>/consolidated-report/', views.po_consolidated_report, name='po_consolidated_report'),
+
     # Finance numbering rule management
     path('numbering/finance/', views.FinanceNumberingRuleView.as_view(), name='finance_numbering_rules'),
     path('numbering/finance/<str:module>/', views.FinanceNumberingRuleView.as_view(), name='finance_numbering_rule_detail'),

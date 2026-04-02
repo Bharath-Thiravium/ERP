@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+{% load finance_extras %}
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>%%DOC_TITLE%% %%DOC_NUMBER_DISPLAY%%</title>
+<style>
+@page{size:A4;margin:0}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#1a1a2e;background:#fff}
+
+.page{width:210mm;min-height:297mm;display:flex;flex-direction:column}
+
+/* ── HEADER ── */
+.hdr{display:flex;align-items:stretch;min-height:80px;border-bottom:3px solid #1a1a2e}
+.hdr-logo{background:#f8f9fc;border-right:2px solid #dde2ee;display:flex;align-items:center;justify-content:center;padding:10px 14px;min-width:60px;max-width:140px;width:auto;flex-shrink:0}
+.hdr-logo img{max-height:52px;max-width:112px;width:auto;height:auto;object-fit:contain;display:block}
+.hdr-logo .monogram{width:44px;height:44px;background:#1a1a2e;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#e8c84a;letter-spacing:-1px;flex-shrink:0}
+.hdr-co{flex:1;background:#fff;padding:14px 20px;display:flex;flex-direction:column;justify-content:center}
+.hdr-co .co-name{font-size:19px;font-weight:700;color:#1a1a2e;margin-bottom:4px;letter-spacing:0.2px}
+.hdr-co .co-meta{font-size:9px;color:#64748b;line-height:1.7}
+.hdr-doc{background:#1a1a2e;width:150px;min-width:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px 16px;text-align:center}
+.hdr-doc .doc-type{font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#e8c84a}
+.hdr-doc .doc-num{font-size:9.5px;color:#b0b8d1;font-weight:600;margin-top:6px;word-break:break-all}
+.hdr-doc .doc-date{font-size:8.5px;color:#8892aa;margin-top:3px}
+.accent{height:3px;background:linear-gradient(90deg,#e8c84a,#f0a500,#1a1a2e)}
+
+/* ── BODY ── */
+.body{padding:18px 24px;flex:1}
+
+/* parties */
+.parties{display:flex;gap:12px;margin-bottom:16px}
+.pbox{flex:1;border:1px solid #dde2ee;border-radius:3px;padding:10px 12px}
+.pbox.narrow{max-width:160px}
+.plbl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#7a8099;border-bottom:1px solid #eef0f6;padding-bottom:3px;margin-bottom:6px}
+.pname{font-size:12px;font-weight:700;margin-bottom:2px}
+.paddr{font-size:10px;line-height:1.6;color:#374151}
+.pgstin{font-size:9px;color:#6b7280;margin-top:3px}
+.drow{display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px solid #f4f5f8}
+.drow:last-child{border-bottom:none}
+.dl{color:#6b7280}.dv{font-weight:600}
+
+/* table */
+table.items{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:10px}
+table.items thead tr{background:#1a1a2e}
+table.items thead th{color:#fff;padding:8px 7px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px}
+table.items thead th.r{text-align:right}
+table.items thead th.c{text-align:center}
+table.items tbody tr{border-bottom:1px solid #eef0f6}
+table.items tbody tr:nth-child(even){background:#f8f9fc}
+table.items tbody td{padding:8px 7px;vertical-align:top}
+table.items tbody td.r{text-align:right;font-family:'Courier New',monospace}
+table.items tbody td.c{text-align:center}
+.iname{font-weight:600;font-size:10.5px}
+.idesc{font-size:9px;color:#6b7280;margin-top:1px}
+.ihsn{font-size:8px;color:#9ca3af;margin-top:1px}
+
+/* totals */
+.trow{display:flex;justify-content:flex-end;margin-bottom:16px}
+.tbox{width:252px;border:1px solid #dde2ee;border-radius:3px;overflow:hidden}
+.tline{display:flex;justify-content:space-between;padding:6px 12px;border-bottom:1px solid #eef0f6;font-size:10.5px}
+.tline:last-child{border-bottom:none}
+.tline.grand{background:#1a1a2e;color:#fff;font-weight:700;font-size:12px;padding:9px 12px}
+.tline.grand .tv{color:#e8c84a;font-family:'Courier New',monospace}
+.tl{color:#6b7280}.tv{font-family:'Courier New',monospace;font-weight:600}
+
+/* notes/terms */
+.nt{display:flex;gap:12px;margin-bottom:16px}
+.ntbox{flex:1;border-left:3px solid #e8c84a;padding:8px 12px;background:#fafbfd}
+.nttitle{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#7a8099;margin-bottom:4px}
+.ntbody{font-size:10px;color:#374151;line-height:1.6}
+
+/* signature */
+.sigwrap{display:flex;justify-content:flex-end;margin-top:24px}
+.sig{width:190px;text-align:center}
+.sigspace{height:40px}
+.sigline{border-top:1.5px solid #1a1a2e;margin-bottom:5px}
+.siglbl{font-size:9.5px;font-weight:700}
+.sigco{font-size:9px;color:#6b7280}
+
+/* footer */
+.footer{background:#f4f5f9;border-top:1px solid #dde2ee;padding:8px 24px;display:flex;justify-content:space-between;font-size:8.5px;color:#9ca3af;margin-top:auto}
+.footer .gstin{font-weight:600;color:#6b7280}
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="hdr">
+  <div class="hdr-logo">
+    {% if logo_url %}
+      <img src="{{ logo_url }}" alt="{{ company.name }}">
+    {% elif logo_path %}
+      <img src="{{ logo_path }}" alt="{{ company.name }}">
+    {% else %}
+      <div class="monogram">{{ company.name|slice:":2"|upper }}</div>
+    {% endif %}
+  </div>
+  <div class="hdr-co">
+    <div class="co-name">{{ company.name }}</div>
+    <div class="co-meta">
+      {{ company.address_line1 }}{% if company.address_line2 %}, {{ company.address_line2 }}{% endif %}<br>
+      {{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} – {{ company.pincode }}{% endif %}<br>
+      {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}<br>
+      GSTIN: {{ company_gstin|default:"N/A" }}
+    </div>
+  </div>
+  <div class="hdr-doc">
+    <div class="doc-type">%%DOC_TITLE%%</div>
+    <div class="doc-num">{{ %%DOC_OBJ%%.%%DOC_NUM_FIELD%% }}</div>
+    <div class="doc-date">{{ %%DOC_OBJ%%.%%DOC_DATE_FIELD%%|date:"d M Y" }}</div>
+  </div>
+</div>
+<div class="accent"></div>
+
+<div class="body">
+
+  <div class="parties">
+    <div class="pbox">
+      <div class="plbl">%%PARTY_LABEL%%</div>
+      <div class="pname">{{ customer.name }}</div>
+      <div class="paddr">
+        {{ customer.billing_address_line1 }}<br>
+        {% if customer.billing_address_line2 %}{{ customer.billing_address_line2 }}<br>{% endif %}
+        {{ customer.billing_city }}{% if customer.billing_state %}, {{ customer.billing_state }}{% endif %}{% if customer.billing_pincode %} – {{ customer.billing_pincode }}{% endif %}<br>
+        {% if customer.phone %}Tel: {{ customer.phone }}<br>{% endif %}
+        {% if customer.email %}{{ customer.email }}{% endif %}
+      </div>
+      {% if customer.gstin %}<div class="pgstin">GSTIN: {{ customer.gstin }}</div>{% endif %}
+    </div>
+
+    <div class="pbox">
+      <div class="plbl">Ship To</div>
+      {% if %%DOC_OBJ%%.shipping_address %}
+        <div class="paddr">{{ %%DOC_OBJ%%.shipping_address }}</div>
+      {% else %}
+        <div class="paddr" style="color:#9ca3af;font-style:italic">Same as billing address</div>
+      {% endif %}
+    </div>
+
+    <div class="pbox narrow">
+      <div class="plbl">%%DOC_TITLE%% Info</div>
+      <div class="drow"><span class="dl">Date</span><span class="dv">{{ %%DOC_OBJ%%.%%DOC_DATE_FIELD%%|date:"d/m/Y" }}</span></div>
+      <div class="drow"><span class="dl">%%VALID_LABEL%%</span><span class="dv">{{ %%DOC_OBJ%%.%%VALID_FIELD%%|date:"d/m/Y" }}</span></div>
+      <div class="drow"><span class="dl">GST Type</span><span class="dv">{{ %%DOC_OBJ%%.gst_type|upper }}</span></div>
+      {% if %%DOC_OBJ%%.reference %}<div class="drow"><span class="dl">Ref</span><span class="dv">{{ %%DOC_OBJ%%.reference }}</span></div>{% endif %}
+    </div>
+  </div>
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:4%" class="c">#</th>
+        <th style="width:37%">Description</th>
+        <th style="width:9%" class="c">HSN/SAC</th>
+        <th style="width:8%" class="c">Qty</th>
+        <th style="width:7%" class="c">Unit</th>
+        <th style="width:12%" class="r">Rate (₹)</th>
+        <th style="width:8%" class="c">GST%</th>
+        <th style="width:12%" class="r">Amount (₹)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="c" style="color:#9ca3af">{{ item.line_number }}</td>
+        <td>
+          <div class="iname">{{ item.product_name }}</div>
+          {% if item.description %}<div class="idesc">{{ item.description }}</div>{% endif %}
+          {% if item.hsn_sac_code %}<div class="ihsn">HSN: {{ item.hsn_sac_code }}</div>{% endif %}
+        </td>
+        <td class="c" style="color:#6b7280">{{ item.hsn_sac_code|default:"—" }}</td>
+        <td class="c">{{ item.quantity }}</td>
+        <td class="c" style="color:#6b7280">{{ item.unit|default:"Nos" }}</td>
+        <td class="r">{{ item.unit_price|floatformat:2 }}</td>
+        <td class="c">{{ item.gst_rate|floatformat:0 }}%</td>
+        <td class="r" style="font-weight:600">{{ item.line_total|floatformat:2 }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" style="text-align:center;padding:20px;color:#9ca3af;font-style:italic">No items</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="trow">
+    <div class="tbox">
+      <div class="tline"><span class="tl">Subtotal</span><span class="tv">₹{{ %%DOC_OBJ%%.subtotal|floatformat:2 }}</span></div>
+      {% if %%DOC_OBJ%%.discount_amount > 0 %}
+      <div class="tline"><span class="tl">Discount{% if %%DOC_OBJ%%.discount_percentage > 0 %} ({{ %%DOC_OBJ%%.discount_percentage }}%){% endif %}</span><span class="tv" style="color:#e53e3e">–₹{{ %%DOC_OBJ%%.discount_amount|floatformat:2 }}</span></div>
+      {% endif %}
+      {% if %%DOC_OBJ%%.shipping_charges > 0 %}
+      <div class="tline"><span class="tl">Shipping</span><span class="tv">₹{{ %%DOC_OBJ%%.shipping_charges|floatformat:2 }}</span></div>
+      {% endif %}
+      {% if %%DOC_OBJ%%.other_charges > 0 %}
+      <div class="tline"><span class="tl">Other Charges</span><span class="tv">₹{{ %%DOC_OBJ%%.other_charges|floatformat:2 }}</span></div>
+      {% endif %}
+      {% if %%DOC_OBJ%%.gst_type == "cgst_sgst" %}
+      <div class="tline"><span class="tl">CGST</span><span class="tv">₹{{ %%DOC_OBJ%%.cgst_amount|floatformat:2 }}</span></div>
+      <div class="tline"><span class="tl">SGST</span><span class="tv">₹{{ %%DOC_OBJ%%.sgst_amount|floatformat:2 }}</span></div>
+      {% elif %%DOC_OBJ%%.gst_type == "igst" %}
+      <div class="tline"><span class="tl">IGST</span><span class="tv">₹{{ %%DOC_OBJ%%.igst_amount|floatformat:2 }}</span></div>
+      {% endif %}
+      <div class="tline grand"><span>Total Amount</span><span class="tv">₹{{ %%DOC_OBJ%%.total_amount|floatformat:2 }}</span></div>
+    </div>
+  </div>
+
+  {% if %%DOC_OBJ%%.notes or %%DOC_OBJ%%.terms_and_conditions %}
+  <div class="nt">
+    {% if %%DOC_OBJ%%.notes %}
+    <div class="ntbox"><div class="nttitle">Notes</div><div class="ntbody">{{ %%DOC_OBJ%%.notes }}</div></div>
+    {% endif %}
+    {% if %%DOC_OBJ%%.terms_and_conditions %}
+    <div class="ntbox"><div class="nttitle">Terms &amp; Conditions</div><div class="ntbody">{{ %%DOC_OBJ%%.terms_and_conditions }}</div></div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="sigwrap">
+    <div class="sig">
+      <div class="sigspace"></div>
+      <div class="sigline"></div>
+      <div class="siglbl">Authorised Signatory</div>
+      <div class="sigco">{{ company.name }}</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <span>Computer-generated document.</span>
+  <span class="gstin">GSTIN: {{ company_gstin|default:"N/A" }}</span>
+  <span>{{ %%DOC_OBJ%%.%%DOC_DATE_FIELD%%|date:"d M Y" }}</span>
+</div>
+
+</div>
+</body>
+</html>

@@ -8,10 +8,36 @@
     <meta name="keywords" content="SAP, ERP, Enterprise, Resource Planning, Business Management" />
     <meta name="author" content="SAP System Team" />
     <title>SAP System - Modern Enterprise Solution</title>
+    <!-- Preload critical resources -->
+    <link rel="preload" href="/src/index.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" href="/src/styles/mobile-responsive.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="/src/index.css"><link rel="stylesheet" href="/src/styles/mobile-responsive.css"></noscript>
     <style>
-      /* Prevent FOUC */
-      #root { visibility: hidden; }
-      #root.loaded { visibility: visible; }
+      /* Prevent FOUC - Enhanced with critical styles */
+      #root { 
+        visibility: hidden; 
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
+      }
+      #root.loaded { 
+        visibility: visible; 
+        opacity: 1;
+      }
+      
+      /* Critical base styles to prevent major layout shifts */
+      * {
+        box-sizing: border-box;
+      }
+      
+      body {
+        background-color: #f9fafb;
+        margin: 0;
+        padding: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #111827;
+        line-height: 1.5;
+      }
+      
       /* Loading spinner */
       .loading-spinner {
         position: fixed;
@@ -24,7 +50,9 @@
         border-top: 4px solid #3498db;
         border-radius: 50%;
         animation: spin 1s linear infinite;
+        z-index: 9999;
       }
+      
       @keyframes spin {
         0% { transform: translate(-50%, -50%) rotate(0deg); }
         100% { transform: translate(-50%, -50%) rotate(360deg); }

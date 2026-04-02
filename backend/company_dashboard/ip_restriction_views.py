@@ -53,9 +53,12 @@ def is_ip_allowed(company, client_ip):
     ).order_by('-created_at')
     
     if not restrictions.exists():
-        return False  # IP restrictions enabled but no rules = deny all
+        return True  # IP restrictions enabled but no rules configured = allow all
     
-    client_ip_obj = ipaddress.ip_address(client_ip)
+    try:
+        client_ip_obj = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return True  # Unparseable IP = allow (fail open for login)
     
     # Process rules in priority order
     for restriction in restrictions:
@@ -66,8 +69,8 @@ def is_ip_allowed(company, client_ip):
         except ValueError:
             continue
     
-    # Default deny if no rules match
-    return False
+    # No matching rule = allow (allowlist model: only explicitly blocked IPs are denied)
+    return True
 
 
 class CompanyIpRestrictionView(APIView):

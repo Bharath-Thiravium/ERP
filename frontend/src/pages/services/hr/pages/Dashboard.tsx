@@ -452,12 +452,12 @@ const HRDashboard: React.FC = () => {
         <div className="flex items-center h-16 px-6 border-b border-gray-200/50 dark:border-gray-700/50">
           <div className="flex items-center space-x-3">
             {/* Company Logo */}
-            <div className="h-8 w-8 rounded-lg overflow-hidden bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
+            <div className={`h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center ${!companyData?.logo ? 'bg-gradient-to-r from-blue-500 to-indigo-600' : ''}`}>
               {companyData?.logo ? (
                 <img
                   src={companyData.logo}
                   alt={`${companyData.name} logo`}
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-contain"
                 />
               ) : (
                 <Building className="h-5 w-5 text-white" />

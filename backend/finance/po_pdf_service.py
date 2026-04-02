@@ -8,6 +8,7 @@ from django.template.loader import render_to_string
 from django.conf import settings
 import weasyprint
 from pathlib import Path
+from types import SimpleNamespace
 
 class POPDFService:
     """Service for generating purchase order PDFs with selectable templates"""
@@ -56,7 +57,10 @@ class POPDFService:
                 'purchase_order': purchase_order,
                 'company': purchase_order.company,
                 'customer': purchase_order.customer,
-                'items': purchase_order.po_items.all(),
+                'items': self._get_po_items(purchase_order),
+                'company_gstin': getattr(purchase_order, 'company_gstin', None) or getattr(purchase_order.company, 'gst_number', ''),
+                'logo_path': self._get_logo_path(purchase_order.company),
+                'logo_url': self._get_logo_url(purchase_order.company),
             }
             
             # Company model has: name, email, phone, address, gst_number
@@ -98,6 +102,28 @@ class POPDFService:
         except Exception as e:
             print(f"Error generating PO HTML: {str(e)}")
             return f"<html><body><h1>Error generating preview</h1><p>{str(e)}</p></body></html>"
+    
+    def _get_logo_path(self, company):
+        from finance.logo_utils import get_logo_file_path
+        return get_logo_file_path(company)
+
+    def _get_logo_url(self, company):
+        from finance.logo_utils import get_absolute_logo_url
+        return get_absolute_logo_url(company)
+
+    def _get_po_items(self, purchase_order):
+        """Get PO items, handling both real and mock objects"""
+        try:
+            items = purchase_order.po_items.all()
+            # Check if it's a queryset (real object) or list (mock)
+            if hasattr(items, 'order_by'):
+                return items
+            else:
+                # For mock objects, return as is
+                return items
+        except AttributeError:
+            # Fallback for mock objects
+            return getattr(purchase_order, 'po_items', SimpleNamespace(all=lambda: []))().all()
     
     def generate_po_pdf(self, purchase_order):
         """Generate PDF for purchase order using company's selected template"""

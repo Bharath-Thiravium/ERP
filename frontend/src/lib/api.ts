@@ -88,10 +88,34 @@ api.interceptors.request.use(
 
     if (!isLoginEndpoint) {
       // Check if this is a service user endpoint (HR, Finance, Inventory, CRM)
-      const isServiceUserEndpoint = config.url?.includes('/api/hr/') ||
+      // JWT-authenticated company-dashboard endpoints (use Bearer token, not session_key)
+      const jwtCompanyDashboardPaths = [
+        '-template-preview/',
+        '-template-settings/',
+        'template-info/',
+        'email-settings/',
+        'government-api/',
+        'security/',
+        'advanced-security/',
+        'document-numbering/',
+        'overview/',
+        'service-utilization/',
+        'analytics/',
+        'user-activities/',
+        'activity-logs/',
+        'log-activity/',
+        'notifications/',
+        'domain/',
+      ]
+      const isJwtCompanyDashboard = config.url?.includes('/api/company-dashboard/') &&
+        jwtCompanyDashboardPaths.some(p => config.url?.includes(p))
+
+      const isServiceUserEndpoint = !isJwtCompanyDashboard && (
+                                   config.url?.includes('/api/hr/') ||
                                    config.url?.includes('/api/finance/') ||
                                    config.url?.includes('/api/inventory/') ||
-                                   config.url?.includes('/api/crm/')
+                                   config.url?.includes('/api/crm/') ||
+                                   config.url?.includes('/api/company-dashboard/'))
       
       if (isServiceUserEndpoint) {
         // Use session key as query parameter for service user endpoints
@@ -145,7 +169,8 @@ api.interceptors.response.use(
       const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
                                    originalRequest.url?.includes('/api/finance/') ||
                                    originalRequest.url?.includes('/api/inventory/') ||
-                                   originalRequest.url?.includes('/api/crm/')
+                                   originalRequest.url?.includes('/api/crm/') ||
+                                   originalRequest.url?.includes('/api/company-dashboard/')
       
       if (isServiceUserEndpoint) {
         // Only redirect if we're actually logged out
@@ -230,8 +255,13 @@ api.interceptors.response.use(
       
       // Don't show generic error toasts for Athens employee endpoints - let the component handle it
       const isAthensEmployeeEndpoint = originalRequest.url?.includes('/api/athens-sust/employees')
+      // Don't show toasts for 403s on company auth endpoints fired before approval
+      const isPreApprovalEndpoint = originalRequest.url?.includes('/api/auth/company/assigned-services/') ||
+                                    originalRequest.url?.includes('/api/auth/company/service-users/')
+      // Don't show toasts for preview endpoints — component handles the error
+      const isPreviewEndpoint = originalRequest.url?.includes('-template-preview/')
       
-      if (!isAthensEmployeeEndpoint) {
+      if (!isAthensEmployeeEndpoint && !isPreApprovalEndpoint && !isPreviewEndpoint) {
         if (errorData?.message) {
           toast.error(errorData.message)
         } else if (errorData?.error) {
@@ -518,6 +548,15 @@ export const apiClient = {
 
   getCustomerLedger: (params?: any) =>
     api.get('/api/finance/customer-ledger/', { params }),
+
+  getCustomerPendingStatement: (params?: any) =>
+    api.get('/api/finance/customer-pending-statement/', { params }),
+
+  downloadCustomerPendingStatementPDF: (params?: any) =>
+    api.get('/api/finance/customer-pending-statement/', { params: { ...params, format: 'pdf' }, responseType: 'blob' }),
+
+  getPOConsolidatedReport: (poId: number, params?: any) =>
+    api.get(`/api/finance/purchase-orders/${poId}/consolidated-report/`, { params, responseType: 'blob' }),
 
   // Products
   getFinanceProducts: (params?: any) =>
@@ -1540,18 +1579,19 @@ export const apiClient = {
   createFinancialYearSettings: (data: any) =>
     api.post('/api/company-dashboard/document-numbering/financial-year-settings/', data),
 
-  // Quotation Template APIs
+  // Template Info (shared across all document types)
   getQuotationTemplateInfo: () =>
-    api.get('/api/company-dashboard/quotation-templates/info/'),
+    api.get('/api/company-dashboard/template-info/'),
 
+  // Quotation Template APIs
   getQuotationTemplateSettings: () =>
-    api.get('/api/company-dashboard/quotation-templates/'),
+    api.get('/api/company-dashboard/quotation-template-settings/'),
 
   updateQuotationTemplateSettings: (data: { selected_template: string }) =>
-    api.post('/api/company-dashboard/quotation-templates/', data),
+    api.post('/api/company-dashboard/quotation-template-settings/', data),
 
   previewQuotationTemplate: (templateName: string) =>
-    api.get(`/api/company-dashboard/quotation-templates/preview/${templateName}/`),
+    api.get(`/api/company-dashboard/quotation-template-preview/${templateName}/`, { responseType: 'text' }),
 
   // PO Template APIs
   getPOTemplateSettings: () =>
@@ -1561,7 +1601,7 @@ export const apiClient = {
     api.post('/api/company-dashboard/po-template-settings/', data),
 
   previewPOTemplate: (templateName: string) =>
-    api.get(`/api/company-dashboard/po-template-preview/${templateName}/`),
+    api.get(`/api/company-dashboard/po-template-preview/${templateName}/`, { responseType: 'text' }),
 
   generatePurchaseOrderPDF: (id: number, params?: any) =>
     api.get(`/api/finance/purchase-orders/${id}/pdf/`, { params }),
@@ -1574,7 +1614,7 @@ export const apiClient = {
     api.post('/api/company-dashboard/proforma-template-settings/', data),
 
   previewProformaTemplate: (templateName: string) =>
-    api.get(`/api/company-dashboard/proforma-template-preview/${templateName}/`),
+    api.get(`/api/company-dashboard/proforma-template-preview/${templateName}/`, { responseType: 'text' }),
 
   // Invoice Template APIs
   getInvoiceTemplateSettings: () =>
@@ -1584,7 +1624,7 @@ export const apiClient = {
     api.post('/api/company-dashboard/invoice-template-settings/', data),
 
   previewInvoiceTemplate: (templateName: string) =>
-    api.get(`/api/company-dashboard/invoice-template-preview/${templateName}/`),
+    api.get(`/api/company-dashboard/invoice-template-preview/${templateName}/`, { responseType: 'text' }),
 
   // Convenience methods for backward compatibility
   getEmployees: (params?: any) => apiClient.getHREmployees(params),

@@ -635,6 +635,7 @@ class Quotation(models.Model):
     STATUS_CHOICES = [
         ('draft', 'Draft'),
         ('sent', 'Sent'),
+        ('confirmed', 'Confirmed'),
         ('approved', 'Approved'),
         ('accepted', 'Accepted'),
         ('rejected', 'Rejected'),

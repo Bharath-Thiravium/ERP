@@ -5,9 +5,9 @@ class CompanyQuotationTemplateSettings(models.Model):
     """Quotation and PO template selection for companies"""
     
     TEMPLATE_CHOICES = [
-        ('AS', 'Classic Template - Professional ERP Style'),
-        ('BKGE', 'Modern Template - Clean Whitespace Layout'),
-        ('TC', 'Compact Template - Designed for Many Items')
+        ('AS', 'Clean & Simple Template'),
+        ('BKGE', 'Professional Template'),
+        ('TC', 'Detailed Terms Template')
     ]
     
     company = models.OneToOneField(

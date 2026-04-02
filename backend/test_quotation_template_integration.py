@@ -67,7 +67,20 @@ def test_quotation_template_system():
         # Test template settings endpoint (requires auth)
         response = client.get('/api/company-dashboard/quotation-templates/')
         print(f"✅ Template settings endpoint: {response.status_code} (401 expected without auth)")
-        
+
+        # Preview endpoints should be available and return preview HTML
+        preview_routes = [
+            '/api/company-dashboard/quotation-templates/preview/AS/',
+            '/api/company-dashboard/po-template-preview/AS/',
+            '/api/company-dashboard/proforma-template-preview/AS/',
+            '/api/company-dashboard/invoice-template-preview/AS/',
+        ]
+        for route in preview_routes:
+            response = client.get(route)
+            print(f"✅ {route} status: {response.status_code}")
+            if response.status_code != 200:
+                print(f"   - body: {response.content[:200]}")
+
     except Exception as e:
         print(f"❌ API test failed: {e}")
         return False

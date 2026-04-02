@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, FileText, User, Calendar, MapPin, Package, IndianRupee, Receipt, TrendingUp, AlertCircle, CheckCircle, BarChart3, DollarSign } from 'lucide-react'
+import { X, FileText, User, Calendar, MapPin, Package, IndianRupee, Receipt, TrendingUp, AlertCircle, CheckCircle, BarChart3, DollarSign, Download, Share2 } from 'lucide-react'
 import { apiClient } from '../../../../lib/api'
 import { Tabs, TabsList, TabsTrigger } from '../../../../components/ui/Tabs'
 import toast from 'react-hot-toast'
@@ -17,6 +17,7 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
   const [relatedInvoices, setRelatedInvoices] = useState<any[]>([])
   const [claimingData, setClaimingData] = useState<any>(null)
   const [itemWiseTracking, setItemWiseTracking] = useState<any>({})
+  const [downloadingReport, setDownloadingReport] = useState(false)
 
   useEffect(() => {
     fetchPODetails()
@@ -78,6 +79,49 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
     }
   }
   
+  const downloadConsolidatedReport = async () => {
+    try {
+      setDownloadingReport(true)
+      const response = await apiClient.getPOConsolidatedReport(poId, { session_key: sessionKey })
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `PO_Report_${poData?.internal_po_number || poId}_${new Date().toISOString().split('T')[0]}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Report downloaded successfully')
+    } catch {
+      toast.error('Failed to generate report')
+    } finally {
+      setDownloadingReport(false)
+    }
+  }
+
+  const shareReport = async () => {
+    try {
+      setDownloadingReport(true)
+      const response = await apiClient.getPOConsolidatedReport(poId, { session_key: sessionKey })
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const file = new File([blob], `PO_Report_${poData?.internal_po_number || poId}.pdf`, { type: 'application/pdf' })
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `PO Report - ${poData?.internal_po_number}` })
+      } else {
+        // Fallback: download
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = file.name
+        a.click()
+        URL.revokeObjectURL(url)
+        toast.success('Report downloaded (sharing not supported on this browser)')
+      }
+    } catch {
+      toast.error('Failed to share report')
+    } finally {
+      setDownloadingReport(false)
+    }
+  }
+
   const fetchRelatedInvoices = async () => {
     try {
       const [proformaResponse, invoiceResponse] = await Promise.all([
@@ -152,12 +196,30 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
               </p>
             </div>
           </div>
-          <button 
-            onClick={onClose} 
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={downloadConsolidatedReport}
+              disabled={downloadingReport}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" />
+              {downloadingReport ? 'Generating...' : 'Download Report'}
+            </button>
+            <button
+              onClick={shareReport}
+              disabled={downloadingReport}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <Share2 className="w-4 h-4" />
+              Share
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors ml-1"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs Navigation */}
@@ -254,6 +316,20 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
                     <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Created By</label>
                     <p className="font-semibold text-gray-900 dark:text-white mt-1">{poData?.created_by_name}</p>
                   </div>
+                  {poData?.shipping_address_details && (
+                    <div className="bg-orange-50/50 dark:bg-orange-900/10 p-4 rounded-xl border border-orange-200 dark:border-orange-800/30 md:col-span-3">
+                      <label className="text-sm font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" /> Shipping Address
+                      </label>
+                      <p className="font-semibold text-gray-900 dark:text-white mt-1">
+                        {poData.shipping_address_details.label && <span className="text-orange-600 dark:text-orange-400 mr-2">[{poData.shipping_address_details.label}]</span>}
+                        {poData.shipping_address_details.address_line1}
+                        {poData.shipping_address_details.address_line2 && `, ${poData.shipping_address_details.address_line2}`}
+                        {', '}{poData.shipping_address_details.city}, {poData.shipping_address_details.state} {poData.shipping_address_details.pincode}
+                        {', '}{poData.shipping_address_details.country}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

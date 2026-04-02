@@ -22,7 +22,9 @@ import {
   User,
   ShoppingCart,
   FileText,
-  Zap
+  Zap,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react'
 // import { useAuthStore } from '../../../../store/authStore'
 import { useThemeStore } from '../../../../store/themeStore'
@@ -236,6 +238,7 @@ const handlePOCreated = () => {
   }
 
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['purchase-expense'])
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   // Complete sidebar menu items with hierarchical structure
   const sidebarItems = [
@@ -373,7 +376,7 @@ const handlePOCreated = () => {
         pendingQuotations: quotations.filter((q: any) => q.status === 'sent').length,
         approvedQuotations: quotations.filter((q: any) => q.status === 'approved').length,
         draftPOs: pos.filter((p: any) => p.status === 'draft').length,
-        confirmedPOs: pos.filter((p: any) => p.status === 'confirmed').length,
+        confirmedPOs: pos.filter((p: any) => p.status === 'active').length,
         draftProformas: proformas.filter((p: any) => p.status === 'draft').length,
         sentProformas: proformas.filter((p: any) => p.status === 'sent').length,
         draftInvoices: invoices.filter((i: any) => i.status === 'draft').length,
@@ -446,25 +449,41 @@ const handlePOCreated = () => {
   // Format recent activity from real data
   const getRecentActivity = () => {
     return financialData.recentActivity.map((item: any, index: number) => {
-      let type = 'quotation'
-      let description = `Quotation ${item.quotation_number || item.internal_po_number || item.proforma_number}`
-      let amount = parseFloat(item.total_amount || 0)
+      let type: string
+      let description: string
+      let docNumber: string
+      const amount = parseFloat(item.total_amount || 0)
+      const customerName = item.customer_name || item.customer_details?.name || 'Customer'
 
       if (item.internal_po_number) {
         type = 'purchase_order'
-        description = `Purchase Order ${item.internal_po_number}`
+        docNumber = item.internal_po_number
+        description = `Purchase Order ${docNumber}`
       } else if (item.proforma_number) {
         type = 'proforma_invoice'
-        description = `Proforma Invoice ${item.proforma_number}`
+        docNumber = item.proforma_number
+        description = `Proforma Invoice ${docNumber}`
+      } else if (item.invoice_number) {
+        type = 'invoice'
+        docNumber = item.invoice_number
+        description = `Invoice ${docNumber}`
+      } else if (item.quotation_number) {
+        type = 'quotation'
+        docNumber = item.quotation_number
+        description = `Quotation ${docNumber}`
+      } else {
+        type = 'quotation'
+        docNumber = item.id || index
+        description = `Document #${docNumber}`
       }
 
       return {
         id: `${type}-${item.id || index}-${index}`,
-        date: item.created_at ? new Date(item.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
-        description: `${description} - ${item.customer_name || 'Customer'}`,
+        date: item.created_at ? new Date(item.created_at).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN'),
+        description: `${description} - ${customerName}`,
         amount,
         type,
-        status: item.status || 'draft',
+        status: item.payment_status || item.status || 'draft',
         originalItem: item
       }
     })
@@ -489,6 +508,8 @@ const handlePOCreated = () => {
       setActiveTab('purchase-orders')
     } else if (type === 'proforma_invoice') {
       setActiveTab('proforma-invoices')
+    } else if (type === 'invoice') {
+      setActiveTab('invoices')
     }
   }
 
@@ -1053,14 +1074,18 @@ const handlePOCreated = () => {
                     ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white'
                     : transaction.type === 'purchase_order'
                     ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white'
+                    : transaction.type === 'invoice'
+                    ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white'
                     : 'bg-gradient-to-r from-purple-500 to-violet-600 text-white'
                 }`}>
                   {transaction.type === 'quotation' ? (
                     <FileText className="h-5 w-5" />
                   ) : transaction.type === 'purchase_order' ? (
                     <ShoppingCart className="h-5 w-5" />
-                  ) : (
+                  ) : transaction.type === 'invoice' ? (
                     <Banknote className="h-5 w-5" />
+                  ) : (
+                    <FileText className="h-5 w-5" />
                   )}
                 </div>
                 <div>
@@ -1083,6 +1108,8 @@ const handlePOCreated = () => {
                     ? 'text-blue-600 dark:text-blue-400'
                     : transaction.type === 'purchase_order'
                     ? 'text-green-600 dark:text-green-400'
+                    : transaction.type === 'invoice'
+                    ? 'text-orange-600 dark:text-orange-400'
                     : 'text-purple-600 dark:text-purple-400'
                 }`}>
                   ₹{transaction.amount.toLocaleString()}
@@ -1292,35 +1319,57 @@ const handlePOCreated = () => {
   return (
     <div className="flex flex-col flex-1 min-h-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950">
       {/* Modern Sidebar */}
-      <aside id="sidebar" className="fixed inset-y-0 left-0 z-[var(--z-sidebar)] w-64 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-r border-gray-200/50 dark:border-gray-700/50 flex flex-col">
+      <aside id="sidebar" className={`fixed inset-y-0 left-0 z-[var(--z-sidebar)] bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-r border-gray-200/50 dark:border-gray-700/50 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
         {/* Sidebar Header with Company Logo */}
-        <div className="flex items-center h-16 px-6 border-b border-gray-200/50 dark:border-gray-700/50">
-          <div className="flex items-center space-x-3">
+        <div className="flex items-center h-16 px-3 border-b border-gray-200/50 dark:border-gray-700/50">
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center w-full' : 'space-x-3'}`}>
             {/* Company Logo */}
-            <div className="h-8 w-8 rounded-lg overflow-hidden bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
+            <div className={`h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 ${!companyData?.logo ? 'bg-gradient-to-r from-green-500 to-emerald-600' : ''}`}>
               {companyData?.logo ? (
                 <img
                   src={companyData.logo}
                   alt={`${companyData.name} logo`}
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-contain"
                 />
               ) : (
                 <Building className="h-5 w-5 text-white" />
               )}
             </div>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Finance Management
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {companyData?.name || serviceUser?.company_name || 'Company'}
-              </p>
-            </div>
+            {!sidebarCollapsed && (
+              <div className="overflow-hidden">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                  Finance Management
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  {companyData?.name || serviceUser?.company_name || 'Company'}
+                </p>
+              </div>
+            )}
           </div>
+          {/* Collapse toggle — only visible when expanded */}
+          {!sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="ml-auto p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0"
+              title="Collapse sidebar"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* Navigation Menu */}
         <nav className="mt-6 px-3 flex-1 overflow-y-auto pr-1">
+          {/* Expand button when collapsed */}
+          {sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              className="w-full flex items-center justify-center p-2 mb-4 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Expand sidebar"
+            >
+              <ChevronsRight className="h-5 w-5" />
+            </button>
+          )}
           <div className="space-y-1">
             {sidebarItems.map((item: any) => {
               const Icon = item.icon
@@ -1332,31 +1381,36 @@ const handlePOCreated = () => {
                 return (
                   <div key={item.id}>
                     <button
-                      onClick={() => toggleMenu(item.id)}
+                      onClick={() => sidebarCollapsed ? setSidebarCollapsed(false) : toggleMenu(item.id)}
+                      title={sidebarCollapsed ? item.label : undefined}
                       className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ${
                         hasActiveChild
                           ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/25'
                           : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
-                      }`}
+                      } ${sidebarCollapsed ? 'justify-center' : ''}`}
                     >
-                      <div className={`p-2 rounded-xl transition-all duration-300 ${
+                      <div className={`p-2 rounded-xl transition-all duration-300 flex-shrink-0 ${
                         hasActiveChild
                           ? 'bg-white/20 shadow-lg'
                           : 'bg-gray-100 dark:bg-gray-800'
                       }`}>
                         <Icon className={`h-5 w-5 ${hasActiveChild ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
                       </div>
-                      {hasActiveChild ? (
-                        <div className="flex-1 ml-3 text-left">
-                          <p className="text-sm font-semibold text-white">{item.label}</p>
-                          <p className="text-xs text-white/80">{item.description}</p>
-                        </div>
-                      ) : (
-                        <span className="ml-3">{item.label}</span>
+                      {!sidebarCollapsed && (
+                        <>
+                          {hasActiveChild ? (
+                            <div className="flex-1 ml-3 text-left overflow-hidden">
+                              <p className="text-sm font-semibold text-white truncate">{item.label}</p>
+                              <p className="text-xs text-white/80 truncate">{item.description}</p>
+                            </div>
+                          ) : (
+                            <span className="ml-3 truncate">{item.label}</span>
+                          )}
+                          <ChevronRight className={`h-4 w-4 ml-auto flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                        </>
                       )}
-                      <ChevronRight className={`h-4 w-4 ml-auto transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
                     </button>
-                    {isExpanded && (
+                    {!sidebarCollapsed && isExpanded && (
                       <div className="ml-6 mt-1 space-y-1">
                         {item.children.map((child: any) => {
                           const ChildIcon = child.icon
@@ -1371,7 +1425,7 @@ const handlePOCreated = () => {
                                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
                               }`}
                             >
-                              <div className={`p-1.5 rounded-lg transition-all duration-300 ${
+                              <div className={`p-1.5 rounded-lg transition-all duration-300 flex-shrink-0 ${
                                 isChildActive
                                   ? 'bg-white/20 shadow-lg'
                                   : 'bg-gray-100 dark:bg-gray-800'
@@ -1379,12 +1433,12 @@ const handlePOCreated = () => {
                                 <ChildIcon className={`h-4 w-4 ${isChildActive ? 'text-white' : 'text-gray-400 dark:text-gray-500'}`} />
                               </div>
                               {isChildActive ? (
-                                <div className="flex-1 ml-3 text-left">
-                                  <p className="text-sm font-semibold text-white">{child.label}</p>
-                                  <p className="text-xs text-white/80">{child.description}</p>
+                                <div className="flex-1 ml-3 text-left overflow-hidden">
+                                  <p className="text-sm font-semibold text-white truncate">{child.label}</p>
+                                  <p className="text-xs text-white/80 truncate">{child.description}</p>
                                 </div>
                               ) : (
-                                <span className="ml-3">{child.label}</span>
+                                <span className="ml-3 truncate">{child.label}</span>
                               )}
                             </button>
                           )
@@ -1399,28 +1453,31 @@ const handlePOCreated = () => {
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
+                  title={sidebarCollapsed ? item.label : undefined}
                   className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ${
                     isActive
                       ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/25'
                       : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
-                  }`}
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
                 >
-                  <div className={`p-2 rounded-xl transition-all duration-300 ${
+                  <div className={`p-2 rounded-xl transition-all duration-300 flex-shrink-0 ${
                     isActive
                       ? 'bg-white/20 shadow-lg'
                       : 'bg-gray-100 dark:bg-gray-800'
                   }`}>
                     <Icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
                   </div>
-                  {isActive ? (
-                    <div className="flex-1 ml-3 text-left">
-                      <p className="text-sm font-semibold text-white">{item.label}</p>
-                      <p className="text-xs text-white/80">{item.description}</p>
-                    </div>
-                  ) : (
-                    <span className="ml-3">{item.label}</span>
+                  {!sidebarCollapsed && (
+                    isActive ? (
+                      <div className="flex-1 ml-3 text-left overflow-hidden">
+                        <p className="text-sm font-semibold text-white truncate">{item.label}</p>
+                        <p className="text-xs text-white/80 truncate">{item.description}</p>
+                      </div>
+                    ) : (
+                      <span className="ml-3 truncate">{item.label}</span>
+                    )
                   )}
-                  {isActive && <ChevronRight className="h-4 w-4 ml-auto" />}
+                  {!sidebarCollapsed && isActive && <ChevronRight className="h-4 w-4 ml-auto flex-shrink-0" />}
                 </button>
               )
             })}
@@ -1428,35 +1485,47 @@ const handlePOCreated = () => {
         </nav>
 
         {/* User Info at Bottom */}
-        <div className="p-4 border-t border-gray-200/50 dark:border-gray-700/50">
-          <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-              <span className="text-xs font-medium text-white">
-                {serviceUser?.full_name?.charAt(0) || 'U'}
-              </span>
+        <div className="p-3 border-t border-gray-200/50 dark:border-gray-700/50">
+          {sidebarCollapsed ? (
+            <div className="flex justify-center">
+              <button
+                onClick={serviceUserLogout}
+                title="Logout"
+                className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                {serviceUser?.full_name || 'User'}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                {serviceUser?.role || 'Finance User'}
-              </p>
+          ) : (
+            <div className="flex items-center space-x-3">
+              <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-medium text-white">
+                  {serviceUser?.full_name?.charAt(0) || 'U'}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {serviceUser?.full_name || 'User'}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  {serviceUser?.role || 'Finance User'}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={serviceUserLogout}
+                className="h-8 w-8 p-0 flex-shrink-0"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={serviceUserLogout}
-              className="h-8 w-8 p-0"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
+          )}
         </div>
       </aside>
 
       {/* Main Content */}
-      <div className="ml-64">
+      <div className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
         {/* Top Header */}
         <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-700/50 sticky top-0 z-40">
           <div className="px-6 py-4">

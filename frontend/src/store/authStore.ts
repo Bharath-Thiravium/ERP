@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 interface AuthState {
   user: User | null
   isAuthenticated: boolean
+  isInitialized: boolean
   isLoading: boolean
   error: string | null
   firstLoginRequired: boolean
@@ -43,6 +44,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       isAuthenticated: false,
+      isInitialized: false,
       isLoading: false,
       error: null,
       firstLoginRequired: false,
@@ -138,6 +140,7 @@ export const useAuthStore = create<AuthState>()(
           const newState = {
             user: userData,
             isAuthenticated: true,
+            isInitialized: true,
             isLoading: false,
             firstLoginRequired: data.first_login_required || false,
             approvalPending: data.approval_pending || false,
@@ -242,9 +245,7 @@ export const useAuthStore = create<AuthState>()(
 
         // Show success message
         toast.success('Logged out successfully')
-        
-        // Don't force redirect here - let the router handle it naturally
-        // This preserves browser history and prevents back button issues
+        window.location.href = '/login'
       },
 
       initializeAuth: async () => {
@@ -393,6 +394,14 @@ export const useAuthStore = create<AuthState>()(
         mustChangePassword: state.mustChangePassword,
         forcePasswordReset: state.forcePasswordReset,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.isInitialized = true
+        } else {
+          // No persisted state — mark as initialized so ProtectedRoute redirects to login
+          useAuthStore.setState({ isInitialized: true })
+        }
+      },
     }
   )
 )

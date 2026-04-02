@@ -20,6 +20,13 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
+    // Auto-reload once for chunk load errors (stale cache after deployment)
+    if (error?.message?.includes('dynamically imported module') || error?.message?.includes('Failed to fetch dynamically')) {
+      if (!sessionStorage.getItem('chunk_reload')) {
+        sessionStorage.setItem('chunk_reload', '1')
+        window.location.reload()
+      }
+    }
     return { hasError: true, error }
   }
 

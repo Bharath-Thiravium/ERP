@@ -87,8 +87,8 @@ class InvoicePDFService:
             return html_content
             
         except Exception as e:
-            logger.error(f"Error generating invoice HTML for {invoice.invoice_number}: {str(e)}")
-            raise
+            logger.error(f"Error generating invoice HTML for {getattr(invoice, 'invoice_number', 'unknown')}: {str(e)}")
+            return f"<html><body><h1>Invoice template preview error</h1><p>{str(e)}</p></body></html>"
     
     def _prepare_context(self, invoice):
         """Prepare context data for template rendering"""

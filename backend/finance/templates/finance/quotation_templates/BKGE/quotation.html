@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+{% load finance_extras %}
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Quotation </title>
+<style>
+@page{size:A4;margin:0}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#1e293b;background:#fff}
+.page{width:210mm;min-height:297mm;display:flex;flex-direction:column}
+
+/* ── HEADER: 3 columns ── */
+.hdr{display:flex;align-items:stretch;min-height:80px;border-bottom:3px solid #0f766e}
+.hdr-logo{background:#f0fdf9;border-right:2px solid #ccfbf1;display:flex;align-items:center;justify-content:center;padding:10px 14px;min-width:60px;max-width:140px;width:auto;flex-shrink:0}
+.hdr-logo img{max-height:52px;max-width:112px;width:auto;height:auto;object-fit:contain;display:block}
+.hdr-logo .monogram{width:44px;height:44px;background:#0f766e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;letter-spacing:-1px;flex-shrink:0}
+.hdr-co{flex:1;background:#fff;padding:14px 20px;display:flex;flex-direction:column;justify-content:center}
+.hdr-co .co-name{font-size:19px;font-weight:700;color:#0f766e;margin-bottom:4px}
+.hdr-co .co-meta{font-size:9px;color:#64748b;line-height:1.7}
+.hdr-doc{background:#0f766e;width:155px;min-width:155px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px 16px;text-align:center}
+.hdr-doc .doc-type{font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#fff}
+.hdr-doc .doc-num{font-size:9.5px;color:#d1fae5;font-weight:600;margin-top:6px;word-break:break-all}
+.hdr-doc .doc-date{font-size:8.5px;color:#a7f3d0;margin-top:3px}
+
+/* ── INFO STRIP ── */
+.strip{background:#f0fdf9;border-bottom:1px solid #ccfbf1;padding:11px 24px;display:flex}
+.sc{flex:1;padding:0 16px;border-right:1px solid #ccfbf1}
+.sc:first-child{padding-left:0}
+.sc:last-child{border-right:none}
+.sclbl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#0f766e;margin-bottom:4px}
+.scval{font-size:10.5px;color:#1e293b;line-height:1.6}
+.scval strong{font-size:11.5px;display:block}
+
+/* ── COMPLIANCE ── */
+.comp{background:#fff;border-bottom:1px solid #e2e8f0;padding:6px 24px;display:flex;gap:24px;font-size:9px;color:#475569}
+.comp strong{color:#1e293b}
+
+/* ── BODY ── */
+.body{padding:16px 24px;flex:1}
+
+/* table */
+table.items{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:10px}
+table.items thead tr{background:#0f766e}
+table.items thead th{color:#fff;padding:8px 8px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px}
+table.items thead th.r{text-align:right}
+table.items thead th.c{text-align:center}
+table.items tbody tr{border-bottom:1px solid #e2e8f0}
+table.items tbody tr:nth-child(even){background:#f8fafc}
+table.items tbody td{padding:8px;vertical-align:top}
+table.items tbody td.r{text-align:right;font-family:'Courier New',monospace}
+table.items tbody td.c{text-align:center}
+.iname{font-weight:600;color:#1e293b}
+.idesc{font-size:9px;color:#64748b;margin-top:1px}
+.ihsn{display:inline-block;background:#f0fdf9;border:1px solid #ccfbf1;color:#0f766e;font-size:8px;padding:1px 4px;border-radius:2px;margin-top:2px}
+
+/* totals + words */
+.bottom{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:14px}
+.words{flex:1;padding:12px;background:#f0fdf9;border:1px solid #ccfbf1;border-radius:3px}
+.wlbl{font-size:7.5px;font-weight:700;text-transform:uppercase;color:#0f766e;margin-bottom:3px}
+.wval{font-size:10.5px;font-style:italic;color:#1e293b}
+table.totals{width:252px;border-collapse:collapse}
+table.totals td{padding:6px 11px;font-size:10.5px;border-bottom:1px solid #e2e8f0}
+table.totals td:last-child{text-align:right;font-family:'Courier New',monospace;font-weight:600}
+table.totals td.tl{color:#64748b}
+table.totals tr.grand td{background:#0f766e;color:#fff;font-weight:700;font-size:12px;border:none;padding:9px 11px}
+table.totals tr.grand td:last-child{color:#d1fae5}
+
+/* payment terms */
+.pt-title{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#0f766e;margin-bottom:5px}
+table.pt{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:10px}
+table.pt th{background:#f0fdf9;color:#0f766e;padding:6px 10px;font-weight:700;border:1px solid #ccfbf1;font-size:8.5px;text-transform:uppercase}
+table.pt td{padding:6px 10px;border:1px solid #e2e8f0;color:#374151}
+
+/* notes/terms */
+.nt{display:flex;gap:12px;margin-bottom:14px}
+.ntcard{flex:1;border:1px solid #e2e8f0;border-radius:3px;overflow:hidden}
+.nthead{background:#0f766e;color:#fff;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;padding:5px 11px}
+.ntbody{padding:8px 11px;font-size:10px;color:#374151;line-height:1.6}
+
+/* signatures 2 */
+.sigs{display:flex;justify-content:space-between;margin-top:24px;gap:20px}
+.sig{flex:1;text-align:center}
+.sigspace{height:42px;border-bottom:1.5px solid #0f766e;margin-bottom:5px}
+.siglbl{font-size:9.5px;font-weight:700;color:#0f766e}
+.sigco{font-size:9px;color:#64748b}
+
+/* footer */
+.footer{background:#0f766e;color:#d1fae5;padding:8px 24px;display:flex;justify-content:space-between;font-size:8.5px;margin-top:auto}
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="hdr">
+  <div class="hdr-logo">
+    {% if logo_url %}
+      <img src="{{ logo_url }}" alt="{{ company.name }}">
+    {% elif logo_path %}
+      <img src="{{ logo_path }}" alt="{{ company.name }}">
+    {% else %}
+      <div class="monogram">{{ company.name|slice:":2"|upper }}</div>
+    {% endif %}
+  </div>
+  <div class="hdr-co">
+    <div class="co-name">{{ company.name }}</div>
+    <div class="co-meta">
+      {{ company.address_line1 }}{% if company.address_line2 %}, {{ company.address_line2 }}{% endif %}<br>
+      {{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} – {{ company.pincode }}{% endif %}<br>
+      {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}<br>
+      GSTIN: {{ company_gstin|default:"N/A" }}
+    </div>
+  </div>
+  <div class="hdr-doc">
+    <div class="doc-type">Quotation</div>
+    <div class="doc-num">{{ quotation.quotation_number }}</div>
+    <div class="doc-date">{{ quotation.quotation_date|date:"d M Y" }}</div>
+  </div>
+</div>
+
+<div class="strip">
+  <div class="sc">
+    <div class="sclbl">Bill To</div>
+    <div class="scval">
+      <strong>{{ customer.name }}</strong>
+      {{ customer.billing_address_line1 }}<br>
+      {% if customer.billing_address_line2 %}{{ customer.billing_address_line2 }}<br>{% endif %}
+      {{ customer.billing_city }}{% if customer.billing_state %}, {{ customer.billing_state }}{% endif %}{% if customer.billing_pincode %} – {{ customer.billing_pincode }}{% endif %}<br>
+      {% if customer.gstin %}GSTIN: {{ customer.gstin }}<br>{% endif %}
+      {% if customer.phone %}Tel: {{ customer.phone }}{% endif %}
+    </div>
+  </div>
+  <div class="sc">
+    <div class="sclbl">Ship To</div>
+    <div class="scval">
+      {% if quotation.shipping_address %}{{ quotation.shipping_address }}
+      {% else %}<em style="color:#94a3b8">Same as billing address</em>{% endif %}
+    </div>
+  </div>
+  <div class="sc" style="max-width:150px">
+    <div class="sclbl">Details</div>
+    <div class="scval">
+      <table style="width:100%;border-collapse:collapse;font-size:10px">
+        <tr><td style="color:#64748b;padding:2px 0">Valid Until</td><td style="text-align:right;font-weight:600">{{ quotation.valid_until|date:"d/m/Y" }}</td></tr>
+        <tr><td style="color:#64748b;padding:2px 0">GST Type</td><td style="text-align:right;font-weight:600">{{ quotation.gst_type|upper }}</td></tr>
+        {% if quotation.reference %}<tr><td style="color:#64748b;padding:2px 0">Ref</td><td style="text-align:right;font-weight:600">{{ quotation.reference }}</td></tr>{% endif %}
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="comp">
+  <span><strong>Place of Supply:</strong> {{ quotation.place_of_supply|default:customer.billing_state }}</span>
+  <span><strong>Reverse Charge:</strong> {% if quotation.reverse_charge_applicable %}Yes{% else %}No{% endif %}</span>
+  <span><strong>Currency:</strong> INR</span>
+</div>
+
+<div class="body">
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:4%" class="c">#</th>
+        <th style="width:33%">Item Description</th>
+        <th style="width:9%" class="c">HSN/SAC</th>
+        <th style="width:7%" class="c">Qty</th>
+        <th style="width:6%" class="c">Unit</th>
+        <th style="width:11%" class="r">Rate (₹)</th>
+        <th style="width:7%" class="c">GST%</th>
+        <th style="width:11%" class="r">Taxable (₹)</th>
+        <th style="width:11%" class="r">Amount (₹)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="c" style="color:#94a3b8">{{ item.line_number }}</td>
+        <td>
+          <div class="iname">{{ item.product_name }}</div>
+          {% if item.description %}<div class="idesc">{{ item.description }}</div>{% endif %}
+          {% if item.hsn_sac_code %}<span class="ihsn">{{ item.hsn_sac_code }}</span>{% endif %}
+        </td>
+        <td class="c" style="color:#64748b">{{ item.hsn_sac_code|default:"—" }}</td>
+        <td class="c">{{ item.quantity }}</td>
+        <td class="c" style="color:#64748b">{{ item.unit|default:"Nos" }}</td>
+        <td class="r">{{ item.unit_price|floatformat:2 }}</td>
+        <td class="c">{{ item.gst_rate|floatformat:0 }}%</td>
+        <td class="r">{{ item.line_total|floatformat:2 }}</td>
+        <td class="r" style="font-weight:700;color:#0f766e">{{ item.line_total|floatformat:2 }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" style="text-align:center;padding:22px;color:#94a3b8;font-style:italic">No items</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="bottom">
+    <div class="words">
+      <div class="wlbl">Amount in Words</div>
+      <div class="wval">{{ quotation.total_amount|num_to_words }}</div>
+      <div style="margin-top:8px;font-size:9px;color:#64748b">
+        <strong>Place of Supply:</strong> {{ quotation.place_of_supply|default:customer.billing_state }}<br>
+        <strong>Reverse Charge:</strong> {% if quotation.reverse_charge_applicable %}Applicable{% else %}Not Applicable{% endif %}
+      </div>
+    </div>
+    <table class="totals">
+      <tr><td class="tl">Subtotal</td><td>₹{{ quotation.subtotal|floatformat:2 }}</td></tr>
+      {% if quotation.discount_amount > 0 %}
+      <tr><td class="tl">Discount{% if quotation.discount_percentage > 0 %} ({{ quotation.discount_percentage }}%){% endif %}</td><td style="color:#e53e3e">–₹{{ quotation.discount_amount|floatformat:2 }}</td></tr>
+      {% endif %}
+      {% if quotation.shipping_charges > 0 %}
+      <tr><td class="tl">Shipping</td><td>₹{{ quotation.shipping_charges|floatformat:2 }}</td></tr>
+      {% endif %}
+      {% if quotation.other_charges > 0 %}
+      <tr><td class="tl">Other Charges</td><td>₹{{ quotation.other_charges|floatformat:2 }}</td></tr>
+      {% endif %}
+      {% if quotation.gst_type == "cgst_sgst" %}
+      <tr><td class="tl">CGST</td><td>₹{{ quotation.cgst_amount|floatformat:2 }}</td></tr>
+      <tr><td class="tl">SGST</td><td>₹{{ quotation.sgst_amount|floatformat:2 }}</td></tr>
+      {% elif quotation.gst_type == "igst" %}
+      <tr><td class="tl">IGST</td><td>₹{{ quotation.igst_amount|floatformat:2 }}</td></tr>
+      {% endif %}
+      <tr class="grand"><td>Grand Total</td><td>₹{{ quotation.total_amount|floatformat:2 }}</td></tr>
+    </table>
+  </div>
+
+  {% if quotation.terms_and_conditions %}
+  <div class="pt-title">Payment Terms</div>
+  <table class="pt">
+    <thead><tr><th style="width:55%">Terms</th><th style="width:20%">Timeline</th><th style="width:25%">Amount (₹)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>{{ quotation.terms_and_conditions|truncatechars:100 }}</td>
+        <td>On Confirmation</td>
+        <td style="font-weight:600">{{ quotation.total_amount|floatformat:2 }}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if quotation.notes or quotation.terms_and_conditions %}
+  <div class="nt">
+    {% if quotation.notes %}
+    <div class="ntcard"><div class="nthead">Notes</div><div class="ntbody">{{ quotation.notes }}</div></div>
+    {% endif %}
+    {% if quotation.terms_and_conditions %}
+    <div class="ntcard"><div class="nthead">Terms &amp; Conditions</div><div class="ntbody">{{ quotation.terms_and_conditions }}</div></div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="sigs">
+    <div class="sig">
+      <div class="sigspace"></div>
+      <div class="siglbl">Prepared By</div>
+      <div class="sigco">Accounts Team</div>
+    </div>
+    <div class="sig">
+      <div class="sigspace"></div>
+      <div class="siglbl">Authorised Signatory</div>
+      <div class="sigco">{{ company.name }}</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <span>{{ company.name }} | GSTIN: {{ company_gstin|default:"N/A" }}</span>
+  <span>Computer-generated document</span>
+  <span>{{ quotation.quotation_date|date:"d M Y" }}</span>
+</div>
+
+</div>
+</body>
+</html>

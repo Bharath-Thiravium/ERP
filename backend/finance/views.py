@@ -4067,3 +4067,512 @@ class MarkTDSCertReceivedView(APIView):
         payment.tds_certificate_received = bool(received)
         payment.save(update_fields=['tds_certificate_received'])
         return Response({'id': payment.id, 'tds_certificate_received': payment.tds_certificate_received})
+
+
+# ─── Customer Pending Payment Statement ───────────────────────────────────────
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def customer_pending_statement(request):
+    """
+    Pending payment statement per invoice.
+
+    For each invoice we distinguish:
+      pending_from_payment  = outstanding that is genuinely unpaid by customer
+      pending_from_tds      = outstanding that is TDS already deducted by customer
+                              (customer deducted it, needs to deposit to govt)
+      tds_on_outstanding    = TDS expected on the remaining genuine payment outstanding
+                              (only when include_tds=true and invoice.tds_applicable)
+      net_payable           = pending_from_payment + tds_on_outstanding
+    """
+    session_key = (
+        request.headers.get('Authorization', '').replace('Bearer ', '')
+        or request.query_params.get('session_key')
+    )
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=401)
+
+    customer_id = request.query_params.get('customer_id')
+    if not customer_id:
+        return Response({'error': 'customer_id required'}, status=400)
+
+    include_tds = request.query_params.get('include_tds', 'true').lower() == 'true'
+    fmt = request.query_params.get('format', 'json')
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+        customer = Customer.objects.get(id=customer_id, company=company)
+    except (ServiceUserSession.DoesNotExist, Customer.DoesNotExist):
+        return Response({'error': 'Not found'}, status=404)
+
+    # Include paid invoices where TDS was deducted but not yet deposited
+    # (outstanding = tds_deducted means customer paid net, TDS pending with govt)
+    pending_invoices = Invoice.objects.filter(
+        customer=customer,
+        company=company,
+        is_rejected=False,
+        payment_status__in=['unpaid', 'partially_paid', 'paid', 'overdue']
+    ).prefetch_related('payments').order_by('invoice_date')
+
+    # Filter to only those with actual outstanding or TDS pending
+    pending_invoices = [
+        inv for inv in pending_invoices
+        if float(inv.outstanding_amount or 0) > 0
+    ]
+
+    rows = []
+    total_pending_payment = 0
+    total_pending_tds = 0
+    total_tds_on_outstanding = 0
+    total_net_payable = 0
+
+    for inv in pending_invoices:
+        invoice_amount = float(inv.total_amount or 0)
+        paid_amount    = float(inv.paid_amount or 0)
+        outstanding    = float(inv.outstanding_amount or max(invoice_amount - paid_amount, 0))
+
+        # Sum TDS already deducted across all completed payments for this invoice
+        tds_already_deducted = sum(
+            float(p.tds_amount or 0)
+            for p in inv.payments.filter(status='completed')
+            if p.tds_applicable and float(p.tds_amount or 0) > 0
+        )
+
+        # Determine how much of the outstanding is TDS vs genuine unpaid
+        # If outstanding <= tds_already_deducted: entire outstanding is TDS withheld
+        # If outstanding > tds_already_deducted: part is TDS, rest is genuine unpaid
+        pending_from_tds = min(round(tds_already_deducted, 2), round(outstanding, 2))
+        pending_from_payment = round(max(outstanding - pending_from_tds, 0), 2)
+
+        # TDS expected on the remaining genuine payment outstanding
+        tds_on_outstanding = 0.0
+        tds_rate = float(inv.tds_rate or 0)
+        tds_section = inv.tds_section or ''
+        if include_tds and inv.tds_applicable and pending_from_payment > 0 and tds_rate > 0:
+            tds_on_outstanding = round(pending_from_payment * tds_rate / 100, 2)
+
+        # Net payable = genuine pending payment + TDS on that outstanding
+        net_payable = round(pending_from_payment + tds_on_outstanding, 2)
+
+        total_pending_payment += pending_from_payment
+        total_pending_tds += pending_from_tds
+        total_tds_on_outstanding += tds_on_outstanding
+        total_net_payable += net_payable
+
+        rows.append({
+            'invoice_id':            inv.id,
+            'invoice_number':        inv.invoice_number,
+            'invoice_date':          inv.invoice_date.isoformat(),
+            'due_date':              inv.due_date.isoformat() if inv.due_date else None,
+            'invoice_amount':        invoice_amount,
+            'paid_amount':           paid_amount,
+            'outstanding_amount':    round(outstanding, 2),
+            # Split outstanding into TDS vs genuine payment
+            'pending_from_payment':  pending_from_payment,
+            'pending_from_tds':      pending_from_tds,
+            # TDS info
+            'tds_applicable':        inv.tds_applicable,
+            'tds_section':           tds_section,
+            'tds_rate':              tds_rate,
+            'tds_already_deducted':  round(tds_already_deducted, 2),
+            'tds_on_outstanding':    tds_on_outstanding,
+            'net_payable':           net_payable,
+            'payment_status':        inv.payment_status,
+            'days_overdue': (
+                (timezone.now().date() - inv.due_date).days
+                if inv.due_date and inv.due_date < timezone.now().date() else 0
+            ),
+        })
+
+    summary = {
+        'customer': {
+            'id':            customer.id,
+            'name':          customer.name,
+            'customer_code': customer.customer_code,
+            'email':         customer.email,
+            'phone':         customer.phone,
+            'gstin':         getattr(customer, 'gstin', '') or '',
+            'pan_number':    getattr(customer, 'pan_number', '') or '',
+        },
+        'company': {
+            'name':    company.name,
+            'address': getattr(company, 'address', '') or '',
+            'phone':   getattr(company, 'phone', '') or '',
+            'email':   company.email,
+            'gstin':   getattr(company, 'gst_number', '') or '',
+        },
+        'include_tds':              include_tds,
+        'total_pending_payment':    round(total_pending_payment, 2),
+        'total_pending_tds':        round(total_pending_tds, 2),
+        'total_tds_on_outstanding': round(total_tds_on_outstanding, 2),
+        'total_net_payable':        round(total_net_payable, 2),
+        'pending_count':            len(rows),
+        'statement_date':           timezone.now().date().isoformat(),
+        'invoices':                 rows,
+    }
+
+    if fmt == 'pdf':
+        return _generate_pending_statement_pdf(summary, company)
+
+    return Response(summary)
+
+
+def _generate_pending_statement_pdf(data, company):
+    """Generate PDF for pending payment statement using WeasyPrint."""
+    from django.template.loader import render_to_string
+    from django.http import HttpResponse
+    import weasyprint
+
+    html = _build_pending_statement_html(data, company)
+    try:
+        pdf = weasyprint.HTML(string=html).write_pdf()
+        customer_name = data['customer']['name'].replace(' ', '_')
+        filename = f"Pending_Statement_{customer_name}_{data['statement_date']}.pdf"
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        logger.error(f"Pending statement PDF error: {e}")
+        return Response({'error': str(e)}, status=500)
+
+
+def _build_pending_statement_html(data, company):
+    """Build HTML for pending payment statement."""
+    from django.utils.html import escape
+    c = data['customer']
+    co = data['company']
+    rows_html = ''
+    for inv in data['invoices']:
+        overdue_style = 'color:#dc2626;font-weight:600' if inv['days_overdue'] > 0 else ''
+        tds_cell = f"₹{inv['tds_amount']:,.2f}<br><small style='color:#6b7280'>{inv['tds_section']} @ {inv['tds_rate']}%</small>" if inv['tds_amount'] else '—'
+        rows_html += f"""
+        <tr>
+          <td>{escape(inv['invoice_number'])}</td>
+          <td>{inv['invoice_date']}</td>
+          <td>{inv['due_date'] or '—'}</td>
+          <td style='text-align:right'>₹{inv['invoice_amount']:,.2f}</td>
+          <td style='text-align:right'>₹{inv['paid_amount']:,.2f}</td>
+          <td style='text-align:right'>₹{inv['outstanding_amount']:,.2f}</td>
+          <td style='text-align:right'>{tds_cell}</td>
+          <td style='text-align:right;font-weight:700'>₹{inv['net_payable']:,.2f}</td>
+          <td style='text-align:center;{overdue_style}'>{'Overdue ' + str(inv['days_overdue']) + 'd' if inv['days_overdue'] > 0 else inv['payment_status'].replace('_',' ').title()}</td>
+        </tr>"""
+
+    tds_header = '<th>TDS Deducted</th>' if data['include_tds'] else ''
+    tds_summary = f"<tr><td colspan='2'><strong>TDS Deducted</strong></td><td style='text-align:right;color:#7c3aed'>₹{data['total_tds_deducted']:,.2f}</td></tr>" if data['include_tds'] else ''
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset='UTF-8'>
+<style>
+  @page{{size:A4;margin:15mm}}
+  body{{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1e293b}}
+  .header{{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #1e40af}}
+  .company-name{{font-size:18px;font-weight:700;color:#1e40af;text-transform:uppercase}}
+  .title{{font-size:16px;font-weight:700;color:#1e293b;margin:16px 0 4px}}
+  .subtitle{{font-size:11px;color:#64748b}}
+  .info-grid{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}}
+  .info-box{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px}}
+  .info-label{{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:4px}}
+  table{{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:10px}}
+  th{{background:#1e40af;color:#fff;padding:7px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.4px}}
+  td{{padding:6px 8px;border-bottom:1px solid #e2e8f0}}
+  tr:nth-child(even) td{{background:#f8fafc}}
+  .summary-table{{width:280px;margin-left:auto;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}}
+  .summary-table td{{padding:7px 12px;border-bottom:1px solid #e2e8f0}}
+  .summary-table tr:last-child td{{background:#1e40af;color:#fff;font-weight:700;font-size:12px;border:none}}
+  .footer{{margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;text-align:center}}
+</style></head><body>
+<div class='header'>
+  <div>
+    <div class='company-name'>{escape(co['name'])}</div>
+    <div style='font-size:10px;color:#64748b;margin-top:4px'>{escape(co['address'])}</div>
+    <div style='font-size:10px;color:#64748b'>GSTIN: {escape(co['gstin'])}</div>
+  </div>
+  <div style='text-align:right'>
+    <div class='title'>Pending Payment Statement</div>
+    <div class='subtitle'>Statement Date: {data['statement_date']}</div>
+    <div class='subtitle'>{'TDS Included' if data['include_tds'] else 'Excluding TDS'}</div>
+  </div>
+</div>
+<div class='info-grid'>
+  <div class='info-box'>
+    <div class='info-label'>Bill To</div>
+    <div style='font-weight:700;font-size:13px'>{escape(c['name'])}</div>
+    <div style='color:#64748b'>{escape(c['customer_code'])}</div>
+    <div style='color:#64748b'>{escape(c['email'])}</div>
+    <div style='color:#64748b'>{escape(c['phone'])}</div>
+    {'<div style="color:#64748b">GSTIN: ' + escape(c['gstin']) + '</div>' if c['gstin'] else ''}
+  </div>
+  <div class='info-box'>
+    <div class='info-label'>Summary</div>
+    <div>Total Pending Invoices: <strong>{data['pending_count']}</strong></div>
+    <div>Total Outstanding: <strong style='color:#dc2626'>₹{data['total_outstanding']:,.2f}</strong></div>
+    <div>Net Payable: <strong style='color:#1e40af'>₹{data['net_payable']:,.2f}</strong></div>
+  </div>
+</div>
+<table>
+  <thead><tr>
+    <th>Invoice No.</th><th>Invoice Date</th><th>Due Date</th>
+    <th style='text-align:right'>Invoice Amt</th>
+    <th style='text-align:right'>Paid</th>
+    <th style='text-align:right'>Outstanding</th>
+    {tds_header}
+    <th style='text-align:right'>Net Payable</th>
+    <th style='text-align:center'>Status</th>
+  </tr></thead>
+  <tbody>{rows_html}</tbody>
+</table>
+<table class='summary-table'>
+  <tr><td colspan='2'><strong>Total Invoice Amount</strong></td><td style='text-align:right'>₹{data['total_invoice_amount']:,.2f}</td></tr>
+  <tr><td colspan='2'><strong>Total Paid</strong></td><td style='text-align:right;color:#16a34a'>₹{data['total_paid']:,.2f}</td></tr>
+  <tr><td colspan='2'><strong>Total Outstanding</strong></td><td style='text-align:right;color:#dc2626'>₹{data['total_outstanding']:,.2f}</td></tr>
+  {tds_summary}
+  <tr><td colspan='2'>Net Payable</td><td style='text-align:right'>₹{data['net_payable']:,.2f}</td></tr>
+</table>
+<div class='footer'>This is a computer-generated statement. Please contact us for any discrepancies. | {escape(co['name'])} | {escape(co['email'])}</div>
+</body></html>"""
+
+
+# ─── PO / WO Consolidated Report ──────────────────────────────────────────────
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def po_consolidated_report(request, po_id):
+    """
+    Generate a consolidated PDF report for a PO/WO including:
+    overview, items, claiming status, related invoices, financial summary.
+    """
+    session_key = request.headers.get('Authorization', '').replace('Bearer ', '') or request.query_params.get('session_key')
+    if not session_key:
+        return Response({'error': 'Session key required'}, status=401)
+
+    try:
+        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+        company = session.service_user.company
+        po = PurchaseOrder.objects.get(id=po_id, company=company)
+    except (ServiceUserSession.DoesNotExist, PurchaseOrder.DoesNotExist):
+        return Response({'error': 'Not found'}, status=404)
+
+    # Gather related invoices
+    proformas = ProformaInvoice.objects.filter(company=company, purchase_order=po)
+    invoices = Invoice.objects.filter(company=company, purchase_order=po, is_rejected=False)
+
+    total_amount = float(po.total_amount or 0)
+    proforma_claimed = float(po.proforma_claimed_amount or 0)
+    invoice_claimed = float(po.invoice_claimed_amount or 0)
+    total_claimed = proforma_claimed + invoice_claimed
+    balance = total_amount - total_claimed
+    claimed_pct = (total_claimed / total_amount * 100) if total_amount else 0
+
+    html = _build_po_report_html(po, company, proformas, invoices, {
+        'total_amount': total_amount,
+        'proforma_claimed': proforma_claimed,
+        'invoice_claimed': invoice_claimed,
+        'total_claimed': total_claimed,
+        'balance': balance,
+        'claimed_pct': claimed_pct,
+    })
+
+    try:
+        import weasyprint
+        from django.http import HttpResponse
+        pdf = weasyprint.HTML(string=html).write_pdf()
+        filename = f"PO_Report_{po.internal_po_number}_{timezone.now().date()}.pdf"
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        logger.error(f"PO consolidated report PDF error: {e}")
+        return Response({'error': str(e)}, status=500)
+
+
+def _shipping_address_section(po):
+    """Build shipping address HTML section for PO report."""
+    from django.utils.html import escape
+    addr = po.shipping_address
+    if not addr:
+        return ''
+    parts = filter(None, [
+        addr.address_line1,
+        addr.address_line2,
+        f"{addr.city}, {addr.state} {addr.pincode}".strip(', '),
+        addr.country,
+    ])
+    address_text = '<br>'.join(escape(p) for p in parts if p and p.strip())
+    label = escape(addr.label or 'Shipping Address')
+    return f"""<div class='section'>
+  <div class='section-title'>Shipping Address</div>
+  <div class='card' style='border-left:3px solid #f97316'>
+    <div style='font-size:10px;font-weight:700;color:#f97316;margin-bottom:4px'>{label}</div>
+    <div style='line-height:1.6'>{address_text}</div>
+  </div>
+</div>"""
+
+
+def _build_po_report_html(po, company, proformas, invoices, claiming):
+    from django.utils.html import escape
+    from decimal import Decimal
+
+    # Pre-compute item claimed amounts from tax invoices + proforma invoices
+    item_claimed_map = {}  # product_id -> active claimed amount
+    for invoice in po.invoices.filter(is_rejected=False):
+        for inv_item in invoice.invoice_items.all():
+            pid = inv_item.product_id
+            item_claimed_map[pid] = item_claimed_map.get(pid, Decimal('0')) + inv_item.line_total
+    for proforma in po.proforma_invoices.filter(is_rejected=False):
+        for pf_item in proforma.proforma_items.all():
+            pid = pf_item.product_id
+            item_claimed_map[pid] = item_claimed_map.get(pid, Decimal('0')) + pf_item.line_total
+
+    # Items rows
+    items_html = ''
+    for item in po.po_items.all():
+        line_total = Decimal(str(item.line_total or 0))
+        claimed_amt = float(item_claimed_map.get(item.product_id, Decimal('0')))
+        balance_amt = float(max(line_total - Decimal(str(claimed_amt)), Decimal('0')))
+        claimed_pct = float(min((Decimal(str(claimed_amt)) / line_total) * 100, Decimal('100'))) if line_total else 0.0
+        balance_pct = max(100.0 - claimed_pct, 0.0)
+        items_html += f"""<tr>
+          <td>{escape(item.product_name)}</td>
+          <td style='text-align:center'>{item.quantity} {item.unit or ''}</td>
+          <td style='text-align:right'>₹{float(item.unit_price):,.2f}</td>
+          <td style='text-align:right'>₹{float(line_total):,.2f}</td>
+          <td style='text-align:center'>{item.gst_rate}%</td>
+          <td style='text-align:right;color:#16a34a'>₹{claimed_amt:,.2f}<br><span style='font-size:9px'>({claimed_pct:.1f}%)</span></td>
+          <td style='text-align:right;color:#d97706'>₹{balance_amt:,.2f}<br><span style='font-size:9px'>({balance_pct:.1f}%)</span></td>
+        </tr>"""
+
+    # Related invoices rows
+    inv_rows = ''
+    for pf in proformas:
+        inv_rows += f"""<tr>
+          <td><span style='background:#ede9fe;color:#7c3aed;padding:2px 6px;border-radius:4px;font-size:9px'>Proforma</span></td>
+          <td>{escape(pf.proforma_number)}</td>
+          <td>{pf.proforma_date}</td>
+          <td style='text-align:right'>₹{float(pf.total_amount):,.2f}</td>
+          <td style='text-align:center'>{pf.status or '—'}</td>
+        </tr>"""
+    for inv in invoices:
+        status_color = '#16a34a' if inv.payment_status == 'paid' else '#d97706' if inv.payment_status == 'partially_paid' else '#dc2626'
+        inv_rows += f"""<tr>
+          <td><span style='background:#fff7ed;color:#c2410c;padding:2px 6px;border-radius:4px;font-size:9px'>Tax Invoice</span></td>
+          <td>{escape(inv.invoice_number)}</td>
+          <td>{inv.invoice_date}</td>
+          <td style='text-align:right'>₹{float(inv.total_amount):,.2f}</td>
+          <td style='text-align:center;color:{status_color};font-weight:600'>{inv.payment_status.replace('_',' ').title()}</td>
+        </tr>"""
+
+    bar_width = min(claiming['claimed_pct'], 100)
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset='UTF-8'>
+<style>
+  @page{{size:A4;margin:15mm}}
+  body{{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1e293b}}
+  .header{{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12px;border-bottom:3px solid #1e40af;margin-bottom:18px}}
+  .co-name{{font-size:17px;font-weight:700;color:#1e40af;text-transform:uppercase}}
+  .doc-title{{font-size:15px;font-weight:700;color:#1e293b}}
+  .section{{margin-bottom:18px}}
+  .section-title{{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#1e40af;border-bottom:1.5px solid #bfdbfe;padding-bottom:4px;margin-bottom:10px}}
+  .grid-2{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+  .grid-4{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}}
+  .card{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px}}
+  .card-label{{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#94a3b8;margin-bottom:3px}}
+  .card-value{{font-size:14px;font-weight:700;color:#1e293b}}
+  table{{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:4px}}
+  th{{background:#1e40af;color:#fff;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.3px}}
+  td{{padding:5px 8px;border-bottom:1px solid #e2e8f0}}
+  tr:nth-child(even) td{{background:#f8fafc}}
+  .progress-bar{{background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden;margin:6px 0}}
+  .progress-fill{{background:linear-gradient(90deg,#1e40af,#3b82f6);height:100%;border-radius:4px}}
+  .footer{{margin-top:20px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;text-align:center}}
+  .badge{{display:inline-block;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:600}}
+  .badge-approved{{background:#dcfce7;color:#166534}}
+  .badge-pending{{background:#fef9c3;color:#854d0e}}
+  .badge-draft{{background:#f1f5f9;color:#475569}}
+</style></head><body>
+
+<div class='header'>
+  <div>
+    <div class='co-name'>{escape(company.name)}</div>
+    <div style='font-size:10px;color:#64748b;margin-top:3px'>{escape(getattr(company,'address','') or '')}</div>
+    <div style='font-size:10px;color:#64748b'>GSTIN: {escape(getattr(company,'gst_number','') or '')}</div>
+  </div>
+  <div style='text-align:right'>
+    <div class='doc-title'>PO Consolidated Report</div>
+    <div style='font-size:11px;color:#64748b;margin-top:3px'>{escape(po.internal_po_number)}</div>
+    <div style='font-size:10px;color:#94a3b8'>Generated: {timezone.now().date()}</div>
+  </div>
+</div>
+
+<div class='section'>
+  <div class='section-title'>Purchase Order Overview</div>
+  <div class='grid-2'>
+    <div class='card'><div class='card-label'>Internal PO Number</div><div class='card-value' style='font-size:13px'>{escape(po.internal_po_number)}</div></div>
+    <div class='card'><div class='card-label'>Client PO Number</div><div class='card-value' style='font-size:13px'>{escape(po.po_number or '—')}</div></div>
+    <div class='card'><div class='card-label'>PO Date</div><div class='card-value' style='font-size:12px'>{po.po_date}</div></div>
+    <div class='card'><div class='card-label'>Status</div>
+      <span class='badge badge-{"approved" if po.status == "approved" else "pending" if po.status == "pending" else "draft"}'>{(po.status or '').upper()}</span>
+    </div>
+    <div class='card'><div class='card-label'>Customer</div><div class='card-value' style='font-size:12px'>{escape(po.customer.name)}</div></div>
+    <div class='card'><div class='card-label'>GST Type</div><div class='card-value' style='font-size:12px'>{(po.gst_type or '').upper()}</div></div>
+  </div>
+</div>
+
+{_shipping_address_section(po)}
+
+<div class='section'>
+  <div class='section-title'>Financial Summary</div>
+  <div class='grid-4'>
+    <div class='card'><div class='card-label'>PO Value</div><div class='card-value'>₹{claiming['total_amount']:,.2f}</div></div>
+    <div class='card'><div class='card-label'>Total Claimed</div><div class='card-value' style='color:#1e40af'>₹{claiming['total_claimed']:,.2f}</div></div>
+    <div class='card'><div class='card-label'>Balance</div><div class='card-value' style='color:#d97706'>₹{claiming['balance']:,.2f}</div></div>
+    <div class='card'><div class='card-label'>Claimed %</div><div class='card-value' style='color:#16a34a'>{claiming['claimed_pct']:.1f}%</div></div>
+  </div>
+  <div style='margin-top:10px'>
+    <div style='display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-bottom:3px'>
+      <span>Claiming Progress</span><span>{claiming['claimed_pct']:.1f}% Complete</span>
+    </div>
+    <div class='progress-bar'><div class='progress-fill' style='width:{bar_width}%'></div></div>
+    <div style='display:flex;justify-content:space-between;font-size:9px;color:#94a3b8'>
+      <span>₹0</span><span>₹{claiming['total_amount']:,.2f}</span>
+    </div>
+  </div>
+  <div style='margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px'>
+    <div class='card'><div class='card-label'>Subtotal</div><div style='font-weight:600'>₹{float(po.subtotal or 0):,.2f}</div></div>
+    <div class='card'><div class='card-label'>Total Tax</div><div style='font-weight:600;color:#d97706'>₹{float(po.total_tax or 0):,.2f}</div></div>
+    <div class='card'><div class='card-label'>CGST</div><div style='font-weight:600'>₹{float(getattr(po,'cgst_amount',0) or 0):,.2f}</div></div>
+    <div class='card'><div class='card-label'>SGST</div><div style='font-weight:600'>₹{float(getattr(po,'sgst_amount',0) or 0):,.2f}</div></div>
+    <div class='card'><div class='card-label'>IGST</div><div style='font-weight:600'>₹{float(getattr(po,'igst_amount',0) or 0):,.2f}</div></div>
+    <div class='card'><div class='card-label'>Discount</div><div style='font-weight:600;color:#dc2626'>₹{float(po.discount_amount or 0):,.2f}</div></div>
+  </div>
+</div>
+
+<div class='section'>
+  <div class='section-title'>Line Items ({po.po_items.count()})</div>
+  <table>
+    <thead><tr>
+      <th>Description</th><th style='text-align:center'>Qty</th>
+      <th style='text-align:right'>Unit Price</th><th style='text-align:right'>Line Total</th>
+      <th style='text-align:center'>GST</th>
+      <th style='text-align:right'>Claimed</th><th style='text-align:right'>Balance</th>
+    </tr></thead>
+    <tbody>{items_html}</tbody>
+  </table>
+</div>
+
+<div class='section'>
+  <div class='section-title'>Related Invoices ({proformas.count() + invoices.count()})</div>
+  {'<table><thead><tr><th>Type</th><th>Number</th><th>Date</th><th style="text-align:right">Amount</th><th style="text-align:center">Status</th></tr></thead><tbody>' + inv_rows + '</tbody></table>' if inv_rows else '<p style="color:#94a3b8;font-style:italic">No related invoices found.</p>'}
+</div>
+
+{'<div class="section"><div class="section-title">Notes</div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;font-size:10px;color:#374151">' + escape(po.notes) + '</div></div>' if po.notes else ''}
+{'<div class="section"><div class="section-title">Terms & Conditions</div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;font-size:10px;color:#374151">' + escape(po.terms_and_conditions) + '</div></div>' if po.terms_and_conditions else ''}
+
+<div class='footer'>
+  Confidential — {escape(company.name)} | {escape(getattr(company,'email',''))} | Generated on {timezone.now().date()} | Computer-generated report
+</div>
+</body></html>"""

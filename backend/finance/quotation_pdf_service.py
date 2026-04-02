@@ -8,14 +8,15 @@ from django.template.loader import render_to_string
 from django.conf import settings
 import weasyprint
 from pathlib import Path
+from types import SimpleNamespace
 
 class QuotationPDFService:
     """Service for generating quotation PDFs with selectable templates"""
     
     TEMPLATE_MAPPING = {
-        'AS': 'quotation_templates/AS/quotation.html',
-        'BKGE': 'quotation_templates/BKGE/quotation.html', 
-        'TC': 'quotation_templates/TC/quotation.html'
+        'AS': 'finance/quotation_templates/AS/quotation.html',
+        'BKGE': 'finance/quotation_templates/BKGE/quotation.html', 
+        'TC': 'finance/quotation_templates/TC/quotation.html'
     }
     
     def __init__(self):
@@ -56,7 +57,10 @@ class QuotationPDFService:
                 'quotation': quotation,
                 'company': quotation.company,
                 'customer': quotation.customer,
-                'items': quotation.quotation_items.all(),
+                'items': self._get_quotation_items(quotation),
+                'company_gstin': getattr(quotation, 'company_gstin', None) or getattr(quotation.company, 'gst_number', ''),
+                'logo_path': self._get_logo_path(quotation.company),
+                'logo_url': self._get_logo_url(quotation.company),
             }
             
             # Company model has: name, email, phone, address, gst_number
@@ -98,6 +102,29 @@ class QuotationPDFService:
         except Exception as e:
             print(f"Error generating quotation HTML: {str(e)}")
             return f"<html><body><h1>Error generating preview</h1><p>{str(e)}</p></body></html>"
+    def _get_logo_path(self, company):
+        """Return file:// URI for WeasyPrint."""
+        from finance.logo_utils import get_logo_file_path
+        return get_logo_file_path(company)
+
+    def _get_logo_url(self, company):
+        """Return absolute https:// URL for browser preview (works from blob: origin)."""
+        from finance.logo_utils import get_absolute_logo_url
+        return get_absolute_logo_url(company)
+
+    def _get_quotation_items(self, quotation):
+        """Get quotation items, handling both real and mock objects"""
+        try:
+            items = quotation.quotation_items.all()
+            # Check if it's a queryset (real object) or list (mock)
+            if hasattr(items, 'order_by'):
+                return items
+            else:
+                # For mock objects, return as is
+                return items
+        except AttributeError:
+            # Fallback for mock objects
+            return getattr(quotation, 'quotation_items', SimpleNamespace(all=lambda: []))().all()
     
     def generate_quotation_pdf(self, quotation):
         """Generate PDF for quotation using company's selected template"""

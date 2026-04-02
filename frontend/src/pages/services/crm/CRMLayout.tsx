@@ -167,9 +167,9 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, currentPage = 'overview
         {/* Sidebar Header */}
         <div className="flex-shrink-0 flex items-center justify-between h-16 px-6 border-b border-gray-200/50 dark:border-gray-700/50">
           <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 rounded-lg overflow-hidden bg-gradient-to-r from-orange-500 to-red-600 flex items-center justify-center">
+            <div className={`h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center ${!companyData?.logo ? 'bg-gradient-to-r from-orange-500 to-red-600' : ''}`}>
               {companyData?.logo ? (
-                <img src={companyData.logo} alt="Company logo" className="h-full w-full object-cover" />
+                <img src={companyData.logo} alt="Company logo" className="h-full w-full object-contain" />
               ) : (
                 <Building className="h-5 w-5 text-white" />
               )}

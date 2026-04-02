@@ -149,6 +149,18 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD', default='mango'),
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='5432'),
+        'CONN_MAX_AGE': 60,
+        'OPTIONS': {
+            'connect_timeout': 5,
+        },
+    }
+}
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://localhost:6379/1'),
+        'TIMEOUT': 3600,
     }
 }
 
@@ -263,7 +275,7 @@ if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
     CORS_ALLOW_CREDENTIALS = True
 else:
-    CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='https://sap.athenas.co.in').split(',')
+    CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='https://sap.athenas.co.in,http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002').split(',')
     CORS_ALLOW_CREDENTIALS = True
     CORS_ALLOW_ALL_ORIGINS = False
 

@@ -905,16 +905,22 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         ]
 
     def _get_item_amounts(self, obj):
-        """Return (active_claimed, rejected_claimed) for this PO item."""
+        """Return (active_claimed, rejected_claimed) for this PO item.
+        Includes both tax invoices and proforma invoices."""
         from decimal import Decimal
         active = Decimal('0')
         rejected = Decimal('0')
+        # Tax invoices
         for invoice in obj.purchase_order.invoices.all():
             for inv_item in invoice.invoice_items.filter(product=obj.product):
                 if invoice.is_rejected:
                     rejected += inv_item.line_total
                 else:
                     active += inv_item.line_total
+        # Proforma invoices (non-rejected)
+        for proforma in obj.purchase_order.proforma_invoices.filter(is_rejected=False):
+            for pf_item in proforma.proforma_items.filter(product=obj.product):
+                active += pf_item.line_total
         return active, rejected
 
     def get_claimed_percentage(self, obj):
@@ -990,19 +996,20 @@ class PurchaseOrderListSerializer(serializers.ModelSerializer):
         ]
     
     def _get_item_claimed_percentage(self, item):
-        """Helper method to calculate claimed percentage for an item from TAX INVOICES ONLY"""
+        """Helper method to calculate claimed percentage for an item from tax and proforma invoices"""
         from decimal import Decimal
-        
-        total_claimed_percentage = Decimal('0')
-        
-        # ONLY count tax invoices - proforma invoices don't reduce item availability
+        total_claimed = Decimal('0')
+        # Tax invoices
         for invoice in item.purchase_order.invoices.filter(is_rejected=False):
             for inv_item in invoice.invoice_items.filter(product=item.product):
                 if item.line_total > 0:
-                    item_percentage = (inv_item.line_total / item.line_total) * 100
-                    total_claimed_percentage += item_percentage
-        
-        return float(min(total_claimed_percentage, Decimal('100')))
+                    total_claimed += (inv_item.line_total / item.line_total) * 100
+        # Proforma invoices
+        for proforma in item.purchase_order.proforma_invoices.filter(is_rejected=False):
+            for pf_item in proforma.proforma_items.filter(product=item.product):
+                if item.line_total > 0:
+                    total_claimed += (pf_item.line_total / item.line_total) * 100
+        return float(min(total_claimed, Decimal('100')))
 
     def get_available_proforma_percentage(self, obj):
         """Get available percentage for proforma invoice creation"""

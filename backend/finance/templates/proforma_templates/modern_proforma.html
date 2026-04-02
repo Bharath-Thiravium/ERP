@@ -366,7 +366,7 @@
     <!-- Terms and Conditions -->
     <div class="terms-section">
         <div class="section-title">REFERENCE QUOTATION</div>
-        {{ proforma.quotation.quotation_number|default:proforma.purchase_order.quotation.quotation_number|default:"N/A" }}
+        {% firstof proforma.quotation.quotation_number proforma.purchase_order.quotation.quotation_number "N/A" %}
         
         <div class="section-title" style="margin-top: 15px;">PAYMENT TERMS</div>
         {{ proforma.customer.payment_terms|default:"Advance Payment" }}

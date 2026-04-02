@@ -9,7 +9,8 @@ import {
   User,
   Calendar,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Landmark
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
 import { Button } from '../../components/ui/Button'
@@ -60,6 +61,12 @@ const CompanyDetailsPage: React.FC = () => {
       contact_person_phone: company?.contact_person_phone || '',
       description: company?.description || '',
       domain_name: company?.domain_name || '',
+      bank_name: company?.bank_name || '',
+      bank_account_number: company?.bank_account_number || '',
+      bank_ifsc_code: company?.bank_ifsc_code || '',
+      bank_branch: company?.bank_branch || '',
+      bank_account_holder: company?.bank_account_holder || '',
+      bank_account_type: company?.bank_account_type || 'Current',
     })
     setIsEditing(true)
   }
@@ -111,12 +118,12 @@ const CompanyDetailsPage: React.FC = () => {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="h-12 w-12 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-r from-blue-600 to-cyan-600">
+              <div className={`h-12 w-12 rounded-lg flex items-center justify-center overflow-hidden ${!company?.logo ? 'bg-gradient-to-r from-blue-600 to-cyan-600' : ''}`}>
                 {company?.logo ? (
                   <img
                     src={company.logo}
                     alt={`${company.name} logo`}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain"
                   />
                 ) : (
                   <Building2 className="h-6 w-6 text-white" />
@@ -571,6 +578,69 @@ const CompanyDetailsPage: React.FC = () => {
                     {company?.contact_person_phone || 'Not provided'}
                   </p>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Bank Details */}
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Landmark className="h-5 w-5" />
+                <span>Bank Details</span>
+              </CardTitle>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Used for payment details printed on invoices and quotations</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Bank Name</label>
+                  {isEditing ? (
+                    <input type="text" value={formData.bank_name} onChange={(e) => handleInputChange('bank_name', e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="e.g., HDFC Bank" />
+                  ) : (
+                    <p className="text-gray-900 dark:text-white">{company?.bank_name || 'Not provided'}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Account Holder Name</label>
+                  {isEditing ? (
+                    <input type="text" value={formData.bank_account_holder} onChange={(e) => handleInputChange('bank_account_holder', e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Name on account" />
+                  ) : (
+                    <p className="text-gray-900 dark:text-white">{company?.bank_account_holder || 'Not provided'}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Account Number</label>
+                  {isEditing ? (
+                    <input type="text" value={formData.bank_account_number} onChange={(e) => handleInputChange('bank_account_number', e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Bank account number" />
+                  ) : (
+                    <p className="text-gray-900 dark:text-white">{company?.bank_account_number || 'Not provided'}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">IFSC Code</label>
+                  {isEditing ? (
+                    <input type="text" value={formData.bank_ifsc_code} onChange={(e) => handleInputChange('bank_ifsc_code', e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="e.g., HDFC0001234" />
+                  ) : (
+                    <p className="text-gray-900 dark:text-white">{company?.bank_ifsc_code || 'Not provided'}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Branch</label>
+                  {isEditing ? (
+                    <input type="text" value={formData.bank_branch} onChange={(e) => handleInputChange('bank_branch', e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Branch name" />
+                  ) : (
+                    <p className="text-gray-900 dark:text-white">{company?.bank_branch || 'Not provided'}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Account Type</label>
+                  {isEditing ? (
+                    <input type="text" value={formData.bank_account_type} onChange={(e) => handleInputChange('bank_account_type', e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="e.g., Current, Savings" />
+                  ) : (
+                    <p className="text-gray-900 dark:text-white">{company?.bank_account_type || 'Not provided'}</p>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

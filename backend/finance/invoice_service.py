@@ -12,6 +12,7 @@ from .models import (
 )
 from authentication.models import CompanyServiceUser
 import logging
+from types import SimpleNamespace
 
 logger = logging.getLogger(__name__)
 
@@ -336,9 +337,13 @@ class InvoicePDFService:
                 'invoice': invoice,
                 'company': invoice.company,
                 'customer': invoice.customer,
-                'items': invoice.invoice_items.all().order_by('line_number'),
+                'items': self._get_invoice_items(invoice),
+                'invoice_items': self._get_invoice_items(invoice),
                 'shipping_info': shipping_info,
                 'has_specific_shipping': invoice.shipping_address is not None,
+                'company_gstin': getattr(invoice, 'company_gstin', None) or getattr(invoice.company, 'gst_number', ''),
+                'logo_path': self._get_logo_path(invoice.company),
+                'logo_url': self._get_logo_url(invoice.company),
                 'billing_address': {
                     'address': invoice.customer.full_billing_address,
                     'gstin': invoice.customer.gstin,
@@ -361,6 +366,28 @@ class InvoicePDFService:
         except Exception as e:
             logger.error(f"Error preparing invoice context: {str(e)}")
             raise
+    
+    def _get_logo_path(self, company):
+        from finance.logo_utils import get_logo_file_path
+        return get_logo_file_path(company)
+
+    def _get_logo_url(self, company):
+        from finance.logo_utils import get_absolute_logo_url
+        return get_absolute_logo_url(company)
+
+    def _get_invoice_items(self, invoice):
+        """Get invoice items with proper ordering, handling both real and mock objects"""
+        try:
+            items = invoice.invoice_items.all()
+            # Check if it's a queryset (real object) or list (mock)
+            if hasattr(items, 'order_by'):
+                return items.order_by('line_number')
+            else:
+                # For mock objects, sort by line_number if available
+                return sorted(items, key=lambda x: getattr(x, 'line_number', 0))
+        except AttributeError:
+            # Fallback for mock objects
+            return getattr(invoice, 'invoice_items', SimpleNamespace(all=lambda: []))().all()
 
 
 class InvoiceQueryService:

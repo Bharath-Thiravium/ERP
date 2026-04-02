@@ -116,16 +116,22 @@ const CompanyDashboard: React.FC = () => {
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [isUploadingLogo, setIsUploadingLogo] = useState(false)
 
+  const isFullyAuthenticated = !!user && !useAuthStore.getState().approvalPending && !useAuthStore.getState().firstLoginRequired
+
   // Fetch company services
   const { data: services, isLoading: servicesLoading } = useQuery({
     queryKey: ['company-assigned-services-v2'],
     queryFn: () => apiClient.getCompanyAssignedServices(),
+    enabled: isFullyAuthenticated,
+    retry: false,
   })
 
   // Fetch service users
   const { data: serviceUsers, isLoading: usersLoading } = useQuery({
     queryKey: ['company-service-users'],
     queryFn: () => apiClient.getCompanyServiceUsers(),
+    enabled: isFullyAuthenticated,
+    retry: false,
   })
 
   // Handle paginated response from ListAPIView (axios wraps response in .data)
@@ -485,12 +491,12 @@ Website: https://athenas.co.in
           <div className="flex justify-between items-center h-16">
             {/* Company Logo and Name */}
             <div className="flex items-center">
-              <div className="h-10 w-10 rounded-lg flex items-center justify-center mr-4 overflow-hidden bg-gradient-to-r from-blue-600 to-cyan-600">
+              <div className={`h-10 w-10 rounded-lg flex items-center justify-center mr-4 overflow-hidden ${!user?.company_logo ? 'bg-gradient-to-r from-blue-600 to-cyan-600' : ''}`}>
                 {user?.company_logo ? (
                   <img
                     src={user.company_logo}
                     alt={`${user.company_name} logo`}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain"
                   />
                 ) : (
                   <Building2 className="h-6 w-6 text-white" />
@@ -968,12 +974,12 @@ Website: https://athenas.co.in
                 <div className="space-y-6">
                   {/* Current Logo Display */}
                   <div className="flex items-center space-x-6">
-                    <div className="h-20 w-20 rounded-xl overflow-hidden bg-gradient-to-r from-blue-600 to-cyan-600 flex items-center justify-center">
+                    <div className={`h-20 w-20 rounded-xl overflow-hidden flex items-center justify-center ${!user?.company_logo ? 'bg-gradient-to-r from-blue-600 to-cyan-600' : ''}`}>
                       {user?.company_logo ? (
                         <img
                           src={user.company_logo}
                           alt={`${user.company_name} logo`}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-contain"
                         />
                       ) : (
                         <Building2 className="h-10 w-10 text-white" />

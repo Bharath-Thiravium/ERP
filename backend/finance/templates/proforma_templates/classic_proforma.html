@@ -238,7 +238,7 @@
         </tr>
         <tr>
             <td style="border: 1px solid #000; padding: 6px; background-color: #e0e0e0; font-weight: bold;">Reference Quotation</td>
-            <td style="border: 1px solid #000; padding: 6px;">{{ proforma.quotation.quotation_number|default:proforma.purchase_order.quotation.quotation_number|default:"N/A" }}</td>
+            <td style="border: 1px solid #000; padding: 6px;">{% firstof proforma.quotation.quotation_number proforma.purchase_order.quotation.quotation_number "N/A" %}</td>
             <td style="border: 1px solid #000; padding: 6px; background-color: #e0e0e0; font-weight: bold;">Payment Terms</td>
             <td style="border: 1px solid #000; padding: 6px;">{{ proforma.customer.payment_terms|default:"Advance Payment" }}</td>
         </tr>

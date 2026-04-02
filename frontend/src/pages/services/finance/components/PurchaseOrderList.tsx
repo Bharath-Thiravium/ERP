@@ -141,7 +141,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
       // Calculate metrics from all data, not just current page
       const total = response.data.count
       const draft = pos.filter((po: PurchaseOrder) => po.status === 'draft').length
-      const confirmed = pos.filter((po: PurchaseOrder) => ['confirmed', 'in_progress'].includes(po.status)).length
+      const confirmed = pos.filter((po: PurchaseOrder) => ['active', 'partially_completed'].includes(po.status)).length
       const cancelled = pos.filter((po: PurchaseOrder) => po.status === 'cancelled').length
       const totalValue = pos.reduce((sum: number, po: PurchaseOrder) => sum + parseFloat(po.total_amount || '0'), 0)
       const avgDealSize = total > 0 ? (totalValue / total) : 0
@@ -450,11 +450,11 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
         <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-            <span><strong>Confirmed:</strong> No invoices raised yet</span>
+            <span><strong>Active:</strong> No invoices raised yet</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-            <span><strong>In Progress:</strong> Partially claimed (&lt;100%)</span>
+            <span><strong>Partially Completed:</strong> Partially claimed (&lt;100%)</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-green-500 rounded-full"></div>

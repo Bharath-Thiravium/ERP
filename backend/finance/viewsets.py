@@ -225,18 +225,24 @@ class QuotationViewSet(CompanyScopedModelViewSet):
 
     @action(detail=True, methods=['get'])
     def pdf(self, request, pk=None):
-        """Generate PDF for quotation using tenant-safe object access"""
-        quotation = self.get_object()  # Uses tenant filtering
+        """Generate PDF for quotation - supports ?inline=true&template=AS preview/download"""
+        quotation = self.get_object()
         
-        # Import here to avoid circular imports
-        from .pdf_generators import generate_quotation_pdf_response
+        # Unified response from utils - supports inline/attachment + template param
+        from .utils import generate_quotation_pdf_response
+        template = request.query_params.get('template', None)
+        inline = request.query_params.get('inline', '').lower() == 'true'
         
         try:
-            return generate_quotation_pdf_response(quotation, request.service_user.company)
+            return generate_quotation_pdf_response(
+                quotation, 
+                inline=inline, 
+                template=template
+            )
         except Exception as e:
             logger.error(f"PDF generation failed for quotation {quotation.id}: {str(e)}")
             return Response(
-                {'error': 'PDF generation failed'}, 
+                {'error': f'PDF generation failed: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -287,8 +293,12 @@ class PurchaseOrderViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related(
-            'customer', 'quotation', 'created_by'
-        ).prefetch_related('po_items')
+            'customer', 'quotation', 'created_by', 'shipping_address'
+        ).prefetch_related(
+            'po_items__product',
+            'invoices__invoice_items',
+            'proforma_invoices__proforma_items',
+        )
         
         # Add search functionality
         search = self.request.query_params.get('search', '')

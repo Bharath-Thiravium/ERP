@@ -10,13 +10,31 @@ const initApp = () => {
     const root = ReactDOM.createRoot(document.getElementById('root')!)
     root.render(<App />)
     
-    // Remove loading spinner and show content
-    setTimeout(() => {
+    // Show content immediately when React has rendered
+    // This prevents FOUC while still allowing styles to load
+    const showContent = () => {
       const spinner = document.querySelector('.loading-spinner') as HTMLElement
       const rootEl = document.getElementById('root')
-      if (spinner) spinner.style.display = 'none'
+      if (spinner) {
+        spinner.style.opacity = '0'
+        setTimeout(() => {
+          if (spinner) spinner.style.display = 'none'
+        }, 300)
+      }
       if (rootEl) rootEl.classList.add('loaded')
-    }, 100)
+    }
+    
+    // Show content after a short delay to ensure React has rendered
+    setTimeout(showContent, 50)
+    
+    // Fallback: ensure content is shown even if something goes wrong
+    setTimeout(() => {
+      const rootEl = document.getElementById('root')
+      if (rootEl && !rootEl.classList.contains('loaded')) {
+        showContent()
+      }
+    }, 2000)
+    
   } catch (error) {
     console.error('App initialization failed:', error)
     document.body.innerHTML = '<div style="text-align:center;padding:50px;"><h2>App Failed to Load</h2><p>Please refresh the page.</p></div>'

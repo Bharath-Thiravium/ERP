@@ -581,14 +581,12 @@ const Dashboard: React.FC = () => {
         {/* Sidebar Header with Company Logo */}
         <div className="flex items-center h-16 px-6 border-b border-gray-200/50 dark:border-gray-700/50">
           <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 rounded-lg overflow-hidden bg-gradient-to-r from-purple-500 to-indigo-600 flex items-center justify-center">
+            <div className={`h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center ${!companyData?.logo ? 'bg-gradient-to-r from-purple-500 to-indigo-600' : ''}`}>
               {companyData?.logo ? (
                 <img
                   src={companyData.logo}
                   alt={`${companyData.name} logo`}
-                  className="h-full w-full object-cover"
-                  onLoad={() => console.log('🔍 DEBUG: Logo loaded successfully:', companyData.logo)}
-                  onError={(e) => console.error('🔍 DEBUG: Logo failed to load:', e, companyData.logo)}
+                  className="h-full w-full object-contain"
                 />
               ) : (
                 <Building className="h-5 w-5 text-white" />

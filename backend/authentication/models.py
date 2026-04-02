@@ -98,6 +98,14 @@ class Company(models.Model):
     # Domain settings
     domain_name = models.CharField(max_length=255, blank=True, help_text="Company domain (e.g., athenas.co.in)")
     
+    # Banking details (used in invoice/quotation PDF templates)
+    bank_name = models.CharField(max_length=100, blank=True, help_text="Bank name for payment details on documents")
+    bank_account_number = models.CharField(max_length=20, blank=True, help_text="Bank account number")
+    bank_ifsc_code = models.CharField(max_length=11, blank=True, help_text="IFSC code")
+    bank_branch = models.CharField(max_length=100, blank=True, help_text="Bank branch name")
+    bank_account_holder = models.CharField(max_length=200, blank=True, help_text="Account holder name (if different from company name)")
+    bank_account_type = models.CharField(max_length=20, blank=True, default='Current', help_text="Account type e.g. Current, Savings")
+    
     # Document numbering system control
     use_document_numbering = models.BooleanField(default=False, help_text="Enable centralized document numbering system")
 

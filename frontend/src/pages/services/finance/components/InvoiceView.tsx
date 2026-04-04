@@ -246,11 +246,39 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
     fetchDetailedInvoice();
   }, [invoice.id, sessionKey]);
 
-  const handlePrint = () => {
-    if (onPrint) {
-      onPrint(detailedInvoice);
-    } else {
-      window.print();
+  const handlePrint = async () => {
+    if (onPrint) { onPrint(detailedInvoice); return; }
+    if (!sessionKey) return;
+    try {
+      const response = await fetch(`/api/finance/invoices/${detailedInvoice.id}/pdf/?session_key=${sessionKey}`, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` }
+      });
+      if (!response.ok) throw new Error('PDF generation failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      if (win) win.onload = () => win.print();
+    } catch (e) {
+      toast.error('Failed to generate PDF for printing');
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!sessionKey) return;
+    try {
+      const response = await fetch(`/api/finance/invoices/${detailedInvoice.id}/pdf/?session_key=${sessionKey}`, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` }
+      });
+      if (!response.ok) throw new Error('PDF generation failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoice-${detailedInvoice.invoice_number}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error('Failed to download PDF');
     }
   };
 
@@ -355,6 +383,13 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
             >
               <RefreshCw className="w-4 h-4" />
               <span>Refresh</span>
+            </button>
+            <button
+              onClick={handleDownload}
+              className="flex items-center space-x-2 px-4 py-2 bg-white/80 hover:bg-white text-green-600 border border-green-200 rounded-lg transition-colors"
+              title="Download PDF"
+            >
+              <span>⬇ Download</span>
             </button>
             <button
               onClick={handlePrint}
@@ -829,6 +864,12 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
             Invoice #{detailedInvoice.invoice_number} • {detailedInvoice.invoice_items?.length || 0} items
           </div>
           <div className="flex items-center space-x-3">
+            <button
+              onClick={handleDownload}
+              className="flex items-center space-x-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+            >
+              <span>⬇ Download PDF</span>
+            </button>
             <button
               onClick={handlePrint}
               className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"

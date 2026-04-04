@@ -126,11 +126,11 @@ class QuotationPDFService:
             # Fallback for mock objects
             return getattr(quotation, 'quotation_items', SimpleNamespace(all=lambda: []))().all()
     
-    def generate_quotation_pdf(self, quotation):
+    def generate_quotation_pdf(self, quotation, template=None):
         """Generate PDF for quotation using company's selected template"""
         try:
             # Get HTML content
-            html_content = self.generate_quotation_html(quotation)
+            html_content = self.generate_quotation_html(quotation, template_name=template)
             
             # Generate PDF using WeasyPrint
             pdf_buffer = io.BytesIO()

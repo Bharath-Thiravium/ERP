@@ -63,14 +63,14 @@ def num_to_words(value):
     """
     Convert a numeric value to Indian English words.
     Usage: {{ invoice.total_amount|num_to_words }}
-    Output: "Rupees Eleven Thousand Eight Hundred Only"
+    Output: "Eleven Thousand Eight Hundred Rupees Only"
     """
     try:
         amount = Decimal(str(value))
         rupees = int(amount)
         paise  = round((amount - rupees) * 100)
 
-        words = 'Rupees ' + _to_words_indian(rupees)
+        words = _to_words_indian(rupees) + ' Rupees'
         if paise:
             words += ' and ' + _to_words_indian(paise) + ' Paise'
         words += ' Only'

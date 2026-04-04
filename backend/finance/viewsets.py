@@ -522,7 +522,8 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset().select_related(
             'customer', 'proforma_invoice', 'created_by',
-            'purchase_order__shipping_address', 'shipping_address'
+            'purchase_order', 'purchase_order__shipping_address',
+            'quotation', 'shipping_address'
         ).prefetch_related('invoice_items', 'payments', 'customer__shipping_addresses')
         
         # Add search functionality
@@ -539,22 +540,17 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
             )
 
         # Add filtering
-        status_filter = self.request.query_params.get('status', '')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-
         payment_status_filter = self.request.query_params.get('payment_status', '')
         if payment_status_filter == 'unpaid_or_partial':
-            queryset = queryset.filter(payment_status__in=['unpaid', 'partially_paid'])
+            queryset = queryset.filter(payment_status__in=['unpaid', 'partially_paid', 'overdue'])
         elif payment_status_filter == 'overdue':
-            from django.utils import timezone as tz
-            import datetime
-            from dateutil.relativedelta import relativedelta
-            overdue_cutoff = tz.now().date() - relativedelta(months=1)
             queryset = queryset.filter(
-                payment_status__in=['unpaid', 'partially_paid'],
-                invoice_date__lt=overdue_cutoff
+                payment_status__in=['unpaid', 'partially_paid', 'overdue'],
+                due_date__lt=timezone.now().date()
             )
+        elif payment_status_filter == 'unpaid':
+            # 'unpaid' includes overdue invoices — overdue = unpaid past due date
+            queryset = queryset.filter(payment_status__in=['unpaid', 'overdue'])
         elif payment_status_filter:
             queryset = queryset.filter(payment_status=payment_status_filter)
 
@@ -566,7 +562,11 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
         if purchase_order_id:
             queryset = queryset.filter(purchase_order_id=purchase_order_id)
 
-        return queryset.order_by('-created_at')
+        allowed_ordering = {"invoice_date", "-invoice_date", "created_at", "-created_at", "total_amount", "-total_amount", "outstanding_amount", "-outstanding_amount", "payment_status", "-payment_status"}
+        ordering = self.request.query_params.get("ordering", "-created_at")
+        if ordering not in allowed_ordering:
+            ordering = "-created_at"
+        return queryset.order_by(ordering)
 
     def perform_create(self, serializer):
         super().perform_create(serializer)
@@ -685,6 +685,42 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
             'gst_payment_status': invoice.gst_payment_status,
             'gst_paid_date': invoice.gst_paid_date,
             'gst_payment_reference': invoice.gst_payment_reference,
+        })
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Accurate server-side invoice stats using DB aggregates"""
+        from django.db.models import Sum, Count, Q
+        from django.utils import timezone as tz
+
+        qs = self.get_queryset().filter(is_rejected=False)
+
+        today = tz.now().date()
+        current_month = today.month
+        current_year = today.year
+
+        agg = qs.aggregate(
+            total_count=Count('id'),
+            total_amount=Sum('total_amount'),
+            paid_amount=Sum('paid_amount'),
+            outstanding_amount=Sum('outstanding_amount'),
+            this_month=Count('id', filter=Q(
+                invoice_date__month=current_month,
+                invoice_date__year=current_year
+            )),
+            overdue_count=Count('id', filter=Q(
+                payment_status__in=['unpaid', 'partially_paid', 'overdue'],
+                due_date__lt=today
+            )),
+        )
+
+        return Response({
+            'total_invoices': agg['total_count'] or 0,
+            'total_amount': float(agg['total_amount'] or 0),
+            'paid_amount': float(agg['paid_amount'] or 0),
+            'outstanding_amount': float(agg['outstanding_amount'] or 0),
+            'this_month_invoices': agg['this_month'] or 0,
+            'overdue_invoices': agg['overdue_count'] or 0,
         })
 
     @action(detail=False, methods=['get'])

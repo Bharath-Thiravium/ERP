@@ -1,3 +1,4 @@
+{% load finance_extras %}
 <!DOCTYPE html>
 <html>
 <head>
@@ -289,8 +290,36 @@
                     <div>{% if invoice.reverse_charge_applicable %}Yes{% else %}No{% endif %}</div>
                 </div>
             </div>
+            {% if invoice.reference or reference_details.quotation or reference_details.purchase_order %}
+            <div class="gst-row" style="display:table-row">
+                <div class="gst-cell" style="display:table-cell;padding:5px 10px">
+                    <div class="gst-label">Reference:</div>
+                    <div style="font-size:9pt">
+                        {% if invoice.reference %}{{ invoice.reference }}{% endif %}
+                        {% if reference_details.quotation %}<br>Quotation: <strong>{{ reference_details.quotation.number }}</strong> &middot; {{ reference_details.quotation.date|date:"d/m/Y" }} &middot; ₹{{ reference_details.quotation.total_amount|floatformat:2 }}{% if reference_details.quotation.reference %} &middot; {{ reference_details.quotation.reference }}{% endif %}{% endif %}
+                        {% if reference_details.purchase_order %}<br>PO: <strong>{{ reference_details.purchase_order.po_number }}</strong> / {{ reference_details.purchase_order.internal_po_number }} &middot; {{ reference_details.purchase_order.po_date|date:"d/m/Y" }} &middot; ₹{{ reference_details.purchase_order.total_amount|floatformat:2 }} &middot; Balance: ₹{{ reference_details.purchase_order.remaining_invoice_balance|floatformat:2 }}{% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
+
+    {% if reference_details.previous_invoices %}
+    <div style="background:#d4edda;border-left:4px solid #27ae60;padding:12px 15px;margin-bottom:20px;border-radius:4px">
+        <div style="font-weight:bold;color:#155724;margin-bottom:6px;font-size:9pt">Previous Invoices (same PO/Quotation)</div>
+        {% for prev in reference_details.previous_invoices %}
+        <div style="display:table;width:100%;font-size:9pt;border-bottom:1px solid #c3e6cb;padding:3px 0">
+            <span style="display:table-cell;font-weight:600;color:#155724">{{ prev.invoice_number }}</span>
+            <span style="display:table-cell">{{ prev.invoice_date|date:"d/m/Y" }}</span>
+            <span style="display:table-cell">₹{{ prev.total_amount|floatformat:2 }}</span>
+            <span style="display:table-cell;color:{% if prev.payment_status == 'paid' %}#155724{% elif prev.payment_status == 'overdue' %}#721c24{% else %}#856404{% endif %};font-weight:600">{{ prev.payment_status|capfirst }}</span>
+            <span style="display:table-cell">Paid: ₹{{ prev.paid_amount|floatformat:2 }}</span>
+            <span style="display:table-cell">Due: ₹{{ prev.outstanding_amount|floatformat:2 }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <!-- Customer Section -->
     <div class="customer-section">
@@ -370,7 +399,7 @@
         <div class="totals-left">
             <div class="amount-words">
                 <strong>Amount in Words:</strong><br>
-                {{ invoice.total_amount|floatformat:2 }} Only
+                {{ invoice.total_amount|num_to_words }}
             </div>
         </div>
         <div class="totals-right">

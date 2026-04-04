@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, FileText, User, Calendar, IndianRupee, MapPin } from 'lucide-react'
+import { X, FileText, User, Calendar, IndianRupee, MapPin, Printer } from 'lucide-react'
 import api from '../../../../lib/api'
 import toast from 'react-hot-toast'
 
@@ -34,6 +34,37 @@ const ProformaInvoiceView: React.FC<ProformaInvoiceViewProps> = ({ proformaInvoi
     fetchDetailedProforma();
   }, [proformaInvoice.id, sessionKey]);
 
+  const handlePrint = async () => {
+    if (!sessionKey) return;
+    try {
+      const response = await fetch(`/api/finance/proforma-invoices/${detailedProforma.id}/pdf/?session_key=${sessionKey}`, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` }
+      });
+      if (!response.ok) throw new Error('PDF failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      if (win) win.onload = () => win.print();
+    } catch { toast.error('Failed to generate PDF'); }
+  };
+
+  const handleDownload = async () => {
+    if (!sessionKey) return;
+    try {
+      const response = await fetch(`/api/finance/proforma-invoices/${detailedProforma.id}/pdf/?session_key=${sessionKey}`, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` }
+      });
+      if (!response.ok) throw new Error('PDF failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Proforma-${detailedProforma.proforma_number}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch { toast.error('Failed to download PDF'); }
+  };
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -57,12 +88,17 @@ const ProformaInvoiceView: React.FC<ProformaInvoiceViewProps> = ({ proformaInvoi
               {detailedProforma.proforma_number}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-          >
-            <X className="w-6 h-6 text-gray-500" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button onClick={handleDownload} className="flex items-center space-x-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
+              <span>⬇ Download</span>
+            </button>
+            <button onClick={handlePrint} className="flex items-center space-x-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
+              <Printer className="w-4 h-4" /><span>Print</span>
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <X className="w-6 h-6 text-gray-500" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}

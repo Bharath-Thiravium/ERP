@@ -209,15 +209,14 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
     if (!sessionKey) return;
     if (invoices.length === 0) setLoading(true);
     try {
-      const params = new URLSearchParams({
+      const params: Record<string, string> = {
         page: page.toString(),
         page_size: '10',
-        session_key: sessionKey,
-        ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
-        ...(paymentStatusFilter && { payment_status: paymentStatusFilter }),
         ordering: sortBy,
-      });
-      const response = await api.get(`/api/finance/invoices/?${params.toString()}`);
+      };
+      if (debouncedSearchTerm) params.search = debouncedSearchTerm;
+      if (paymentStatusFilter) params.payment_status = paymentStatusFilter;
+      const response = await api.get('/api/finance/invoices/', { params });
       const results = response.data.results || [];
       const safeInvoices = results.map((invoice: any) => ({
         ...invoice,
@@ -323,7 +322,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 max-w-full">
       {/* Tooltip Portal - Render at root level */}
       {hoveredInvoice !== null && (
         <div 
@@ -476,26 +475,26 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="overflow-x-auto max-w-full">
+            <table className="w-full table-fixed">
               <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="w-[18%] px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     <span onClick={() => handleSort('invoice_number')} className="cursor-pointer hover:text-gray-700 dark:hover:text-white select-none">Invoice# <SortIcon field="invoice_number" /></span>
                     <span className="mx-1 text-gray-300">|</span>
                     <span onClick={() => handleSort('invoice_date')} className="cursor-pointer hover:text-gray-700 dark:hover:text-white select-none">Date <SortIcon field="invoice_date" /></span>
                   </th>
-                  <th onClick={() => handleSort('customer_name')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Customer <SortIcon field="customer_name" /></th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Description</th>
-                  <th onClick={() => handleSort('total_amount')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Amount <SortIcon field="total_amount" /></th>
-                  <th onClick={() => handleSort('payment_status')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Payment Status <SortIcon field="payment_status" /></th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                  <th onClick={() => handleSort('customer_name')} className="w-[20%] px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Customer <SortIcon field="customer_name" /></th>
+                  <th className="w-[14%] px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Description</th>
+                  <th onClick={() => handleSort('total_amount')} className="w-[18%] px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Amount <SortIcon field="total_amount" /></th>
+                  <th onClick={() => handleSort('payment_status')} className="w-[16%] px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Payment Status <SortIcon field="payment_status" /></th>
+                  <th className="w-[14%] px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white/50 dark:bg-gray-800/50 divide-y divide-gray-200/50 dark:divide-gray-700/50">
                 {invoices.map((invoice) => (
                   <tr key={invoice.id} className="hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors duration-200">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 align-top">
                       <div className="flex items-center">
                         <FileText className="w-5 h-5 text-athenas-blue mr-3" />
                         <div>
@@ -522,7 +521,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 align-top">
                       <div className="flex items-center">
                         <User className="w-4 h-4 text-gray-400 mr-2" />
                         <div className="min-w-0">
@@ -563,7 +562,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 align-top">
                       <div
                         className="text-sm text-gray-500 dark:text-gray-400 cursor-help relative"
                         onMouseEnter={(e) => {
@@ -588,12 +587,12 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
                       </div>
                       <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                         Due: {(() => {
-                          const overdueDate = getOverdueDate(invoice.invoice_date);
+                          const overdueDate = getOverdueDate(invoice.due_date);
                           return overdueDate ? overdueDate.toLocaleDateString() : 'N/A';
                         })()}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 align-top">
                       <div className="flex items-center">
                         <IndianRupee className="w-4 h-4 text-gray-400 mr-2" />
                         <div>
@@ -628,27 +627,34 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 align-top">
                       <div className="flex flex-col gap-1">
+                        {/* Badge 1: Due date tracker */}
                         {invoice.is_rejected ? (
                           <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">
                             REJECTED
                           </span>
                         ) : (
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            isOverdue(invoice.invoice_date, invoice.payment_status)
+                            isOverdue(invoice.due_date, invoice.payment_status)
                               ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
                               : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
                           }`}>
-                            {isOverdue(invoice.invoice_date, invoice.payment_status) ? 'OVERDUE' : `DUE ${getOverdueDate(invoice.invoice_date)?.toLocaleDateString()}`}
+                            {isOverdue(invoice.due_date, invoice.payment_status) ? `OVERDUE (Due: ${getOverdueDate(invoice.due_date)?.toLocaleDateString()})` : `DUE ${getOverdueDate(invoice.due_date)?.toLocaleDateString()}`}
                           </span>
                         )}
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentStatusBadge(invoice.payment_status === 'overdue' ? 'unpaid' : (invoice.payment_status || 'unpaid'))}`}>
-                          {(invoice.payment_status === 'overdue' ? 'unpaid' : (invoice.payment_status || 'unpaid')).replace(/_/g, ' ').toUpperCase()}
-                        </span>
+                        {/* Badge 2: Payment status — only for non-rejected, never shows OVERDUE */}
+                        {!invoice.is_rejected && (() => {
+                          const displayStatus = invoice.payment_status === 'overdue' ? 'unpaid' : (invoice.payment_status || 'unpaid');
+                          return (
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentStatusBadge(displayStatus)}`}>
+                              {displayStatus.replace(/_/g, ' ').toUpperCase()}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium align-top">
                       <div className="flex items-center justify-end space-x-2">
                         {(() => {
                           const paymentStarted = parseFloat(invoice.paid_amount || '0') > 0;

@@ -1,3 +1,4 @@
+{% load finance_extras %}
 <!DOCTYPE html>
 <html>
 <head>
@@ -254,7 +255,31 @@
             <td class="gst-label">Invoice Date:</td>
             <td>{{ invoice.invoice_date|date:"d/m/Y" }}</td>
         </tr>
+        {% if invoice.reference or reference_details.quotation or reference_details.purchase_order %}
+        <tr>
+            <td class="gst-label">Reference:</td>
+            <td colspan="3">
+                {% if invoice.reference %}{{ invoice.reference }}{% endif %}
+                {% if reference_details.quotation %} | Quotation: <strong>{{ reference_details.quotation.number }}</strong> ({{ reference_details.quotation.date|date:"d/m/Y" }}, ₹{{ reference_details.quotation.total_amount|floatformat:2 }}){% endif %}
+                {% if reference_details.purchase_order %} | PO: <strong>{{ reference_details.purchase_order.po_number }}</strong> / {{ reference_details.purchase_order.internal_po_number }} ({{ reference_details.purchase_order.po_date|date:"d/m/Y" }}, ₹{{ reference_details.purchase_order.total_amount|floatformat:2 }}, Balance: ₹{{ reference_details.purchase_order.remaining_invoice_balance|floatformat:2 }}){% endif %}
+            </td>
+        </tr>
+        {% endif %}
     </table>
+
+    {% if reference_details.previous_invoices %}
+    <table class="gst-info" style="margin-bottom:15px">
+        <tr><td class="gst-label" colspan="4" style="font-size:9pt">Previous Invoices (same PO/Quotation)</td></tr>
+        {% for prev in reference_details.previous_invoices %}
+        <tr>
+            <td class="gst-label">{{ prev.invoice_number }}</td>
+            <td>{{ prev.invoice_date|date:"d/m/Y" }}</td>
+            <td>₹{{ prev.total_amount|floatformat:2 }}</td>
+            <td>{{ prev.payment_status|capfirst }} | Paid: ₹{{ prev.paid_amount|floatformat:2 }} | Due: ₹{{ prev.outstanding_amount|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
 
     <!-- Items Table -->
     <table class="items-table">
@@ -346,7 +371,7 @@
 
     <!-- Amount in Words -->
     <div class="amount-words">
-        <strong>Amount in Words:</strong> {{ invoice.total_amount|floatformat:2 }} Only
+        <strong>Amount in Words:</strong> {{ invoice.total_amount|num_to_words }}
     </div>
 
     <!-- Declaration -->

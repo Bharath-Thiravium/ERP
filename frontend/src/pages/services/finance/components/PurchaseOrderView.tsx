@@ -1,5 +1,6 @@
 import React from 'react'
-import { X, User, MapPin, Package, Download } from 'lucide-react'
+import { X, User, MapPin, Package, Download, Printer } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 interface PurchaseOrder {
   id: number
@@ -68,9 +69,10 @@ interface PurchaseOrder {
 interface PurchaseOrderViewProps {
   purchaseOrder: PurchaseOrder
   onClose: () => void
+  sessionKey?: string
 }
 
-const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, onClose }) => {
+const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, onClose, sessionKey }) => {
   const getStatusBadge = (status: string) => {
     const statusColors = {
       draft: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
@@ -131,6 +133,37 @@ const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, on
     }
   }
 
+  const handlePrint = async () => {
+    if (!sessionKey) return;
+    try {
+      const response = await fetch(`/api/finance/purchase-orders/${purchaseOrder.id}/pdf/?session_key=${sessionKey}`, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` }
+      });
+      if (!response.ok) throw new Error('PDF failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      if (win) win.onload = () => win.print();
+    } catch { toast.error('Failed to generate PDF'); }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!sessionKey) return;
+    try {
+      const response = await fetch(`/api/finance/purchase-orders/${purchaseOrder.id}/pdf/?session_key=${sessionKey}`, {
+        headers: { 'Authorization': `Bearer ${sessionKey}` }
+      });
+      if (!response.ok) throw new Error('PDF failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PO-${purchaseOrder.internal_po_number}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch { toast.error('Failed to download PDF'); }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
@@ -145,12 +178,17 @@ const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, on
               {getGstTypeBadge(purchaseOrder.gst_type)}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button onClick={handleDownloadPDF} className="flex items-center space-x-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
+              <span>⬇ Download PDF</span>
+            </button>
+            <button onClick={handlePrint} className="flex items-center space-x-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
+              <Printer className="w-4 h-4" /><span>Print</span>
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -226,7 +264,7 @@ const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, on
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
-                <div className="font-medium text-gray-900 dark:text-white">{purchaseOrder.customer_details.name}</div>
+                <div className="font-medium text-gray-900 dark:text-white text-base">{purchaseOrder.customer_details.name}</div>
                 <div className="text-gray-600 dark:text-gray-400">{purchaseOrder.customer_details.customer_code}</div>
                 {purchaseOrder.customer_details.project_area && (
                   <div className="text-gray-600 dark:text-gray-400 flex items-center mt-1">
@@ -234,31 +272,42 @@ const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, on
                     {purchaseOrder.customer_details.project_area}
                   </div>
                 )}
+                {/* Shipping Address prominently below customer name */}
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                  <div className="flex items-center mb-1">
+                    <MapPin className="w-4 h-4 mr-1 text-orange-500" />
+                    <span className="text-xs font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wide">Ship To</span>
+                  </div>
+                  {purchaseOrder.shipping_address_details ? (
+                    <div className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+                      {purchaseOrder.shipping_address_details.address_line1}<br />
+                      {purchaseOrder.shipping_address_details.address_line2 && <>{purchaseOrder.shipping_address_details.address_line2}<br /></>}
+                      {purchaseOrder.shipping_address_details.city}, {purchaseOrder.shipping_address_details.state} {purchaseOrder.shipping_address_details.pincode}<br />
+                      {purchaseOrder.shipping_address_details.country}
+                    </div>
+                  ) : (
+                    <div className="text-gray-500 dark:text-gray-400 text-sm">
+                      {purchaseOrder.customer_details.billing_address_line1}<br />
+                      {purchaseOrder.customer_details.billing_address_line2 && <>{purchaseOrder.customer_details.billing_address_line2}<br /></>}
+                      {purchaseOrder.customer_details.billing_city}, {purchaseOrder.customer_details.billing_state} {purchaseOrder.customer_details.billing_pincode}
+                      <span className="ml-1 text-xs text-gray-400">(Billing)</span>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="space-y-1">
                 <div><strong>Email:</strong> {purchaseOrder.customer_details.email}</div>
                 <div><strong>Phone:</strong> {purchaseOrder.customer_details.phone}</div>
                 <div><strong>GSTIN:</strong> {purchaseOrder.customer_details.gstin || 'Not provided'}</div>
                 <div><strong>PAN:</strong> {purchaseOrder.customer_details.pan_number || 'Not provided'}</div>
-              </div>
-            </div>
-            
-            <div className="mt-4 pt-4 border-t border-gray-300 dark:border-gray-600">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <strong>Billing Address:</strong><br />
-                  {purchaseOrder.customer_details.billing_address_line1}<br />
-                  {purchaseOrder.customer_details.billing_address_line2 && <>{purchaseOrder.customer_details.billing_address_line2}<br /></>}
-                  {purchaseOrder.customer_details.billing_city}, {purchaseOrder.customer_details.billing_state} {purchaseOrder.customer_details.billing_pincode}
-                </div>
-                {purchaseOrder.shipping_address_details && (
-                  <div>
-                    <strong>Shipping Address:</strong><br />
-                    {purchaseOrder.shipping_address_details.address_line1}<br />
-                    {purchaseOrder.shipping_address_details.address_line2 && <>{purchaseOrder.shipping_address_details.address_line2}<br /></>}
-                    {purchaseOrder.shipping_address_details.city}, {purchaseOrder.shipping_address_details.state} {purchaseOrder.shipping_address_details.pincode}
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Billing Address</div>
+                  <div className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
+                    {purchaseOrder.customer_details.billing_address_line1}<br />
+                    {purchaseOrder.customer_details.billing_address_line2 && <>{purchaseOrder.customer_details.billing_address_line2}<br /></>}
+                    {purchaseOrder.customer_details.billing_city}, {purchaseOrder.customer_details.billing_state} {purchaseOrder.customer_details.billing_pincode}
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </div>

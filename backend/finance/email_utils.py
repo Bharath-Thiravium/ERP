@@ -434,18 +434,26 @@ Due Date: {proforma.due_date.strftime('%d/%m/%Y')}"""
 def send_invoice_email(invoice, recipient_email, message=""):
     """Send invoice via email using company-specific email settings"""
     try:
-        # Get company email service
         email_service = get_company_email_service(invoice.company)
-        
         if not email_service or not email_service.can_send_email():
             return False, "Company email service not configured or daily limit reached. Please configure email settings in Company Dashboard."
-        
-        # Generate PDF
-        pdf_buffer = generate_invoice_pdf_content(invoice)
-        
-        # Create professional email with new template
+
+        # Use WeasyPrint template-based PDF (same as download)
+        try:
+            from .invoice_pdf_service import invoice_pdf_service as inv_pdf_svc
+            from company_dashboard.quotation_template_models import CompanyQuotationTemplateSettings
+            try:
+                tmpl = CompanyQuotationTemplateSettings.objects.get(company=invoice.company)
+                template_code = tmpl.selected_invoice_template or 'AS'
+            except Exception:
+                template_code = 'AS'
+            pdf_bytes = inv_pdf_svc.generate_invoice_pdf(invoice, template_code)
+            pdf_buffer = io.BytesIO(pdf_bytes)
+        except Exception:
+            pdf_buffer = generate_invoice_pdf_content(invoice)
+
         subject = f"Invoice #{invoice.invoice_number} – Payment Due on {invoice.due_date.strftime('%B %d, %Y')} | {invoice.company.name}"
-        
+
         html_content = f"""
         <html>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -467,70 +475,32 @@ def send_invoice_email(invoice, recipient_email, message=""):
                 {getattr(invoice.company, 'contact_person', 'Accounts Team')}<br>
                 {getattr(invoice.company, 'designation', 'Accounts Executive')}<br>
                 {invoice.company.name}<br>
-                Bank Details: {getattr(invoice.company, 'bank_details', 'Available on request')}<br>
-                Phone: {getattr(invoice.company, 'phone', '+91 9876543210')}<br>
-                Email: {getattr(invoice.company, 'email', 'greenvolt.energy.pvt.ltd@gmail.com')}</p>
+                Phone: {getattr(invoice.company, 'phone', 'N/A')}<br>
+                Email: {getattr(invoice.company, 'email', 'N/A')}</p>
             </div>
         </body>
         </html>
         """
-        
-        text_content = f"""
-Dear {invoice.customer.name},
 
-Greetings from {invoice.company.name}.
+        text_content = f"""Dear {invoice.customer.name},\n\nGreetings from {invoice.company.name}.\n\nPlease find attached Invoice #{invoice.invoice_number} for ₹{invoice.total_amount:,.2f}, due on {invoice.due_date.strftime('%B %d, %Y')}.\n\n{message}\n\nWith warm regards,\n{invoice.company.name}"""
 
-Please find attached Invoice #{invoice.invoice_number}, dated {invoice.invoice_date.strftime('%B %d, %Y')}, for the products/services delivered as per our agreement.
-The total payable amount is ₹{invoice.total_amount:,.2f}, and the payment is due on {invoice.due_date.strftime('%B %d, %Y')}.
-
-We kindly request you to arrange payment within the stipulated time to ensure smooth continuation of services.
-If you have any clarification or queries, please feel free to reach out.
-
-{message}
-
-We sincerely thank you for your continued trust in our services.
-
-With warm regards,
-{getattr(invoice.company, 'contact_person', 'Accounts Team')}
-{getattr(invoice.company, 'designation', 'Accounts Executive')}
-{invoice.company.name}
-Bank Details: {getattr(invoice.company, 'bank_details', 'Available on request')}
-Phone: {getattr(invoice.company, 'phone', '+91 9876543210')}
-Email: {getattr(invoice.company, 'email', 'greenvolt.energy.pvt.ltd@gmail.com')}
-        """
-        
-        # Prepare attachment with temporary file
-        import tempfile
-        import os
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-            temp_file.write(pdf_buffer.getvalue())
-            temp_file_path = temp_file.name
-        
-        attachments = [{
-            'name': f"Invoice_{invoice.invoice_number}.pdf",
-            'path': temp_file_path
-        }]
-        
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+            tmp.write(pdf_buffer.getvalue())
+            tmp_path = tmp.name
+        attachments = [{'name': f"Invoice_{invoice.invoice_number}.pdf", 'path': tmp_path}]
         try:
             success = email_service.send_email(
-                to_emails=[recipient_email],
-                subject=subject,
-                html_content=html_content,
-                text_content=text_content,
-                attachments=attachments
+                to_emails=[recipient_email], subject=subject,
+                html_content=html_content, text_content=text_content, attachments=attachments
             )
         finally:
-            try:
-                os.unlink(temp_file_path)
-            except:
-                pass
-        
+            try: os.unlink(tmp_path)
+            except: pass
+
         if success:
             return True, f"✅ Invoice email sent successfully to {recipient_email}"
-        else:
-            return False, "❌ Failed to send invoice email. Please check your email configuration."
-        
+        return False, "❌ Failed to send invoice email. Please check your email configuration."
     except Exception as e:
         return False, f"❌ Email failed: {str(e)}"
 
@@ -1045,30 +1015,32 @@ Client PO: {purchase_order.po_number}"""
 def send_purchase_order_email(purchase_order, recipient_email, message=""):
     """Send purchase order via email using company-specific email settings"""
     try:
-        # Get company email service
         email_service = get_company_email_service(purchase_order.company)
-        
         if not email_service or not email_service.can_send_email():
             return False, "Company email service not configured or daily limit reached. Please configure email settings in Company Dashboard."
-        
-        # Generate PDF
-        pdf_buffer = generate_purchase_order_pdf_content(purchase_order)
-        
-        # Get product/service names from PO items
+
+        # Use WeasyPrint template-based PDF
+        try:
+            from .po_pdf_service import po_pdf_service
+            pdf_bytes = po_pdf_service.generate_po_pdf(purchase_order)
+            pdf_buffer = io.BytesIO(pdf_bytes)
+        except Exception:
+            pdf_buffer = generate_purchase_order_pdf_content(purchase_order)
+
         product_services = ", ".join([item.product_name for item in purchase_order.po_items.all()[:3]])
         if purchase_order.po_items.count() > 3:
             product_services += " and more"
         if not product_services:
             product_services = "goods/services"
-        
-        # Create professional email with new template
+
         subject = f"Purchase Order #{purchase_order.internal_po_number} – {purchase_order.company.name}"
-        
+        recipient_name = purchase_order.customer.name
+
         html_content = f"""
         <html>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                <p>Dear {purchase_order.vendor.name if hasattr(purchase_order, 'vendor') and purchase_order.vendor else purchase_order.customer.name},</p>
+                <p>Dear {recipient_name},</p>
                 <br><br>
                 <p>Warm greetings from {purchase_order.company.name}!</p>
                 <br><br>
@@ -1076,102 +1048,71 @@ def send_purchase_order_email(purchase_order, recipient_email, message=""):
                 <p>Please find the PO attached to this email.</p>
                 <br><br>
                 <p>Kindly acknowledge receipt and confirm acceptance at your earliest convenience.</p>
-                <p>Should there be any queries regarding the order or delivery schedule, please feel free to contact us.</p>
                 <br><br>
                 {f'<p>{message}</p><br><br>' if message else ''}
                 <p>We truly appreciate your continued support and partnership.</p>
                 <br><br>
                 <p>Sincerely,<br>
                 {getattr(purchase_order.company, 'contact_person', 'Sales Team')}<br>
-                {getattr(purchase_order.company, 'designation', 'Sales Executive')}<br>
                 {purchase_order.company.name}<br>
-                Phone: {getattr(purchase_order.company, 'phone', '+91 9876543210')}<br>
-                Email: {getattr(purchase_order.company, 'email', 'greenvolt.energy.pvt.ltd@gmail.com')}</p>
+                Phone: {getattr(purchase_order.company, 'phone', 'N/A')}<br>
+                Email: {getattr(purchase_order.company, 'email', 'N/A')}</p>
             </div>
         </body>
         </html>
         """
-        
-        text_content = f"""
-Dear {purchase_order.vendor.name if hasattr(purchase_order, 'vendor') and purchase_order.vendor else purchase_order.customer.name},
 
-Warm greetings from {purchase_order.company.name}!
+        text_content = f"""Dear {recipient_name},\n\nPlease find attached Purchase Order #{purchase_order.internal_po_number} for {product_services}.\n\n{message}\n\nSincerely,\n{purchase_order.company.name}"""
 
-We are pleased to share with you the official Purchase Order #{purchase_order.internal_po_number}, dated {purchase_order.po_date.strftime('%B %d, %Y')}, for the procurement of {product_services}.
-Please find the PO attached to this email.
-
-Kindly acknowledge receipt and confirm acceptance at your earliest convenience.
-Should there be any queries regarding the order or delivery schedule, please feel free to contact us.
-
-{message}
-
-We truly appreciate your continued support and partnership.
-
-Sincerely,
-{getattr(purchase_order.company, 'contact_person', 'Sales Team')}
-{getattr(purchase_order.company, 'designation', 'Sales Executive')}
-{purchase_order.company.name}
-Phone: {getattr(purchase_order.company, 'phone', '+91 9876543210')}
-Email: {getattr(purchase_order.company, 'email', 'greenvolt.energy.pvt.ltd@gmail.com')}
-        """
-        
-        # Prepare attachment with temporary file
-        import tempfile
-        import os
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-            temp_file.write(pdf_buffer.getvalue())
-            temp_file_path = temp_file.name
-        
-        attachments = [{
-            'name': f"PurchaseOrder_{purchase_order.internal_po_number}.pdf",
-            'path': temp_file_path
-        }]
-        
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+            tmp.write(pdf_buffer.getvalue())
+            tmp_path = tmp.name
+        attachments = [{'name': f"PurchaseOrder_{purchase_order.internal_po_number}.pdf", 'path': tmp_path}]
         try:
             success = email_service.send_email(
-                to_emails=[recipient_email],
-                subject=subject,
-                html_content=html_content,
-                text_content=text_content,
-                attachments=attachments
+                to_emails=[recipient_email], subject=subject,
+                html_content=html_content, text_content=text_content, attachments=attachments
             )
         finally:
-            try:
-                os.unlink(temp_file_path)
-            except:
-                pass
-        
+            try: os.unlink(tmp_path)
+            except: pass
+
         if success:
             return True, f"✅ Purchase order email sent successfully to {recipient_email}"
-        else:
-            return False, "❌ Failed to send purchase order email. Please check your email configuration."
-        
+        return False, "❌ Failed to send purchase order email. Please check your email configuration."
     except Exception as e:
         return False, f"❌ Email failed: {str(e)}"
 
 def send_proforma_email(proforma, recipient_email, message=""):
     """Send proforma invoice via email using company-specific email settings"""
     try:
-        # Get company email service
         email_service = get_company_email_service(proforma.company)
-        
         if not email_service or not email_service.can_send_email():
             return False, "Company email service not configured or daily limit reached. Please configure email settings in Company Dashboard."
-        
-        # Generate PDF
-        pdf_buffer = generate_proforma_pdf_content(proforma)
-        
-        # Get product/service names from proforma items
+
+        # Use WeasyPrint template-based PDF
+        try:
+            from .proforma_pdf_service import proforma_pdf_service
+            from company_dashboard.quotation_template_models import CompanyQuotationTemplateSettings
+            try:
+                tmpl = CompanyQuotationTemplateSettings.objects.get(company=proforma.company)
+                template_code = tmpl.selected_proforma_template or 'AS'
+            except Exception:
+                template_code = 'AS'
+            pdf_bytes = proforma_pdf_service.generate_proforma_pdf(proforma, template_code)
+            pdf_buffer = io.BytesIO(pdf_bytes)
+        except Exception:
+            pdf_buffer = generate_proforma_pdf_content(proforma)
+
         product_services = ", ".join([item.product_name for item in proforma.proforma_items.all()[:3]])
         if proforma.proforma_items.count() > 3:
             product_services += " and more"
         if not product_services:
             product_services = "goods/services"
-        
-        # Create professional email with new template
+
         subject = f"Proforma Invoice #{proforma.proforma_number} for Your Reference – {proforma.company.name}"
-        
+
         html_content = f"""
         <html>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -1186,78 +1127,37 @@ def send_proforma_email(proforma, recipient_email, message=""):
                 <p>Kindly review the information and confirm if everything is in order.</p>
                 <p>To proceed with the order, we request you to arrange the payment as per the terms mentioned in the Proforma Invoice.</p>
                 <br><br>
-                <p>Upon receipt of your confirmation and payment, we will initiate the necessary processing steps immediately.</p>
-                <br><br>
                 {f'<p>{message}</p><br><br>' if message else ''}
                 <p>Thank you for your attention. We remain available for any queries or support.</p>
                 <br><br>
                 <p>Best regards,<br>
                 {getattr(proforma.company, 'contact_person', 'Sales Team')}<br>
-                {getattr(proforma.company, 'designation', 'Sales Executive')}<br>
                 {proforma.company.name}<br>
-                Phone: {getattr(proforma.company, 'phone', '+91 9876543210')}<br>
-                Email: {getattr(proforma.company, 'email', 'greenvolt.energy.pvt.ltd@gmail.com')}</p>
+                Phone: {getattr(proforma.company, 'phone', 'N/A')}<br>
+                Email: {getattr(proforma.company, 'email', 'N/A')}</p>
             </div>
         </body>
         </html>
         """
-        
-        text_content = f"""
-Dear {proforma.customer.name},
 
-Hope this message finds you well.
+        text_content = f"""Dear {proforma.customer.name},\n\nPlease find attached Proforma Invoice #{proforma.proforma_number} for {product_services}.\n\n{message}\n\nBest regards,\n{proforma.company.name}"""
 
-Please find attached the Proforma Invoice (Ref: #{proforma.proforma_number}, dated {proforma.proforma_date.strftime('%B %d, %Y')}) for the proposed order of {product_services}.
-The document includes a breakdown of the estimated cost, terms, and other relevant details.
-
-Kindly review the information and confirm if everything is in order.
-To proceed with the order, we request you to arrange the payment as per the terms mentioned in the Proforma Invoice.
-
-Upon receipt of your confirmation and payment, we will initiate the necessary processing steps immediately.
-
-{message}
-
-Thank you for your attention. We remain available for any queries or support.
-
-Best regards,
-{getattr(proforma.company, 'contact_person', 'Sales Team')}
-{getattr(proforma.company, 'designation', 'Sales Executive')}
-{proforma.company.name}
-Phone: {getattr(proforma.company, 'phone', '+91 9876543210')}
-Email: {getattr(proforma.company, 'email', 'greenvolt.energy.pvt.ltd@gmail.com')}
-        """
-        
-        # Prepare attachment with temporary file
-        import tempfile
-        import os
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-            temp_file.write(pdf_buffer.getvalue())
-            temp_file_path = temp_file.name
-        
-        attachments = [{
-            'name': f"Proforma_{proforma.proforma_number}.pdf",
-            'path': temp_file_path
-        }]
-        
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+            tmp.write(pdf_buffer.getvalue())
+            tmp_path = tmp.name
+        attachments = [{'name': f"Proforma_{proforma.proforma_number}.pdf", 'path': tmp_path}]
         try:
             success = email_service.send_email(
-                to_emails=[recipient_email],
-                subject=subject,
-                html_content=html_content,
-                text_content=text_content,
-                attachments=attachments
+                to_emails=[recipient_email], subject=subject,
+                html_content=html_content, text_content=text_content, attachments=attachments
             )
         finally:
-            try:
-                os.unlink(temp_file_path)
-            except:
-                pass
-        
+            try: os.unlink(tmp_path)
+            except: pass
+
         if success:
             return True, f"✅ Proforma email sent successfully to {recipient_email}"
-        else:
-            return False, "❌ Failed to send proforma email. Please check your email configuration."
-        
+        return False, "❌ Failed to send proforma email. Please check your email configuration."
     except Exception as e:
         return False, f"❌ Email failed: {str(e)}"

@@ -2658,7 +2658,7 @@ def _customer_ledger_impl(request):
 @authentication_classes([])
 @permission_classes([])
 def generate_invoice_pdf(request, invoice_id):
-    """Generate PDF for an invoice"""
+    """Generate PDF for an invoice using company selected template"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not session_key:
         session_key = request.GET.get('session_key')
@@ -2667,7 +2667,8 @@ def generate_invoice_pdf(request, invoice_id):
         return Response({'error': 'Session key required'}, status=400)
 
     try:
-        from .email_utils import generate_invoice_pdf_content
+        from .invoice_pdf_service import invoice_pdf_service as inv_pdf_svc
+        from company_dashboard.quotation_template_models import CompanyQuotationTemplateSettings
         from django.http import HttpResponse
 
         session = ServiceUserSession.objects.get(
@@ -2676,20 +2677,24 @@ def generate_invoice_pdf(request, invoice_id):
         )
         service_user = session.service_user
 
-        # Get invoice
-        invoice = Invoice.objects.select_related('customer', 'company').prefetch_related('invoice_items').get(
+        invoice = Invoice.objects.select_related(
+            'customer', 'company', 'purchase_order', 'quotation', 'shipping_address'
+        ).prefetch_related('invoice_items__product').get(
             id=invoice_id,
             company=service_user.company
         )
 
-        # Generate PDF using same function as email (with logo and from address)
-        pdf_buffer = generate_invoice_pdf_content(invoice)
+        # Get company's selected invoice template
+        try:
+            template_settings = CompanyQuotationTemplateSettings.objects.get(company=service_user.company)
+            template_code = template_settings.selected_invoice_template or 'AS'
+        except CompanyQuotationTemplateSettings.DoesNotExist:
+            template_code = 'AS'
 
-        # Create filename
+        pdf_content = inv_pdf_svc.generate_invoice_pdf(invoice, template_code)
+
         filename = f"Invoice_{invoice.invoice_number}.pdf"
-
-        # Return PDF response
-        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response = HttpResponse(pdf_content, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
@@ -2705,7 +2710,7 @@ def generate_invoice_pdf(request, invoice_id):
 @authentication_classes([])
 @permission_classes([])
 def generate_quotation_pdf(request, quotation_id):
-    """Generate PDF for a quotation"""
+    """Generate PDF for a quotation using company selected template"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not session_key:
         session_key = request.query_params.get('session_key')
@@ -2714,7 +2719,8 @@ def generate_quotation_pdf(request, quotation_id):
         return Response({'error': 'Session key required'}, status=400)
 
     try:
-        from .email_utils import generate_quotation_pdf_content
+        from .quotation_pdf_service import quotation_pdf_service as qt_pdf_svc
+        from company_dashboard.quotation_template_models import CompanyQuotationTemplateSettings
         from django.http import HttpResponse
 
         session = ServiceUserSession.objects.get(
@@ -2723,20 +2729,23 @@ def generate_quotation_pdf(request, quotation_id):
         )
         service_user = session.service_user
 
-        # Get quotation
-        quotation = Quotation.objects.select_related('customer', 'company').prefetch_related('quotation_items').get(
+        quotation = Quotation.objects.select_related(
+            'customer', 'company', 'shipping_address'
+        ).prefetch_related('quotation_items__product').get(
             id=quotation_id,
             company=service_user.company
         )
 
-        # Generate PDF using the same function as email (which has logo and from address)
-        pdf_buffer = generate_quotation_pdf_content(quotation)
+        try:
+            template_settings = CompanyQuotationTemplateSettings.objects.get(company=service_user.company)
+            template_code = template_settings.selected_template or 'AS'
+        except CompanyQuotationTemplateSettings.DoesNotExist:
+            template_code = 'AS'
 
-        # Create filename
+        pdf_content = qt_pdf_svc.generate_quotation_pdf(quotation, template=template_code)
+
         filename = f"Quotation_{quotation.quotation_number}.pdf"
-
-        # Return PDF response
-        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response = HttpResponse(pdf_content, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 

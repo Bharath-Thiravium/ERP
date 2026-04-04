@@ -1,3 +1,4 @@
+{% load finance_extras %}
 <!DOCTYPE html>
 <html>
 <head>
@@ -297,7 +298,7 @@
         <div class="totals-left">
             <div class="amount-words">
                 <strong>Amount in Words:</strong><br>
-                {{ quotation.total_amount|floatformat:2 }} Only
+                {{ quotation.total_amount|num_to_words }}
             </div>
         </div>
         <div class="totals-right">
@@ -344,14 +345,7 @@
         {{ quotation.terms_and_conditions|default:"1. Prices are valid for 30 days from quotation date<br>2. Payment terms as agreed<br>3. All disputes subject to local jurisdiction"|safe }}
     </div>
 
-    <!-- Signature -->
-    <div class="signature-section">
-        <div class="signature-box">
-            <strong>For {{ company.name }}</strong><br><br><br>
-            <div style="border-top: 2px solid #2c5aa0; padding-top: 10px; margin-top: 30px;">
-                Authorized Signatory
-            </div>
-        </div>
+    <div style="text-align:center;padding:14px 0 6px;font-size:9px;color:#64748b;border-top:1px solid #e5e7eb;margin-top:16px">This is a computer-generated document. No physical signature is required.</div>
     </div>
 </body>
 </html>

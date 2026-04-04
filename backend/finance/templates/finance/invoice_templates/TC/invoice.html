@@ -34,12 +34,12 @@ body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1e2d4a;
 .pcgstin{font-size:9px;color:#64748b;margin-top:4px;font-family:Arial,sans-serif}
 
 /* ── META STRIP ── */
-.meta{background:#f0f4f8;border-bottom:1px solid #dde6f0;padding:7px 18px;display:flex}
-.ms{flex:1;padding:0 13px;border-right:1px solid #dde6f0}
+.meta{background:#f0f4f8;border-bottom:1px solid #dde6f0;padding:7px 18px;display:flex;flex-wrap:nowrap;align-items:stretch}
+.ms{flex:1;padding:0 13px;border-right:1px solid #dde6f0;min-width:0}
 .ms:first-child{padding-left:0}
 .ms:last-child{border-right:none}
-.mslbl{color:#94a3b8;font-size:7.5px;margin-bottom:2px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:0.5px}
-.msval{font-weight:700;color:#1e2d4a;font-size:10px;font-family:Arial,sans-serif}
+.mslbl{color:#94a3b8;font-size:7.5px;margin-bottom:2px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap}
+.msval{font-weight:700;color:#1e2d4a;font-size:10px;font-family:Arial,sans-serif;word-break:break-word;overflow-wrap:break-word;white-space:normal}
 
 /* ── COMPLIANCE ── */
 .comp{background:#f0f4f8;border-bottom:1px solid #c8d6e8;padding:6px 18px;display:flex;gap:26px;font-size:9px;color:#374151;font-family:Arial,sans-serif}
@@ -101,12 +101,6 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
 .decl{background:#f0f4f8;border:1px solid #c8d6e8;border-radius:2px;padding:8px 12px;margin-bottom:12px;font-size:9px;color:#374151;line-height:1.6;font-family:Arial,sans-serif}
 .decl strong{color:#1e2d4a}
 
-/* ── SIGNATURES 3 ── */
-.sigs{display:flex;justify-content:space-between;margin-top:22px;gap:14px}
-.sig{flex:1;text-align:center}
-.sigspace{height:46px;border-bottom:1.5px solid #1e2d4a;margin-bottom:5px}
-.siglbl{font-size:9.5px;font-weight:700;color:#1e2d4a;font-family:Arial,sans-serif}
-.sigco{font-size:9px;color:#64748b;font-family:Arial,sans-serif}
 
 /* ── FOOTER ── */
 .footer{background:#1e2d4a;color:#94a3b8;padding:8px 18px;display:flex;justify-content:space-between;font-size:8.5px;font-family:Arial,sans-serif;margin-top:auto}
@@ -159,7 +153,7 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
   <div class="pc">
     <div class="pclbl">Ship To</div>
     {% if invoice.shipping_address %}
-      <div class="pcaddr">{{ invoice.shipping_address }}</div>
+      <div class="pcaddr">{{ invoice.shipping_address.label }}<br>{{ invoice.shipping_address.full_address }}</div>
     {% else %}
       <div class="pcaddr" style="color:#9ca3af;font-style:italic;font-family:Arial,sans-serif">Same as billing address</div>
     {% endif %}
@@ -171,9 +165,9 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
   <div class="ms"><div class="mslbl">Date</div><div class="msval">{{ invoice.invoice_date|date:"d/m/Y" }}</div></div>
   <div class="ms"><div class="mslbl">Due Date</div><div class="msval">{{ invoice.due_date|date:"d/m/Y" }}</div></div>
   <div class="ms"><div class="mslbl">GST Type</div><div class="msval">{{ invoice.gst_type|upper }}</div></div>
-  <div class="ms"><div class="mslbl">Place of Supply</div><div class="msval">{{ invoice.place_of_supply|default:customer.billing_state }}</div></div>
-  {% if invoice.reference %}<div class="ms"><div class="mslbl">Reference</div><div class="msval">{{ invoice.reference }}</div></div>{% endif %}
-</div>
+  <div class="ms"><div class="mslbl">Place of Supply</div><div class="msval">{% if invoice.shipping_address %}{{ invoice.shipping_address.state }}{% else %}{{ invoice.place_of_supply|default:customer.billing_state }}{% endif %}</div></div>
+  {% if invoice.purchase_order %}<div class="ms" style="flex:2"><div class="mslbl">PO No.</div><div class="msval">{{ invoice.purchase_order.po_number }}</div></div>{% endif %}
+    </div>
 
 <div class="comp">
   <span><strong>Reverse Charge:</strong> {% if invoice.reverse_charge_applicable %}Applicable{% else %}Not Applicable{% endif %}</span>
@@ -327,17 +321,14 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
     <strong>Declaration:</strong> We declare that this invoice shows the actual price of the goods / services described and that all particulars are true and correct to the best of our knowledge and belief.
   </div>
 
-  <div class="sigs">
-    <div class="sig"><div class="sigspace"></div><div class="siglbl">Prepared By</div><div class="sigco">Accounts Team</div></div>
-    <div class="sig"><div class="sigspace"></div><div class="siglbl">Checked By</div><div class="sigco">Manager</div></div>
-    <div class="sig"><div class="sigspace"></div><div class="siglbl">Authorised Signatory</div><div class="sigco">{{ company.name }}</div></div>
+  </div>
   </div>
 
 </div>
 
 <div class="footer">
   <span>{{ company.name }} | <span class="gstin">GSTIN: {{ company_gstin|default:"N/A" }}</span></span>
-  <span>Computer-generated document — no physical signature required</span>
+  <span>This invoice was generated with the help of <a href="https://www.athenas.co.in/accounts/" style="color:inherit;text-decoration:none">ᗩTᕼᙓᑎᗩ'𝔖</a></span>
   <span>{{ invoice.invoice_date|date:"d M Y" }}</span>
 </div>
 

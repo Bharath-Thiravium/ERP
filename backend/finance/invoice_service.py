@@ -359,6 +359,7 @@ class InvoicePDFService:
                 'has_discount': invoice.discount_amount > 0,
                 'has_shipping': invoice.shipping_charges > 0,
                 'has_other_charges': invoice.other_charges > 0,
+                'reference_details': self._get_reference_details(invoice),
             })
             
             return context
@@ -367,6 +368,69 @@ class InvoicePDFService:
             logger.error(f"Error preparing invoice context: {str(e)}")
             raise
     
+    def _get_reference_details(self, invoice):
+        """Build reference details from linked Quotation, PO, and previous invoices"""
+        details = {
+            'manual_reference': getattr(invoice, 'reference', '') or '',
+            'quotation': None,
+            'purchase_order': None,
+            'previous_invoices': [],
+        }
+        try:
+            # Access purchase_order safely
+            po = None
+            try:
+                po = invoice.purchase_order
+            except Exception:
+                po = None
+
+            # Access quotation safely
+            qt = None
+            try:
+                qt = invoice.quotation
+            except Exception:
+                qt = None
+
+            if qt:
+                details['quotation'] = {
+                    'number': qt.quotation_number,
+                    'date': qt.quotation_date,
+                    'valid_until': qt.valid_until,
+                    'total_amount': qt.total_amount,
+                    'status': qt.status,
+                    'reference': qt.reference,
+                }
+            if po:
+                details['purchase_order'] = {
+                    'po_number': po.po_number,
+                    'internal_po_number': po.internal_po_number,
+                    'po_date': po.po_date,
+                    'total_amount': po.total_amount,
+                    'status': po.status,
+                    'remaining_invoice_balance': po.remaining_invoice_balance,
+                }
+            # Previous invoices from same PO or Quotation (excluding current)
+            prev_qs = None
+            if po:
+                prev_qs = po.invoices.exclude(id=invoice.id).filter(is_rejected=False)
+            elif qt:
+                prev_qs = qt.invoices.exclude(id=invoice.id).filter(is_rejected=False)
+            if prev_qs is not None:
+                details['previous_invoices'] = [
+                    {
+                        'invoice_number': inv.invoice_number,
+                        'invoice_date': inv.invoice_date,
+                        'total_amount': inv.total_amount,
+                        'payment_status': inv.payment_status,
+                        'paid_amount': inv.paid_amount,
+                        'outstanding_amount': inv.outstanding_amount,
+                    }
+                    for inv in prev_qs.order_by('invoice_date')
+                ]
+        except Exception as e:
+            logger.error(f"Error building reference_details for invoice {getattr(invoice, 'invoice_number', '?')}: {str(e)}")
+        return details
+
     def _get_logo_path(self, company):
         from finance.logo_utils import get_logo_file_path
         return get_logo_file_path(company)

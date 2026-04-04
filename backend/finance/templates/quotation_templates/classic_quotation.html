@@ -1,3 +1,4 @@
+{% load finance_extras %}
 <!DOCTYPE html>
 <html>
 <head>
@@ -287,7 +288,7 @@
 
     <!-- Amount in Words -->
     <div class="amount-words">
-        <strong>Amount in Words:</strong> {{ quotation.total_amount|floatformat:2 }} Only
+        <strong>Amount in Words:</strong> {{ quotation.total_amount|num_to_words }}
     </div>
 
     <!-- Terms and Conditions -->

@@ -1,3 +1,4 @@
+{% load finance_extras %}
 <!DOCTYPE html>
 <html>
 <head>
@@ -321,7 +322,7 @@
         <div class="totals-left">
             <div class="amount-words">
                 <strong>Amount in Words:</strong><br>
-                {{ proforma.total_amount|floatformat:2 }} Only
+                {{ proforma.total_amount|num_to_words }}
             </div>
         </div>
         <div class="totals-right">

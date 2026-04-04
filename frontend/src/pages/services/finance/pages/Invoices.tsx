@@ -4,12 +4,10 @@ import { Plus, FileText, IndianRupee, AlertCircle, List } from 'lucide-react';
 import DirectCreateTaxInvoiceModal from '../components/DirectCreateTaxInvoiceModal';
 
 import InvoiceList from '../components/InvoiceList';
-// import InvoiceForm from '../components/InvoiceForm'; // Removed - using simplified forms
-import { apiClient } from '../../../../lib/api';
+import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import FinanceCard from '../components/FinanceCard';
 import MetricCard from '../components/MetricCard';
-import { getEffectivePaymentStatus } from '../../../../utils/overdueUtils';
 
 
 interface InvoicesProps {
@@ -28,12 +26,6 @@ interface InvoiceStats {
 }
 
 const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
-  console.log('🔍 Invoices component - sessionKey:', sessionKey ? 'Present' : 'Missing');
-  console.log('🔍 Invoices component - sessionKey length:', sessionKey?.length || 0);
-
-
-
-
   const [stats, setStats] = useState<InvoiceStats>({
     totalInvoices: 0,
     totalAmount: 0,
@@ -48,65 +40,20 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
   const [invoiceFilter, setInvoiceFilter] = useState('');
 
   const fetchInvoiceStats = async () => {
-    if (!sessionKey) {
-      console.log('🔍 fetchInvoiceStats - No sessionKey available');
-      return;
-    }
-
+    if (!sessionKey) return;
     try {
       setLoading(true);
-      console.log('🔍 fetchInvoiceStats - Making API call with sessionKey');
-      
-      // Use apiClient which handles authentication correctly
-      const response = await apiClient.getFinanceInvoices({ 
-        session_key: sessionKey,
-        page_size: 1000 // Get all invoices for stats
-      });
-
-      console.log('🔍 fetchInvoiceStats - API response:', response.data);
-
-      const invoices = response.data.results || [];
-      
-      // Derive status from available fields since invoices don't have a status field
-      const processedInvoices = invoices.map((inv: any) => {
-        let derivedStatus = 'active';
-        if (inv.is_rejected) {
-          derivedStatus = 'rejected';
-        } else if (inv.payment_status === 'paid') {
-          derivedStatus = 'completed';
-        } else if (inv.payment_status === 'partially_paid') {
-          derivedStatus = 'partially_completed';
-        }
-        return { ...inv, status: derivedStatus };
-      });
-      
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-
-      const totalAmount = processedInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.total_amount || 0), 0);
-      const paidAmount = processedInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.paid_amount || 0), 0);
-      const outstandingAmount = processedInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.outstanding_amount || 0), 0);
-      
-      const overdueInvoices = processedInvoices.filter((inv: any) => 
-        getEffectivePaymentStatus(inv.payment_status, inv.invoice_date) === 'overdue'
-      ).length;
-
-      const thisMonthInvoices = processedInvoices.filter((inv: any) => {
-        const invoiceDate = new Date(inv.invoice_date);
-        return invoiceDate.getMonth() === currentMonth && invoiceDate.getFullYear() === currentYear;
-      }).length;
-
+      const response = await api.get('/api/finance/invoices/stats/');
+      const d = response.data;
       setStats({
-        totalInvoices: processedInvoices.length,
-        totalAmount,
-        paidAmount,
-        outstandingAmount,
-        overdueInvoices,
-        thisMonthInvoices,
+        totalInvoices: d.total_invoices,
+        totalAmount: d.total_amount,
+        paidAmount: d.paid_amount,
+        outstandingAmount: d.outstanding_amount,
+        overdueInvoices: d.overdue_invoices,
+        thisMonthInvoices: d.this_month_invoices,
       });
     } catch (error: any) {
-      console.error('🔍 Error fetching invoice stats:', error);
-      console.error('🔍 Error response:', error.response?.data);
       toast.error('Failed to fetch invoice statistics');
     } finally {
       setLoading(false);
@@ -120,7 +67,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
 
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 max-w-full">
 
       
       {/* Page Header */}
@@ -144,21 +91,21 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
         />
         <MetricCard
           title="Total Amount"
-          value={loading ? '...' : `₹${stats.totalAmount.toLocaleString()}`}
+          value={loading ? '...' : `₹${stats.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           subtitle="Total invoiced"
           icon={IndianRupee}
           color="green"
         />
         <MetricCard
           title="Paid Amount"
-          value={loading ? '...' : `₹${stats.paidAmount.toLocaleString()}`}
+          value={loading ? '...' : `₹${stats.paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           subtitle="Collected"
           icon={IndianRupee}
           color="emerald"
         />
         <MetricCard
           title="Outstanding"
-          value={loading ? '...' : `₹${stats.outstandingAmount.toLocaleString()}`}
+          value={loading ? '...' : `₹${stats.outstandingAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           subtitle={`${loading ? '...' : stats.overdueInvoices} overdue`}
           icon={AlertCircle}
           color="orange"

@@ -2571,7 +2571,7 @@ class Payment(models.Model):
         
         # Use gross_payment_amount if provided, otherwise fall back to amount
         amount = Decimal(str(self.gross_payment_amount)) if self.gross_payment_amount and self.gross_payment_amount > 0 else Decimal(str(self.amount)) if self.amount is not None else Decimal('0')
-        tds_percentage = Decimal(str(self.tds_rate)) if self.tds_rate is not None else Decimal(str(self.tds_percentage)) if self.tds_percentage is not None else Decimal('0')
+        tds_percentage = Decimal(str(self.tds_rate)) if self.tds_rate is not None else Decimal('0')
         tds_amount = Decimal(str(self.tds_amount)) if self.tds_amount is not None else Decimal('0')
         net_amount_received = Decimal(str(self.net_amount_received)) if self.net_amount_received is not None else Decimal('0')
         

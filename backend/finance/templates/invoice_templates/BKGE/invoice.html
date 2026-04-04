@@ -78,12 +78,6 @@ table.pt td{padding:6px 10px;border:1px solid #e2e8f0;color:#374151}
 .nthead{background:#0f766e;color:#fff;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;padding:5px 11px}
 .ntbody{padding:8px 11px;font-size:10px;color:#374151;line-height:1.6}
 
-/* signatures 2 */
-.sigs{display:flex;justify-content:space-between;margin-top:24px;gap:20px}
-.sig{flex:1;text-align:center}
-.sigspace{height:42px;border-bottom:1.5px solid #0f766e;margin-bottom:5px}
-.siglbl{font-size:9.5px;font-weight:700;color:#0f766e}
-.sigco{font-size:9px;color:#64748b}
 
 /* footer */
 .footer{background:#0f766e;color:#d1fae5;padding:8px 24px;display:flex;justify-content:space-between;font-size:8.5px;margin-top:auto}
@@ -133,24 +127,24 @@ table.pt td{padding:6px 10px;border:1px solid #e2e8f0;color:#374151}
   <div class="sc">
     <div class="sclbl">Ship To</div>
     <div class="scval">
-      {% if invoice.shipping_address %}{{ invoice.shipping_address }}
+      {% if invoice.shipping_address %}{{ invoice.shipping_address.label }}<br>{{ invoice.shipping_address.full_address }}
       {% else %}<em style="color:#94a3b8">Same as billing address</em>{% endif %}
     </div>
   </div>
-  <div class="sc" style="max-width:150px">
+  <div class="sc">
     <div class="sclbl">Details</div>
     <div class="scval">
-      <table style="width:100%;border-collapse:collapse;font-size:10px">
-        <tr><td style="color:#64748b;padding:2px 0">Due Date</td><td style="text-align:right;font-weight:600">{{ invoice.due_date|date:"d/m/Y" }}</td></tr>
-        <tr><td style="color:#64748b;padding:2px 0">GST Type</td><td style="text-align:right;font-weight:600">{{ invoice.gst_type|upper }}</td></tr>
-        {% if invoice.reference %}<tr><td style="color:#64748b;padding:2px 0">Ref</td><td style="text-align:right;font-weight:600">{{ invoice.reference }}</td></tr>{% endif %}
-      </table>
+      <table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed">
+        <tr><td style="color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;width:45%">Due Date</td><td style="text-align:right;font-weight:600;word-break:break-word;overflow-wrap:break-word">{{ invoice.due_date|date:"d/m/Y" }}</td></tr>
+        <tr><td style="color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;width:45%">GST Type</td><td style="text-align:right;font-weight:600;word-break:break-word;overflow-wrap:break-word">{{ invoice.gst_type|upper }}</td></tr>
+        {% if invoice.purchase_order %}<tr><td style="color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;width:45%">PO No.</td><td style="text-align:right;font-weight:600;word-break:break-word;overflow-wrap:break-word">{{ invoice.purchase_order.po_number }}</td></tr>{% endif %}
+                      </table>
     </div>
   </div>
 </div>
 
 <div class="comp">
-  <span><strong>Place of Supply:</strong> {{ invoice.place_of_supply|default:customer.billing_state }}</span>
+  <span>{% if invoice.shipping_address %}<strong>Place of Supply:</strong> {{ invoice.shipping_address.state }}{% else %}<strong>Place of Supply:</strong> {{ invoice.place_of_supply|default:customer.billing_state }}{% endif %}</span>
   <span><strong>Reverse Charge:</strong> {% if invoice.reverse_charge_applicable %}Yes{% else %}No{% endif %}</span>
   <span><strong>Currency:</strong> INR</span>
 </div>
@@ -199,7 +193,7 @@ table.pt td{padding:6px 10px;border:1px solid #e2e8f0;color:#374151}
       <div class="wlbl">Amount in Words</div>
       <div class="wval">{{ invoice.total_amount|num_to_words }}</div>
       <div style="margin-top:8px;font-size:9px;color:#64748b">
-        <strong>Place of Supply:</strong> {{ invoice.place_of_supply|default:customer.billing_state }}<br>
+        {% if invoice.shipping_address %}<strong>Place of Supply:</strong> {{ invoice.shipping_address.state }}{% else %}<strong>Place of Supply:</strong> {{ invoice.place_of_supply|default:customer.billing_state }}{% endif %}<br>
         <strong>Reverse Charge:</strong> {% if invoice.reverse_charge_applicable %}Applicable{% else %}Not Applicable{% endif %}
       </div>
     </div>
@@ -224,20 +218,6 @@ table.pt td{padding:6px 10px;border:1px solid #e2e8f0;color:#374151}
     </table>
   </div>
 
-  {% if invoice.terms_and_conditions %}
-  <div class="pt-title">Payment Terms</div>
-  <table class="pt">
-    <thead><tr><th style="width:55%">Terms</th><th style="width:20%">Timeline</th><th style="width:25%">Amount (₹)</th></tr></thead>
-    <tbody>
-      <tr>
-        <td>{{ invoice.terms_and_conditions|truncatechars:100 }}</td>
-        <td>On Confirmation</td>
-        <td style="font-weight:600">{{ invoice.total_amount|floatformat:2 }}</td>
-      </tr>
-    </tbody>
-  </table>
-  {% endif %}
-
   {% if invoice.notes or invoice.terms_and_conditions %}
   <div class="nt">
     {% if invoice.notes %}
@@ -249,24 +229,11 @@ table.pt td{padding:6px 10px;border:1px solid #e2e8f0;color:#374151}
   </div>
   {% endif %}
 
-  <div class="sigs">
-    <div class="sig">
-      <div class="sigspace"></div>
-      <div class="siglbl">Prepared By</div>
-      <div class="sigco">Accounts Team</div>
-    </div>
-    <div class="sig">
-      <div class="sigspace"></div>
-      <div class="siglbl">Authorised Signatory</div>
-      <div class="sigco">{{ company.name }}</div>
-    </div>
-  </div>
-
 </div>
 
 <div class="footer">
   <span>{{ company.name }} | GSTIN: {{ company_gstin|default:"N/A" }}</span>
-  <span>Computer-generated document</span>
+  <span>This invoice was generated with the help of <a href="https://www.athenas.co.in/accounts/" style="color:inherit;text-decoration:none">ᗩTᕼᙓᑎᗩ'𝔖</a></span>
   <span>{{ invoice.invoice_date|date:"d M Y" }}</span>
 </div>
 

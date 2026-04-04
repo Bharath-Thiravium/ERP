@@ -93,22 +93,26 @@ class InvoicePDFService:
     def _prepare_context(self, invoice):
         """Prepare context data for template rendering"""
         try:
-            # Import the new service
             from .invoice_service import invoice_pdf_service
-            
-            # Use the new service to prepare context with proper shipping address handling
             context = invoice_pdf_service.prepare_invoice_context(invoice)
-            
             return context
-            
         except Exception as e:
-            logger.error(f"Error preparing context for invoice {invoice.invoice_number}: {str(e)}")
-            # Fallback to basic context
+            logger.error(f"Error preparing context for invoice {getattr(invoice, 'invoice_number', '?')}: {str(e)}")
+            # Fallback — still include reference_details so templates render correctly
+            try:
+                from .invoice_service import invoice_pdf_service
+                ref_details = invoice_pdf_service._get_reference_details(invoice)
+            except Exception:
+                ref_details = {'manual_reference': getattr(invoice, 'reference', ''), 'quotation': None, 'purchase_order': None, 'previous_invoices': []}
             return {
                 'invoice': invoice,
                 'company': invoice.company,
                 'customer': invoice.customer,
                 'items': invoice.invoice_items.all().order_by('line_number'),
+                'reference_details': ref_details,
+                'company_gstin': getattr(invoice, 'company_gstin', None) or getattr(invoice.company, 'gst_number', ''),
+                'logo_path': self._get_logo_path(invoice.company),
+                'logo_url': self._get_logo_url(invoice.company),
             }
     
     def _generate_pdf_from_html(self, html_content):

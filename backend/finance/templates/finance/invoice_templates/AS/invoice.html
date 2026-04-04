@@ -36,9 +36,9 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#1a1a2e;backgro
 .pname{font-size:12px;font-weight:700;margin-bottom:2px}
 .paddr{font-size:10px;line-height:1.6;color:#374151}
 .pgstin{font-size:9px;color:#6b7280;margin-top:3px}
-.drow{display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px solid #f4f5f8}
+.drow{display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px solid #f4f5f8;gap:6px}
 .drow:last-child{border-bottom:none}
-.dl{color:#6b7280}.dv{font-weight:600}
+.dl{color:#6b7280;white-space:nowrap;flex-shrink:0}.dv{font-weight:600;text-align:right;word-break:break-word;overflow-wrap:break-word}
 
 /* table */
 table.items{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:10px}
@@ -70,13 +70,6 @@ table.items tbody td.c{text-align:center}
 .nttitle{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#7a8099;margin-bottom:4px}
 .ntbody{font-size:10px;color:#374151;line-height:1.6}
 
-/* signature */
-.sigwrap{display:flex;justify-content:flex-end;margin-top:24px}
-.sig{width:190px;text-align:center}
-.sigspace{height:40px}
-.sigline{border-top:1.5px solid #1a1a2e;margin-bottom:5px}
-.siglbl{font-size:9.5px;font-weight:700}
-.sigco{font-size:9px;color:#6b7280}
 
 /* footer */
 .footer{background:#f4f5f9;border-top:1px solid #dde2ee;padding:8px 24px;display:flex;justify-content:space-between;font-size:8.5px;color:#9ca3af;margin-top:auto}
@@ -132,7 +125,7 @@ table.items tbody td.c{text-align:center}
     <div class="pbox">
       <div class="plbl">Ship To</div>
       {% if invoice.shipping_address %}
-        <div class="paddr">{{ invoice.shipping_address }}</div>
+        <div class="paddr"><strong>{{ invoice.shipping_address.label }}</strong><br>{{ invoice.shipping_address.full_address }}</div>
       {% else %}
         <div class="paddr" style="color:#9ca3af;font-style:italic">Same as billing address</div>
       {% endif %}
@@ -143,11 +136,11 @@ table.items tbody td.c{text-align:center}
       <div class="drow"><span class="dl">Date</span><span class="dv">{{ invoice.invoice_date|date:"d/m/Y" }}</span></div>
       <div class="drow"><span class="dl">Due Date</span><span class="dv">{{ invoice.due_date|date:"d/m/Y" }}</span></div>
       <div class="drow"><span class="dl">GST Type</span><span class="dv">{{ invoice.gst_type|upper }}</span></div>
-      {% if invoice.reference %}<div class="drow"><span class="dl">Ref</span><span class="dv">{{ invoice.reference }}</span></div>{% endif %}
-    </div>
+      {% if invoice.purchase_order %}<div class="drow"><span class="dl">PO No.</span><span class="dv">{{ invoice.purchase_order.po_number }}</span></div>{% endif %}
+                </div>
   </div>
 
-  <table class="items">
+    <table class="items">
     <thead>
       <tr>
         <th style="width:4%" class="c">#</th>
@@ -215,19 +208,13 @@ table.items tbody td.c{text-align:center}
   </div>
   {% endif %}
 
-  <div class="sigwrap">
-    <div class="sig">
-      <div class="sigspace"></div>
-      <div class="sigline"></div>
-      <div class="siglbl">Authorised Signatory</div>
-      <div class="sigco">{{ company.name }}</div>
-    </div>
+  </div>
   </div>
 
 </div>
 
 <div class="footer">
-  <span>Computer-generated document.</span>
+  <span>This invoice was generated with the help of <a href="https://www.athenas.co.in/accounts/" style="color:inherit;text-decoration:none">ᗩTᕼᙓᑎᗩ'𝔖</a></span>
   <span class="gstin">GSTIN: {{ company_gstin|default:"N/A" }}</span>
   <span>{{ invoice.invoice_date|date:"d M Y" }}</span>
 </div>

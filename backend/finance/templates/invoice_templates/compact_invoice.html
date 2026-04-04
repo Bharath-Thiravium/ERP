@@ -1,3 +1,4 @@
+{% load finance_extras %}
 <!DOCTYPE html>
 <html>
 <head>
@@ -216,7 +217,33 @@
             <td class="gst-label">Reverse Charge</td>
             <td>{% if invoice.reverse_charge_applicable %}Yes{% else %}No{% endif %}</td>
         </tr>
+        {% if invoice.reference or reference_details.quotation or reference_details.purchase_order %}
+        <tr>
+            <td class="gst-label">Reference</td>
+            <td colspan="7" style="font-size:6.5pt">
+                {% if invoice.reference %}{{ invoice.reference }}{% endif %}
+                {% if reference_details.quotation %} | Quotation: <strong>{{ reference_details.quotation.number }}</strong> ({{ reference_details.quotation.date|date:"d/m/Y" }}, ₹{{ reference_details.quotation.total_amount|floatformat:2 }}){% endif %}
+                {% if reference_details.purchase_order %} | PO: <strong>{{ reference_details.purchase_order.po_number }}</strong> / {{ reference_details.purchase_order.internal_po_number }} ({{ reference_details.purchase_order.po_date|date:"d/m/Y" }}, Balance: ₹{{ reference_details.purchase_order.remaining_invoice_balance|floatformat:2 }}){% endif %}
+            </td>
+        </tr>
+        {% endif %}
     </table>
+
+    {% if reference_details.previous_invoices %}
+    <table class="gst-info" style="margin-bottom:8px">
+        <tr><td class="gst-label" colspan="8" style="font-size:7pt">Previous Invoices</td></tr>
+        {% for prev in reference_details.previous_invoices %}
+        <tr>
+            <td class="gst-label">{{ prev.invoice_number }}</td>
+            <td>{{ prev.invoice_date|date:"d/m/Y" }}</td>
+            <td colspan="2">₹{{ prev.total_amount|floatformat:2 }}</td>
+            <td colspan="2">{{ prev.payment_status|capfirst }}</td>
+            <td>Paid: ₹{{ prev.paid_amount|floatformat:2 }}</td>
+            <td>Due: ₹{{ prev.outstanding_amount|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
 
     <!-- Customer Information -->
     <table class="customer-info">
@@ -332,7 +359,7 @@
 
     <!-- Amount in Words -->
     <div class="amount-words">
-        <strong>Amount in Words:</strong> {{ invoice.total_amount|floatformat:2 }} Only
+        <strong>Amount in Words:</strong> {{ invoice.total_amount|num_to_words }}
     </div>
 
     <!-- Declaration -->

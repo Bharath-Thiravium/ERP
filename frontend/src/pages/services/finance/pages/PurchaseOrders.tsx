@@ -370,6 +370,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
         <PurchaseOrderView
           purchaseOrder={selectedPO}
           onClose={handleViewClose}
+          sessionKey={sessionKey || ''}
         />
       )}
 

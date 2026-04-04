@@ -571,31 +571,36 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                         <div className="flex items-center">
                           <User className="w-4 h-4 text-gray-400 mr-2" />
                           <div>
-                            {/* Customer Name with Tooltip - Only show tooltip if PO has specific shipping address */}
-                            {po.shipping_address ? (
-                              <div 
-                                className="text-sm font-medium text-blue-600 dark:text-blue-400 cursor-pointer border-b border-dotted border-blue-600 dark:border-blue-400 hover:text-blue-800 dark:hover:text-blue-300 relative group"
-                                onMouseEnter={(e) => {
-                                  setHoveredPO(`customer-${po.id}`)
+                            {/* Customer Name */}
+                            <div
+                              className="text-sm font-medium text-blue-600 dark:text-blue-400 cursor-pointer border-b border-dotted border-blue-600 dark:border-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                              onMouseEnter={(e) => {
+                                setHoveredPO(`customer-${po.id}`)
+                                setMousePosition({ x: e.clientX, y: e.clientY })
+                              }}
+                              onMouseLeave={() => setHoveredPO(null)}
+                              onMouseMove={(e) => {
+                                if (hoveredPO === `customer-${po.id}`) {
                                   setMousePosition({ x: e.clientX, y: e.clientY })
-                                }}
-                                onMouseLeave={() => setHoveredPO(null)}
-                                onMouseMove={(e) => {
-                                  if (hoveredPO === `customer-${po.id}`) {
-                                    setMousePosition({ x: e.clientX, y: e.clientY })
-                                  }
-                                }}
-                              >
-                                {po.customer_name ? po.customer_name.replace(/[<>"'&]/g, '') : ''}
+                                }
+                              }}
+                            >
+                              {po.customer_name ? po.customer_name.replace(/[<>"'&]/g, '') : ''}
+                            </div>
+                            {/* Shipping Address — same style as InvoiceList */}
+                            {po.shipping_address_text ? (
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[200px]">
+                                <span className="mr-1">📦</span>
+                                {po.shipping_address_text}
                               </div>
                             ) : (
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                {po.customer_name ? po.customer_name.replace(/[<>"'&]/g, '') : ''}
+                              <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate max-w-[200px] italic">
+                                Ship: same as billing
                               </div>
                             )}
                             {po.customer_project_area && (
-                              <div className="text-sm text-gray-500 dark:text-gray-400">
-                                Project: {po.customer_project_area}
+                              <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
+                                {po.customer_project_area}
                               </div>
                             )}
                           </div>

@@ -5,6 +5,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+@shared_task
+def update_overdue_invoice_statuses():
+    """Daily task: mark unpaid/partially_paid invoices with past due_date as overdue"""
+    from .models import Invoice
+    today = timezone.now().date()
+    updated = Invoice.objects.filter(
+        payment_status__in=['unpaid', 'partially_paid'],
+        due_date__lt=today,
+        is_rejected=False,
+    ).update(payment_status='overdue')
+    logger.info(f"Marked {updated} invoices as overdue")
+    return f"{updated} invoices marked overdue"
+
 @shared_task
 def process_email_automations_task():
     """Celery task to process email automations for all companies"""

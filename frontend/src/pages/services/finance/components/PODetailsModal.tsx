@@ -106,7 +106,6 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: `PO Report - ${poData?.internal_po_number}` })
       } else {
-        // Fallback: download
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url

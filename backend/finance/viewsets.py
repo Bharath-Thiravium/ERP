@@ -2,8 +2,12 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import InvalidPage
+from django.db import IntegrityError
 from django.db.models import Q, Sum
+from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
 import logging
@@ -74,6 +78,52 @@ class CustomerViewSet(CompanyScopedModelViewSet):
         elif self.action == 'retrieve':
             return CustomerDetailSerializer
         return CustomerListSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Override create with comprehensive error handling"""
+        try:
+            return super().create(request, *args, **kwargs)
+        except (ValidationError, DjangoValidationError) as e:
+            logger.warning(f"Customer creation validation failed: {e}")
+            errors = getattr(e, 'detail', None) or getattr(e, 'message_dict', None) or {'error': str(e)}
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        except IntegrityError as e:
+            logger.warning(f"Customer creation integrity failed: {e}")
+            error_msg = str(e).lower()
+            if 'unique' in error_msg or 'duplicate' in error_msg:
+                if 'customer_code' in error_msg:
+                    return Response(
+                        {'customer_code': ['Customer code already exists. Please try again.']},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                elif 'email' in error_msg:
+                    return Response(
+                        {'email': ['A customer with this email already exists.']},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                elif 'gstin' in error_msg:
+                    return Response(
+                        {'gstin': ['A customer with this GSTIN already exists.']},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                else:
+                    return Response(
+                        {'error': 'A customer with similar details already exists.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            return Response(
+                {'error': 'Database integrity error. Please check your input.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.exception("Customer creation failed in CustomerViewSet")
+            return Response(
+                {
+                    'error': 'Customer creation failed',
+                    'message': str(e) if settings.DEBUG else 'An unexpected error occurred. Please try again.'
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -221,6 +271,22 @@ class QuotationViewSet(CompanyScopedModelViewSet):
         if customer_id:
             queryset = queryset.filter(customer_id=customer_id)
 
+        # Financial Year Filter - Only apply for list action
+        if self.action == 'list':
+            financial_year = self.request.query_params.get('financial_year', '')
+            if financial_year == 'all':
+                # Explicitly show all years
+                pass
+            elif financial_year:
+                # Filter by specific FY
+                from .financial_year_utils import apply_financial_year_filter
+                queryset = apply_financial_year_filter(queryset, 'quotation_date', financial_year)
+            else:
+                # Default: Show current FY only for list view
+                from .financial_year_utils import get_current_financial_year, apply_financial_year_filter
+                current_fy = get_current_financial_year()
+                queryset = apply_financial_year_filter(queryset, 'quotation_date', current_fy)
+
         return queryset.order_by('-created_at')
 
     @action(detail=True, methods=['get'])
@@ -275,6 +341,58 @@ class QuotationViewSet(CompanyScopedModelViewSet):
             return Response({'error': 'This quotation cannot be rejected'}, status=400)
         quotation.reject_quotation(rejection_reason, request.service_user)
         return Response({'message': 'Quotation rejected successfully', 'quotation_number': quotation.quotation_number})
+    
+    @action(detail=True, methods=['post'])
+    def copy(self, request, pk=None):
+        """Copy/duplicate an existing quotation with new number, date, and validity"""
+        from .models import QuotationItem
+        
+        original_quotation = self.get_object()
+        
+        try:
+            # Create new quotation with copied data
+            new_quotation = Quotation.objects.create(
+                company=request.service_user.company,
+                created_by=request.service_user,
+                customer=original_quotation.customer,
+                quotation_date=timezone.now().date(),
+                valid_until=timezone.now().date() + timedelta(days=30),
+                reference=original_quotation.reference,
+                shipping_address=original_quotation.shipping_address,
+                discount_percentage=original_quotation.discount_percentage,
+                discount_amount=original_quotation.discount_amount,
+                shipping_charges=original_quotation.shipping_charges,
+                other_charges=original_quotation.other_charges,
+                notes=original_quotation.notes,
+                terms_and_conditions=original_quotation.terms_and_conditions,
+                status='draft'
+            )
+
+            # Copy quotation items
+            original_items = original_quotation.quotation_items.all()
+            for index, item in enumerate(original_items, 1):
+                new_item = QuotationItem(
+                    quotation=new_quotation,
+                    product=item.product,
+                    quantity=item.quantity,
+                    unit_price=item.unit_price,
+                    line_number=index
+                )
+                new_item.save(skip_totals_calculation=True)
+
+            # Calculate totals once after all items are created
+            new_quotation.calculate_totals()
+
+            # Return the new quotation details
+            serializer = QuotationDetailSerializer(new_quotation)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Quotation copy failed for quotation {original_quotation.id}: {str(e)}")
+            return Response(
+                {'error': f'Failed to copy quotation: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class PurchaseOrderViewSet(CompanyScopedModelViewSet):
@@ -320,6 +438,22 @@ class PurchaseOrderViewSet(CompanyScopedModelViewSet):
         customer_id = self.request.query_params.get('customer', '')
         if customer_id:
             queryset = queryset.filter(customer_id=customer_id)
+
+        # Financial Year Filter - Only apply for list action, not retrieve
+        if self.action == 'list':
+            financial_year = self.request.query_params.get('financial_year', '')
+            if financial_year == 'all':
+                # Explicitly show all years
+                pass
+            elif financial_year:
+                # Filter by specific FY
+                from .financial_year_utils import apply_financial_year_filter
+                queryset = apply_financial_year_filter(queryset, 'po_date', financial_year)
+            else:
+                # Default: Show current FY only for list view
+                from .financial_year_utils import get_current_financial_year, apply_financial_year_filter
+                current_fy = get_current_financial_year()
+                queryset = apply_financial_year_filter(queryset, 'po_date', current_fy)
 
         return queryset.order_by('-created_at')
 
@@ -430,6 +564,22 @@ class ProformaInvoiceViewSet(CompanyScopedModelViewSet):
         purchase_order_id = self.request.query_params.get('purchase_order_id', '')
         if purchase_order_id:
             queryset = queryset.filter(purchase_order_id=purchase_order_id)
+
+        # Financial Year Filter - Only apply for list action
+        if self.action == 'list':
+            financial_year = self.request.query_params.get('financial_year', '')
+            if financial_year == 'all':
+                # Explicitly show all years
+                pass
+            elif financial_year:
+                # Filter by specific FY
+                from .financial_year_utils import apply_financial_year_filter
+                queryset = apply_financial_year_filter(queryset, 'proforma_date', financial_year)
+            else:
+                # Default: Show current FY only for list view
+                from .financial_year_utils import get_current_financial_year, apply_financial_year_filter
+                current_fy = get_current_financial_year()
+                queryset = apply_financial_year_filter(queryset, 'proforma_date', current_fy)
 
         return queryset.order_by('-created_at')
 
@@ -561,6 +711,22 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
         purchase_order_id = self.request.query_params.get('purchase_order_id', '')
         if purchase_order_id:
             queryset = queryset.filter(purchase_order_id=purchase_order_id)
+
+        # Financial Year Filter - Only apply for list and stats actions
+        if self.action in ['list', 'stats']:
+            financial_year = self.request.query_params.get('financial_year', '')
+            if financial_year == 'all':
+                # Explicitly show all years
+                pass
+            elif financial_year:
+                # Filter by specific FY
+                from .financial_year_utils import apply_financial_year_filter
+                queryset = apply_financial_year_filter(queryset, 'invoice_date', financial_year)
+            else:
+                # Default: Show current FY only for list view
+                from .financial_year_utils import get_current_financial_year, apply_financial_year_filter
+                current_fy = get_current_financial_year()
+                queryset = apply_financial_year_filter(queryset, 'invoice_date', current_fy)
 
         allowed_ordering = {"invoice_date", "-invoice_date", "created_at", "-created_at", "total_amount", "-total_amount", "outstanding_amount", "-outstanding_amount", "payment_status", "-payment_status"}
         ordering = self.request.query_params.get("ordering", "-created_at")
@@ -759,6 +925,14 @@ class PaymentViewSet(CompanyScopedModelViewSet):
             'customer', 'invoice', 'created_by'
         )
         
+        # Exclude TDS-only payments from main payment list UNLESS filtering by specific invoice
+        invoice_id = self.request.query_params.get('invoice', '')
+        proforma_id = self.request.query_params.get('proforma_invoice', '')
+        
+        if not invoice_id and not proforma_id:
+            # Main payment list - exclude TDS-only payments
+            queryset = queryset.exclude(payment_type='tds_only')
+        
         # Add search functionality
         search = self.request.query_params.get('search', '')
         if search:
@@ -786,6 +960,21 @@ class PaymentViewSet(CompanyScopedModelViewSet):
         invoice_id = self.request.query_params.get('invoice', '')
         if invoice_id:
             queryset = queryset.filter(invoice_id=invoice_id)
+
+        # Financial Year Filter - Default to current FY
+        financial_year = self.request.query_params.get('financial_year', '')
+        if financial_year == 'all':
+            # Explicitly show all years
+            pass
+        elif financial_year:
+            # Filter by specific FY
+            from .financial_year_utils import apply_financial_year_filter
+            queryset = apply_financial_year_filter(queryset, 'payment_date', financial_year)
+        else:
+            # Default: Show current FY only
+            from .financial_year_utils import get_current_financial_year, apply_financial_year_filter
+            current_fy = get_current_financial_year()
+            queryset = apply_financial_year_filter(queryset, 'payment_date', current_fy)
 
         return queryset.order_by('-created_at')
 

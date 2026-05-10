@@ -311,7 +311,16 @@
                     {% if item.description %}<br><small>{{ item.description }}</small>{% endif %}
                 </td>
                 <td style="text-align: center;">{{ item.hsn_sac_code|default:"N/A" }}</td>
-                <td style="text-align: right;">{{ item.quantity|floatformat:2 }}</td>
+                <td style="text-align: right;">
+                    {% if item.claimed_quantity_display %}
+                        {{ item.claimed_quantity_display }}
+                        {% if item.is_claimed %}
+                            <span style="color: #10b981; font-weight: bold; font-size: 10px; margin-left: 4px;">✓ CLAIMED</span>
+                        {% endif %}
+                    {% else %}
+                        {{ item.quantity|floatformat:2 }}
+                    {% endif %}
+                </td>
                 <td style="text-align: center;">{{ item.unit }}</td>
                 <td style="text-align: right;">₹{{ item.unit_price|floatformat:2 }}</td>
                 <td style="text-align: right;">-</td>

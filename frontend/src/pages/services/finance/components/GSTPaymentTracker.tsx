@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { apiClient } from '../../../../lib/api'
-import { RefreshCw, CheckCircle, Clock, XCircle, Filter } from 'lucide-react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import api from '../../../../lib/api'
+import { RefreshCw, CheckCircle, Clock, XCircle, Filter, Search, ChevronUp, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
+import ConfirmDialog from '../../../../components/ui/ConfirmDialog'
 
 interface Invoice {
   id: number
@@ -45,12 +46,16 @@ export const GSTPaymentTracker: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [filterStatus, setFilterStatus] = useState<string>('pending')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [sortField, setSortField] = useState<'invoice_date' | 'customer_name' | 'total_tax' | 'invoice_number'>('invoice_date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [markModal, setMarkModal] = useState<MarkModalState | null>(null)
+  const [confirmSave, setConfirmSave] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await apiClient.getFinanceInvoices({ page_size: 500 })
+      const res = await api.get('/api/finance/invoices/', { params: { page_size: 500 } })
       const all = (res.data.results || []).filter((inv: Invoice) => !inv.is_rejected && inv.gst_type !== 'exempt')
       setInvoices(all)
     } catch {
@@ -79,13 +84,14 @@ export const GSTPaymentTracker: React.FC = () => {
     setSaving(true)
     const invoice = invoices.find(i => i.id === markModal.invoiceId)!
     try {
-      await apiClient.markInvoiceGSTPayment(markModal.invoiceId, {
+      await api.post(`/api/finance/invoices/${markModal.invoiceId}/mark_gst_payment/`, {
         gst_payment_status: markModal.status,
         gst_paid_date: markModal.status === 'paid' ? markModal.paidDate : undefined,
         gst_payment_reference: markModal.reference,
       })
       toast.success(`GST marked as ${markModal.status} for ${invoice.invoice_number}`)
       setMarkModal(null)
+      setConfirmSave(false)
       fetchData()
     } catch {
       toast.error('Failed to update GST payment status')
@@ -94,7 +100,34 @@ export const GSTPaymentTracker: React.FC = () => {
     }
   }
 
-  const filtered = filterStatus === 'all' ? invoices : invoices.filter(inv => inv.gst_payment_status === filterStatus)
+  const handleSort = (field: typeof sortField) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortField(field); setSortDir('asc') }
+  }
+
+  const SortIcon = ({ field }: { field: typeof sortField }) => (
+    sortField === field
+      ? sortDir === 'asc' ? <ChevronUp className="w-3 h-3 inline ml-1" /> : <ChevronDown className="w-3 h-3 inline ml-1" />
+      : <ChevronUp className="w-3 h-3 inline ml-1 opacity-30" />
+  )
+
+  const filtered = useMemo(() => {
+    let result = filterStatus === 'all' ? invoices : invoices.filter(inv => inv.gst_payment_status === filterStatus)
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase()
+      result = result.filter(inv =>
+        inv.invoice_number.toLowerCase().includes(q) ||
+        inv.customer_name.toLowerCase().includes(q)
+      )
+    }
+    return [...result].sort((a, b) => {
+      let av: any = a[sortField], bv: any = b[sortField]
+      if (sortField === 'total_tax') { av = Number(av); bv = Number(bv) }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1
+      if (av > bv) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [invoices, filterStatus, searchTerm, sortField, sortDir])
 
   const pendingInvoices = invoices.filter(i => i.gst_payment_status === 'pending')
   const paidInvoices = invoices.filter(i => i.gst_payment_status === 'paid')
@@ -135,9 +168,9 @@ export const GSTPaymentTracker: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter + Refresh */}
-      <div className="flex items-center gap-2">
-        <Filter className="h-4 w-4 text-gray-400" />
+      {/* Filter + Search + Refresh */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Filter className="h-4 w-4 text-gray-400 shrink-0" />
         {(['all', 'pending', 'paid', 'not_applicable'] as const).map(s => {
             const count = s === 'all' ? invoices.length : invoices.filter(i => i.gst_payment_status === s).length
             return (
@@ -153,6 +186,16 @@ export const GSTPaymentTracker: React.FC = () => {
               </button>
             )
           })}
+        <div className="relative ml-2">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search invoice / customer..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="pl-7 pr-3 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 w-52"
+          />
+        </div>
         <button onClick={handleRefresh} className="ml-auto p-1.5 rounded hover:bg-gray-100">
           <RefreshCw className={`h-4 w-4 text-gray-500 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
@@ -163,10 +206,10 @@ export const GSTPaymentTracker: React.FC = () => {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-4 py-2 font-medium text-gray-600">Invoice</th>
-              <th className="text-left px-4 py-2 font-medium text-gray-600">Customer</th>
-              <th className="text-left px-4 py-2 font-medium text-gray-600">Date</th>
-              <th className="text-right px-4 py-2 font-medium text-gray-600">GST Amount</th>
+              <th onClick={() => handleSort('invoice_number')} className="text-left px-4 py-2 font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none">Invoice <SortIcon field="invoice_number" /></th>
+              <th onClick={() => handleSort('customer_name')} className="text-left px-4 py-2 font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none">Customer <SortIcon field="customer_name" /></th>
+              <th onClick={() => handleSort('invoice_date')} className="text-left px-4 py-2 font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none">Date <SortIcon field="invoice_date" /></th>
+              <th onClick={() => handleSort('total_tax')} className="text-right px-4 py-2 font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none">GST Amount <SortIcon field="total_tax" /></th>
               <th className="text-left px-4 py-2 font-medium text-gray-600">Type</th>
               <th className="text-left px-4 py-2 font-medium text-gray-600">GST Status</th>
               <th className="text-left px-4 py-2 font-medium text-gray-600">Paid Date</th>
@@ -273,11 +316,11 @@ export const GSTPaymentTracker: React.FC = () => {
                               Cancel
                             </button>
                             <button
-                              onClick={handleSave}
+                              onClick={() => setConfirmSave(true)}
                               disabled={saving}
                               className="py-1.5 px-4 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
                             >
-                              {saving ? 'Saving...' : 'Save'}
+                              Save
                             </button>
                           </div>
                         </div>
@@ -291,6 +334,18 @@ export const GSTPaymentTracker: React.FC = () => {
         </table>
       </div>
 
+      <ConfirmDialog
+        isOpen={confirmSave}
+        title="Update GST Payment Status"
+        message={`Mark invoice ${invoices.find(i => i.id === markModal?.invoiceId)?.invoice_number} GST as "${markModal?.status}"? This will update the compliance record.`}
+        confirmLabel={saving ? 'Saving...' : 'Yes, Update'}
+        cancelLabel="Cancel"
+        variant="info"
+        onConfirm={handleSave}
+        onCancel={() => setConfirmSave(false)}
+      />
     </div>
   )
 }
+
+

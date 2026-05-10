@@ -62,6 +62,7 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
   const [pendingLoading, setPendingLoading] = useState(false);
   const [includeTDS, setIncludeTDS] = useState(false);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
+  const [downloadingLedgerPDF, setDownloadingLedgerPDF] = useState(false);
 
   // Fetch customers and overall metrics
   const fetchCustomers = async () => {
@@ -173,12 +174,37 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
     }
   };
 
+  const downloadLedgerPDF = async () => {
+    if (!selectedCustomer) return;
+    try {
+      setDownloadingLedgerPDF(true);
+      const params: any = { customer_id: selectedCustomer };
+      if (dateRange.start_date) params.start_date = dateRange.start_date;
+      if (dateRange.end_date) params.end_date = dateRange.end_date;
+
+      const response = await apiClient.downloadCustomerLedgerPDF(params);
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Customer_Ledger_${ledgerData?.customer?.name || 'Customer'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Ledger PDF downloaded successfully');
+    } catch {
+      toast.error('Failed to download ledger PDF');
+    } finally {
+      setDownloadingLedgerPDF(false);
+    }
+  };
+
   const getDocumentIcon = (documentType: string) => {
     switch (documentType.toLowerCase()) {
       case 'invoice':
         return <FileText className="w-4 h-4 text-blue-500" />;
       case 'payment':
         return <CreditCard className="w-4 h-4 text-green-500" />;
+      case 'tds':
+        return <IndianRupee className="w-4 h-4 text-purple-500" />;
       case 'credit_note':
         return <TrendingDown className="w-4 h-4 text-red-500" />;
       case 'debit_note':
@@ -378,6 +404,21 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
         </div>
       )}
 
+      {activeTab === 'ledger' && selectedCustomer && ledgerData && (
+        <FinanceCard>
+          <div className="flex items-center justify-end">
+            <button
+              onClick={downloadLedgerPDF}
+              disabled={downloadingLedgerPDF}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" />
+              {downloadingLedgerPDF ? 'Generating...' : 'Download Complete Ledger PDF'}
+            </button>
+          </div>
+        </FinanceCard>
+      )}
+
       {/* Customer Information */}
       {activeTab === 'ledger' && ledgerData && (
         <FinanceCard className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-700 border-blue-200 dark:border-gray-600">
@@ -453,6 +494,13 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-900 dark:text-white">{entry.description}</div>
+                        {entry.document_type.toLowerCase() === 'payment' && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {entry.credit_amount > 0 && (
+                              <span className="text-purple-600 dark:text-purple-400">💡 Check if TDS was deducted</span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="text-sm font-medium text-red-600">

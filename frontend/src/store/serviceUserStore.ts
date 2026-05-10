@@ -276,7 +276,13 @@ export const useServiceUserStore = create<ServiceUserState>()(
         isAuthenticated: state.isAuthenticated,
         sessionExpiry: state.sessionExpiry,
         lastActivity: state.lastActivity
-      })
+      }),
+      onRehydrateStorage: () => (state) => {
+        // Restore session key to sessionStorage when store rehydrates
+        if (state?.sessionKey && state?.isAuthenticated) {
+          sessionStorage.setItem('service_session_key', state.sessionKey)
+        }
+      }
     }
   )
 )

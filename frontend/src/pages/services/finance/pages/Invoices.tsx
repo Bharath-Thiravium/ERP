@@ -8,6 +8,8 @@ import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import FinanceCard from '../components/FinanceCard';
 import MetricCard from '../components/MetricCard';
+import FinancialYearFilter from '../components/FinancialYearFilter';
+import { getCurrentFY } from '../../../../utils/financialYearUtils';
 
 
 interface InvoicesProps {
@@ -38,12 +40,19 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
   const [showDirectInvoiceModal, setShowDirectInvoiceModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [invoiceFilter, setInvoiceFilter] = useState('');
+  const [selectedFY, setSelectedFY] = useState<string>(getCurrentFY());
 
   const fetchInvoiceStats = async () => {
     if (!sessionKey) return;
     try {
       setLoading(true);
-      const response = await api.get('/api/finance/invoices/stats/');
+      const params: Record<string, string> = {};
+      if (selectedFY) {
+        params.financial_year = selectedFY;
+      } else {
+        params.financial_year = 'all';
+      }
+      const response = await api.get('/api/finance/invoices/stats/', { params });
       const d = response.data;
       setStats({
         totalInvoices: d.total_invoices,
@@ -62,7 +71,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
 
   useEffect(() => {
     fetchInvoiceStats();
-  }, [sessionKey]);
+  }, [sessionKey, selectedFY]);
 
 
 
@@ -72,12 +81,20 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
       
       {/* Page Header */}
       <FinanceCard>
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-          Invoices
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Manage your invoices and track payments
-        </p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+              Invoices
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">
+              Manage your invoices and track payments
+            </p>
+          </div>
+          <FinancialYearFilter
+            selectedYear={selectedFY}
+            onYearChange={setSelectedFY}
+          />
+        </div>
       </FinanceCard>
 
       {/* Statistics Cards */}
@@ -176,9 +193,10 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
 
       {/* Invoice List */}
       <InvoiceList
-        key={`${refreshKey}-${invoiceFilter}`}
+        key={`${refreshKey}-${invoiceFilter}-${selectedFY}`}
         sessionKey={sessionKey}
         initialPaymentStatus={invoiceFilter}
+        selectedFY={selectedFY}
       />
 
       {/* Direct Invoice Modal */}

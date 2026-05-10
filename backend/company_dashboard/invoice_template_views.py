@@ -35,20 +35,39 @@ class InvoiceTemplateSettingsView(APIView):
 
     def post(self, request):
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
             company = _get_company(request)
             if not company:
                 return Response({'success': False, 'error': 'No company found'}, status=status.HTTP_403_FORBIDDEN)
-            settings, _ = CompanyQuotationTemplateSettings.objects.get_or_create(
+            
+            logger.info(f"Updating invoice template for company: {company.name} (ID: {company.id})")
+            logger.info(f"Request data: {request.data}")
+            
+            settings, created = CompanyQuotationTemplateSettings.objects.get_or_create(
                 company=company,
                 defaults={f: 'AS' for f in ['selected_template', 'selected_po_template', 'selected_proforma_template', 'selected_invoice_template']}
             )
+            
+            logger.info(f"Settings {'created' if created else 'found'} for company {company.name}")
+            logger.info(f"Current invoice template: {settings.selected_invoice_template}")
+            
             serializer = CompanyQuotationTemplateSettingsSerializer(settings, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
                 updated = serializer.instance
+                logger.info(f"Successfully updated invoice template to: {updated.selected_invoice_template}")
                 return Response({'success': True, 'data': serializer.data, 'message': f'Invoice template updated to {dict(CompanyQuotationTemplateSettings.TEMPLATE_CHOICES)[updated.selected_invoice_template]}'})
+            
+            logger.error(f"Validation errors: {serializer.errors}")
             return Response({'success': False, 'errors': serializer.errors, 'message': 'Invalid template settings'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            import logging
+            import traceback
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error updating invoice template: {str(e)}")
+            logger.error(traceback.format_exc())
             return Response({'success': False, 'error': str(e), 'message': 'Failed to update invoice template settings'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

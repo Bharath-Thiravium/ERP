@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, FileText, User, Calendar, MapPin, Package, IndianRupee, Receipt, TrendingUp, AlertCircle, CheckCircle, BarChart3, DollarSign, Download, Share2 } from 'lucide-react'
+import { X, FileText, User, Calendar, MapPin, Package, IndianRupee, Receipt, TrendingUp, AlertCircle, CheckCircle, BarChart3, Download, Share2 } from 'lucide-react'
 import { apiClient } from '../../../../lib/api'
 import { Tabs, TabsList, TabsTrigger } from '../../../../components/ui/Tabs'
 import toast from 'react-hot-toast'
@@ -123,9 +123,20 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
 
   const fetchRelatedInvoices = async () => {
     try {
+      // Fetch ALL invoices regardless of financial year when viewing PO details
       const [proformaResponse, invoiceResponse] = await Promise.all([
-        apiClient.getFinanceProformaInvoices({ session_key: sessionKey, purchase_order_id: poId, page_size: 100 }),
-        apiClient.getFinanceInvoices({ session_key: sessionKey, purchase_order_id: poId, page_size: 100 })
+        apiClient.getFinanceProformaInvoices({ 
+          session_key: sessionKey, 
+          purchase_order_id: poId, 
+          page_size: 100,
+          financial_year: 'all'  // Show invoices from all financial years
+        }),
+        apiClient.getFinanceInvoices({ 
+          session_key: sessionKey, 
+          purchase_order_id: poId, 
+          page_size: 100,
+          financial_year: 'all'  // Show invoices from all financial years
+        })
       ])
 
       const proformas = (proformaResponse.data.results || []).map((inv: any) => ({
@@ -832,7 +843,7 @@ const PODetailsModal: React.FC<PODetailsModalProps> = ({ poId, onClose, sessionK
               {/* Balance Claimable Info */}
               <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-blue-200 dark:border-blue-700/50 shadow-xl p-6">
                 <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-                  <DollarSign className="w-5 h-5 mr-2 text-blue-600" />
+                  <IndianRupee className="w-5 h-5 mr-2 text-blue-600" />
                   Balance Claimable Information
                 </h3>
                 <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">

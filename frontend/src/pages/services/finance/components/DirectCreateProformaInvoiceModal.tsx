@@ -43,11 +43,14 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
+  const [shippingAddresses, setShippingAddresses] = useState<{id: number|null, label: string, address: string}[]>([])
   const [formData, setFormData] = useState({
     customer: '',
+    proforma_number: '',
     proforma_date: new Date().toISOString().split('T')[0],
     due_date: '',
     reference: '',
+    shipping_address: '' as string | number,
     notes: '',
     terms_and_conditions: '',
     discount_percentage: 0,
@@ -101,6 +104,30 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
     }
   }
 
+  const fetchShippingAddresses = async (customerId: string) => {
+    if (!customerId) { setShippingAddresses([]); return }
+    try {
+      const response = await apiClient.get(`/api/finance/customers/${customerId}/`, { params: { session_key: sessionKey } })
+      const c = response.data
+      const addrs: { id: number | null; label: string; address: string }[] = [
+        { id: null, label: 'Billing Address', address: [c.billing_address_line1, c.billing_city, c.billing_state, c.billing_pincode].filter(Boolean).join(', ') }
+      ]
+      if ((c.shipping_addresses || []).length > 0) {
+        ;(c.shipping_addresses || []).forEach((a: any) => {
+          addrs.push({ id: a.id, label: a.label || 'Shipping Address', address: a.full_address })
+        })
+      } else if (c.shipping_address_line1) {
+        addrs.push({ id: null, label: 'Shipping Address', address: [c.shipping_address_line1, c.shipping_address_line2, c.shipping_city, c.shipping_state, c.shipping_pincode].filter(Boolean).join(', ') })
+      }
+      setShippingAddresses(addrs)
+    } catch { setShippingAddresses([]) }
+  }
+
+  const handleCustomerChange = (customerId: string) => {
+    setFormData(prev => ({ ...prev, customer: customerId, shipping_address: '' }))
+    fetchShippingAddresses(customerId)
+  }
+
   const handleProductChange = (index: number, productId: number) => {
     const product = products.find(p => p.id === productId)
     if (product) {
@@ -119,12 +146,13 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
 
 
 
-  const handleQuantityChange = (index: number, quantity: number) => {
+  const handleQuantityChange = (index: number, value: string) => {
+    const quantity = value === '' ? 0 : parseFloat(value)
     const newItems = [...items]
     newItems[index] = {
       ...newItems[index],
-      quantity,
-      line_total: quantity * newItems[index].unit_price
+      quantity: isNaN(quantity) ? 0 : quantity,
+      line_total: (isNaN(quantity) ? 0 : quantity) * newItems[index].unit_price
     }
     setItems(newItems)
   }
@@ -182,6 +210,12 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
       return
     }
 
+    if (!formData.shipping_address && shippingAddresses.length > 1) {
+      // Has shipping addresses available but none selected — warn but allow
+      const proceed = window.confirm('No shipping address selected. The proforma invoice will use billing address. Continue?')
+      if (!proceed) return
+    }
+
     setLoading(true)
     try {
       const payload = {
@@ -227,7 +261,7 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
               </label>
               <select
                 value={formData.customer}
-                onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
+                onChange={(e) => handleCustomerChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               >
@@ -238,6 +272,19 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Proforma Invoice Number
+              </label>
+              <input
+                type="text"
+                value={formData.proforma_number}
+                onChange={(e) => setFormData({ ...formData, proforma_number: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Auto-generated if empty"
+              />
             </div>
 
             <div>
@@ -267,15 +314,33 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reference
+                Customer PO / Reference
               </label>
               <input
                 type="text"
                 value={formData.reference}
                 onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Reference number or description"
+                placeholder="Customer PO number or reference"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Shipping Address
+              </label>
+              <select
+                value={formData.shipping_address}
+                onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
+                className="w-full min-w-0 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">— Same as Billing —</option>
+                {shippingAddresses.map((a, i) => (
+                  <option key={i} value={a.id ?? ''}>
+                    {a.label}{a.address ? ` — ${a.address.substring(0, 40)}${a.address.length > 40 ? '…' : ''}` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -322,9 +387,15 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
                       type="number"
                       min="0"
                       step="0.01"
-                      value={item.quantity}
-                      onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)}
+                      value={item.quantity || ''}
+                      onChange={(e) => handleQuantityChange(index, e.target.value)}
+                      onBlur={(e) => {
+                        if (e.target.value === '' || parseFloat(e.target.value) <= 0) {
+                          handleQuantityChange(index, '1')
+                        }
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Qty"
                     />
                   </div>
 
@@ -471,7 +542,7 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
             </div>
           </div>
 
-          {/* Total Summary */}
+          {/* Total Summary (NO TAX) */}
           <div className="bg-gray-50 p-4 rounded-lg">
             <div className="space-y-2">
               <div className="flex justify-between">
@@ -500,12 +571,12 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
               )}
               <div className="border-t pt-2">
                 <div className="flex justify-between items-center text-lg font-semibold">
-                  <span>Total Amount:</span>
+                  <span>Total Amount (No Tax):</span>
                   <span>₹{calculateTotal().toFixed(2)}</span>
                 </div>
               </div>
               <div className="text-xs text-gray-500 mt-2">
-                Note: Proforma Invoice for advance payment collection (No GST)
+                Note: Proforma invoice for advance payment (GST will be charged on final tax invoice)
               </div>
             </div>
           </div>

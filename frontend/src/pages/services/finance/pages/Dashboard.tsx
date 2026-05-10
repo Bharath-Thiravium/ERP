@@ -24,7 +24,8 @@ import {
   FileText,
   Zap,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  FileBarChart
 } from 'lucide-react'
 // import { useAuthStore } from '../../../../store/authStore'
 import { useThemeStore } from '../../../../store/themeStore'
@@ -44,6 +45,7 @@ import Invoices from './Invoices'
 import Payments from './Payments'
 import CustomerLedger from '../components/CustomerLedger'
 import ComplianceDashboard from './ComplianceDashboard'
+import Reports from './Reports'
 
 
 // Purchase & Expense Management Pages
@@ -267,6 +269,7 @@ const handlePOCreated = () => {
     },
     { id: 'tds', label: 'TDS Register', icon: FileText, description: 'TDS deductions & 26Q filing' },
     { id: 'compliance', label: 'Indian Compliance', icon: Shield, description: 'Tax and regulatory compliance' },
+    { id: 'reports', label: 'Reports', icon: FileBarChart, description: 'Extract and filter financial documents' },
     { id: 'einvoice', label: 'E-Invoice', icon: Zap, description: 'Electronic invoice management' },
     { id: 'integration', label: 'Integration', icon: Zap, description: 'Third-party integrations' },
     { id: 'settings', label: 'Settings', icon: Settings, description: 'System preferences and security' }
@@ -1305,6 +1308,8 @@ const handlePOCreated = () => {
         return <TDSList />
       case 'compliance':
         return <ComplianceDashboard sessionKey={sessionKey || ''} />
+      case 'reports':
+        return <Reports />
       case 'einvoice':
         return <EInvoiceManager />
       case 'integration':

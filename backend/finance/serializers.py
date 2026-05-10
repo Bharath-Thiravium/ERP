@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.utils._os import safe_join
 from django.db import transaction
+from decimal import Decimal
 from authentication.models import ServiceUserSession
 from finance.numbering import generate_number, NumberingRule
 from finance.models import FINANCE_NUMBERING_MODULE_CHOICES
@@ -15,7 +16,15 @@ FINANCE_DEFAULT_TEMPLATES = {
     'quotation': {'template': '{PREFIX}-{YY}-{SEQ}', 'prefix': 'QTN'},
     'purchase_order': {'template': '{PREFIX}-{YY}-{SEQ}', 'prefix': 'PO'},
     'proforma_invoice': {'template': '{PREFIX}-{YY}-{SEQ}', 'prefix': 'PRO'},
-    'invoice': {'template': '{PREFIX}-{YY}-{SEQ}', 'prefix': 'INV'},
+    'invoice': {
+        'template': '{COMPANY}-{PREFIX}-{FY_SHORT}-{NUMBER}',
+        'prefix': 'INV',
+        'padding': 3,
+        'separator': '-',
+        'reset_scope': 'yearly',
+        'start_from': 1,
+        'allow_manual_override': False,
+    },
     'customer_payment': {'template': '{PREFIX}-{YY}-{SEQ}', 'prefix': 'PAY'},
     'purchase_request': {'template': '{PREFIX}-{YY}-{SEQ}', 'prefix': 'PR'},
     'purchase_payment': {'template': '{PREFIX}-{YY}-{SEQ}', 'prefix': 'PP'},
@@ -183,9 +192,9 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'customer_code']
     
     def validate_gstin(self, value):
-        """Validate GSTIN format - MANDATORY field"""
+        """Validate GSTIN format - OPTIONAL field"""
         if not value or not value.strip():
-            raise serializers.ValidationError("GSTIN is required")
+            return ''  # Allow empty GSTIN
         
         if len(value) != 15:
             raise serializers.ValidationError("GSTIN must be exactly 15 characters long")
@@ -211,8 +220,8 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate(self, attrs):
-        """Cross-field validation with MANDATORY field checks"""
-        # MANDATORY FIELD VALIDATION
+        """Cross-field validation"""
+        # MANDATORY FIELD VALIDATION (GSTIN removed from required fields)
         required_fields = {
             'customer_type': 'Customer type is required',
             'name': 'Customer name is required',
@@ -220,8 +229,7 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
             'billing_address_line1': 'Billing address line 1 is required',
             'billing_city': 'Billing city is required',
             'billing_state': 'Billing state is required',
-            'billing_pincode': 'Billing PIN code is required',
-            'gstin': 'GSTIN is required'
+            'billing_pincode': 'Billing PIN code is required'
         }
         
         errors = {}
@@ -291,12 +299,25 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
             else:
                 raise e
 
-        # Create shipping addresses
+        # Create shipping addresses with proper default handling
+        has_default = False
         for address_data in shipping_addresses_data:
+            if address_data.get('is_default', False):
+                has_default = True
+                # Unset any existing defaults before setting new one
+                CustomerShippingAddress.objects.filter(customer=customer).update(is_default=False)
+            
             CustomerShippingAddress.objects.create(
                 customer=customer,
                 **address_data
             )
+        
+        # If no default was set but addresses exist, set first as default
+        if not has_default and shipping_addresses_data:
+            first_address = customer.shipping_addresses.first()
+            if first_address:
+                first_address.is_default = True
+                first_address.save()
 
         return customer
 
@@ -327,9 +348,9 @@ class CustomerUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ['customer_code', 'company', 'created_by', 'created_at']
     
     def validate_gstin(self, value):
-        """Validate GSTIN format - MANDATORY field"""
+        """Validate GSTIN format - OPTIONAL field"""
         if not value or not value.strip():
-            raise serializers.ValidationError("GSTIN is required")
+            return ''  # Allow empty GSTIN
         
         if len(value) != 15:
             raise serializers.ValidationError("GSTIN must be exactly 15 characters long")
@@ -355,21 +376,79 @@ class CustomerUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def update(self, instance, validated_data):
+        import logging
+        logger = logging.getLogger(__name__)
+        
         shipping_addresses_data = validated_data.pop('shipping_addresses', [])
+        logger.error(f"🔍 CustomerUpdateSerializer.update - shipping_addresses_data: {shipping_addresses_data}")
+        logger.error(f"🔍 CustomerUpdateSerializer.update - validated_data keys: {validated_data.keys()}")
 
         # Update customer fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+        logger.error(f"🔍 Customer {instance.id} saved with shipping_same_as_billing={instance.shipping_same_as_billing}")
 
-        # Update shipping addresses - delete existing and create new ones
-        instance.shipping_addresses.all().delete()
-        for address_data in shipping_addresses_data:
-            CustomerShippingAddress.objects.create(
-                customer=instance,
-                **address_data
-            )
+        # Update shipping addresses - smart update to prevent data loss
+        if shipping_addresses_data:
+            logger.error(f"🔍 Processing {len(shipping_addresses_data)} shipping addresses")
+            # Get existing address IDs from the payload
+            existing_ids = [addr.get('id') for addr in shipping_addresses_data if addr.get('id')]
+            logger.error(f"🔍 Existing address IDs in payload: {existing_ids}")
+            
+            # Delete addresses that are not in the payload (user removed them)
+            deleted_count = instance.shipping_addresses.exclude(id__in=existing_ids).delete()[0]
+            logger.error(f"🔍 Deleted {deleted_count} addresses not in payload")
+            
+            # Track if we have a default address
+            has_default = False
+            
+            # Update or create addresses
+            for idx, address_data in enumerate(shipping_addresses_data):
+                logger.error(f"🔍 Processing address {idx + 1}: {address_data}")
+                address_id = address_data.pop('id', None)
+                is_default = address_data.get('is_default', False)
+                
+                if is_default:
+                    # If this address is being set as default, unset all others
+                    instance.shipping_addresses.update(is_default=False)
+                    has_default = True
+                
+                # Check if this is a new address (string ID starting with 'new_' or numeric ID that doesn't exist)
+                is_new_address = False
+                if address_id:
+                    # Check if ID is a string starting with 'new_'
+                    if isinstance(address_id, str) and address_id.startswith('new_'):
+                        is_new_address = True
+                        logger.error(f"🔍 Detected new address with temporary ID: {address_id}")
+                    else:
+                        # Check if numeric ID exists in database
+                        if not CustomerShippingAddress.objects.filter(id=address_id, customer=instance).exists():
+                            is_new_address = True
+                            logger.error(f"🔍 Detected new address - ID {address_id} not found in database")
+                
+                if address_id and not is_new_address:
+                    # Update existing address
+                    updated_count = CustomerShippingAddress.objects.filter(id=address_id, customer=instance).update(**address_data)
+                    logger.error(f"🔍 Updated {updated_count} existing address with ID {address_id}")
+                else:
+                    # Create new address
+                    new_address = CustomerShippingAddress.objects.create(customer=instance, **address_data)
+                    logger.error(f"🔍 Created new address with ID {new_address.id}: {new_address.label}")
+            
+            # Ensure at least one address is default if addresses exist
+            if not has_default and instance.shipping_addresses.exists():
+                first_address = instance.shipping_addresses.first()
+                first_address.is_default = True
+                first_address.save()
+                logger.error(f"🔍 Set first address as default: {first_address.label}")
+        else:
+            logger.error(f"🔍 No shipping_addresses_data provided in update")
 
+        # Log final state
+        final_count = instance.shipping_addresses.count()
+        logger.error(f"🔍 Final address count for customer {instance.id}: {final_count}")
+        
         return instance
 
 
@@ -646,6 +725,7 @@ class QuotationListSerializer(serializers.ModelSerializer):
     available_proforma_percentage = serializers.SerializerMethodField()
     available_invoice_percentage = serializers.SerializerMethodField()
     customer_shipping_addresses = serializers.SerializerMethodField()
+    shipping_address_text = serializers.SerializerMethodField()
 
     class Meta:
         model = Quotation
@@ -658,7 +738,7 @@ class QuotationListSerializer(serializers.ModelSerializer):
             # Balance tracking fields for quotation-based invoice creation
             'claim_type', 'proforma_claimed_amount', 'invoice_claimed_amount',
             'remaining_proforma_balance', 'remaining_invoice_balance',
-            'available_proforma_percentage', 'available_invoice_percentage', 'customer_shipping_addresses'
+            'available_proforma_percentage', 'available_invoice_percentage', 'customer_shipping_addresses', 'shipping_address_text'
         ]
 
     def get_item_count(self, obj):
@@ -685,6 +765,12 @@ class QuotationListSerializer(serializers.ModelSerializer):
     def get_available_invoice_percentage(self, obj):
         """Get available percentage for tax invoice creation"""
         return float(obj.get_available_invoice_percentage())
+    
+    def get_shipping_address_text(self, obj):
+        """Get the actual shipping address text instead of ID - matches PO/WO format"""
+        if obj.shipping_address:
+            return obj.shipping_address.full_address
+        return None
     
     def get_customer_shipping_addresses(self, obj):
         """Get customer shipping addresses for tooltip - Include both billing and shipping addresses"""
@@ -1446,7 +1532,7 @@ class ProformaInvoiceDetailSerializer(serializers.ModelSerializer):
             'customer_gstin', 'company_gstin', 'gst_type', 'subtotal', 'total_tax', 'total_amount',
             'cgst_amount', 'sgst_amount', 'igst_amount', 'discount_percentage', 'discount_amount',
             'shipping_charges', 'other_charges', 'payment_status', 'paid_amount', 'outstanding_amount',
-            'status', 'notes', 'terms_and_conditions', 'proforma_items', 'created_at', 'created_by_name',
+            'notes', 'terms_and_conditions', 'proforma_items', 'created_at', 'created_by_name',
             'company', 'created_by', 'updated_at'
         ]
         read_only_fields = [
@@ -1515,6 +1601,7 @@ class ProformaInvoiceDetailSerializer(serializers.ModelSerializer):
 class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating proforma invoices from Purchase Orders, Quotations, or directly"""
     proforma_number = serializers.CharField(required=False, allow_blank=True)
+    due_date = serializers.DateField(required=False, allow_null=True)
     proforma_items = serializers.ListField(
         child=serializers.DictField(),
         write_only=True,
@@ -1538,7 +1625,7 @@ class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
         fields = [
             'purchase_order', 'quotation', 'customer', 'proforma_date', 'due_date', 'reference',
             'shipping_address', 'discount_percentage', 'discount_amount',
-            'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions', 'status',
+            'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions',
             'claim_type', 'claim_percentage', 'is_advance_bill', 'proforma_items', 'proforma_number'
         ]
 
@@ -1885,7 +1972,7 @@ class ProformaInvoiceUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'proforma_number', 'proforma_date', 'due_date', 'reference', 'shipping_address',
             'discount_percentage', 'discount_amount', 'shipping_charges',
-            'other_charges', 'notes', 'terms_and_conditions', 'status'
+            'other_charges', 'notes', 'terms_and_conditions'
         ]
         read_only_fields = ['purchase_order', 'customer', 'company', 'created_by', 'created_at']
 
@@ -1918,6 +2005,41 @@ class QuotationUpdateSerializer(serializers.ModelSerializer):
             'status', 'quotation_items', 'is_revised'
         ]
         read_only_fields = ['quotation_number', 'company', 'created_by', 'created_at', 'revision_count', 'revised_at', 'revised_by']
+
+    def validate(self, data):
+        """Validate and clean decimal fields"""
+        decimal_fields = ['discount_percentage', 'discount_amount', 'shipping_charges', 'other_charges']
+        for field in decimal_fields:
+            if field in data:
+                value = data[field]
+                if value in ['', None, 'null']:
+                    data[field] = Decimal('0')
+                elif isinstance(value, str):
+                    try:
+                        data[field] = Decimal(value.strip())
+                    except:
+                        data[field] = Decimal('0')
+                elif isinstance(value, (int, float)):
+                    data[field] = Decimal(str(value))
+        
+        # Validate quotation items decimal fields
+        if 'quotation_items' in data:
+            for item in data['quotation_items']:
+                item_decimal_fields = ['quantity', 'unit_price', 'line_total', 'gst_rate']
+                for field in item_decimal_fields:
+                    if field in item:
+                        value = item[field]
+                        if value in ['', None, 'null']:
+                            item[field] = Decimal('0')
+                        elif isinstance(value, str):
+                            try:
+                                item[field] = Decimal(value.strip())
+                            except:
+                                item[field] = Decimal('0')
+                        elif isinstance(value, (int, float)):
+                            item[field] = Decimal(str(value))
+        
+        return data
 
     def update(self, instance, validated_data):
         """Update quotation and items"""
@@ -1983,7 +2105,7 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'product', 'product_name', 'product_code', 'description',
             'hsn_sac_code', 'quantity', 'unit', 'unit_price', 'line_total',
-            'gst_rate', 'line_number'
+            'gst_rate', 'line_number', 'claim_type', 'is_claimed', 'claimed_percentage', 'claimed_quantity_display'
         ]
         read_only_fields = ['id', 'line_total']
 
@@ -2045,45 +2167,64 @@ class InvoiceListSerializer(serializers.ModelSerializer):
     
     def get_customer_shipping_addresses(self, obj):
         """Return shipping address + reference for tooltip.
-        Always returns data so hover is always active on customer name.
+        Shows the actual shipping address used for the invoice.
         """
         addresses = []
 
-        # 1. Invoice-specific shipping address (highest priority)
+        # Determine the effective shipping address
+        effective_shipping = None
+        shipping_source = None
+        
+        # Priority 1: Invoice-specific shipping address
         if obj.shipping_address:
-            addresses.append({
-                'type': 'Shipping Address',
-                'address': obj.shipping_address.label
-                    + (' — ' + obj.shipping_address.full_address if obj.shipping_address.full_address else ''),
-                'is_default': obj.shipping_address.is_default
-            })
+            effective_shipping = obj.shipping_address
+            shipping_source = 'Invoice Shipping Address'
+        # Priority 2: PO shipping address
         elif obj.purchase_order and obj.purchase_order.shipping_address:
-            addresses.append({
-                'type': 'PO Shipping',
-                'address': (obj.purchase_order.shipping_address.label or '') +
-                    (' — ' + obj.purchase_order.shipping_address.full_address
-                     if obj.purchase_order.shipping_address.full_address else ''),
-                'is_default': False
-            })
+            effective_shipping = obj.purchase_order.shipping_address
+            shipping_source = 'PO Shipping Address'
+        # Priority 3: Quotation shipping address
         elif obj.quotation and obj.quotation.shipping_address:
+            effective_shipping = obj.quotation.shipping_address
+            shipping_source = 'Quotation Shipping Address'
+        
+        # If we have an effective shipping address, show it
+        if effective_shipping:
             addresses.append({
-                'type': 'Quotation Shipping',
-                'address': (obj.quotation.shipping_address.label or '') +
-                    (' — ' + obj.quotation.shipping_address.full_address
-                     if obj.quotation.shipping_address.full_address else ''),
-                'is_default': False
+                'type': shipping_source,
+                'address': (effective_shipping.label or 'Shipping Address') + 
+                          (' — ' + effective_shipping.full_address if effective_shipping.full_address else ''),
+                'is_default': effective_shipping.is_default
             })
         else:
-            # No shipping address on invoice/PO/quotation — show all customer site addresses
+            # No specific shipping address - show billing address as default
             if obj.customer:
-                for addr in obj.customer.shipping_addresses.all():
+                billing_address = obj.customer.full_billing_address
+                if billing_address:
                     addresses.append({
-                        'type': addr.label or 'Site Address',
-                        'address': addr.full_address,
-                        'is_default': addr.is_default
+                        'type': 'Billing Address (Default)',
+                        'address': billing_address,
+                        'is_default': True
                     })
 
-        # 2. Reference field
+        # Add reference field if available
+        if obj.reference:
+            addresses.append({
+                'type': 'Reference',
+                'address': obj.reference,
+                'is_default': False
+            })
+        
+        # Add PO/WO reference if available
+        if obj.purchase_order:
+            po_ref = f"PO/WO: {obj.purchase_order.po_number or obj.purchase_order.internal_po_number}"
+            addresses.append({
+                'type': 'Purchase Order',
+                'address': po_ref,
+                'is_default': False
+            })
+        
+        return addresses
         if obj.reference:
             addresses.append({
                 'type': 'Reference',
@@ -2108,9 +2249,16 @@ class InvoiceListSerializer(serializers.ModelSerializer):
             return '0'
         invoice_tds = (Decimal(str(obj.subtotal or 0)) * Decimal(str(obj.tds_rate)) / 100).quantize(Decimal('0.01'))
         cert_received = Decimal('0')
-        for p in obj.payments.filter(status='completed', tds_applicable=True):
-            if p.tds_certificate_received and p.tds_amount:
+        
+        # Check both payment-level TDS and TDS deposits
+        for p in obj.payments.filter(status='completed'):
+            # Payment-level TDS
+            if p.tds_applicable and p.tds_certificate_received and p.tds_amount:
                 cert_received += Decimal(str(p.tds_amount))
+            # TDS deposits (invoice-level TDS)
+            for td in p.tds_deposits.filter(certificate_received=True):
+                cert_received += Decimal(str(td.amount))
+        
         cert_received = min(cert_received, invoice_tds)
         return str(max(Decimal('0'), invoice_tds - cert_received))
 
@@ -2740,7 +2888,12 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                         unit_price=po_item.unit_price,
                         line_total=claim_line_total,
                         gst_rate=po_item.gst_rate,
-                        line_number=po_item.line_number
+                        line_number=po_item.line_number,
+                        po_item=po_item,
+                        claim_type='unit',
+                        is_claimed=True,
+                        claimed_percentage=Decimal('0'),
+                        claimed_quantity_display=f"{selected_quantity} {po_item.unit}"
                     ))
                 elif claim_method == 'percentage' and item_id_str in item_percentages and float(item_percentages[item_id_str]) > 0:
                     item_percentage = Decimal(str(item_percentages[item_id_str]))
@@ -2759,7 +2912,12 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                         unit_price=po_item.unit_price,
                         line_total=claim_line_total,
                         gst_rate=po_item.gst_rate,
-                        line_number=po_item.line_number
+                        line_number=po_item.line_number,
+                        po_item=po_item,
+                        claim_type='percentage',
+                        is_claimed=True,
+                        claimed_percentage=item_percentage,
+                        claimed_quantity_display=f"{item_percentage}%"
                     ))
         elif claim_type == 'quantity' and selected_items:
             # QUANTITY-BASED CLAIMING: Create invoice for selected quantities
@@ -2781,7 +2939,12 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                         unit_price=po_item.unit_price,
                         line_total=claim_line_total,
                         gst_rate=po_item.gst_rate,
-                        line_number=po_item.line_number
+                        line_number=po_item.line_number,
+                        po_item=po_item,
+                        claim_type='unit',
+                        is_claimed=True,
+                        claimed_percentage=Decimal('0'),
+                        claimed_quantity_display=f"{selected_quantity} {po_item.unit}"
                     ))
         elif claim_type == 'percentage' and item_percentages:
             # ITEM-LEVEL PERCENTAGE CLAIMING: Create invoice for item-specific percentages
@@ -2804,7 +2967,12 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                         unit_price=po_item.unit_price,
                         line_total=claim_line_total,
                         gst_rate=po_item.gst_rate,
-                        line_number=po_item.line_number
+                        line_number=po_item.line_number,
+                        po_item=po_item,
+                        claim_type='percentage',
+                        is_claimed=True,
+                        claimed_percentage=item_percentage,
+                        claimed_quantity_display=f"{item_percentage}%"
                     ))
         elif claim_type == 'percentage' and claim_percentage > 0:
             # LEGACY PERCENTAGE-BASED CLAIMING: Create invoice for overall percentage
@@ -2826,7 +2994,12 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                     unit_price=po_item.unit_price,
                     line_total=claim_line_total,
                     gst_rate=po_item.gst_rate,
-                    line_number=po_item.line_number
+                    line_number=po_item.line_number,
+                    po_item=po_item,
+                    claim_type='percentage',
+                    is_claimed=True,
+                    claimed_percentage=claiming_percentage,
+                    claimed_quantity_display=f"{claiming_percentage}%"
                 ))
         else:
             # VALIDATION: Ensure at least some items are selected
@@ -3319,6 +3492,7 @@ class WorldClassPaymentCreateSerializer(serializers.ModelSerializer):
             'ca_acknowledgment_number', 'ca_submission_status', 'ca_notes',
             # New CA-level fields
             'gross_payment_amount', 'tds_applicable', 'tds_deposited',
+            'payment_type',  # Payment type (invoice/direct/tds_only)
         ]
 
     def to_internal_value(self, data):
@@ -3431,13 +3605,15 @@ class WorldClassPaymentCreateSerializer(serializers.ModelSerializer):
         return data
 
     def validate_amount(self, value):
-        """Validate payment amount"""
-        if value is not None and value <= 0:
-            raise serializers.ValidationError("Payment amount must be greater than 0")
+        """Validate payment amount - allow 0 for TDS-only payments"""
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Payment amount cannot be negative")
         return value
 
     def create(self, validated_data):
-        """Create payment with automatic status updates"""
+        """Create payment with automatic payment number generation"""
+        # Generate payment_number using numbering system
+        assign_number(validated_data, self, 'customer_payment', 'payment_number', Payment)
         payment = Payment.objects.create(**validated_data)
         return payment
 
@@ -3544,8 +3720,19 @@ class VendorCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_gstin(self, value):
-        if value and len(value) != 15:
+        """Validate GSTIN format - OPTIONAL field"""
+        if not value or not value.strip():
+            return ''  # Allow empty GSTIN
+        
+        if len(value) != 15:
             raise serializers.ValidationError("GSTIN must be exactly 15 characters long")
+        
+        # Validate GSTIN pattern
+        import re
+        gstin_pattern = r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+        if not re.match(gstin_pattern, value):
+            raise serializers.ValidationError("Please enter a valid GSTIN format")
+        
         return value
 
     def validate_pan_number(self, value):

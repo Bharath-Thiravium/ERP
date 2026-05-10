@@ -11,6 +11,7 @@ import SendEmailModal from './SendEmailModal';
 import RejectInvoiceModal from './RejectInvoiceModal';
 import CreateNewInvoiceModal from './CreateNewInvoiceModal';
 import { isOverdue, getOverdueDate } from '../../../../utils/overdueUtils';
+import { filterByFY } from '../../../../utils/financialYearUtils';
 
 
 interface Invoice {
@@ -122,11 +123,14 @@ interface Invoice {
 interface InvoiceListProps {
   sessionKey: string;
   initialPaymentStatus?: string;
+  selectedFY?: string;
 }
 
-const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentStatus = '' }) => {
+const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentStatus = '', selectedFY }) => {
   console.log('🔍 InvoiceList - Component initialized with sessionKey:', sessionKey ? 'Present' : 'Missing');
   console.log('🔍 InvoiceList - sessionKey length:', sessionKey?.length || 0);
+  console.log('🔍 InvoiceList - selectedFY:', selectedFY);
+  console.log('🔍 InvoiceList - initialPaymentStatus:', initialPaymentStatus);
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -203,7 +207,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
   // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1)
-  }, [paymentStatusFilter])
+  }, [paymentStatusFilter, selectedFY])
 
   const fetchInvoices = useCallback(async (page: number) => {
     if (!sessionKey) return;
@@ -216,6 +220,16 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
       };
       if (debouncedSearchTerm) params.search = debouncedSearchTerm;
       if (paymentStatusFilter) params.payment_status = paymentStatusFilter;
+      
+      // Add FY filter - backend expects 'financial_year' parameter
+      if (selectedFY) {
+        params.financial_year = selectedFY;
+        console.log(`[InvoiceList] Fetching with FY filter: ${selectedFY}`);
+      } else {
+        // If no FY selected, show all
+        params.financial_year = 'all';
+      }
+      
       const response = await api.get('/api/finance/invoices/', { params });
       const results = response.data.results || [];
       const safeInvoices = results.map((invoice: any) => ({
@@ -232,7 +246,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
     } finally {
       setLoading(false);
     }
-  }, [sessionKey, debouncedSearchTerm, paymentStatusFilter, sortBy]);
+  }, [sessionKey, debouncedSearchTerm, paymentStatusFilter, sortBy, selectedFY]);
 
   useEffect(() => {
     fetchInvoices(currentPage);

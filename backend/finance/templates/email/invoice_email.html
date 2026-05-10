@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4; padding: 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px;">Invoice</h1>
+                            <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 16px;">{{ invoice_number }}</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 30px;">
+                            <p style="color: #333333; font-size: 16px; margin: 0 0 20px 0;">Dear {{ customer_name }},</p>
+                            
+                            <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 0 0 20px 0;">
+                                Thank you for your business. Please find attached invoice <strong>{{ invoice_number }}</strong> dated <strong>{{ invoice_date }}</strong>.
+                            </p>
+                            
+                            <!-- Invoice Details -->
+                            <table width="100%" cellpadding="10" cellspacing="0" style="border: 1px solid #e0e0e0; border-radius: 6px; margin: 20px 0;">
+                                <tr style="background-color: #f8f9fa;">
+                                    <td style="color: #666666; font-size: 14px; border-bottom: 1px solid #e0e0e0;"><strong>Invoice Number:</strong></td>
+                                    <td style="color: #333333; font-size: 14px; border-bottom: 1px solid #e0e0e0; text-align: right;">{{ invoice_number }}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #666666; font-size: 14px; border-bottom: 1px solid #e0e0e0;"><strong>Invoice Date:</strong></td>
+                                    <td style="color: #333333; font-size: 14px; border-bottom: 1px solid #e0e0e0; text-align: right;">{{ invoice_date }}</td>
+                                </tr>
+                                <tr style="background-color: #f8f9fa;">
+                                    <td style="color: #666666; font-size: 14px; border-bottom: 1px solid #e0e0e0;"><strong>Due Date:</strong></td>
+                                    <td style="color: #333333; font-size: 14px; border-bottom: 1px solid #e0e0e0; text-align: right;">{{ due_date }}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #666666; font-size: 16px; padding-top: 15px;"><strong>Total Amount:</strong></td>
+                                    <td style="color: #667eea; font-size: 20px; font-weight: bold; text-align: right; padding-top: 15px;">{{ currency }} {{ total_amount }}</td>
+                                </tr>
+                            </table>
+                            
+                            <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 20px 0;">
+                                Please process the payment by the due date. If you have any questions, feel free to contact us.
+                            </p>
+                            
+                            <!-- CTA Button -->
+                            <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
+                                <tr>
+                                    <td align="center">
+                                        <a href="{{ payment_link }}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-size: 16px; font-weight: bold;">View Invoice</a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e0e0e0;">
+                            <p style="color: #999999; font-size: 12px; margin: 0 0 5px 0;">{{ company_name }}</p>
+                            <p style="color: #999999; font-size: 12px; margin: 0;">{{ company_email }} | {{ company_phone }}</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

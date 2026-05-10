@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from . import views
 from . import viewsets
 from . import payment_views
+from . import direct_payment_views
 from . import indian_compliance_views
 from . import government_api_views
 from . import analytics_views
@@ -13,6 +14,7 @@ from . import purchase_views
 from . import unit_views
 from . import hsn_sac_views
 from . import refactored_invoice_views
+from . import financial_year_views
 
 
 # Create router for ViewSets
@@ -27,6 +29,15 @@ router.register(r'invoices-enhanced', refactored_invoice_views.RefactoredInvoice
 router.register(r'payments', viewsets.PaymentViewSet)
 
 urlpatterns = [
+    # Financial Year Management
+    path('financial-years/', financial_year_views.get_financial_years, name='get_financial_years'),
+    path('financial-years/info/', financial_year_views.get_financial_year_info, name='get_financial_year_info'),
+    path('financial-years/summary/', financial_year_views.get_finance_summary_by_fy, name='get_finance_summary_by_fy'),
+    
+    path('customer-pending-statement/', views.PendingPaymentStatementAPIView.as_view(), name='customer_pending_statement'),
+    path('customer-pending-statement/pdf/', views.customer_pending_statement_pdf, name='customer_pending_statement_pdf'),
+    path('customer-ledger/pdf/', views.customer_ledger_pdf, name='customer_ledger_pdf'),
+    
     path('', include(router.urls)),
     
     # Test endpoint
@@ -35,7 +46,6 @@ urlpatterns = [
     # Customer Shipping Address endpoint
     path('customers/shipping-addresses/<int:address_id>/', views.CustomerShippingAddressDetailView.as_view(), name='customer_shipping_address_detail'),
 
-    # Legacy customer ledger endpoint (kept for backward compatibility)
     path('customer-ledger/', views.customer_ledger, name='customer_ledger'),
 
     # Customer Ledger endpoint - SECURE: Uses new auth via viewset action
@@ -149,8 +159,6 @@ urlpatterns = [
     path('vendor-ledger/', purchase_views.vendor_ledger, name='vendor_ledger'),
     path('purchase-expense-stats/', purchase_views.purchase_expense_stats, name='purchase_expense_stats'),
 
-    # Customer Pending Payment Statement
-    path('customer-pending-statement/', views.customer_pending_statement, name='customer_pending_statement'),
 
     # PO Consolidated Report
     path('purchase-orders/<int:po_id>/consolidated-report/', views.po_consolidated_report, name='po_consolidated_report'),
@@ -166,5 +174,31 @@ urlpatterns = [
     # HSN/SAC Code Search endpoints
     path('hsn-codes/search/', hsn_sac_views.HSNCodeSearchView.as_view(), name='hsn_code_search'),
     path('sac-codes/search/', hsn_sac_views.SACCodeSearchView.as_view(), name='sac_code_search'),
+
+    # ============================================================================
+    # DIRECT CUSTOMER PAYMENT ENDPOINTS - NEW FUNCTIONALITY
+    # ============================================================================
+    
+    # Direct Payment Management
+    path('direct-payments/', direct_payment_views.list_direct_payments, name='list_direct_payments'),
+    path('direct-payments/create/', direct_payment_views.create_direct_payment, name='create_direct_payment'),
+    path('direct-payments/<int:payment_id>/', direct_payment_views.get_direct_payment, name='get_direct_payment'),
+    path('direct-payments/<int:payment_id>/delete/', direct_payment_views.delete_direct_payment, name='delete_direct_payment'),
+    
+    # Customer Payment Summary
+    path('customers/<int:customer_id>/payment-summary/', direct_payment_views.customer_payment_summary, name='customer_payment_summary'),
+
+    # ============================================================================
+    # PAYMENT UPDATE ENDPOINTS
+    # ============================================================================
+    
+    # Invoice Payment Update
+    path('invoices/<int:invoice_id>/payment/', payment_views.update_invoice_payment, name='update_invoice_payment'),
+    
+    # Proforma Invoice Payment Update
+    path('proforma-invoices/<int:proforma_id>/payment/', payment_views.update_proforma_payment, name='update_proforma_payment'),
+    
+    # Unified Payment Update (supports both invoice types)
+    path('unified-payment/<int:invoice_id>/', payment_views.unified_payment_update, name='unified_payment_update'),
 
 ]

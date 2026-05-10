@@ -278,14 +278,15 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({ invoice, onClose, o
     }
   }
 
-  const handleQuantityChange = (index: number, quantity: number) => {
+  const handleQuantityChange = (index: number, value: string) => {
     if (isPOBased) return
 
+    const quantity = value === '' ? 0 : parseFloat(value)
     const newItems = [...items]
     newItems[index] = {
       ...newItems[index],
-      quantity,
-      line_total: quantity * newItems[index].unit_price
+      quantity: isNaN(quantity) ? 0 : quantity,
+      line_total: (isNaN(quantity) ? 0 : quantity) * newItems[index].unit_price
     }
     setItems(newItems)
   }
@@ -895,9 +896,15 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({ invoice, onClose, o
                         type="number"
                         min="0"
                         step="0.01"
-                        value={item.quantity}
-                        onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)}
+                        value={item.quantity || ''}
+                        onChange={(e) => handleQuantityChange(index, e.target.value)}
+                        onBlur={(e) => {
+                          if (e.target.value === '' || parseFloat(e.target.value) <= 0) {
+                            handleQuantityChange(index, '1')
+                          }
+                        }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Qty"
                       />
                     </div>
 

@@ -34,12 +34,12 @@ body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1e2d4a;
 .pcgstin{font-size:9px;color:#64748b;margin-top:4px;font-family:Arial,sans-serif}
 
 /* ── META STRIP ── */
-.meta{background:#f0f4f8;border-bottom:1px solid #dde6f0;padding:7px 18px;display:flex;flex-wrap:nowrap;align-items:stretch}
-.ms{flex:1;padding:0 13px;border-right:1px solid #dde6f0;min-width:0}
+.meta{background:#f0f4f8;border-bottom:1px solid #dde6f0;padding:7px 18px;display:flex}
+.ms{flex:1;padding:0 13px;border-right:1px solid #dde6f0}
 .ms:first-child{padding-left:0}
 .ms:last-child{border-right:none}
-.mslbl{color:#94a3b8;font-size:7.5px;margin-bottom:2px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap}
-.msval{font-weight:700;color:#1e2d4a;font-size:10px;font-family:Arial,sans-serif;word-break:break-word;overflow-wrap:break-word;white-space:normal}
+.mslbl{color:#94a3b8;font-size:7.5px;margin-bottom:2px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:0.5px}
+.msval{font-weight:700;color:#1e2d4a;font-size:10px;font-family:Arial,sans-serif}
 
 /* ── COMPLIANCE ── */
 .comp{background:#f0f4f8;border-bottom:1px solid #c8d6e8;padding:6px 18px;display:flex;gap:26px;font-size:9px;color:#374151;font-family:Arial,sans-serif}
@@ -97,10 +97,24 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
 .ttitle{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1e2d4a;border-bottom:1.5px solid #2e6da4;padding-bottom:3px;margin-bottom:7px;display:inline-block;font-family:Arial,sans-serif}
 .tbody{font-size:10px;color:#374151;line-height:1.75;font-family:Arial,sans-serif}
 
+/* bank details */
+.bank{background:#f0f7fc;border:1px solid #dde6f0;border-radius:3px;padding:12px 16px;margin-bottom:12px}
+.bank-title{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1e2d4a;margin-bottom:8px}
+.bank-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.bank-item{}
+.bank-lbl{font-size:8px;color:#64748b;margin-bottom:2px}
+.bank-val{font-size:10px;color:#1e293b;font-weight:600}
+
 /* ── DECLARATION ── */
 .decl{background:#f0f4f8;border:1px solid #c8d6e8;border-radius:2px;padding:8px 12px;margin-bottom:12px;font-size:9px;color:#374151;line-height:1.6;font-family:Arial,sans-serif}
 .decl strong{color:#1e2d4a}
 
+/* ── SIGNATURES 2 ── */
+.sigs{display:flex;justify-content:space-between;margin-top:22px;gap:14px}
+.sig{flex:1;text-align:center;max-width:45%}
+.sigspace{height:46px;border-bottom:1.5px solid #1e2d4a;margin-bottom:5px}
+.siglbl{font-size:9.5px;font-weight:700;color:#1e2d4a;font-family:Arial,sans-serif}
+.sigco{font-size:9px;color:#64748b;font-family:Arial,sans-serif;margin-top:3px}
 
 /* ── FOOTER ── */
 .footer{background:#1e2d4a;color:#94a3b8;padding:8px 18px;display:flex;justify-content:space-between;font-size:8.5px;font-family:Arial,sans-serif;margin-top:auto}
@@ -123,8 +137,7 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
   <div class="hdr-co">
     <div class="co-name">{{ company.name }}</div>
     <div class="co-meta">
-      {{ company.address_line1 }}{% if company.address_line2 %}, {{ company.address_line2 }}{% endif %}<br>
-      {{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} – {{ company.pincode }}{% endif %}<br>
+      {% if company.address %}{{ company.address|linebreaksbr }}<br>{% endif %}
       {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}<br>
       GSTIN: {{ company_gstin|default:"N/A" }}
     </div>
@@ -144,7 +157,7 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
     <div class="pcaddr">
       {{ customer.billing_address_line1 }}<br>
       {% if customer.billing_address_line2 %}{{ customer.billing_address_line2 }}<br>{% endif %}
-      {{ customer.billing_city }}{% if customer.billing_state %}, {{ customer.billing_state }}{% endif %}{% if customer.billing_pincode %} – {{ customer.billing_pincode }}{% endif %}<br>
+      {{ customer.billing_city }}{% if customer.state %}, {{ customer.state }}{% endif %}{% if customer.billing_pincode %} – {{ customer.billing_pincode }}{% endif %}<br>
       {% if customer.phone %}Tel: {{ customer.phone }}<br>{% endif %}
       {% if customer.email %}{{ customer.email }}{% endif %}
     </div>
@@ -152,8 +165,9 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
   </div>
   <div class="pc">
     <div class="pclbl">Ship To</div>
-    {% if invoice.shipping_address %}
-      <div class="pcaddr">{{ invoice.shipping_address.label }}<br>{{ invoice.shipping_address.full_address }}</div>
+    {% if shipping_info.address %}
+      {% if shipping_info.label %}<div class="pcname">{{ shipping_info.label }}</div>{% endif %}
+      <div class="pcaddr">{{ shipping_info.address }}</div>
     {% else %}
       <div class="pcaddr" style="color:#9ca3af;font-style:italic;font-family:Arial,sans-serif">Same as billing address</div>
     {% endif %}
@@ -164,15 +178,16 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
   <div class="ms"><div class="mslbl">Invoice No.</div><div class="msval">{{ invoice.invoice_number }}</div></div>
   <div class="ms"><div class="mslbl">Date</div><div class="msval">{{ invoice.invoice_date|date:"d/m/Y" }}</div></div>
   <div class="ms"><div class="mslbl">Due Date</div><div class="msval">{{ invoice.due_date|date:"d/m/Y" }}</div></div>
+  {% if invoice.purchase_order %}<div class="ms"><div class="mslbl">PO No.</div><div class="msval">{{ invoice.purchase_order.po_number }}</div></div>{% endif %}
   <div class="ms"><div class="mslbl">GST Type</div><div class="msval">{{ invoice.gst_type|upper }}</div></div>
-  <div class="ms"><div class="mslbl">Place of Supply</div><div class="msval">{% if invoice.shipping_address %}{{ invoice.shipping_address.state }}{% else %}{{ invoice.place_of_supply|default:customer.billing_state }}{% endif %}</div></div>
-  {% if invoice.purchase_order %}<div class="ms" style="flex:2"><div class="mslbl">PO No.</div><div class="msval">{{ invoice.purchase_order.po_number }}</div></div>{% endif %}
-    </div>
+  <div class="ms"><div class="mslbl">Place of Supply</div><div class="msval">{{ invoice.place_of_supply|default:customer.billing_state }}</div></div>
+  {% if invoice.reference %}<div class="ms"><div class="mslbl">Reference</div><div class="msval">{{ invoice.reference }}</div></div>{% endif %}
+</div>
 
 <div class="comp">
   <span><strong>Reverse Charge:</strong> {% if invoice.reverse_charge_applicable %}Applicable{% else %}Not Applicable{% endif %}</span>
   <span><strong>Currency:</strong> INR</span>
-  <span><strong>Status:</strong> {{ invoice.status|capfirst }}</span>
+  <span><strong>Payment Status:</strong> {{ invoice.payment_status|capfirst }}</span>
 </div>
 
 <div class="body">
@@ -206,7 +221,7 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
           {% if item.description %}<div class="idesc">{{ item.description }}</div>{% endif %}
         </td>
         <td class="c" style="color:#64748b;font-size:9px;font-family:Arial,sans-serif">{{ item.hsn_sac_code|default:"—" }}</td>
-        <td class="c">{{ item.quantity }}</td>
+        <td class="c">{% if item.claimed_quantity_display %}{{ item.claimed_quantity_display }}{% else %}{{ item.quantity }}{% endif %}</td>
         <td class="c" style="color:#64748b">{{ item.unit|default:"Nos" }}</td>
         <td class="r">{{ item.unit_price|floatformat:2 }}</td>
         <td class="r">{{ item.line_total|floatformat:2 }}</td>
@@ -244,8 +259,8 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
         <td>{{ item.hsn_sac_code|default:"—" }}</td>
         <td>{{ item.line_total|floatformat:2 }}</td>
         {% if invoice.gst_type == "cgst_sgst" %}
-        <td>{{ item.gst_rate|floatformat:0 }}%/2</td><td>{% widthratio item.line_total 200 item.gst_rate %}</td>
-        <td>{{ item.gst_rate|floatformat:0 }}%/2</td><td>{% widthratio item.line_total 200 item.gst_rate %}</td>
+        <td>{% widthratio item.gst_rate 2 1 %}%</td><td>{% widthratio item.line_total 200 item.gst_rate %}</td>
+        <td>{% widthratio item.gst_rate 2 1 %}%</td><td>{% widthratio item.line_total 200 item.gst_rate %}</td>
         {% else %}
         <td>{{ item.gst_rate|floatformat:0 }}%</td><td>{% widthratio item.line_total 100 item.gst_rate %}</td>
         {% endif %}
@@ -321,9 +336,15 @@ table.hsn tfoot td{background:#e8f0fb;font-weight:700;color:#1e2d4a;border:1px s
     <strong>Declaration:</strong> We declare that this invoice shows the actual price of the goods / services described and that all particulars are true and correct to the best of our knowledge and belief.
   </div>
 
-  </div>
+  <div class="sigs">
+    <div class="sig"><div class="sigspace"></div><div class="siglbl">Customer Signature</div></div>
+    <div class="sig"><div class="sigspace"></div><div class="siglbl">Authorised Signatory</div><div class="sigco">For {{ company.name }}</div></div>
   </div>
 
+</div>
+
+<div style="background:#f0f4f8;color:#64748b;padding:6px 18px;text-align:center;font-size:8.5px;font-family:Arial,sans-serif;font-style:italic;border-top:1px solid #dde6f0">
+  This is a computer generated invoice and does not require physical signature
 </div>
 
 <div class="footer">

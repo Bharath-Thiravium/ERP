@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, User, Calendar, Search, Trash2, MapPin } from 'lucide-react'
+import { X, User, Calendar, Search, Trash2, MapPin, FileText } from 'lucide-react'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
@@ -81,6 +81,36 @@ interface QuotationFormProps {
   onSuccess: () => void
 }
 
+const normalizeCustomerShippingAddresses = (customer: any): ShippingAddress[] => {
+  if (!customer?.shipping_addresses || !Array.isArray(customer.shipping_addresses)) {
+    return []
+  }
+
+  return customer.shipping_addresses.map((address: any) => ({
+    id: address.id,
+    label: address.label || 'Shipping Address',
+    address_line1: address.address_line1 || '',
+    address_line2: address.address_line2 || '',
+    city: address.city || '',
+    state: address.state || '',
+    pincode: address.pincode || '',
+    country: address.country || '',
+    is_default: Boolean(address.is_default),
+    full_address:
+      address.full_address ||
+      [
+        address.address_line1,
+        address.address_line2,
+        address.city,
+        address.state,
+        address.pincode,
+        address.country,
+      ]
+        .filter(Boolean)
+        .join(', '),
+  }))
+}
+
 const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuccess }) => {
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
@@ -141,8 +171,15 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       // Set selected customer if available - use customer_details for detailed view
       const customerData = quotation.customer_details || quotation.customer
       if (customerData) {
-        setSelectedCustomer(customerData)
+        setSelectedCustomer({
+          ...customerData,
+          shipping_addresses: normalizeCustomerShippingAddresses(customerData),
+        })
         setCustomerSearch(customerData.name)
+        const customerId = quotation.customer?.id || quotation.customer_details?.id || quotation.customer
+        if (customerId) {
+          loadCustomerDetails(customerId)
+        }
       } else if (quotation.customer?.id || quotation.customer) {
         // If we only have customer ID, load the full customer details
         loadCustomerDetails(quotation.customer?.id || quotation.customer)
@@ -175,7 +212,10 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
 
     try {
       const response = await apiClient.getFinanceCustomer(customerId, { session_key: sessionKey })
-      const fullCustomer = response.data
+      const fullCustomer = {
+        ...response.data,
+        shipping_addresses: normalizeCustomerShippingAddresses(response.data),
+      }
       setSelectedCustomer(fullCustomer)
       setCustomerSearch(fullCustomer.name)
     } catch (error) {
@@ -200,9 +240,33 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       
       // Add the shipping address to the selected customer's addresses if not already present
       if (selectedCustomer && !selectedCustomer.shipping_addresses?.find(addr => addr.id === shippingAddressId)) {
+        const normalizedShippingAddress = {
+          id: shippingAddress.id,
+          label: shippingAddress.label || 'Shipping Address',
+          address_line1: shippingAddress.address_line1 || '',
+          address_line2: shippingAddress.address_line2 || '',
+          city: shippingAddress.city || '',
+          state: shippingAddress.state || '',
+          pincode: shippingAddress.pincode || '',
+          country: shippingAddress.country || '',
+          is_default: Boolean(shippingAddress.is_default),
+          full_address:
+            shippingAddress.full_address ||
+            [
+              shippingAddress.address_line1,
+              shippingAddress.address_line2,
+              shippingAddress.city,
+              shippingAddress.state,
+              shippingAddress.pincode,
+              shippingAddress.country,
+            ]
+              .filter(Boolean)
+              .join(', '),
+        }
+
         setSelectedCustomer(prev => prev ? {
           ...prev,
-          shipping_addresses: [...(prev.shipping_addresses || []), shippingAddress]
+          shipping_addresses: [...(prev.shipping_addresses || []), normalizedShippingAddress]
         } : prev)
       }
     } catch (error) {
@@ -273,7 +337,10 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
 
     try {
       const response = await apiClient.getFinanceCustomer(customer.id, { session_key: sessionKey })
-      const fullCustomer = response.data
+      const fullCustomer = {
+        ...response.data,
+        shipping_addresses: normalizeCustomerShippingAddresses(response.data),
+      }
       setSelectedCustomer(fullCustomer)
       
       // Only set default shipping address if no shipping address is already set
@@ -461,12 +528,19 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            {quotation ? 'Edit Quotation' : 'Create New Quotation'}
-          </h2>
+          <div className="flex items-center space-x-4">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                {quotation ? `Edit Quotation${quotation.quotation_number ? `: ${quotation.quotation_number}` : ''}` : 'Create Quotation'}
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Quotation modal aligned to the invoice module standard
+              </p>
+            </div>
+          </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
@@ -476,227 +550,222 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Customer Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              <User className="w-4 h-4 inline mr-1" />
-              Customer *
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search and select customer..."
-                value={customerSearch}
-                onChange={(e) => {
-                  setCustomerSearch(e.target.value)
-                  setShowCustomerDropdown(true)
-                }}
-                onFocus={() => setShowCustomerDropdown(true)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-              {showCustomerDropdown && customers.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                  {customers
-                    .filter(customer =>
-                      customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-                      customer.customer_code.toLowerCase().includes(customerSearch.toLowerCase())
-                    )
-                    .map((customer) => (
-                      <div
-                        key={customer.id}
-                        onClick={() => handleCustomerSelect(customer)}
-                        className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-200 dark:border-gray-600 last:border-b-0"
-                      >
-                        <div className="font-medium text-gray-900 dark:text-white">{customer.name}</div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400">{customer.customer_code} | {customer.email}</div>
-                      </div>
-                    ))
-                  }
-                </div>
-              )}
-            </div>
-            {errors.customer && <p className="mt-1 text-sm text-red-600">{errors.customer}</p>}
-          </div>
-
-          {/* Customer Details Display */}
-          {selectedCustomer && (
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-              <h4 className="font-medium text-gray-900 dark:text-white mb-2">Customer Details</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div><strong>GSTIN:</strong> {selectedCustomer.gstin || 'Not provided'}</div>
-                <div><strong>PAN:</strong> {selectedCustomer.pan_number || 'Not provided'}</div>
-                <div><strong>Email:</strong> {selectedCustomer.email || 'Not provided'}</div>
-                <div><strong>Phone:</strong> {selectedCustomer.phone || 'Not provided'}</div>
-                <div className="md:col-span-2">
-                  <strong>Billing Address:</strong><br />
-                  {selectedCustomer.billing_address_line1}<br />
-                  {selectedCustomer.billing_address_line2 && <>{selectedCustomer.billing_address_line2}<br /></>}
-                  {selectedCustomer.billing_city}, {selectedCustomer.billing_state} {selectedCustomer.billing_pincode}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Shipping Address Selection */}
-          {selectedCustomer && selectedCustomer.shipping_addresses && selectedCustomer.shipping_addresses.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                <MapPin className="w-4 h-4 inline mr-1" />
-                Shipping Address
-              </label>
-              <select
-                value={formData.shipping_address || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, shipping_address: e.target.value ? parseInt(e.target.value) : null }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value="">Select shipping address</option>
-                {selectedCustomer.shipping_addresses.map((address) => (
-                  <option key={address.id} value={address.id}>
-                    {address.label} - {address.city}, {address.state}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Quotation Details */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                <Calendar className="w-4 h-4 inline mr-1" />
-                Quotation Date *
-              </label>
-              <input
-                type="date"
-                value={formData.quotation_date}
-                onChange={(e) => setFormData(prev => ({ ...prev, quotation_date: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-              {errors.quotation_date && <p className="mt-1 text-sm text-red-600">{errors.quotation_date}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Valid Until *
-              </label>
-              <input
-                type="date"
-                value={formData.valid_until}
-                onChange={(e) => setFormData(prev => ({ ...prev, valid_until: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-              {errors.valid_until && <p className="mt-1 text-sm text-red-600">{errors.valid_until}</p>}
-            </div>
-          </div>
-
-          {/* Product Selection and Selected Products - Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left Column - Product Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                <Search className="w-4 h-4 inline mr-1" />
-                Add Products *
-              </label>
-              <div className="relative mb-4">
-                <input
-                  type="text"
-                  placeholder="Search products to add..."
-                  value={productSearch}
-                  onChange={(e) => {
-                    setProductSearch(e.target.value)
-                    setShowProductDropdown(true)
-                  }}
-                  onFocus={() => setShowProductDropdown(true)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-                {showProductDropdown && products.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {products
-                      .filter(product =>
-                        product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-                        product.product_code.toLowerCase().includes(productSearch.toLowerCase())
-                      )
-                      .map((product) => (
-                        <div
-                          key={product.id}
-                          onClick={() => handleAddProduct(product)}
-                          className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-200 dark:border-gray-600 last:border-b-0"
-                        >
-                          <div className="font-medium text-gray-900 dark:text-white">{product.name}</div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
-                            {product.product_code} | HSN/SAC: {product.hsn_code_display || product.sac_code_display || 'N/A'} | GST: {product.gst_rate}% | ₹{product.selling_price}
+        <form onSubmit={handleSubmit} className="flex flex-col max-h-[calc(90vh-88px)]">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <User className="w-4 h-4 inline mr-1" />
+                  Customer *
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search and select customer..."
+                    value={customerSearch}
+                    onChange={(e) => {
+                      setCustomerSearch(e.target.value)
+                      setShowCustomerDropdown(true)
+                    }}
+                    onFocus={() => setShowCustomerDropdown(true)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  />
+                  {showCustomerDropdown && customers.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {customers
+                        .filter(customer =>
+                          customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+                          customer.customer_code.toLowerCase().includes(customerSearch.toLowerCase())
+                        )
+                        .map((customer) => (
+                          <div
+                            key={customer.id}
+                            onClick={() => handleCustomerSelect(customer)}
+                            className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-200 dark:border-gray-600 last:border-b-0"
+                          >
+                            <div className="font-medium text-gray-900 dark:text-white">{customer.name}</div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400">{customer.customer_code} | {customer.email}</div>
                           </div>
-                        </div>
-                      ))
-                    }
-                  </div>
-                )}
+                        ))
+                      }
+                    </div>
+                  )}
+                </div>
+                {errors.customer && <p className="mt-1 text-sm text-red-600">{errors.customer}</p>}
               </div>
-              {errors.quotation_items && <p className="mt-1 text-sm text-red-600">{errors.quotation_items}</p>}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <MapPin className="w-4 h-4 inline mr-1" />
+                  Shipping Address
+                </label>
+                <select
+                  value={formData.shipping_address || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, shipping_address: e.target.value ? parseInt(e.target.value) : null }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                >
+                  <option value="">Select shipping address</option>
+                  {selectedCustomer?.shipping_addresses?.map((address) => (
+                    <option key={address.id} value={address.id}>
+                      {address.label} - {address.full_address || `${address.city}, ${address.state}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <Calendar className="w-4 h-4 inline mr-1" />
+                  Quotation Date *
+                </label>
+                <input
+                  type="date"
+                  value={formData.quotation_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, quotation_date: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+                {errors.quotation_date && <p className="mt-1 text-sm text-red-600">{errors.quotation_date}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Valid Until *
+                </label>
+                <input
+                  type="date"
+                  value={formData.valid_until}
+                  onChange={(e) => setFormData(prev => ({ ...prev, valid_until: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+                {errors.valid_until && <p className="mt-1 text-sm text-red-600">{errors.valid_until}</p>}
+              </div>
             </div>
 
-            {/* Right Column - Selected Products */}
-            <div>
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="font-medium text-gray-900 dark:text-white">Selected Products</h4>
-                {formData.quotation_items.length > 0 && (
-                  <div className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full">
-                    GST: {totals.gstType === 'igst' ? 'IGST (Inter-State)' : totals.gstType === 'cgst_sgst' ? 'CGST+SGST (Intra-State)' : 'Exempt'}
+            {selectedCustomer && (
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 dark:text-white mb-2">Customer Details</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div><strong>GSTIN:</strong> {selectedCustomer.gstin || 'Not provided'}</div>
+                  <div><strong>PAN:</strong> {selectedCustomer.pan_number || 'Not provided'}</div>
+                  <div><strong>Email:</strong> {selectedCustomer.email || 'Not provided'}</div>
+                  <div><strong>Phone:</strong> {selectedCustomer.phone || 'Not provided'}</div>
+                  <div className="md:col-span-2">
+                    <strong>Billing Address:</strong><br />
+                    {selectedCustomer.billing_address_line1}<br />
+                    {selectedCustomer.billing_address_line2 && <>{selectedCustomer.billing_address_line2}<br /></>}
+                    {selectedCustomer.billing_city}, {selectedCustomer.billing_state} {selectedCustomer.billing_pincode}
                   </div>
-                )}
+                </div>
               </div>
+            )}
+
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white">Items</h3>
+                <div className="flex items-center gap-3">
+                  {formData.quotation_items.length > 0 && (
+                    <div className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full">
+                      GST: {totals.gstType === 'igst' ? 'IGST' : totals.gstType === 'cgst_sgst' ? 'CGST+SGST' : 'Exempt'}
+                    </div>
+                  )}
+                  <div className="relative w-80 max-w-full">
+                    <input
+                      type="text"
+                      placeholder="Search products to add..."
+                      value={productSearch}
+                      onChange={(e) => {
+                        setProductSearch(e.target.value)
+                        setShowProductDropdown(true)
+                      }}
+                      onFocus={() => setShowProductDropdown(true)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                    {showProductDropdown && products.length > 0 && (
+                      <div className="absolute right-0 z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                        {products
+                          .filter(product =>
+                            product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+                            product.product_code.toLowerCase().includes(productSearch.toLowerCase())
+                          )
+                          .map((product) => (
+                            <div
+                              key={product.id}
+                              onClick={() => handleAddProduct(product)}
+                              className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-200 dark:border-gray-600 last:border-b-0"
+                            >
+                              <div className="font-medium text-gray-900 dark:text-white">{product.name}</div>
+                              <div className="text-sm text-gray-500 dark:text-gray-400">
+                                {product.product_code} | HSN/SAC: {product.hsn_code_display || product.sac_code_display || 'N/A'} | GST: {product.gst_rate}% | ₹{product.selling_price}
+                              </div>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {errors.quotation_items && <p className="mt-1 mb-3 text-sm text-red-600">{errors.quotation_items}</p>}
+
               {formData.quotation_items.length > 0 ? (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
+                <div className="space-y-4">
                   {formData.quotation_items.map((item, index) => {
                     const product = products.find(p => p.id === item.product)
                     return (
-                      <div key={index} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
-                            <div className="font-medium text-gray-900 dark:text-white">
-                              {product?.name || 'Unknown Product'}
-                            </div>
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                              {product?.product_code} | HSN/SAC: {item.hsn_sac_code} | GST: {item.gst_rate}%
+                      <div key={index} className="grid grid-cols-12 gap-2 items-end p-4 border border-gray-200 dark:border-gray-600 rounded-lg">
+                        <div className="col-span-12 md:col-span-4">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Product</label>
+                          <div className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-sm text-gray-900 dark:text-white">
+                            <div className="font-medium">{product?.name || 'Unknown Product'}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {product?.product_code || 'No Code'} | HSN/SAC: {item.hsn_sac_code || 'N/A'}
                             </div>
                           </div>
+                        </div>
+
+                        <div className="col-span-6 md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quantity</label>
+                          <input
+                            type="number"
+                            min="1"
+                            step="0.01"
+                            value={item.quantity}
+                            onChange={(e) => handleUpdateItem(index, 'quantity', parseFloat(e.target.value) || 1)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                          />
+                        </div>
+
+                        <div className="col-span-6 md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unit Price</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unit_price}
+                            onChange={(e) => handleUpdateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                          />
+                        </div>
+
+                        <div className="col-span-10 md:col-span-3">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Line Total</label>
+                          <div className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-sm text-gray-900 dark:text-white">
+                            ₹{((parseFloat(item.quantity?.toString() || '0') || 0) * (parseFloat(item.unit_price?.toString() || '0') || 0)).toFixed(2)}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            GST: {item.gst_rate}%
+                          </div>
+                        </div>
+
+                        <div className="col-span-2 md:col-span-1">
                           <button
                             type="button"
                             onClick={() => handleRemoveProduct(index)}
-                            className="text-red-500 hover:text-red-700 p-1"
+                            className="w-full p-2 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                            title="Remove item"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Quantity</label>
-                            <input
-                              type="number"
-                              min="1"
-                              step="0.01"
-                              value={item.quantity}
-                              onChange={(e) => handleUpdateItem(index, 'quantity', parseFloat(e.target.value) || 1)}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Unit Price</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={item.unit_price}
-                              onChange={(e) => handleUpdateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Line Total</label>
-                            <div className="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-600 rounded text-gray-900 dark:text-white">
-                              ₹{((parseFloat(item.quantity?.toString() || '0') || 0) * (parseFloat(item.unit_price?.toString() || '0') || 0)).toFixed(2)}
-                            </div>
-                          </div>
                         </div>
                       </div>
                     )
@@ -704,124 +773,95 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
                 </div>
               ) : (
                 <div className="text-gray-500 dark:text-gray-400 text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                  <p className="mb-4">No products selected. Search and select products from the left panel.</p>
-                  {selectedCustomer && companyDetails && (
-                    <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg text-sm">
-                      <p className="font-medium text-gray-900 dark:text-white text-center">
-                        GST Type: {determineGSTType() === 'igst' ? 'Inter-State (IGST)' :
-                                  determineGSTType() === 'cgst_sgst' ? 'Intra-State (CGST + SGST)' : 'Tax Exempt'}
-                      </p>
-                    </div>
-                  )}
+                  <p className="mb-2">No products selected.</p>
+                  <p className="text-sm">Search and add products to build the quotation.</p>
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Quotation Summary */}
-          {formData.quotation_items.length > 0 && (
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-              <h4 className="font-medium text-gray-900 dark:text-white mb-3">Quotation Summary</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Subtotal:</span>
-                  <span>₹{(totals.subtotal || 0).toFixed(2)}</span>
-                </div>
-
-                {/* GST Breakdown */}
-                {totals.gstType === 'cgst_sgst' && (
-                  <>
-                    <div className="flex justify-between text-sm">
-                      <span>CGST ({totals.cgstAmount > 0 ? ((totals.cgstAmount / (totals.subtotal || 1)) * 100).toFixed(1) : '0'}%):</span>
-                      <span>₹{(totals.cgstAmount || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span>SGST ({totals.sgstAmount > 0 ? ((totals.sgstAmount / (totals.subtotal || 1)) * 100).toFixed(1) : '0'}%):</span>
-                      <span>₹{(totals.sgstAmount || 0).toFixed(2)}</span>
-                    </div>
-                  </>
-                )}
-
-                {totals.gstType === 'igst' && (
+            {formData.quotation_items.length > 0 && (
+              <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span>IGST ({totals.igstAmount > 0 ? ((totals.igstAmount / (totals.subtotal || 1)) * 100).toFixed(1) : '0'}%):</span>
-                    <span>₹{(totals.igstAmount || 0).toFixed(2)}</span>
+                    <span>Subtotal:</span>
+                    <span>₹{(totals.subtotal || 0).toFixed(2)}</span>
                   </div>
-                )}
-
-                {totals.gstType === 'exempt' && (
-                  <div className="flex justify-between text-sm">
-                    <span>Tax (Exempt):</span>
-                    <span>₹0.00</span>
-                  </div>
-                )}
-
-                {/* GST Type Information */}
-                {totals.gstType && (
-                  <div className={`text-xs p-3 rounded-lg ${
-                    totals.gstType === 'exempt'
-                      ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200'
-                      : 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'
-                  }`}>
-                    <div className="font-medium">
-                      GST Type: {totals.gstType === 'igst' ? 'Inter-State (IGST)' : totals.gstType === 'cgst_sgst' ? 'Intra-State (CGST + SGST)' : 'Tax Exempt'}
+                  {totals.gstType === 'cgst_sgst' && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span>CGST:</span>
+                        <span>₹{(totals.cgstAmount || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>SGST:</span>
+                        <span>₹{(totals.sgstAmount || 0).toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
+                  {totals.gstType === 'igst' && (
+                    <div className="flex justify-between text-sm">
+                      <span>IGST:</span>
+                      <span>₹{(totals.igstAmount || 0).toFixed(2)}</span>
                     </div>
-                  </div>
-                )}
-
-                <div className="border-t border-gray-300 dark:border-gray-600 pt-2 mt-2">
-                  <div className="flex justify-between font-semibold text-lg">
-                    <span>Total Amount:</span>
-                    <span>₹{(totals.totalAmount || 0).toFixed(2)}</span>
+                  )}
+                  {totals.gstType === 'exempt' && (
+                    <div className="flex justify-between text-sm">
+                      <span>Tax:</span>
+                      <span>₹0.00</span>
+                    </div>
+                  )}
+                  <div className="border-t pt-2">
+                    <div className="flex justify-between items-center text-lg font-semibold text-gray-900 dark:text-white">
+                      <span>Total Amount:</span>
+                      <span>₹{(totals.totalAmount || 0).toFixed(2)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Notes and Terms */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Internal Notes
-              </label>
-              <textarea
-                rows={4}
-                value={formData.notes}
-                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                placeholder="Internal notes (not visible to customer)"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Terms and Conditions
-              </label>
-              <textarea
-                rows={4}
-                value={formData.terms_and_conditions}
-                onChange={(e) => setFormData(prev => ({ ...prev, terms_and_conditions: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                placeholder="Terms and conditions for this quotation"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  rows={3}
+                  value={formData.notes}
+                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  placeholder="Additional notes..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Terms and Conditions
+                </label>
+                <textarea
+                  rows={3}
+                  value={formData.terms_and_conditions}
+                  onChange={(e) => setFormData(prev => ({ ...prev, terms_and_conditions: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  placeholder="Terms and conditions..."
+                />
+              </div>
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="flex items-center justify-end space-x-4 p-6 border-t border-gray-200 dark:border-gray-700 mt-6">
+          <div className="flex justify-end gap-4 p-6 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? 'Saving...' : quotation ? 'Update Quotation' : 'Create Quotation'}
+              {loading ? 'Saving...' : quotation ? 'Save Changes' : 'Create Quotation'}
             </button>
           </div>
         </form>

@@ -135,7 +135,7 @@ table.pt td{padding:6px 10px;border:1px solid #e2e8f0;color:#374151}
     <div class="sclbl">Details</div>
     <div class="scval">
       <table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed">
-        <tr><td style="color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;width:45%">Delivery Date</td><td style="text-align:right;font-weight:600;word-break:break-word;overflow-wrap:break-word">{{ purchase_order.delivery_date|date:"d/m/Y" }}</td></tr>
+        {% if purchase_order.delivery_date %}<tr><td style="color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;width:45%">Delivery Date</td><td style="text-align:right;font-weight:600;word-break:break-word;overflow-wrap:break-word">{{ purchase_order.delivery_date|date:"d/m/Y" }}</td></tr>{% endif %}
         <tr><td style="color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;width:45%">GST Type</td><td style="text-align:right;font-weight:600;word-break:break-word;overflow-wrap:break-word">{{ purchase_order.gst_type|upper }}</td></tr>
         {% if purchase_order.reference %}<tr><td style="color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;width:45%">Ref</td><td style="text-align:right;font-weight:600;word-break:break-word;overflow-wrap:break-word">{{ purchase_order.reference }}</td></tr>{% endif %}
       </table>

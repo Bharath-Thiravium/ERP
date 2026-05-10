@@ -10,6 +10,9 @@ interface ProformaInvoiceViewProps {
 }
 
 const ProformaInvoiceView: React.FC<ProformaInvoiceViewProps> = ({ proformaInvoice, onClose, sessionKey }) => {
+  const actionButtonClass = 'inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium rounded-lg border transition-colors'
+  const neutralActionButtonClass = `${actionButtonClass} bg-white/85 hover:bg-white text-gray-700 border-gray-200 dark:bg-gray-800/80 dark:hover:bg-gray-800 dark:text-gray-200 dark:border-gray-600`
+  const primaryActionButtonClass = `${actionButtonClass} bg-blue-600 hover:bg-blue-700 text-white border-blue-600`
   const [detailedProforma, setDetailedProforma] = useState<any>(proformaInvoice);
   const [loading, setLoading] = useState(false);
 
@@ -88,15 +91,17 @@ const ProformaInvoiceView: React.FC<ProformaInvoiceViewProps> = ({ proformaInvoi
               {detailedProforma.proforma_number}
             </p>
           </div>
-          <div className="flex items-center space-x-2">
-            <button onClick={handleDownload} className="flex items-center space-x-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
-              <span>⬇ Download</span>
+          <div className="flex items-center gap-2">
+            <button onClick={handleDownload} className={neutralActionButtonClass}>
+              <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Download PDF</span>
             </button>
-            <button onClick={handlePrint} className="flex items-center space-x-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
+            <button onClick={handlePrint} className={primaryActionButtonClass}>
               <Printer className="w-4 h-4" /><span>Print</span>
             </button>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-              <X className="w-6 h-6 text-gray-500" />
+            <button onClick={onClose} className={neutralActionButtonClass}>
+              <X className="w-4 h-4" />
+              <span>Close</span>
             </button>
           </div>
         </div>
@@ -221,18 +226,20 @@ const ProformaInvoiceView: React.FC<ProformaInvoiceViewProps> = ({ proformaInvoi
                   <thead className="bg-gray-50 dark:bg-gray-700">
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300">Product</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300">Quantity</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300">Unit Price</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300">Total</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300">Claim</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300">Rate</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300">Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {detailedProforma.proforma_items.map((item: any, index: number) => (
                       <tr key={index}>
                         <td className="px-4 py-2 text-sm text-gray-900 dark:text-white">{item.product_name}</td>
-                        <td className="px-4 py-2 text-sm text-gray-900 dark:text-white">{item.quantity} {item.unit}</td>
-                        <td className="px-4 py-2 text-sm text-gray-900 dark:text-white">₹{item.unit_price}</td>
-                        <td className="px-4 py-2 text-sm text-gray-900 dark:text-white">₹{item.line_total}</td>
+                        <td className="px-4 py-2 text-sm text-gray-900 dark:text-white">
+                          {item.unit === 'PERCENTAGE' ? `${item.quantity}%` : `${parseFloat(item.quantity).toFixed(2)} ${item.unit}`}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-900 dark:text-white">₹{parseFloat(item.unit_price).toLocaleString()}</td>
+                        <td className="px-4 py-2 text-sm text-gray-900 dark:text-white">₹{parseFloat(item.line_total).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -12,11 +12,20 @@ def _get_company_template(company, field):
     """Lookup company's selected template for a given field."""
     try:
         from company_dashboard.quotation_template_models import CompanyQuotationTemplateSettings
+        import logging
+        logger = logging.getLogger(__name__)
+        
         settings = CompanyQuotationTemplateSettings.objects.filter(company=company).first()
         if settings:
-            return getattr(settings, field, 'AS')
-    except Exception:
-        pass
+            template_code = getattr(settings, field, 'AS')
+            logger.info(f"Company '{company.name}' template for {field}: {template_code}")
+            return template_code
+        else:
+            logger.warning(f"No template settings found for company '{company.name}', using default 'AS'")
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error fetching template for company '{company.name}': {str(e)}")
     return 'AS'
 
 

@@ -44,6 +44,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 }) => {
   const { isAuthenticated, user, firstLoginRequired, approvalPending, isLoading } = useAuthStore()
   const { isAuthenticated: isServiceUserAuthenticated, serviceUser } = useServiceUserStore()
+  const [isCheckingSession, setIsCheckingSession] = React.useState(requireServiceUser)
 
   const hasPersistedAuth = React.useMemo(() => {
     if (isAuthenticated) return false // already authenticated, no need to check
@@ -57,27 +58,33 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // All hooks must be before any conditional returns
   React.useEffect(() => {
     if (requireServiceUser) {
+      // Ensure session key is in sessionStorage
       const sessionKey = sessionStorage.getItem('service_session_key')
       if (!sessionKey) {
+        // Try to restore from localStorage
         try {
           const storeData = localStorage.getItem('service-user-storage')
           if (storeData) {
             const parsed = JSON.parse(storeData)
             const storeSessionKey = parsed?.state?.sessionKey
-            if (storeSessionKey) {
+            if (storeSessionKey && parsed?.state?.isAuthenticated) {
               sessionStorage.setItem('service_session_key', storeSessionKey)
+              console.log('✅ Session key restored to sessionStorage')
+              setIsCheckingSession(false)
               return
             }
           }
         } catch (error) {
           console.warn('Failed to restore session in ProtectedRoute:', error)
         }
-        window.location.replace('/service-login')
+      } else {
+        console.log('✅ Session key found in sessionStorage')
       }
+      setIsCheckingSession(false)
     }
   }, [requireServiceUser])
 
-  if (isLoading || (!isAuthenticated && hasPersistedAuth)) {
+  if (isLoading || (!isAuthenticated && hasPersistedAuth) || isCheckingSession) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
@@ -87,27 +94,30 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // For service user routes, check service user authentication
   if (requireServiceUser) {
-    if (!isServiceUserAuthenticated || !serviceUser) {
-      // Try to restore session before redirecting
-      const sessionKey = sessionStorage.getItem('service_session_key')
-      if (!sessionKey) {
-        try {
-          const storeData = localStorage.getItem('service-user-storage')
-          if (storeData) {
-            const parsed = JSON.parse(storeData)
-            const storeSessionKey = parsed?.state?.sessionKey
-            if (storeSessionKey && parsed?.state?.serviceUser) {
-              sessionStorage.setItem('service_session_key', storeSessionKey)
-              // Allow component to render while store rehydrates
-              return <>{children}</>
-            }
+    // Check if session exists in sessionStorage or localStorage
+    const sessionKey = sessionStorage.getItem('service_session_key')
+    
+    if (!sessionKey) {
+      // Try to restore from localStorage
+      try {
+        const storeData = localStorage.getItem('service-user-storage')
+        if (storeData) {
+          const parsed = JSON.parse(storeData)
+          const storeSessionKey = parsed?.state?.sessionKey
+          if (storeSessionKey && parsed?.state?.serviceUser) {
+            sessionStorage.setItem('service_session_key', storeSessionKey)
+            // Allow component to render while store rehydrates
+            return <>{children}</>
           }
-        } catch (error) {
-          console.warn('Failed to restore session in ProtectedRoute render:', error)
         }
+      } catch (error) {
+        console.warn('Failed to restore session in ProtectedRoute:', error)
       }
+      // No valid session found, redirect to login
       return <Navigate to="/service-login" replace />
     }
+    
+    // Session key exists, allow access even if store hasn't rehydrated yet
     return <>{children}</>
   }
 

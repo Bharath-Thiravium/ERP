@@ -70,6 +70,14 @@ table.items tbody td.c{text-align:center}
 .nttitle{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#7a8099;margin-bottom:4px}
 .ntbody{font-size:10px;color:#374151;line-height:1.6}
 
+/* bank details */
+.bank{background:#fef9e7;border:1px solid #e8c84a;border-radius:3px;padding:12px 16px;margin-bottom:14px}
+.bank-title{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#7a8099;margin-bottom:8px}
+.bank-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.bank-item{}
+.bank-lbl{font-size:8px;color:#64748b;margin-bottom:2px}
+.bank-val{font-size:10px;color:#1e293b;font-weight:600}
+
 
 /* footer */
 .footer{background:#f4f5f9;border-top:1px solid #dde2ee;padding:8px 24px;display:flex;justify-content:space-between;font-size:8.5px;color:#9ca3af;margin-top:auto}
@@ -92,8 +100,7 @@ table.items tbody td.c{text-align:center}
   <div class="hdr-co">
     <div class="co-name">{{ company.name }}</div>
     <div class="co-meta">
-      {{ company.address_line1 }}{% if company.address_line2 %}, {{ company.address_line2 }}{% endif %}<br>
-      {{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} – {{ company.pincode }}{% endif %}<br>
+      {% if company.address %}{{ company.address|linebreaksbr }}<br>{% endif %}
       {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}<br>
       GSTIN: {{ company_gstin|default:"N/A" }}
     </div>
@@ -124,8 +131,11 @@ table.items tbody td.c{text-align:center}
 
     <div class="pbox">
       <div class="plbl">Ship To</div>
-      {% if invoice.shipping_address %}
-        <div class="paddr"><strong>{{ invoice.shipping_address.label }}</strong><br>{{ invoice.shipping_address.full_address }}</div>
+      {% if shipping_info.address %}
+        <div class="paddr">
+          {% if shipping_info.label %}<strong>{{ shipping_info.label }}</strong><br>{% endif %}
+          {{ shipping_info.address }}
+        </div>
       {% else %}
         <div class="paddr" style="color:#9ca3af;font-style:italic">Same as billing address</div>
       {% endif %}
@@ -163,7 +173,7 @@ table.items tbody td.c{text-align:center}
           {% if item.hsn_sac_code %}<div class="ihsn">HSN: {{ item.hsn_sac_code }}</div>{% endif %}
         </td>
         <td class="c" style="color:#6b7280">{{ item.hsn_sac_code|default:"—" }}</td>
-        <td class="c">{{ item.quantity }}</td>
+        <td class="c">{% if item.claimed_quantity_display %}{{ item.claimed_quantity_display }}{% else %}{{ item.quantity }}{% endif %}</td>
         <td class="c" style="color:#6b7280">{{ item.unit|default:"Nos" }}</td>
         <td class="r">{{ item.unit_price|floatformat:2 }}</td>
         <td class="c">{{ item.gst_rate|floatformat:0 }}%</td>
@@ -205,6 +215,20 @@ table.items tbody td.c{text-align:center}
     {% if invoice.terms_and_conditions %}
     <div class="ntbox"><div class="nttitle">Terms &amp; Conditions</div><div class="ntbody">{{ invoice.terms_and_conditions }}</div></div>
     {% endif %}
+  </div>
+  {% endif %}
+
+  {% if company.bank_name or company.bank_account_number %}
+  <div class="bank">
+    <div class="bank-title">Bank Details for Payment</div>
+    <div class="bank-grid">
+      {% if company.bank_name %}<div class="bank-item"><div class="bank-lbl">Bank Name</div><div class="bank-val">{{ company.bank_name }}</div></div>{% endif %}
+      {% if company.bank_account_number %}<div class="bank-item"><div class="bank-lbl">Account Number</div><div class="bank-val">{{ company.bank_account_number }}</div></div>{% endif %}
+      {% if company.bank_ifsc_code %}<div class="bank-item"><div class="bank-lbl">IFSC Code</div><div class="bank-val">{{ company.bank_ifsc_code }}</div></div>{% endif %}
+      {% if company.bank_account_holder %}<div class="bank-item"><div class="bank-lbl">Account Holder</div><div class="bank-val">{{ company.bank_account_holder }}</div></div>{% endif %}
+      {% if company.bank_branch %}<div class="bank-item"><div class="bank-lbl">Branch</div><div class="bank-val">{{ company.bank_branch }}</div></div>{% endif %}
+      {% if company.bank_account_type %}<div class="bank-item"><div class="bank-lbl">Account Type</div><div class="bank-val">{{ company.bank_account_type|upper }}</div></div>{% endif %}
+    </div>
   </div>
   {% endif %}
 

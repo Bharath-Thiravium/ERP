@@ -134,7 +134,7 @@ table.items tbody td.c{text-align:center}
     <div class="pbox narrow">
       <div class="plbl">Purchase Order Info</div>
       <div class="drow"><span class="dl">Date</span><span class="dv">{{ purchase_order.po_date|date:"d/m/Y" }}</span></div>
-      <div class="drow"><span class="dl">Delivery Date</span><span class="dv">{{ purchase_order.delivery_date|date:"d/m/Y" }}</span></div>
+      {% if purchase_order.delivery_date %}<div class="drow"><span class="dl">Delivery Date</span><span class="dv">{{ purchase_order.delivery_date|date:"d/m/Y" }}</span></div>{% endif %}
       <div class="drow"><span class="dl">GST Type</span><span class="dv">{{ purchase_order.gst_type|upper }}</span></div>
       {% if purchase_order.reference %}<div class="drow"><span class="dl">Ref</span><span class="dv">{{ purchase_order.reference }}</span></div>{% endif %}
     </div>

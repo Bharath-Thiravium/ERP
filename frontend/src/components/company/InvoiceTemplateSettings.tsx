@@ -70,14 +70,25 @@ const InvoiceTemplateSettings: React.FC = () => {
   const fetchCurrentSettings = async () => {
     try {
       const response = await apiClient.getInvoiceTemplateSettings();
+      console.log('Invoice template settings response:', response.data);
       if (response.data.success && response.data.data) {
         setCurrentSettings(response.data.data);
       } else {
-        setCurrentSettings({ selected_invoice_template: 'AS' });
+        setCurrentSettings({ 
+          selected_template: 'AS',
+          selected_po_template: 'AS',
+          selected_proforma_template: 'AS',
+          selected_invoice_template: 'AS'
+        });
       }
     } catch (error) {
       console.error('Error fetching invoice template settings:', error);
-      setCurrentSettings({ selected_invoice_template: 'AS' });
+      setCurrentSettings({ 
+        selected_template: 'AS',
+        selected_po_template: 'AS',
+        selected_proforma_template: 'AS',
+        selected_invoice_template: 'AS'
+      });
     } finally {
       setLoading(false);
     }

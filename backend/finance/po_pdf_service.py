@@ -64,35 +64,48 @@ class POPDFService:
             }
             
             # Company model has: name, email, phone, address, gst_number
-            # Templates expect: name, email, phone, address, city, state, pincode, gst_number
-            # Parse address field to extract city, state, pincode if needed
+            # Templates expect: name, email, phone, address_line1, address_line2, city, state, pincode, gst_number
+            # Parse address field to extract components
             company = purchase_order.company
             if hasattr(company, 'address') and company.address:
-                # Try to parse address for city, state, pincode
-                address_parts = company.address.split(',')
-                if len(address_parts) >= 2:
+                import re
+                address_parts = [part.strip() for part in company.address.split(',') if part.strip()]
+                
+                # Initialize all fields
+                company.address_line1 = ''
+                company.address_line2 = ''
+                company.city = ''
+                company.state = ''
+                company.pincode = ''
+                
+                if len(address_parts) > 0:
                     # Last part might contain state and pincode
-                    last_part = address_parts[-1].strip()
-                    # Look for pincode pattern (6 digits)
-                    import re
+                    last_part = address_parts[-1]
                     pincode_match = re.search(r'\b(\d{6})\b', last_part)
+                    
                     if pincode_match:
                         company.pincode = pincode_match.group(1)
-                        # Remove pincode from last part to get state
                         company.state = last_part.replace(company.pincode, '').strip(' -')
                     else:
                         company.state = last_part
                     
-                    # Second last part might be city
+                    # Second last part is city
                     if len(address_parts) >= 2:
-                        company.city = address_parts[-2].strip()
-                
-            # Set defaults if not found
-            if not hasattr(company, 'city'):
+                        company.city = address_parts[-2]
+                    
+                    # First part is address_line1
+                    if len(address_parts) >= 1:
+                        company.address_line1 = address_parts[0]
+                    
+                    # Middle parts (if any) go to address_line2
+                    if len(address_parts) >= 4:
+                        company.address_line2 = ', '.join(address_parts[1:-2])
+            else:
+                # Set defaults if no address
+                company.address_line1 = ''
+                company.address_line2 = ''
                 company.city = ''
-            if not hasattr(company, 'state'):
                 company.state = ''
-            if not hasattr(company, 'pincode'):
                 company.pincode = ''
             
             # Render HTML template

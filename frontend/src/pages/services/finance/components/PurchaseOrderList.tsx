@@ -44,6 +44,7 @@ interface PurchaseOrder {
 
 interface PurchaseOrderListProps {
   sessionKey: string
+  selectedFY?: string
   onCreateNew: () => void
   onEdit: (po: PurchaseOrder) => void
   onView: (po: PurchaseOrder) => void
@@ -52,7 +53,7 @@ interface PurchaseOrderListProps {
   onDelete?: () => void
 }
 
-const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCreateNew, onEdit, onView, onViewDetails, onRaiseInvoice, onDelete }) => {
+const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, selectedFY, onCreateNew, onEdit, onView, onViewDetails, onRaiseInvoice, onDelete }) => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [sortBy, setSortBy] = useState('-po_date')
@@ -119,6 +120,12 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
         ...(statusFilter && { status: statusFilter }),
         ordering: sortBy,
       })
+      
+      if (selectedFY) {
+        params.append('financial_year', selectedFY)
+      } else {
+        params.append('financial_year', 'all')
+      }
 
       const response = await apiClient.getFinancePurchaseOrders(Object.fromEntries(new URLSearchParams(params)))
 
@@ -153,7 +160,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
     } finally {
       setLoading(false)
     }
-  }, [sessionKey, debouncedSearchTerm, statusFilter, currentPage, sortBy])
+  }, [sessionKey, debouncedSearchTerm, statusFilter, currentPage, sortBy, selectedFY])
 
   useEffect(() => {
     fetchPurchaseOrders(currentPage)
@@ -543,7 +550,10 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                     <tr key={po.id} className="hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors duration-200">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          <div 
+                            className="text-sm font-medium text-blue-600 dark:text-blue-400 cursor-pointer hover:underline"
+                            onClick={() => onView(po)}
+                          >
                             {po.po_number}
                           </div>
                           <div
@@ -683,20 +693,6 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, onCre
                             title="PO Details & Payment Tracking"
                           >
                             <FileText className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => onView(po)}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                            title="View"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => onEdit(po)}
-                            className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                            title="Edit"
-                          >
-                            <Edit className="w-4 h-4" />
                           </button>
                           {/* Show delete only for quotation-based POs, reject for direct POs */}
                           {po.quotation_number ? (

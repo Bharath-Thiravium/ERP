@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, FileText, User, MapPin, Package, ChevronDown } from 'lucide-react'
+import { X, FileText, User, MapPin, Package, ChevronDown, Hash, Percent } from 'lucide-react'
 
 import toast from 'react-hot-toast'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -31,6 +31,9 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
   const [availableShippingAddresses, setAvailableShippingAddresses] = useState<any[]>([])
   const [selectedShippingAddress, setSelectedShippingAddress] = useState<number | null>(null)
   const [effectiveShippingAddress, setEffectiveShippingAddress] = useState<any>(null)
+  const [selectedItems, setSelectedItems] = useState<Record<number, number>>({})
+  const [itemPercentages, setItemPercentages] = useState<Record<number, number>>({})
+  const [itemClaimMethods, setItemClaimMethods] = useState<Record<number, 'quantity' | 'percentage'>>({})
   const [formData, setFormData] = useState({
     proforma_number: editingInvoice?.proforma_number || '',
     proforma_date: editingInvoice?.proforma_date?.split('T')[0] || new Date().toISOString().split('T')[0],
@@ -40,6 +43,18 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
     terms_and_conditions: editingInvoice?.terms_and_conditions || 'Payment terms: Net 30 days. Late payments may incur additional charges.',
     shipping_address: editingInvoice?.shipping_address || null
   })
+
+  // Initialize default claim methods
+  useEffect(() => {
+    const items = isFromQuotation ? sourceData?.quotation_items : sourceData?.po_items
+    if (items && Object.keys(itemClaimMethods).length === 0) {
+      const defaultMethods: Record<number, 'quantity' | 'percentage'> = {}
+      items.forEach((item: any) => {
+        defaultMethods[item.id] = 'quantity' // Default to quantity
+      })
+      setItemClaimMethods(defaultMethods)
+    }
+  }, [sourceData, isFromQuotation, itemClaimMethods])
 
   // Fetch available shipping addresses and effective shipping address
   useEffect(() => {
@@ -94,16 +109,39 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
     fetchShippingAddresses()
   }, [sessionKey, sourceData?.customer_details?.id, editingInvoice])
 
-  // Calculate amounts
-  const baseAmount = parseFloat(sourceData.subtotal || '0')
+  // Calculate amounts (NO TAX for Proforma)
+  const calculateProformaAmounts = () => {
+    const items = isFromQuotation ? sourceData?.quotation_items : sourceData?.po_items
+    if (!items) return { proformaBaseAmount: 0, proformaTotalAmount: 0 }
 
-  
-  const calculateProformaAmount = () => {
-    // Always use full quotation/PO amount for proforma (no tax)
-    return baseAmount
+    let selectedBaseAmount = 0
+
+    items.forEach((item: any) => {
+      const claimMethod = itemClaimMethods[item.id]
+      
+      if (claimMethod === 'quantity') {
+        const quantity = selectedItems[item.id] || 0
+        if (quantity > 0) {
+          const itemBaseAmount = parseFloat(item.unit_price) * quantity
+          selectedBaseAmount += itemBaseAmount
+        }
+      } else if (claimMethod === 'percentage') {
+        const percentage = itemPercentages[item.id] || 0
+        if (percentage > 0) {
+          const itemTotal = parseFloat(item.unit_price) * item.quantity
+          const itemBaseAmount = (itemTotal * percentage) / 100
+          selectedBaseAmount += itemBaseAmount
+        }
+      }
+    })
+
+    return {
+      proformaBaseAmount: selectedBaseAmount,
+      proformaTotalAmount: selectedBaseAmount // NO TAX for proforma
+    }
   }
   
-  const proformaAmount = calculateProformaAmount()
+  const { proformaBaseAmount, proformaTotalAmount } = calculateProformaAmounts()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -111,6 +149,20 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
     if (loading) {
       console.log('Form already submitting, preventing double submission')
       return // Prevent double submission
+    }
+    
+    // Validate that at least some items are selected
+    const hasSelections = Object.entries(itemClaimMethods).some(([itemId, method]) => {
+      if (method === 'quantity') {
+        return (selectedItems[parseInt(itemId)] || 0) > 0
+      } else {
+        return (itemPercentages[parseInt(itemId)] || 0) > 0
+      }
+    })
+
+    if (!hasSelections) {
+      toast.error('Please select at least one item with quantity or percentage greater than 0')
+      return
     }
     
     // Disable form immediately to prevent double clicks
@@ -123,23 +175,52 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
     console.log('Starting proforma creation...')
 
     try {
-      // Create proforma items from all source items
-      const proformaItems: any[] = (isFromQuotation ? sourceData.quotation_items : sourceData.po_items).map((item: any) => ({
-        product: item.product,
-        product_name: item.product_name,
-        quantity: item.quantity,
-        unit: item.unit,
-        unit_price: parseFloat(item.unit_price),
-        line_total: parseFloat(item.unit_price) * item.quantity
-      }))
+      // Build proforma_items array with calculated values
+      const items = isFromQuotation ? sourceData?.quotation_items : sourceData?.po_items
+      const proformaItems = items
+        .map((item: any) => {
+          const claimMethod = itemClaimMethods[item.id]
+          let quantity = 0
+          let unit = item.unit
+          let lineTotal = 0
+
+          if (claimMethod === 'quantity') {
+            quantity = selectedItems[item.id] || 0
+            if (quantity > 0) {
+              lineTotal = parseFloat(item.unit_price) * quantity
+            }
+          } else if (claimMethod === 'percentage') {
+            const percentage = itemPercentages[item.id] || 0
+            if (percentage > 0) {
+              quantity = percentage
+              unit = 'PERCENTAGE'
+              const itemTotal = parseFloat(item.unit_price) * item.quantity
+              lineTotal = (itemTotal * percentage) / 100
+            }
+          }
+
+          // Only include items with quantity/percentage > 0
+          if (quantity > 0) {
+            return {
+              product: item.product || item.id,
+              product_name: item.product_name,
+              quantity: quantity,
+              unit: unit,
+              unit_price: parseFloat(item.unit_price),
+              line_total: lineTotal
+            }
+          }
+          return null
+        })
+        .filter((item: any) => item !== null)
 
       const dataToSend = {
         proforma_number: formData.proforma_number,
         customer: sourceData.customer_details.id || sourceData.customer,
         ...(purchaseOrder && { purchase_order: purchaseOrder.id }),
         ...(quotation && { quotation: quotation.id }),
+        claim_type: 'hybrid',
         proforma_items: proformaItems,
-        proforma_amount: proformaAmount,
         proforma_date: formData.proforma_date,
         ...(formData.due_date && { due_date: formData.due_date }),
         reference: formData.reference,
@@ -199,7 +280,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                 Create Proforma Invoice
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Advance Payment Request (No Tax)
+                Advance Payment Request
               </p>
             </div>
           </div>
@@ -349,34 +430,147 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
               </div>
             </div>
 
-            {/* Item Selection - Simplified */}
+            {/* Item Selection with Dynamic Claim Methods */}
             {(sourceData.po_items || sourceData.quotation_items) && (
-              <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl">
-                <h3 className="font-medium text-gray-900 dark:text-white mb-3 flex items-center">
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
+                <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-3 flex items-center">
                   <Package className="w-4 h-4 mr-2" />
-                  Items (Without Tax)
+                  Select Items & Claim Methods
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-4">
                   {(isFromQuotation ? sourceData.quotation_items : sourceData.po_items).map((item: any) => (
-                    <div key={item.id} className="bg-white dark:bg-gray-800 p-3 rounded-lg flex justify-between items-center">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900 dark:text-white">{item.product_name}</p>
-                        <p className="text-sm text-gray-500">{item.quantity} {item.unit} × ₹{parseFloat(item.unit_price).toFixed(2)}</p>
+                    <div key={item.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg border">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 dark:text-white">{item.product_name}</p>
+                          <p className="text-sm text-gray-500">
+                            Available: {item.quantity} {item.unit} @ ₹{parseFloat(item.unit_price).toFixed(2)}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            Total Value: ₹{(parseFloat(item.unit_price) * item.quantity).toFixed(2)}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-medium text-gray-900 dark:text-white">₹{(parseFloat(item.unit_price) * item.quantity).toFixed(2)}</p>
+
+                      {/* Claim Method Selector */}
+                      <div className="mb-3">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Claim Method:
+                        </label>
+                        <div className="flex space-x-4">
+                          <label className="flex items-center">
+                            <input
+                              type="radio"
+                              name={`claimMethod_${item.id}`}
+                              value="quantity"
+                              checked={itemClaimMethods[item.id] === 'quantity'}
+                              onChange={() => {
+                                setItemClaimMethods(prev => ({ ...prev, [item.id]: 'quantity' }))
+                                setItemPercentages(prev => ({ ...prev, [item.id]: 0 }))
+                              }}
+                              className="w-4 h-4 text-blue-600 mr-2"
+                            />
+                            <span className="text-sm">By Quantity</span>
+                          </label>
+                          <label className="flex items-center">
+                            <input
+                              type="radio"
+                              name={`claimMethod_${item.id}`}
+                              value="percentage"
+                              checked={itemClaimMethods[item.id] === 'percentage'}
+                              onChange={() => {
+                                setItemClaimMethods(prev => ({ ...prev, [item.id]: 'percentage' }))
+                                setSelectedItems(prev => ({ ...prev, [item.id]: 0 }))
+                              }}
+                              className="w-4 h-4 text-orange-600 mr-2"
+                            />
+                            <span className="text-sm">By Percentage</span>
+                          </label>
+                        </div>
                       </div>
+
+                      {/* Input Field Based on Selected Method */}
+                      <div className="flex items-center space-x-3">
+                        {itemClaimMethods[item.id] === 'quantity' ? (
+                          <div className="flex items-center space-x-2">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              Quantity:
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              max={item.quantity}
+                              step="0.01"
+                              value={selectedItems[item.id] || 0}
+                              onChange={(e) => {
+                                const value = Math.min(parseFloat(e.target.value) || 0, item.quantity)
+                                setSelectedItems(prev => ({ ...prev, [item.id]: value }))
+                              }}
+                              className="w-24 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                              placeholder="0"
+                            />
+                            <span className="text-sm text-gray-500">{item.unit}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              Percentage:
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={itemPercentages[item.id] || 0}
+                              onChange={(e) => {
+                                const value = Math.min(parseFloat(e.target.value) || 0, 100)
+                                setItemPercentages(prev => ({ ...prev, [item.id]: value }))
+                              }}
+                              className="w-24 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                              placeholder="0"
+                            />
+                            <span className="text-sm text-gray-500">%</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Calculation Preview (NO TAX) */}
+                      {((itemClaimMethods[item.id] === 'quantity' && (selectedItems[item.id] || 0) > 0) ||
+                        (itemClaimMethods[item.id] === 'percentage' && (itemPercentages[item.id] || 0) > 0)) && (
+                        <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                          <div className="text-sm space-y-1">
+                            <div className="flex justify-between text-blue-600 dark:text-blue-400 font-medium">
+                              <span>Amount (No Tax):</span>
+                              <span>₹{
+                                itemClaimMethods[item.id] === 'quantity' 
+                                  ? (parseFloat(item.unit_price) * (selectedItems[item.id] || 0)).toFixed(2)
+                                  : ((parseFloat(item.unit_price) * item.quantity * (itemPercentages[item.id] || 0)) / 100).toFixed(2)
+                              }</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
-                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-gray-900 dark:text-white">Total Amount (No Tax):</span>
-                    <span className="text-xl font-bold text-blue-600 dark:text-blue-400">₹{baseAmount.toLocaleString()}</span>
-                  </div>
-                </div>
               </div>
             )}
+
+            {/* Total Calculation (NO TAX) */}
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
+              <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-3">
+                Proforma Invoice Calculation
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between border-t pt-1">
+                  <span className="font-medium">Total Amount (No Tax):</span>
+                  <span className="font-bold text-blue-600">₹{proformaTotalAmount.toLocaleString()}</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Note: Proforma invoice for advance payment (GST will be charged on final tax invoice)
+                </p>
+              </div>
+            </div>
 
             {/* Form Fields */}
             <div>
@@ -469,7 +663,7 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading || (!editingInvoice && proformaAmount <= 0)}
+              disabled={loading || (!editingInvoice && proformaTotalAmount <= 0)}
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (editingInvoice ? 'Updating...' : 'Creating...') : (editingInvoice ? 'Update Proforma Invoice' : 'Create Proforma Invoice')}

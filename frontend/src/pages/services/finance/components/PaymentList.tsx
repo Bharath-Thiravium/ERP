@@ -3,6 +3,7 @@ import { Plus, Search, CreditCard, User, IndianRupee, Eye, Edit, Trash2, Chevron
 
 import { apiClient } from '../../../../lib/api';
 import toast from 'react-hot-toast';
+import ConfirmDialog from '../../../../components/ui/ConfirmDialog';
 
 interface Payment {
   id: number;
@@ -24,16 +25,18 @@ interface PaymentListProps {
   onAddPayment: () => void;
   onEditPayment: (payment: Payment) => void;
   onViewPayment: (payment: Payment) => void;
+  onDirectPayment: () => void;
   sessionKey: string;
 }
 
-const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, onViewPayment, sessionKey }) => {
+const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, onViewPayment, onDirectPayment, sessionKey }) => {
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('-payment_date');
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; number: string } | null>(null);
 
   const handleSort = (field: string) => {
     setSortBy(prev => prev === `-${field}` ? field : `-${field}`);
@@ -109,14 +112,12 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
   }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter, paymentMethodFilter, sortBy]);
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this payment?')) return;
-
     try {
       await apiClient.deleteFinancePayment(id, { session_key: sessionKey });
       toast.success('Payment deleted successfully');
+      setDeleteConfirm(null);
       fetchPayments();
     } catch (error: any) {
-      console.error('Error deleting payment:', error);
       toast.error('Failed to delete payment');
     }
   };
@@ -160,13 +161,23 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
           <h1 className="text-2xl font-bold text-gray-900">Payments</h1>
           <p className="text-gray-600">Record and track customer payments</p>
         </div>
-        <button
-          onClick={onAddPayment}
-          className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-athenas-blue to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Update Payments
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onDirectPayment}
+            className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+            title="Direct Payment (No Invoice)"
+          >
+            <IndianRupee className="w-4 h-4 mr-2" />
+            Direct Payment
+          </button>
+          <button
+            onClick={onAddPayment}
+            className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-athenas-blue to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Update Payments
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -255,7 +266,12 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
                       <div className="flex items-center">
                         <CreditCard className="w-5 h-5 text-athenas-blue mr-3" />
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{payment.payment_number}</div>
+                          <div 
+                            className="text-sm font-medium text-blue-600 dark:text-blue-400 cursor-pointer hover:underline"
+                            onClick={() => onViewPayment(payment)}
+                          >
+                            {payment.payment_number}
+                          </div>
                           <div className="text-sm text-gray-500">
                             {new Date(payment.payment_date).toLocaleDateString()}
                           </div>
@@ -301,21 +317,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
                         <button
-                          onClick={() => onViewPayment(payment)}
-                          className="text-athenas-blue hover:text-blue-600 transition-colors"
-                          title="View Payment"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => onEditPayment(payment)}
-                          className="text-athenas-gold hover:text-yellow-600 transition-colors"
-                          title="Edit Payment"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(payment.id)}
+                          onClick={() => setDeleteConfirm({ id: payment.id, number: payment.payment_number })}
                           className="text-red-600 hover:text-red-800 transition-colors"
                           title="Delete Payment"
                         >
@@ -355,6 +357,16 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        title="Delete Payment"
+        message={`Are you sure you want to delete payment ${deleteConfirm?.number}? This will reverse the invoice outstanding amount.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm.id)}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 };

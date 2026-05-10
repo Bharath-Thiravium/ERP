@@ -25,6 +25,27 @@ except ImportError:
             return cast(value)
         return value
 
+
+def config_bool(key, default=False):
+    """
+    Parse boolean-like settings while tolerating legacy environment values.
+    """
+    value = os.environ.get(key)
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+
+    normalized = str(value).strip().lower()
+    truthy = {'1', 'true', 'yes', 'on', 'dev', 'development', 'debug'}
+    falsy = {'0', 'false', 'no', 'off', 'prod', 'production', 'release'}
+
+    if normalized in truthy:
+        return True
+    if normalized in falsy:
+        return False
+    return default
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -40,7 +61,7 @@ IS_PRODUCTION = ENVIRONMENT == 'production'
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-rh@5hj9e1o7sdlca##9(lzk#9vuu*dqv3_wdcvms74n6&ccr!3')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=False, cast=bool)
+DEBUG = config_bool('DEBUG', default=False)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
 
@@ -150,6 +171,7 @@ DATABASES = {
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='5432'),
         'CONN_MAX_AGE': 60,
+        'CONN_HEALTH_CHECKS': True,
         'OPTIONS': {
             'connect_timeout': 5,
         },
@@ -227,6 +249,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'authentication.authentication.ServiceUserSessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -321,21 +344,16 @@ CHANNEL_LAYERS = {
     },
 }
 
-# Email Configuration - Per-Company Email Settings
-# Global email configuration removed - each company configures their own email service
-# Console backend used as fallback for system notifications only
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = 'system@athenas.co.in'
-EMAIL_TIMEOUT = 30
-
-# Login Notification Email Settings (for Master Admin security alerts)
-# You can configure these in .env file for production
-EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
+# Email Configuration
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = config('EMAIL_HOST', default='smtp.hostinger.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 EMAIL_USE_SSL = config('EMAIL_USE_SSL', default=False, cast=bool)
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='system@athenas.co.in')
+EMAIL_TIMEOUT = config('EMAIL_TIMEOUT', default=30, cast=int)
 
 # Note: Business emails (invoices, quotations) now use company-specific email settings
 # configured in Company Dashboard > Settings > Email Settings

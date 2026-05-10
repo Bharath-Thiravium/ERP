@@ -79,13 +79,37 @@ If your backup file is in a different location, the import script will ask you t
 After running the setup script, you can access:
 
 - **Frontend (React):** http://localhost:3000
-- **Backend API:** http://localhost:8000
-- **Admin Panel:** http://localhost:8000/admin/
-- **API Documentation:** http://localhost:8000/api/schema/swagger-ui/
+- **Backend API:** http://localhost:8004
+- **Admin Panel:** http://localhost:8004/admin/
+- **API Documentation:** http://localhost:8004/api/schema/swagger-ui/
 
-## Stopping Services
+## Restarting Services
 
-To stop all running services:
+### Quick Restart (Recommended)
+To kill and restart both frontend and backend services:
+
+```bash
+./restart_services.sh
+```
+
+Or use the global command from anywhere:
+
+```bash
+sap-restart
+```
+
+This script will:
+- Kill all backend processes (port 8004)
+- Kill all frontend processes (port 3000)
+- Kill Celery workers and beat scheduler
+- Clear Python cache
+- Restart backend on port 8004
+- Restart Celery workers
+- Restart frontend on port 3000
+
+### Stopping Services
+
+To stop all running services without restarting:
 
 ```bash
 ./stop_services.sh
@@ -109,11 +133,12 @@ To stop all running services:
 
 3. **Port already in use:**
    ```bash
-   # Kill processes on port 3000 (frontend)
-   lsof -ti:3000 | xargs kill -9
+   # Use the restart script to kill and restart all services
+   ./restart_services.sh
    
-   # Kill processes on port 8000 (backend)
-   lsof -ti:8000 | xargs kill -9
+   # Or manually kill processes
+   lsof -ti:3000 | xargs kill -9  # Frontend
+   lsof -ti:8004 | xargs kill -9  # Backend
    ```
 
 4. **Permission denied on scripts:**
@@ -182,9 +207,56 @@ If you encounter any issues:
 ## Features
 
 This SAP-Python system includes:
-- **Finance Module:** Invoicing, payments, quotations, purchase orders
+- **Finance Module:** Invoicing, payments, quotations, purchase orders, **direct customer payments**, **TDS-only payments**
 - **HR Module:** Employee management, payroll, attendance, recruitment
 - **Inventory Module:** Stock management, product catalog, warehouses
 - **CRM Module:** Customer relationship management, leads, opportunities
 - **Analytics:** Business intelligence and reporting
 - **Security:** Multi-factor authentication, role-based access control
+
+### New: Direct Customer Payment Feature
+
+Record payments from customers without requiring an invoice - perfect for:
+- Memos (debit/credit)
+- Penalties
+- Incentives
+- Complimentary payments
+- Any miscellaneous customer payments
+
+**Setup:**
+```bash
+./setup_direct_payment.sh
+```
+
+**Documentation:**
+- Full Guide: `DIRECT_PAYMENT_FEATURE.md`
+- Quick Reference: `DIRECT_PAYMENT_QUICK_REFERENCE.md`
+- Implementation: `DIRECT_PAYMENT_IMPLEMENTATION.md`
+
+### New: TDS-Only Payment Feature
+
+Record TDS (Tax Deducted at Source) payments separately and in advance - perfect for:
+- Advance TDS payments by customers
+- Split TDS and main payments
+- Quarterly TDS payments
+- Better TDS compliance and tracking
+
+**Key Benefits:**
+- ✅ Record TDS independently from the TDS tab
+- ✅ No dependency on cash payment
+- ✅ Simple and straightforward
+- ✅ Real-world business compliance
+- ✅ Accurate TDS tracking and audit trail
+
+**How to Use:**
+1. Open invoice payment modal
+2. Go to **TDS tab**
+3. Click "Add TDS Entry"
+4. Enter TDS amount and challan number
+5. Click "Save TDS Entry"
+6. Done! TDS recorded independently
+
+**Documentation:**
+- Simple Guide: `TDS_SIMPLE_FIX.md` ⭐ **START HERE**
+- Full Guide: `TDS_ONLY_PAYMENT_FEATURE.md`
+- Quick Reference: `TDS_ONLY_PAYMENT_QUICK_REFERENCE.md`

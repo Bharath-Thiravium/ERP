@@ -7,6 +7,9 @@ import QuotationEdit from '../components/QuotationEdit'
 import RaiseInvoiceModal from '../components/RaiseInvoiceModal'
 import SimpleProformaForm from '../components/SimpleProformaForm'
 import DynamicTaxInvoiceForm from '../components/DynamicTaxInvoiceForm'
+import FinanceCard from '../components/FinanceCard'
+import FinancialYearFilter from '../components/FinancialYearFilter'
+import { getCurrentFY } from '../../../../utils/financialYearUtils'
 
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import toast from 'react-hot-toast'
@@ -43,6 +46,7 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
   const [currentView, setCurrentView] = useState<'list' | 'form' | 'detail' | 'edit'>('list')
   const [selectedQuotation, setSelectedQuotation] = useState<Quotation | null>(null)
   const [refreshList, setRefreshList] = useState(0)
+  const [selectedFY, setSelectedFY] = useState<string>(getCurrentFY())
   
   // Invoice creation states
   const [showRaiseInvoiceModal, setShowRaiseInvoiceModal] = useState(false)
@@ -97,9 +101,12 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
   }
 
   const handleDetailEdit = async () => {
+    console.log('handleDetailEdit called')
+    console.log('selectedQuotation:', selectedQuotation)
     if (selectedQuotation) {
       // If status is 'sent', call revise API first
       if (selectedQuotation.status === 'sent') {
+        console.log('Quotation is sent, revising...')
         try {
           await fetch(`/api/finance/quotations/${selectedQuotation.id}/`, {
             method: 'PATCH',
@@ -120,7 +127,10 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
           return
         }
       }
+      console.log('Setting currentView to edit')
       setCurrentView('edit')
+    } else {
+      console.error('No selectedQuotation found')
     }
   }
 
@@ -204,14 +214,33 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
   return (
     <div className="space-y-6">
       {currentView === 'list' && (
-        <QuotationList
-          key={refreshList} // Force re-render when refreshList changes
-          onCreateNew={handleCreateNew}
-          onEdit={handleEdit}
-          onView={handleView}
-          onCreatePO={handleCreatePO}
-          onRaiseInvoice={handleRaiseInvoice}
-        />
+        <>
+          <FinanceCard>
+            <div className="flex justify-between items-start">
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                  Quotations
+                </h1>
+                <p className="text-gray-600 dark:text-gray-400 mt-2">
+                  Manage your quotations and proposals
+                </p>
+              </div>
+              <FinancialYearFilter
+                selectedYear={selectedFY}
+                onYearChange={setSelectedFY}
+              />
+            </div>
+          </FinanceCard>
+          <QuotationList
+            key={refreshList}
+            selectedFY={selectedFY}
+            onCreateNew={handleCreateNew}
+            onEdit={handleEdit}
+            onView={handleView}
+            onCreatePO={handleCreatePO}
+            onRaiseInvoice={handleRaiseInvoice}
+          />
+        </>
       )}
 
       {currentView === 'form' && (
@@ -226,6 +255,8 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
           quotationId={selectedQuotation.id}
           onClose={handleDetailClose}
           onEdit={handleDetailEdit}
+          onCreatePO={handleCreatePO}
+          onRaiseInvoice={handleRaiseInvoice}
         />
       )}
 

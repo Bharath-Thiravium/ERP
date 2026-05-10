@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import PaymentList from '../components/PaymentList';
 import UpdatePaymentModal from '../components/UpdatePaymentModal';
 import PaymentDetailModal from '../components/PaymentDetailModal';
+import DirectPaymentModal from '../components/DirectPaymentModal';
 import FinanceCard from '../components/FinanceCard';
 import MetricCard from '../components/MetricCard';
 import { apiClient } from '../../../../lib/api';
@@ -31,6 +32,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
   const [searchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showDirectPaymentModal, setShowDirectPaymentModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<any>(null);
   const [preSelectedInvoice, setPreSelectedInvoice] = useState<{ id: number; number: string; type: 'tax_invoice' | 'proforma_invoice' } | null>(null);
   const [selectedInvoiceForModal, setSelectedInvoiceForModal] = useState<any>(null);
@@ -159,6 +161,12 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
     fetchPaymentStats(); // Refresh stats
     // Clear URL parameters
     window.history.replaceState({}, '', window.location.pathname);
+  };
+
+  const handleDirectPaymentSuccess = () => {
+    setShowDirectPaymentModal(false);
+    setRefreshList(prev => prev + 1);
+    fetchPaymentStats();
   };
 
   return (
@@ -352,8 +360,18 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
         onAddPayment={() => toast.success('Update payments via Invoice/Proforma Invoice lists → Update Payment button')}
         onEditPayment={handleEditPayment}
         onViewPayment={handleViewPayment}
+        onDirectPayment={() => setShowDirectPaymentModal(true)}
         sessionKey={sessionKey}
       />
+
+      {/* Direct Payment Modal */}
+      {showDirectPaymentModal && (
+        <DirectPaymentModal
+          onClose={() => setShowDirectPaymentModal(false)}
+          onSuccess={handleDirectPaymentSuccess}
+          sessionKey={sessionKey}
+        />
+      )}
 
       {/* Payment Modal */}
       {showForm && selectedInvoiceForModal && (

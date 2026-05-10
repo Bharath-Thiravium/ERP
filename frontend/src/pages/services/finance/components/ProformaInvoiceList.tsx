@@ -89,9 +89,10 @@ interface ProformaInvoice {
 
 interface ProformaInvoiceListProps {
   sessionKey: string
+  selectedFY?: string
 }
 
-const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey }) => {
+const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey, selectedFY }) => {
   const [proformaInvoices, setProformaInvoices] = useState<ProformaInvoice[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -160,6 +161,11 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
 
       if (paymentStatusFilter) params.append('payment_status', paymentStatusFilter)
       params.append('ordering', sortBy)
+      if (selectedFY) {
+        params.append('financial_year', selectedFY)
+      } else {
+        params.append('financial_year', 'all')
+      }
 
       console.log('Fetching proforma invoices with params:', params.toString()) // Debug log
       const response = await apiClient.getFinanceProformaInvoices(Object.fromEntries(new URLSearchParams(params)))
@@ -210,7 +216,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
 
   useEffect(() => {
     fetchProformaInvoices()
-  }, [currentPage, paymentStatusFilter, sessionKey, sortBy])
+  }, [currentPage, paymentStatusFilter, sessionKey, sortBy, selectedFY])
 
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedForPayment, setSelectedForPayment] = useState<ProformaInvoice | null>(null)
@@ -498,10 +504,10 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                       <div className="flex items-center">
                         <FileText className="w-5 h-5 text-blue-500 mr-3" />
                         <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white flex items-center space-x-2">
+                          <div className="text-sm font-medium flex items-center space-x-2">
                             <span 
                               onClick={() => handleView(proforma)}
-                              className="text-blue-600 hover:text-blue-800 cursor-pointer"
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 cursor-pointer underline-offset-2 hover:underline transition-colors"
                             >
                               {proforma.proforma_number}
                             </span>
@@ -548,7 +554,10 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                                           <div className="text-gray-500 dark:text-gray-400 text-xs">{item.description}</div>
                                         )}
                                         <div className="text-gray-500 dark:text-gray-400">
-                                          {parseFloat(item.quantity || 0).toFixed(2)} {item.unit} x ₹{parseFloat(item.unit_price || 0).toFixed(2)} = ₹{parseFloat(item.line_total || 0).toFixed(2)}
+                                          {item.unit === 'PERCENTAGE' 
+                                            ? `${parseFloat(item.quantity || 0).toFixed(2)}% of ₹${parseFloat(item.unit_price || 0).toLocaleString()} = ₹${parseFloat(item.line_total || 0).toLocaleString()}`
+                                            : `${parseFloat(item.quantity || 0).toFixed(2)} ${item.unit} x ₹${parseFloat(item.unit_price || 0).toLocaleString()} = ₹${parseFloat(item.line_total || 0).toLocaleString()}`
+                                          }
                                         </div>
                                       </div>
                                     ))
@@ -663,15 +672,7 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
                         {proforma.is_rejected ? (
-                          // Show view and create new invoice buttons for rejected proforma invoices
                           <>
-                            <button
-                              onClick={() => handleView(proforma)}
-                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                              title="View"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
                             <button
                               onClick={() => handleCreateNewInvoice(proforma)}
                               className="text-green-600 hover:text-green-800 transition-colors"
@@ -681,7 +682,6 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                             </button>
                           </>
                         ) : (
-                          // Show all buttons for non-rejected proforma invoices
                           <>
                             <button
                               onClick={() => handleUpdatePayment(proforma)}
@@ -691,14 +691,12 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                               <IndianRupee className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handleView(proforma)}
-                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                              title="View"
+                              onClick={() => handleDownloadPDF(proforma.id, proforma.proforma_number)}
+                              className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
+                              title="Download PDF"
                             >
-                              <Eye className="w-4 h-4" />
+                              <Download className="w-4 h-4" />
                             </button>
-
-                            {/* Send Email - Only show for draft status */}
                             {proforma.status === 'draft' && (
                               <button
                                 onClick={() => handleSendEmail(proforma)}
@@ -708,47 +706,15 @@ const ProformaInvoiceList: React.FC<ProformaInvoiceListProps> = ({ sessionKey })
                                 <Mail className="w-4 h-4" />
                               </button>
                             )}
-                            
-                            <button
-                              onClick={() => handleDownloadPDF(proforma.id, proforma.proforma_number)}
-                              className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
-                              title="Download PDF"
-                            >
-                              <Download className="w-4 h-4" />
-                            </button>
-                            {/* Draft status buttons */}
-                            {proforma.status === 'draft' && (
+                            {!proforma.is_revised && (proforma.status === 'sent' || proforma.status === 'active') && (
                               <button
-                                onClick={() => handleEdit(proforma)}
-                                className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                                title="Edit"
+                                onClick={() => handleReject(proforma)}
+                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                                title="Reject"
                               >
-                                <Edit className="w-4 h-4" />
+                                <XCircle className="w-4 h-4" />
                               </button>
                             )}
-                            
-                            {/* Sent/Active status buttons */}
-                            {(proforma.status === 'sent' || proforma.status === 'active') && (
-                              <>
-                                {/* Only allow revise if not already revised */}
-                                {!proforma.is_revised && (
-                                  <button
-                                    onClick={() => handleReviseProforma(proforma)}
-                                    className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
-                                    title="Revise Proforma (Edit Once)"
-                                  >
-                                    <RotateCcw className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </>
-                            )}
-                            <button
-                              onClick={() => handleReject(proforma)}
-                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                              title="Reject"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </button>
                           </>
                         )}
                       </div>

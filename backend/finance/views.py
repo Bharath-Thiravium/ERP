@@ -2440,18 +2440,18 @@ def payment_stats(request):
         return Response({'error': str(e)}, status=500)
 
 
-def _customer_ledger_impl(request):
-    """Get customer ledger with transaction history"""
+def _build_customer_ledger_data(request):
+    """Build customer ledger data with transaction history."""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not session_key:
         session_key = request.query_params.get('session_key')
 
     if not session_key:
-        return Response({'error': 'Session key required'}, status=401)
+        return None, Response({'error': 'Session key required'}, status=401)
 
     customer_id = request.query_params.get('customer_id')
     if not customer_id:
-        return Response({'error': 'Customer ID required'}, status=400)
+        return None, Response({'error': 'Customer ID required'}, status=400)
 
     try:
         session = ServiceUserSession.objects.get(
@@ -2491,7 +2491,21 @@ def _customer_ledger_impl(request):
                     payment_date__lt=start_date
                 )
                 period_invoiced = sum(float(inv.total_amount) if str(inv.total_amount).lower() != "nan" else 0.0 for inv in period_invoices)
-                period_paid = sum(float(pay.amount) if str(pay.amount).lower() != "nan" else 0.0 for pay in period_payments if pay.status == 'completed')
+                # Calculate period paid including TDS
+                period_paid = 0
+                for pay in period_payments:
+                    if pay.status == 'completed':
+                        payment_amount = float(pay.amount) if str(pay.amount).lower() != "nan" else 0.0
+                        tds_amount = float(pay.tds_amount) if pay.tds_amount and str(pay.tds_amount).lower() != "nan" else 0.0
+                        
+                        # Get TDS deposits for this payment
+                        tds_deposits = pay.tds_deposits.all()
+                        total_tds_deposits = sum(float(d.amount) for d in tds_deposits)
+                        
+                        if pay.payment_type == 'tds_only':
+                            period_paid += tds_amount
+                        else:
+                            period_paid += payment_amount + total_tds_deposits
                 period_opening_balance = customer.opening_balance + period_invoiced - period_paid
 
         # Build ledger entries from invoices and payments
@@ -2586,17 +2600,61 @@ def _customer_ledger_impl(request):
 
         # Add payment entries (credit entries)
         for payment in payments:
-            entries.append({
-                'id': f'payment_{payment.id}',
-                'date': payment.payment_date.isoformat(),
-                'document_type': 'Payment',
-                'document_number': payment.payment_number,
-                'description': f'Payment received - {payment.payment_method}',
-                'debit_amount': 0,
-                'credit_amount': float(payment.amount) if str(payment.amount).lower() != "nan" else 0.0,
-                'balance': 0,  # Will be calculated later
-                'status': payment.status,
-            })
+            # Calculate amounts
+            payment_amount = float(payment.amount) if str(payment.amount).lower() != "nan" else 0.0
+            tds_amount = float(payment.tds_amount) if payment.tds_amount and str(payment.tds_amount).lower() != "nan" else 0.0
+            
+            # Skip TDS-only payments from main payment entries (they only show as TDS entries)
+            if payment.payment_type != 'tds_only':
+                net_amount = float(payment.net_amount_received) if payment.net_amount_received else (payment_amount - tds_amount)
+                
+                # Add main payment entry (net amount received)
+                entries.append({
+                    'id': f'payment_{payment.id}',
+                    'date': payment.payment_date.isoformat(),
+                    'document_type': 'Payment',
+                    'document_number': payment.payment_number,
+                    'description': f'Payment received - {payment.payment_method}',
+                    'debit_amount': 0,
+                    'credit_amount': net_amount,
+                    'balance': 0,  # Will be calculated later
+                    'status': payment.status,
+                })
+            
+            # Add TDS entry if TDS amount exists (always show TDS for audit trail)
+            # Check both payment-level TDS and TDS deposits
+            tds_deposits = payment.tds_deposits.all()
+            total_tds_deposits = sum(float(d.amount) for d in tds_deposits)
+            
+            if tds_amount > 0 or total_tds_deposits > 0:
+                # Use deposit TDS if payment-level TDS is 0
+                display_tds = tds_amount if tds_amount > 0 else total_tds_deposits
+                
+                # Check certificate status from deposits if payment-level TDS is 0
+                if tds_amount > 0:
+                    cert_received = payment.tds_certificate_received
+                else:
+                    # Check if all deposits have certificates
+                    cert_received = all(d.certificate_received for d in tds_deposits) if tds_deposits else False
+                
+                tds_status = 'completed' if cert_received else 'pending'
+                tds_desc = f'TDS deducted - {payment.tds_section or ""} @ {payment.tds_rate or 0}%'
+                if cert_received:
+                    tds_desc += ' (Certificate Received)'
+                else:
+                    tds_desc += ' (Certificate Pending)'
+                    
+                entries.append({
+                    'id': f'tds_{payment.id}',
+                    'date': payment.payment_date.isoformat(),
+                    'document_type': 'TDS',
+                    'document_number': f'{payment.payment_number}-TDS',
+                    'description': tds_desc,
+                    'debit_amount': 0,
+                    'credit_amount': display_tds,
+                    'balance': 0,  # Will be calculated later
+                    'status': tds_status,
+                })
 
         # Sort entries by date
         entries.sort(key=lambda x: x['date'])
@@ -2621,15 +2679,34 @@ def _customer_ledger_impl(request):
         total_invoiced = sum(float(inv.total_amount) if str(inv.total_amount).lower() != "nan" else 0.0 for inv in invoices)
         total_proforma = sum(float(pi.total_amount) if str(pi.total_amount).lower() != "nan" else 0.0 for pi in proforma_invoices)
         total_invoiced += total_proforma
-        total_paid = sum(float(pay.amount) if str(pay.amount).lower() != "nan" else 0.0 for pay in payments if pay.status == 'completed')
-        outstanding_amount = total_invoiced - total_paid
+        
+        # Calculate total paid including both net amount and TDS
+        total_paid = 0
+        for pay in payments:
+            if pay.status == 'completed':
+                payment_amount = float(pay.amount) if str(pay.amount).lower() != "nan" else 0.0
+                tds_amount = float(pay.tds_amount) if pay.tds_amount and str(pay.tds_amount).lower() != "nan" else 0.0
+                
+                # Get TDS deposits for this payment
+                tds_deposits = pay.tds_deposits.all()
+                total_tds_deposits = sum(float(d.amount) for d in tds_deposits)
+                
+                # For TDS-only payments, count TDS; for regular payments, count amount + TDS deposits
+                if pay.payment_type == 'tds_only':
+                    total_paid += tds_amount
+                else:
+                    # Count payment amount + any TDS deposits (invoice-level TDS)
+                    total_paid += payment_amount + total_tds_deposits
+        
+        # Calculate outstanding including opening balance
+        outstanding_amount = float(period_opening_balance) + total_invoiced - total_paid
 
         # Get customer credit limit (default to 100000 if not set)
         credit_limit = getattr(customer, 'credit_limit', 100000)
 
 
 
-        return Response({
+        return {
             'customer': {
                 'id': customer.id,
                 'name': customer.name,
@@ -2644,14 +2721,120 @@ def _customer_ledger_impl(request):
             'outstanding_amount': outstanding_amount,
             'credit_limit': credit_limit,
             'entries': entries,
-        })
+        }, None
 
     except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session', 'detail': 'Authentication credentials were not provided.'}, status=401)
+        return None, Response({'error': 'Invalid session', 'detail': 'Authentication credentials were not provided.'}, status=401)
     except Customer.DoesNotExist:
-        return Response({'error': 'Customer not found'}, status=404)
+        return None, Response({'error': 'Customer not found'}, status=404)
     except Exception as e:
-        return Response({'error': str(e)}, status=500)
+        return None, Response({'error': str(e)}, status=500)
+
+
+def _customer_ledger_impl(request):
+    ledger_data, error_response = _build_customer_ledger_data(request)
+    if error_response:
+        return error_response
+    return Response(ledger_data)
+
+
+def _build_customer_ledger_html(data):
+    from django.utils.html import escape
+
+    customer = data['customer']
+    entries_html = ''
+    for entry in data.get('entries', []):
+        debit = f"₹{_format_indian_currency(entry['debit_amount'])}" if entry['debit_amount'] > 0 else '—'
+        credit = f"₹{_format_indian_currency(entry['credit_amount'])}" if entry['credit_amount'] > 0 else '—'
+        balance_color = '#166534' if entry['balance'] >= 0 else '#dc2626'
+        entries_html += f"""
+        <tr>
+          <td>{escape(entry['date'])}</td>
+          <td>{escape(entry['document_type'])}</td>
+          <td>{escape(entry['document_number'])}</td>
+          <td>{escape(entry['description'])}</td>
+          <td style='text-align:right'>{debit}</td>
+          <td style='text-align:right'>{credit}</td>
+          <td style='text-align:right;color:{balance_color};font-weight:700'>₹{_format_indian_currency(entry['balance'])}</td>
+        </tr>"""
+
+    outstanding_words = _amount_to_indian_rupees_words(data.get('outstanding_amount', 0))
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset='UTF-8'>
+<style>
+  @page{{size:A4 landscape;margin:14mm}}
+  body{{font-family:'Helvetica Neue',Arial,sans-serif;font-size:10px;color:#1e293b}}
+  .header{{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-bottom:12px;border-bottom:2px solid #1e40af}}
+  .title{{font-size:16px;font-weight:700;color:#1e293b}}
+  .subtitle{{font-size:11px;color:#64748b}}
+  .customer-box{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin-bottom:14px}}
+  .summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}}
+  .metric{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px}}
+  .metric-label{{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#94a3b8;margin-bottom:4px}}
+  .metric-value{{font-size:13px;font-weight:700}}
+  table{{width:100%;border-collapse:collapse;font-size:9px}}
+  th{{background:#1e40af;color:#fff;padding:7px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.3px}}
+  td{{padding:6px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top}}
+  tr:nth-child(even) td{{background:#f8fafc}}
+  .footer{{margin-top:16px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;text-align:center}}
+</style></head><body>
+<div class='header'>
+  <div>
+    <div style='font-size:18px;font-weight:700;color:#1e40af'>{escape(customer['name'])}</div>
+    <div class='subtitle'>{escape(customer.get('customer_code', ''))}</div>
+    <div class='subtitle'>{escape(customer.get('email', ''))} {escape(customer.get('phone', ''))}</div>
+  </div>
+  <div style='text-align:right'>
+    <div class='title'>Complete Customer Ledger</div>
+    <div class='subtitle'>Generated On: {escape(str(timezone.now().date()))}</div>
+  </div>
+</div>
+<div class='customer-box'>
+  <strong>Customer:</strong> {escape(customer['name'])} |
+  <strong>Code:</strong> {escape(customer.get('customer_code', ''))} |
+  <strong>Contact:</strong> {escape(customer.get('phone', ''))}
+</div>
+<div class='summary'>
+  <div class='metric'><div class='metric-label'>Opening Balance</div><div class='metric-value'>₹{_format_indian_currency(data.get('opening_balance', 0))}</div></div>
+  <div class='metric'><div class='metric-label'>Total Invoiced</div><div class='metric-value'>₹{_format_indian_currency(data.get('total_invoiced', 0))}</div></div>
+  <div class='metric'><div class='metric-label'>Total Paid</div><div class='metric-value'>₹{_format_indian_currency(data.get('total_paid', 0))}</div></div>
+  <div class='metric'><div class='metric-label'>Outstanding</div><div class='metric-value'>₹{_format_indian_currency(data.get('outstanding_amount', 0))}</div></div>
+</div>
+<table>
+  <thead><tr>
+    <th>Date</th><th>Document Type</th><th>Document No.</th><th>Description</th>
+    <th style='text-align:right'>Debit</th><th style='text-align:right'>Credit</th>
+    <th style='text-align:right'>Balance</th>
+  </tr></thead>
+  <tbody>{entries_html}</tbody>
+</table>
+<div style='margin-top:12px;font-size:10px;color:#475569'><strong>Outstanding in Words:</strong> {escape(outstanding_words)}</div>
+<div class='footer'>This is a computer-generated ledger statement. Please contact us for any discrepancies.</div>
+</body></html>"""
+
+
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([])
+def customer_ledger_pdf(request):
+    """Download complete customer ledger as PDF."""
+    ledger_data, error_response = _build_customer_ledger_data(request)
+    if error_response:
+        return error_response
+
+    try:
+        from django.http import HttpResponse
+        import weasyprint
+
+        pdf = weasyprint.HTML(string=_build_customer_ledger_html(ledger_data)).write_pdf()
+        customer_name = ledger_data['customer']['name'].replace(' ', '_')
+        filename = f"Customer_Ledger_{customer_name}_{timezone.now().date()}.pdf"
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        return Response({'error': f'PDF generation failed: {str(e)}'}, status=500)
 
 
 @api_view(['GET'])
@@ -3886,24 +4069,50 @@ class TDSPaymentsListView(ListAPIView):
             'customer', 'invoice', 'proforma_invoice', 'created_by'
         ).order_by('-payment_date')
 
-        # Quarter filter
+        # Quarter filter — respects financial_year param
         quarter = self.request.query_params.get('quarter')
+        financial_year = self.request.query_params.get('financial_year')  # e.g. "2024-2025"
+
         if quarter and quarter in ['Q1', 'Q2', 'Q3', 'Q4']:
             from dateutil.relativedelta import relativedelta
-            import calendar
-            
-            today = timezone.now().date()
-            fy_start = today.replace(month=4, day=1) if today.month >= 4 else (today.replace(year=today.year-1, month=4, day=1))
-            
+
+            # Derive FY start from financial_year param if provided, else use current FY
+            if financial_year:
+                try:
+                    fy_start_year = int(financial_year.split('-')[0])
+                except (ValueError, IndexError):
+                    fy_start_year = None
+            else:
+                fy_start_year = None
+
+            if not fy_start_year:
+                today = timezone.now().date()
+                fy_start_year = today.year if today.month >= 4 else today.year - 1
+
+            from datetime import date
+            fy_start = date(fy_start_year, 4, 1)
+
             quarter_ranges = {
-                'Q1': (fy_start, fy_start + relativedelta(months=3)),
-                'Q2': (fy_start + relativedelta(months=3), fy_start + relativedelta(months=6)),
-                'Q3': (fy_start + relativedelta(months=6), fy_start + relativedelta(months=9)),
-                'Q4': (fy_start + relativedelta(months=9), (fy_start + relativedelta(years=1)).replace(month=4, day=1))
+                'Q1': (fy_start,                              fy_start + relativedelta(months=3)),
+                'Q2': (fy_start + relativedelta(months=3),   fy_start + relativedelta(months=6)),
+                'Q3': (fy_start + relativedelta(months=6),   fy_start + relativedelta(months=9)),
+                'Q4': (fy_start + relativedelta(months=9),   fy_start + relativedelta(years=1)),
             }
-            
+
             start_date, end_date = quarter_ranges[quarter]
-            queryset = queryset.filter(payment_date__range=[start_date, end_date])
+            queryset = queryset.filter(payment_date__gte=start_date, payment_date__lt=end_date)
+
+        elif financial_year:
+            # FY selected but no quarter — filter entire FY
+            try:
+                fy_start_year = int(financial_year.split('-')[0])
+                from datetime import date
+                from dateutil.relativedelta import relativedelta
+                fy_start = date(fy_start_year, 4, 1)
+                fy_end = date(fy_start_year + 1, 4, 1)
+                queryset = queryset.filter(payment_date__gte=fy_start, payment_date__lt=fy_end)
+            except (ValueError, IndexError):
+                pass
 
         # Customer filter
         customer_id = self.request.query_params.get('customer')
@@ -4080,52 +4289,223 @@ class MarkTDSCertReceivedView(APIView):
 
 # ─── Customer Pending Payment Statement ───────────────────────────────────────
 
-@api_view(['GET'])
-@authentication_classes([])
-@permission_classes([])
-def customer_pending_statement(request):
+class PendingPaymentStatementAPIView(APIView):
     """
-    Pending payment statement per invoice.
+    Pending payment statement endpoint - returns JSON data.
+    """
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    
+    def get(self, request):
+        statement_data, error_response = _build_customer_pending_statement_data(request)
+        if error_response:
+            return error_response
+        return Response(statement_data)
 
-    For each invoice we distinguish:
-      pending_from_payment  = outstanding that is genuinely unpaid by customer
-      pending_from_tds      = outstanding that is TDS already deducted by customer
-                              (customer deducted it, needs to deposit to govt)
-      tds_on_outstanding    = TDS expected on the remaining genuine payment outstanding
-                              (only when include_tds=true and invoice.tds_applicable)
-      net_payable           = pending_from_payment + tds_on_outstanding
+
+def _get_effective_completed_payment_amount(payment, invoice_obj=None):
     """
+    Amount that should count as settled for reporting.
+    Mirrors invoice payment-status logic so direct-payment credits behave consistently.
+    """
+    from decimal import Decimal
+    from django.db.models import Sum as DSum
+
+    if getattr(payment, 'status', None) != 'completed':
+        return Decimal('0')
+
+    payment_type = getattr(payment, 'payment_type', None)
+    if payment_type == 'tds_only':
+        return payment.tds_deposits.filter(certificate_received=True).aggregate(
+            total=DSum('amount')
+        )['total'] or Decimal('0')
+
+    net = Decimal(str(payment.net_amount_received or 0))
+    tds = Decimal(str(payment.tds_amount or 0))
+
+    if tds > 0:
+        return net + (tds if payment.tds_certificate_received else Decimal('0'))
+
+    if invoice_obj and getattr(invoice_obj, 'tds_applicable', False) and getattr(invoice_obj, 'tds_rate', 0):
+        cert_received = payment.tds_deposits.filter(certificate_received=True).aggregate(
+            total=DSum('amount')
+        )['total'] or Decimal('0')
+        return net + cert_received
+
+    gross = Decimal(str(payment.gross_payment_amount or payment.amount or 0))
+    return gross
+
+
+def _get_unallocated_customer_credit_payments(customer, company):
+    """
+    Payments that should behave like direct customer credits.
+    Includes both proper direct payments and legacy completed payments
+    that were saved without an invoice/proforma link.
+    """
+    return Payment.objects.filter(
+        customer=customer,
+        company=company,
+        status='completed',
+    ).filter(
+        Q(payment_type='direct') |
+        (Q(payment_type='invoice') & Q(invoice__isnull=True) & Q(proforma_invoice__isnull=True))
+    ).exclude(payment_type='tds_only').order_by('-payment_date', '-created_at')
+
+
+def _format_indian_currency(amount):
+    """Format a number using Indian digit grouping."""
+    try:
+        value = float(amount or 0)
+    except (TypeError, ValueError):
+        value = 0.0
+
+    negative = value < 0
+    value = abs(value)
+    integer_part, decimal_part = f"{value:.2f}".split('.')
+
+    if len(integer_part) > 3:
+        last_three = integer_part[-3:]
+        remaining = integer_part[:-3]
+        parts = []
+        while len(remaining) > 2:
+            parts.insert(0, remaining[-2:])
+            remaining = remaining[:-2]
+        if remaining:
+            parts.insert(0, remaining)
+        grouped = ','.join(parts + [last_three])
+    else:
+        grouped = integer_part
+
+    formatted = f"{grouped}.{decimal_part}"
+    return f"-{formatted}" if negative else formatted
+
+
+def _number_to_indian_words(number):
+    ones = [
+        '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+        'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+        'Seventeen', 'Eighteen', 'Nineteen'
+    ]
+    tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+
+    def two_digits(n):
+        if n < 20:
+            return ones[n]
+        return f"{tens[n // 10]} {ones[n % 10]}".strip()
+
+    def three_digits(n):
+        hundred = n // 100
+        remainder = n % 100
+        if hundred and remainder:
+            return f"{ones[hundred]} Hundred {two_digits(remainder)}"
+        if hundred:
+            return f"{ones[hundred]} Hundred"
+        return two_digits(remainder)
+
+    if number == 0:
+        return 'Zero'
+
+    parts = []
+    for value, label in (
+        (10000000, 'Crore'),
+        (100000, 'Lakh'),
+        (1000, 'Thousand'),
+    ):
+        count = number // value
+        if count:
+            parts.append(f"{two_digits(count) if count < 100 else three_digits(count)} {label}")
+            number %= value
+
+    if number:
+        parts.append(three_digits(number))
+
+    return ' '.join(part.strip() for part in parts if part).strip()
+
+
+def _amount_to_indian_rupees_words(amount):
+    try:
+        value = float(amount or 0)
+    except (TypeError, ValueError):
+        value = 0.0
+
+    rupees = int(value)
+    paise = int(round((value - rupees) * 100))
+
+    words = f"Rupees {_number_to_indian_words(rupees)}"
+    if paise:
+        words += f" and Paise {_number_to_indian_words(paise)}"
+    words += " Only"
+    return words
+
+
+def _build_invoice_consolidated_description(invoice):
+    """
+    Build a concise invoice description from payment-update descriptions.
+    Uses Payment.notes entered via the update payment flow.
+    """
+    descriptions = []
+
+    seen = set()
+    for payment in invoice.payments.all():
+        text = (getattr(payment, 'notes', '') or '').strip()
+        if not text:
+            text = (getattr(payment, 'payment_purpose', '') or '').strip()
+        if not text:
+            continue
+        if text.lower() in {'tds payment', 'tds payment (advance)'} and getattr(payment, 'payment_type', None) == 'tds_only':
+            continue
+        if not text:
+            continue
+        normalized = ' '.join(text.split())
+        if normalized.lower() in seen:
+            continue
+        seen.add(normalized.lower())
+        descriptions.append(normalized)
+
+    if not descriptions:
+        return '—'
+
+    combined = '; '.join(descriptions)
+    if len(combined) > 180:
+        return combined[:177].rstrip() + '...'
+    return combined
+
+
+def _build_customer_pending_statement_data(request):
+    import logging
+    logger = logging.getLogger(__name__)
+
     session_key = (
         request.headers.get('Authorization', '').replace('Bearer ', '')
         or request.query_params.get('session_key')
     )
     if not session_key:
-        return Response({'error': 'Session key required'}, status=401)
+        return None, Response({'error': 'Session key required'}, status=401)
 
     customer_id = request.query_params.get('customer_id')
     if not customer_id:
-        return Response({'error': 'customer_id required'}, status=400)
+        return None, Response({'error': 'customer_id required'}, status=400)
 
     include_tds = request.query_params.get('include_tds', 'true').lower() == 'true'
-    fmt = request.query_params.get('format', 'json')
 
     try:
         session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
         company = session.service_user.company
         customer = Customer.objects.get(id=customer_id, company=company)
-    except (ServiceUserSession.DoesNotExist, Customer.DoesNotExist):
-        return Response({'error': 'Not found'}, status=404)
+    except (ServiceUserSession.DoesNotExist, Customer.DoesNotExist) as e:
+        logger.error(f"Auth/Customer error: {str(e)}")
+        return None, Response({'error': 'Not found'}, status=404)
+    except Exception as e:
+        logger.error(f"Unexpected error in auth: {str(e)}")
+        return None, Response({'error': str(e)}, status=500)
 
-    # Include paid invoices where TDS was deducted but not yet deposited
-    # (outstanding = tds_deducted means customer paid net, TDS pending with govt)
     pending_invoices = Invoice.objects.filter(
         customer=customer,
         company=company,
         is_rejected=False,
         payment_status__in=['unpaid', 'partially_paid', 'paid', 'overdue']
-    ).prefetch_related('payments').order_by('invoice_date')
+    ).select_related('purchase_order').prefetch_related('payments', 'invoice_items').order_by('invoice_date')
 
-    # Filter to only those with actual outstanding or TDS pending
     pending_invoices = [
         inv for inv in pending_invoices
         if float(inv.outstanding_amount or 0) > 0
@@ -4139,30 +4519,37 @@ def customer_pending_statement(request):
 
     for inv in pending_invoices:
         invoice_amount = float(inv.total_amount or 0)
-        paid_amount    = float(inv.paid_amount or 0)
-        outstanding    = float(inv.outstanding_amount or max(invoice_amount - paid_amount, 0))
+        paid_amount = float(inv.paid_amount or 0)
+        outstanding = float(inv.outstanding_amount or max(invoice_amount - paid_amount, 0))
 
-        # Sum TDS already deducted across all completed payments for this invoice
-        tds_already_deducted = sum(
-            float(p.tds_amount or 0)
-            for p in inv.payments.filter(status='completed')
-            if p.tds_applicable and float(p.tds_amount or 0) > 0
-        )
+        tds_all_deducted = 0
+        tds_pending_certificate = 0
 
-        # Determine how much of the outstanding is TDS vs genuine unpaid
-        # If outstanding <= tds_already_deducted: entire outstanding is TDS withheld
-        # If outstanding > tds_already_deducted: part is TDS, rest is genuine unpaid
-        pending_from_tds = min(round(tds_already_deducted, 2), round(outstanding, 2))
-        pending_from_payment = round(max(outstanding - pending_from_tds, 0), 2)
+        for p in inv.payments.filter(status='completed'):
+            if getattr(p, 'payment_type', None) == 'tds_only':
+                for td in p.tds_deposits.all():
+                    tds_all_deducted += float(td.amount or 0)
+                    if not td.certificate_received:
+                        tds_pending_certificate += float(td.amount or 0)
+            else:
+                if p.tds_applicable and float(p.tds_amount or 0) > 0:
+                    tds_all_deducted += float(p.tds_amount or 0)
+                    if not p.tds_certificate_received:
+                        tds_pending_certificate += float(p.tds_amount or 0)
+                for td in p.tds_deposits.all():
+                    tds_all_deducted += float(td.amount or 0)
+                    if not td.certificate_received:
+                        tds_pending_certificate += float(td.amount or 0)
 
-        # TDS expected on the remaining genuine payment outstanding
+        pending_from_tds = min(round(tds_pending_certificate, 2), round(outstanding, 2))
+        pending_from_payment = round(max(outstanding - tds_pending_certificate, 0), 2)
+
         tds_on_outstanding = 0.0
         tds_rate = float(inv.tds_rate or 0)
         tds_section = inv.tds_section or ''
         if include_tds and inv.tds_applicable and pending_from_payment > 0 and tds_rate > 0:
             tds_on_outstanding = round(pending_from_payment * tds_rate / 100, 2)
 
-        # Net payable = genuine pending payment + TDS on that outstanding
         net_payable = round(pending_from_payment + tds_on_outstanding, 2)
 
         total_pending_payment += pending_from_payment
@@ -4171,58 +4558,120 @@ def customer_pending_statement(request):
         total_net_payable += net_payable
 
         rows.append({
-            'invoice_id':            inv.id,
-            'invoice_number':        inv.invoice_number,
-            'invoice_date':          inv.invoice_date.isoformat(),
-            'due_date':              inv.due_date.isoformat() if inv.due_date else None,
-            'invoice_amount':        invoice_amount,
-            'paid_amount':           paid_amount,
-            'outstanding_amount':    round(outstanding, 2),
-            # Split outstanding into TDS vs genuine payment
-            'pending_from_payment':  pending_from_payment,
-            'pending_from_tds':      pending_from_tds,
-            # TDS info
-            'tds_applicable':        inv.tds_applicable,
-            'tds_section':           tds_section,
-            'tds_rate':              tds_rate,
-            'tds_already_deducted':  round(tds_already_deducted, 2),
-            'tds_on_outstanding':    tds_on_outstanding,
-            'net_payable':           net_payable,
-            'payment_status':        inv.payment_status,
+            'invoice_id': inv.id,
+            'po_number': (
+                getattr(inv.purchase_order, 'internal_po_number', None)
+                or getattr(inv.purchase_order, 'po_number', None)
+                or '—'
+            ),
+            'project': (
+                getattr(inv.shipping_address, 'label', None)
+                or getattr(customer, 'project_area', None)
+                or '—'
+            ),
+            'invoice_number': inv.invoice_number,
+            'invoice_date': inv.invoice_date.isoformat(),
+            'due_date': inv.due_date.isoformat() if inv.due_date else None,
+            'invoice_amount': invoice_amount,
+            'paid_amount': paid_amount,
+            'outstanding_amount': round(outstanding, 2),
+            'description': _build_invoice_consolidated_description(inv),
+            'pending_from_payment': pending_from_payment,
+            'pending_from_tds': pending_from_tds,
+            'tds_applicable': inv.tds_applicable,
+            'tds_section': tds_section,
+            'tds_rate': tds_rate,
+            'tds_already_deducted': round(tds_all_deducted, 2),
+            'tds_on_outstanding': tds_on_outstanding,
+            'net_payable': net_payable,
+            'payment_status': inv.payment_status,
             'days_overdue': (
                 (timezone.now().date() - inv.due_date).days
                 if inv.due_date and inv.due_date < timezone.now().date() else 0
             ),
         })
 
-    summary = {
+    direct_payments_qs = _get_unallocated_customer_credit_payments(customer, company)
+
+    direct_payment_rows = []
+    total_direct_payment_credit = 0
+    for payment in direct_payments_qs:
+        effective_credit = float(_get_effective_completed_payment_amount(payment))
+        total_direct_payment_credit += effective_credit
+        direct_payment_rows.append({
+            'payment_id': payment.id,
+            'payment_number': payment.payment_number,
+            'payment_date': payment.payment_date.isoformat(),
+            'payment_purpose': payment.payment_purpose or 'Direct Payment',
+            'payment_method': payment.payment_method,
+            'payment_type': payment.payment_type,
+            'gross_payment_amount': float(payment.gross_payment_amount or payment.amount or 0),
+            'tds_amount': float(payment.tds_amount or 0),
+            'net_amount_received': float(payment.net_amount_received or 0),
+            'effective_credit': round(effective_credit, 2),
+            'reference_number': payment.reference_number or '',
+            'status': payment.status,
+        })
+
+    # Get customer opening balance
+    opening_balance = float(customer.opening_balance or 0)
+    
+    # Calculate consolidated balance including opening balance
+    # Opening balance (debit) + Net Payable (debit) - Direct Payment Credit (credit)
+    consolidated_balance = round(opening_balance + total_net_payable - total_direct_payment_credit, 2)
+
+    return {
         'customer': {
-            'id':            customer.id,
-            'name':          customer.name,
+            'id': customer.id,
+            'name': customer.name,
             'customer_code': customer.customer_code,
-            'email':         customer.email,
-            'phone':         customer.phone,
-            'gstin':         getattr(customer, 'gstin', '') or '',
-            'pan_number':    getattr(customer, 'pan_number', '') or '',
+            'email': customer.email,
+            'phone': customer.phone,
+            'gstin': getattr(customer, 'gstin', '') or '',
+            'pan_number': getattr(customer, 'pan_number', '') or '',
         },
         'company': {
-            'name':    company.name,
+            'name': company.name,
             'address': getattr(company, 'address', '') or '',
-            'phone':   getattr(company, 'phone', '') or '',
-            'email':   company.email,
-            'gstin':   getattr(company, 'gst_number', '') or '',
+            'phone': getattr(company, 'phone', '') or '',
+            'email': company.email,
+            'gstin': getattr(company, 'gst_number', '') or '',
         },
-        'include_tds':              include_tds,
-        'total_pending_payment':    round(total_pending_payment, 2),
-        'total_pending_tds':        round(total_pending_tds, 2),
+        'opening_balance': opening_balance,
+        'opening_balance_date': customer.opening_balance_date.isoformat() if customer.opening_balance_date else None,
+        'include_tds': include_tds,
+        'total_pending_payment': round(total_pending_payment, 2),
+        'total_pending_tds': round(total_pending_tds, 2),
         'total_tds_on_outstanding': round(total_tds_on_outstanding, 2),
-        'total_net_payable':        round(total_net_payable, 2),
-        'pending_count':            len(rows),
-        'statement_date':           timezone.now().date().isoformat(),
-        'invoices':                 rows,
-    }
+        'total_net_payable': round(total_net_payable, 2),
+        'total_direct_payment_credit': round(total_direct_payment_credit, 2),
+        'consolidated_balance_amount': consolidated_balance,
+        'pending_count': len(rows),
+        'direct_payment_count': len(direct_payment_rows),
+        'statement_date': timezone.now().date().isoformat(),
+        'invoices': rows,
+        'direct_payments': direct_payment_rows,
+    }, None
 
-    if fmt == 'pdf':
+
+def customer_pending_statement(request):
+    """
+    Pending payment statement per invoice.
+
+    For each invoice we distinguish:
+      pending_from_payment  = outstanding that is genuinely unpaid by customer
+      pending_from_tds      = outstanding that is TDS already deducted by customer
+                              (customer deducted it, needs to deposit to govt)
+      tds_on_outstanding    = TDS expected on the remaining genuine payment outstanding
+                              (only when include_tds=true and invoice.tds_applicable)
+      net_payable           = pending_from_payment + tds_on_outstanding
+    """
+    summary, error_response = _build_customer_pending_statement_data(request)
+    if error_response:
+        return error_response
+
+    if request.query_params.get('format') == 'pdf':
+        company = summary.get('company', {})
         return _generate_pending_statement_pdf(summary, company)
 
     return Response(summary)
@@ -4230,53 +4679,85 @@ def customer_pending_statement(request):
 
 def _generate_pending_statement_pdf(data, company):
     """Generate PDF for pending payment statement using WeasyPrint."""
-    from django.template.loader import render_to_string
     from django.http import HttpResponse
     import weasyprint
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Generating PDF for customer: {data['customer']['name']}")
 
-    html = _build_pending_statement_html(data, company)
     try:
+        html = _build_pending_statement_html(data, company)
         pdf = weasyprint.HTML(string=html).write_pdf()
         customer_name = data['customer']['name'].replace(' ', '_')
         filename = f"Pending_Statement_{customer_name}_{data['statement_date']}.pdf"
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        logger.info(f"PDF generated successfully: {filename}")
         return response
     except Exception as e:
-        logger.error(f"Pending statement PDF error: {e}")
-        return Response({'error': str(e)}, status=500)
+        logger.error(f"Pending statement PDF error: {str(e)}")
+        return Response({'error': f'PDF generation failed: {str(e)}'}, status=500)
 
 
 def _build_pending_statement_html(data, company):
     """Build HTML for pending payment statement."""
     from django.utils.html import escape
     c = data['customer']
-    co = data['company']
+    if isinstance(company, dict):
+        co = company
+        company_name = co.get('name', '')
+        company_address = co.get('address', '')
+        company_email = co.get('email', '')
+        company_gstin = co.get('gstin', '')
+    else:
+        co = company
+        company_name = getattr(co, 'name', '')
+        company_address = getattr(co, 'address', '')
+        company_email = getattr(co, 'email', '')
+        company_gstin = getattr(co, 'gst_number', '')
     rows_html = ''
-    for inv in data['invoices']:
-        overdue_style = 'color:#dc2626;font-weight:600' if inv['days_overdue'] > 0 else ''
-        tds_cell = f"₹{inv['tds_amount']:,.2f}<br><small style='color:#6b7280'>{inv['tds_section']} @ {inv['tds_rate']}%</small>" if inv['tds_amount'] else '—'
+    
+    for inv in data.get('invoices', []):
         rows_html += f"""
         <tr>
+          <td>{escape(inv.get('po_number') or '—')}</td>
+          <td>{escape(inv.get('project') or '—')}</td>
           <td>{escape(inv['invoice_number'])}</td>
           <td>{inv['invoice_date']}</td>
-          <td>{inv['due_date'] or '—'}</td>
-          <td style='text-align:right'>₹{inv['invoice_amount']:,.2f}</td>
-          <td style='text-align:right'>₹{inv['paid_amount']:,.2f}</td>
-          <td style='text-align:right'>₹{inv['outstanding_amount']:,.2f}</td>
-          <td style='text-align:right'>{tds_cell}</td>
-          <td style='text-align:right;font-weight:700'>₹{inv['net_payable']:,.2f}</td>
-          <td style='text-align:center;{overdue_style}'>{'Overdue ' + str(inv['days_overdue']) + 'd' if inv['days_overdue'] > 0 else inv['payment_status'].replace('_',' ').title()}</td>
+          <td style='text-align:right'>₹{_format_indian_currency(inv['invoice_amount'])}</td>
+          <td style='text-align:right'>₹{_format_indian_currency(inv['paid_amount'])}</td>
+          <td style='text-align:right'>₹{_format_indian_currency(inv['outstanding_amount'])}</td>
+          <td>{escape(inv.get('description') or '—')}</td>
         </tr>"""
 
-    tds_header = '<th>TDS Deducted</th>' if data['include_tds'] else ''
-    tds_summary = f"<tr><td colspan='2'><strong>TDS Deducted</strong></td><td style='text-align:right;color:#7c3aed'>₹{data['total_tds_deducted']:,.2f}</td></tr>" if data['include_tds'] else ''
+    direct_payments_html = ''
+    for payment in data.get('direct_payments', []):
+        direct_payments_html += f"""
+        <tr>
+          <td>{escape(payment['payment_number'])}</td>
+          <td>{payment['payment_date']}</td>
+          <td>{escape(payment.get('payment_purpose') or 'Direct Payment')}</td>
+          <td>{escape(payment.get('payment_method', '').replace('_', ' ').title())}</td>
+          <td style='text-align:right'>₹{_format_indian_currency(payment['gross_payment_amount'])}</td>
+          <td style='text-align:right'>₹{_format_indian_currency(payment['tds_amount'])}</td>
+          <td style='text-align:right'>₹{_format_indian_currency(payment['net_amount_received'])}</td>
+          <td style='text-align:right;font-weight:700;color:#166534'>₹{_format_indian_currency(payment['effective_credit'])}</td>
+        </tr>"""
+
+    tds_summary = f"<tr><td colspan='2'><strong>Total TDS Pending</strong></td><td style='text-align:right;color:#7c3aed'>₹{_format_indian_currency(data.get('total_pending_tds', 0))}</td></tr>" if data.get('include_tds') else ''
+    
+    # Calculate totals
+    total_invoice = sum(inv['invoice_amount'] for inv in data.get('invoices', []))
+    total_paid = sum(inv['paid_amount'] for inv in data.get('invoices', []))
+    total_outstanding = sum(inv['outstanding_amount'] for inv in data.get('invoices', []))
+    consolidated_balance_words = _amount_to_indian_rupees_words(data.get('consolidated_balance_amount', 0))
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset='UTF-8'>
 <style>
-  @page{{size:A4;margin:15mm}}
-  body{{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1e293b}}
+  @page{{size:A4 landscape;margin:15mm}}
+  body{{font-family:'Helvetica Neue',Arial,sans-serif;font-size:10px;color:#1e293b}}
   .header{{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #1e40af}}
   .company-name{{font-size:18px;font-weight:700;color:#1e40af;text-transform:uppercase}}
   .title{{font-size:16px;font-weight:700;color:#1e293b;margin:16px 0 4px}}
@@ -4284,63 +4765,71 @@ def _build_pending_statement_html(data, company):
   .info-grid{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}}
   .info-box{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px}}
   .info-label{{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:4px}}
-  table{{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:10px}}
+  table{{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:9px}}
   th{{background:#1e40af;color:#fff;padding:7px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.4px}}
   td{{padding:6px 8px;border-bottom:1px solid #e2e8f0}}
   tr:nth-child(even) td{{background:#f8fafc}}
-  .summary-table{{width:280px;margin-left:auto;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}}
+  .summary-table{{width:320px;margin-left:auto;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}}
   .summary-table td{{padding:7px 12px;border-bottom:1px solid #e2e8f0}}
-  .summary-table tr:last-child td{{background:#1e40af;color:#fff;font-weight:700;font-size:12px;border:none}}
+  .summary-table tr:last-child td{{background:#1e40af;color:#fff;font-weight:700;font-size:11px;border:none}}
   .footer{{margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;text-align:center}}
 </style></head><body>
 <div class='header'>
   <div>
-    <div class='company-name'>{escape(co['name'])}</div>
-    <div style='font-size:10px;color:#64748b;margin-top:4px'>{escape(co['address'])}</div>
-    <div style='font-size:10px;color:#64748b'>GSTIN: {escape(co['gstin'])}</div>
+    <div class='company-name'>{escape(company_name)}</div>
+    <div style='font-size:10px;color:#64748b;margin-top:4px'>{escape(company_address)}</div>
+    <div style='font-size:10px;color:#64748b'>GSTIN: {escape(company_gstin)}</div>
   </div>
   <div style='text-align:right'>
     <div class='title'>Pending Payment Statement</div>
     <div class='subtitle'>Statement Date: {data['statement_date']}</div>
-    <div class='subtitle'>{'TDS Included' if data['include_tds'] else 'Excluding TDS'}</div>
+    <div class='subtitle'>{'TDS Included' if data.get('include_tds') else 'Excluding TDS'}</div>
   </div>
 </div>
 <div class='info-grid'>
   <div class='info-box'>
     <div class='info-label'>Bill To</div>
     <div style='font-weight:700;font-size:13px'>{escape(c['name'])}</div>
-    <div style='color:#64748b'>{escape(c['customer_code'])}</div>
-    <div style='color:#64748b'>{escape(c['email'])}</div>
-    <div style='color:#64748b'>{escape(c['phone'])}</div>
-    {'<div style="color:#64748b">GSTIN: ' + escape(c['gstin']) + '</div>' if c['gstin'] else ''}
+    <div style='color:#64748b'>{escape(c.get('customer_code', ''))}</div>
+    <div style='color:#64748b'>{escape(c.get('email', ''))}</div>
+    <div style='color:#64748b'>{escape(c.get('phone', ''))}</div>
+    {'<div style="color:#64748b">GSTIN: ' + escape(c.get('gstin', '')) + '</div>' if c.get('gstin') else ''}
   </div>
-  <div class='info-box'>
+    <div class='info-box'>
     <div class='info-label'>Summary</div>
+    <div>Opening Balance: <strong style='color:#7c2d12'>₹{_format_indian_currency(data.get('opening_balance', 0))}</strong></div>
     <div>Total Pending Invoices: <strong>{data['pending_count']}</strong></div>
-    <div>Total Outstanding: <strong style='color:#dc2626'>₹{data['total_outstanding']:,.2f}</strong></div>
-    <div>Net Payable: <strong style='color:#1e40af'>₹{data['net_payable']:,.2f}</strong></div>
+    <div>Total Outstanding: <strong style='color:#dc2626'>₹{_format_indian_currency(data.get('total_pending_payment', 0))}</strong></div>
+    <div>Net Payable: <strong style='color:#1e40af'>₹{_format_indian_currency(data.get('total_net_payable', 0))}</strong></div>
+    <div>Direct Payment Credit: <strong style='color:#166534'>₹{_format_indian_currency(data.get('total_direct_payment_credit', 0))}</strong></div>
+    <div>Final Balance: <strong style='color:#7c2d12'>₹{_format_indian_currency(data.get('consolidated_balance_amount', 0))}</strong></div>
+    <div style='margin-top:6px;font-size:9px;color:#64748b;line-height:1.4'>{escape(consolidated_balance_words)}</div>
   </div>
 </div>
 <table>
   <thead><tr>
-    <th>Invoice No.</th><th>Invoice Date</th><th>Due Date</th>
+    <th>PO No.</th><th>Project</th><th>Invoice No.</th><th>Invoice Date</th>
     <th style='text-align:right'>Invoice Amt</th>
     <th style='text-align:right'>Paid</th>
     <th style='text-align:right'>Outstanding</th>
-    {tds_header}
-    <th style='text-align:right'>Net Payable</th>
-    <th style='text-align:center'>Status</th>
+    <th>Description</th>
   </tr></thead>
   <tbody>{rows_html}</tbody>
 </table>
+{'<div style="margin:18px 0 8px;font-size:12px;font-weight:700;color:#1e293b">Direct Payment Credits</div><table><thead><tr><th>Payment No.</th><th>Payment Date</th><th>Purpose</th><th>Method</th><th style="text-align:right">Gross</th><th style="text-align:right">TDS</th><th style="text-align:right">Net Received</th><th style="text-align:right">Credit Applied</th></tr></thead><tbody>' + direct_payments_html + '</tbody></table>' if data.get('direct_payments') else ''}
 <table class='summary-table'>
-  <tr><td colspan='2'><strong>Total Invoice Amount</strong></td><td style='text-align:right'>₹{data['total_invoice_amount']:,.2f}</td></tr>
-  <tr><td colspan='2'><strong>Total Paid</strong></td><td style='text-align:right;color:#16a34a'>₹{data['total_paid']:,.2f}</td></tr>
-  <tr><td colspan='2'><strong>Total Outstanding</strong></td><td style='text-align:right;color:#dc2626'>₹{data['total_outstanding']:,.2f}</td></tr>
+  <tr><td colspan='2'><strong>Total Invoice Amount</strong></td><td style='text-align:right'>₹{_format_indian_currency(total_invoice)}</td></tr>
+  <tr><td colspan='2'><strong>Total Paid</strong></td><td style='text-align:right;color:#16a34a'>₹{_format_indian_currency(total_paid)}</td></tr>
+  <tr><td colspan='2'><strong>Total Outstanding</strong></td><td style='text-align:right;color:#dc2626'>₹{_format_indian_currency(total_outstanding)}</td></tr>
   {tds_summary}
-  <tr><td colspan='2'>Net Payable</td><td style='text-align:right'>₹{data['net_payable']:,.2f}</td></tr>
+  <tr><td colspan='2'>Net Payable</td><td style='text-align:right'>₹{_format_indian_currency(data.get('total_net_payable', 0))}</td></tr>
+  <tr><td colspan='2'>Direct Payment Credit</td><td style='text-align:right'>₹{_format_indian_currency(data.get('total_direct_payment_credit', 0))}</td></tr>
+  <tr><td colspan='2'>Final Consolidated Balance</td><td style='text-align:right'>₹{_format_indian_currency(data.get('consolidated_balance_amount', 0))}</td></tr>
 </table>
-<div class='footer'>This is a computer-generated statement. Please contact us for any discrepancies. | {escape(co['name'])} | {escape(co['email'])}</div>
+<div style='width:420px;margin-left:auto;font-size:9px;color:#475569;line-height:1.5;margin-top:-8px;margin-bottom:12px'>
+  <strong>Amount in Words:</strong> {escape(consolidated_balance_words)}
+</div>
+<div class='footer'>This is a computer-generated statement. Please contact us for any discrepancies. | {escape(company_name)} | {escape(company_email)}</div>
 </body></html>"""
 
 
@@ -4585,3 +5074,19 @@ def _build_po_report_html(po, company, proformas, invoices, claiming):
   Confidential — {escape(company.name)} | {escape(getattr(company,'email',''))} | Generated on {timezone.now().date()} | Computer-generated report
 </div>
 </body></html>"""
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def customer_pending_statement_pdf(request):
+    """PDF endpoint for pending payment statement"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    statement_data, error_response = _build_customer_pending_statement_data(request)
+    if error_response:
+        logger.error(f"PDF statement request failed: {error_response.data}")
+        return error_response
+
+    return _generate_pending_statement_pdf(statement_data, statement_data['company'])

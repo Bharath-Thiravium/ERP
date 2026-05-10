@@ -43,8 +43,12 @@ class InvoicePDFService:
             bytes: PDF content as bytes
         """
         try:
+            # Log template selection for debugging
+            logger.info(f"Generating invoice PDF for {invoice.invoice_number} (Company: {invoice.company.name}) with template: {template_code}")
+            
             # Get template path
             template_path = self.get_template_path(template_code)
+            logger.info(f"Using template path: {template_path}")
             
             # Prepare context data
             context = self._prepare_context(invoice)

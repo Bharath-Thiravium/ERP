@@ -3,6 +3,7 @@ import { X, User, Calendar, Search, Trash2, MapPin, Upload, FileText } from 'luc
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { apiClient } from '../../../../lib/api'
 import toast from 'react-hot-toast'
+import { handleApiError, extractFieldErrors } from '../../../../utils/errorHandler'
 
 interface Customer {
   id: number
@@ -841,39 +842,8 @@ const PurchaseOrderForm: React.FC<PurchaseOrderFormProps> = ({ purchaseOrder, qu
       toast.success(purchaseOrder ? 'Purchase order updated successfully!' : 'Purchase order created successfully!')
       onSuccess()
     } catch (error: unknown) {
-      console.error('Error saving purchase order:', error)
-      
-      const axiosError = error as { response?: { data?: unknown; status?: number } }
-      console.error('Error response:', axiosError.response?.data)
-      console.error('Error status:', axiosError.response?.status)
-
-      if (axiosError.response?.data) {
-        const errorData = axiosError.response.data
-        console.log('Error data type:', typeof errorData)
-        console.log('Error data:', errorData)
-
-        if (typeof errorData === 'object' && errorData !== null) {
-          // Handle field-specific errors
-          const fieldErrors: Record<string, string> = {}
-          Object.entries(errorData).forEach(([key, value]) => {
-            if (Array.isArray(value)) {
-              fieldErrors[key] = String(value[0])
-            } else if (typeof value === 'string') {
-              fieldErrors[key] = value
-            } else if (typeof value === 'object') {
-              fieldErrors[key] = JSON.stringify(value)
-            } else {
-              fieldErrors[key] = String(value)
-            }
-          })
-          setErrors(fieldErrors)
-          toast.error('Please check the form for errors')
-        } else {
-          toast.error(`Failed to save purchase order: ${String(errorData)}`)
-        }
-      } else {
-        toast.error('Failed to save purchase order. Please check your connection.')
-      }
+      handleApiError(error, 'Cannot create Purchase Order')
+      setErrors(extractFieldErrors(error))
     } finally {
       setLoading(false)
     }

@@ -74,6 +74,10 @@ interface InvoiceItem {
   unit_price: number;
   line_total: number;
   gst_rate: number;
+  claim_type?: string;
+  is_claimed?: boolean;
+  claimed_percentage?: number;
+  claimed_quantity_display?: string;
 }
 
 interface CustomerDetails {
@@ -176,6 +180,10 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
   const [detailedInvoice, setDetailedInvoice] = useState<Invoice>(invoice);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const headerActionButtonClass = 'inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium rounded-lg border transition-colors';
+  const neutralActionButtonClass = `${headerActionButtonClass} bg-white/85 hover:bg-white text-gray-700 border-gray-200 dark:bg-gray-800/80 dark:hover:bg-gray-800 dark:text-gray-200 dark:border-gray-600`;
+  const primaryActionButtonClass = `${headerActionButtonClass} bg-blue-600 hover:bg-blue-700 text-white border-blue-600`;
 
   const fetchDetailedInvoice = async () => {
       if (!sessionKey) {
@@ -375,35 +383,22 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
               )}
             </div>
           </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2">
             <button
               onClick={() => fetchDetailedInvoice()}
-              className="flex items-center space-x-2 px-4 py-2 bg-white/80 hover:bg-white text-blue-600 border border-blue-200 rounded-lg transition-colors"
+              className={neutralActionButtonClass}
               title="Refresh invoice status"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>Refresh</span>
             </button>
             <button
-              onClick={handleDownload}
-              className="flex items-center space-x-2 px-4 py-2 bg-white/80 hover:bg-white text-green-600 border border-green-200 rounded-lg transition-colors"
-              title="Download PDF"
-            >
-              <span>⬇ Download</span>
-            </button>
-            <button
-              onClick={handlePrint}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-              title="Print Invoice"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Print</span>
-            </button>
-            <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              className={`${neutralActionButtonClass} px-3`}
+              title="Close"
             >
-              <X className="w-6 h-6 text-gray-500" />
+              <X className="w-4 h-4" />
+              <span>Close</span>
             </button>
           </div>
         </div>
@@ -664,7 +659,16 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
                               {item.hsn_sac_code || 'N/A'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                              {parseFloat(item.quantity.toString()).toFixed(2)} {item.unit}
+                              <div className="flex items-center justify-end space-x-2">
+                                <span>
+                                  {item.claimed_quantity_display || `${parseFloat(item.quantity.toString()).toFixed(2)} ${item.unit}`}
+                                </span>
+                                {item.is_claimed && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                    ✓ CLAIMED
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
                               ₹{parseFloat(item.unit_price.toString()).toFixed(2)}
@@ -863,24 +867,26 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
           <div className="text-sm text-gray-600 dark:text-gray-400">
             Invoice #{detailedInvoice.invoice_number} • {detailedInvoice.invoice_items?.length || 0} items
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center gap-3">
             <button
               onClick={handleDownload}
-              className="flex items-center space-x-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+              className={neutralActionButtonClass}
             >
-              <span>⬇ Download PDF</span>
+              <FileText className="w-4 h-4 text-green-600 dark:text-green-400" />
+              <span>Download PDF</span>
             </button>
             <button
               onClick={handlePrint}
-              className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              className={primaryActionButtonClass}
             >
               <Printer className="w-4 h-4" />
               <span>Print Invoice</span>
             </button>
             <button
               onClick={onClose}
-              className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              className={neutralActionButtonClass}
             >
+              <X className="w-4 h-4" />
               Close
             </button>
           </div>

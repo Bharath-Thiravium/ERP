@@ -7,7 +7,8 @@ from .models import NumberingRule, NumberingCounter
 
 def _scope_key(reset_scope: str, dt) -> str:
     if reset_scope == 'yearly':
-        return dt.strftime('%Y')
+        # Use financial year short format for yearly scope (e.g., '2627' for FY 2026-27)
+        return _financial_year_short(dt)
     if reset_scope == 'monthly':
         return dt.strftime('%Y-%m')
     return 'global'
@@ -33,6 +34,9 @@ def _get_highest_sequence_number(company, module: str, rule, scope_key: str) -> 
     """
     Scan existing document numbers for this company/module/scope and return
     the highest sequence number found, so the counter never goes backwards.
+    
+    IMPORTANT: This function must correctly identify the {SEQ} or {NUMBER} token position
+    in the template to avoid extracting FY_SHORT or other tokens as the sequence.
     """
     from django.db import connection
 
@@ -52,6 +56,30 @@ def _get_highest_sequence_number(company, module: str, rule, scope_key: str) -> 
 
     table_name, field_name = module_mapping[module]
 
+    def _matches_scope(doc_number: str) -> bool:
+        normalized = doc_number.replace('/', separator)
+
+        if reset_scope == 'never':
+            return True
+
+        scope_fragments = []
+        if '{FY_SHORT}' in template:
+            scope_fragments.append(_financial_year_short(dt))
+        if '{FY}' in template:
+            scope_fragments.append(_financial_year(dt))
+        if '{YYYY}' in template:
+            scope_fragments.append(dt.strftime('%Y'))
+        if '{YY}' in template:
+            scope_fragments.append(dt.strftime('%y'))
+        if reset_scope == 'monthly' and '{MM}' in template:
+            scope_fragments.append(dt.strftime('%m'))
+
+        # If no date tokens are present, fall back to all documents for this module.
+        if not scope_fragments:
+            return True
+
+        return all(fragment in normalized for fragment in scope_fragments)
+
     try:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -59,12 +87,41 @@ def _get_highest_sequence_number(company, module: str, rule, scope_key: str) -> 
                 [company.id]
             )
             max_seq = 0
+            
+            # Determine which position in the template contains {SEQ} or {NUMBER}
+            template = rule.template
+            separator = rule.separator or '-'
+            
+            # Find the position of {SEQ} or {NUMBER} in the template
+            seq_position = None
+            template_parts = template.replace('/', separator).split(separator)
+            for i, part in enumerate(template_parts):
+                if '{SEQ}' in part or '{NUMBER}' in part:
+                    seq_position = i
+                    break
+            
+            # If we can't determine position, fall back to last segment (old behavior)
+            if seq_position is None:
+                seq_position = -1
+            
             for (doc_number,) in cursor.fetchall():
-                if doc_number:
-                    # Sequence is always the last segment after the final separator
-                    parts = doc_number.replace('/', '-').split('-')
+                if doc_number and _matches_scope(doc_number):
+                    # Split by both / and - to handle different separators
+                    parts = doc_number.replace('/', separator).split(separator)
+                    
+                    # Extract the sequence from the correct position
                     try:
-                        seq = int(parts[-1])
+                        if seq_position == -1:
+                            # Last segment (old behavior)
+                            seq_str = parts[-1]
+                        elif seq_position < len(parts):
+                            # Specific position
+                            seq_str = parts[seq_position]
+                        else:
+                            continue
+                        
+                        # Remove leading zeros and convert to int
+                        seq = int(seq_str.lstrip('0') or '0')
                         max_seq = max(max_seq, seq)
                     except (ValueError, IndexError):
                         continue
@@ -114,7 +171,7 @@ def generate_number(company, module: str, dt=None) -> str:
         'YYYY': dt.strftime('%Y'),
         'MM': dt.strftime('%m'),
         'SEQ': str(seq).zfill(rule.padding),
-        'NUMBER': str(seq).zfill(3),
+        'NUMBER': str(seq).zfill(rule.padding),
         'COMPANY': company_prefix,
         'FY': _financial_year(dt),
         'FY_SHORT': _financial_year_short(dt),

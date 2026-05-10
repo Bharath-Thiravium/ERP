@@ -6,6 +6,7 @@ from datetime import timezone as dt_timezone
 from authentication.models import Company
 from finance.models import NumberingRule, NumberingCounter
 from finance.numbering import generate_number
+from finance.serializers import _ensure_numbering_rule
 
 
 class NumberingGeneratorTests(TestCase):
@@ -42,16 +43,16 @@ class NumberingGeneratorTests(TestCase):
         self.assertEqual(first, 'INV-2024-0001')
         self.assertEqual(second, 'INV-2024-0002')
 
-        counter = NumberingCounter.objects.get(company=self.company, module='invoice', scope_key='')
+        counter = NumberingCounter.objects.get(company=self.company, module='invoice', scope_key='global')
         self.assertEqual(counter.next_value, 3)
-        self.assertEqual(counter.scope_key, '')
+        self.assertEqual(counter.scope_key, 'global')
         self.assertEqual(rule.padding, 4)
 
     def test_yearly_scope_resets_counter(self):
         NumberingRule.objects.create(
             company=self.company,
             module='quotation',
-            template='{PREFIX}{SEP}{YY}{SEP}{SEQ}',
+            template='{PREFIX}{SEP}{FY_SHORT}{SEP}{SEQ}',
             prefix='QT',
             separator='-',
             padding=3,
@@ -59,19 +60,19 @@ class NumberingGeneratorTests(TestCase):
             start_from=10,
         )
 
-        dt_2023 = timezone.datetime(2023, 12, 31, tzinfo=dt_timezone.utc)
-        dt_2024 = timezone.datetime(2024, 1, 1, tzinfo=dt_timezone.utc)
+        dt_2024_fy = timezone.datetime(2024, 3, 31, tzinfo=dt_timezone.utc)
+        dt_2025_fy = timezone.datetime(2024, 4, 1, tzinfo=dt_timezone.utc)
 
-        val_2023 = generate_number(self.company, 'quotation', dt=dt_2023)
-        val_2024 = generate_number(self.company, 'quotation', dt=dt_2024)
+        val_2024_fy = generate_number(self.company, 'quotation', dt=dt_2024_fy)
+        val_2025_fy = generate_number(self.company, 'quotation', dt=dt_2025_fy)
 
-        self.assertEqual(val_2023, 'QT-23-010')
-        self.assertEqual(val_2024, 'QT-24-010')
+        self.assertEqual(val_2024_fy, 'QT-2324-010')
+        self.assertEqual(val_2025_fy, 'QT-2425-010')
 
-        counter_2023 = NumberingCounter.objects.get(company=self.company, module='quotation', scope_key='2023')
-        counter_2024 = NumberingCounter.objects.get(company=self.company, module='quotation', scope_key='2024')
-        self.assertEqual(counter_2023.next_value, 11)
-        self.assertEqual(counter_2024.next_value, 11)
+        counter_2024_fy = NumberingCounter.objects.get(company=self.company, module='quotation', scope_key='2324')
+        counter_2025_fy = NumberingCounter.objects.get(company=self.company, module='quotation', scope_key='2425')
+        self.assertEqual(counter_2024_fy.next_value, 11)
+        self.assertEqual(counter_2025_fy.next_value, 11)
 
     def test_monthly_scope_increments_per_month(self):
         NumberingRule.objects.create(
@@ -100,3 +101,41 @@ class NumberingGeneratorTests(TestCase):
         feb_counter = NumberingCounter.objects.get(company=self.company, module='purchase_order', scope_key='2024-02')
         self.assertEqual(jan_counter.next_value, 7)
         self.assertEqual(feb_counter.next_value, 6)
+
+    def test_number_token_uses_rule_padding(self):
+        rule = NumberingRule.objects.create(
+            company=self.company,
+            module='purchase_order',
+            template='{COMPANY}/{PREFIX}/{FY_SHORT}/{NUMBER}',
+            prefix='PO',
+            separator='/',
+            padding=6,
+            reset_scope='yearly',
+            start_from=1,
+        )
+
+        dt = timezone.datetime(2024, 5, 15, tzinfo=dt_timezone.utc)
+        value = generate_number(self.company, 'purchase_order', dt=dt)
+
+        self.assertEqual(value, 'NUMCO/PO/2425/000001')
+
+    def test_invoice_default_rule_uses_company_prefix_fy_short_and_3_digit_padding(self):
+        rule = _ensure_numbering_rule(self.company, 'invoice')
+        self.assertEqual(rule.template, '{COMPANY}-{PREFIX}-{FY_SHORT}-{NUMBER}')
+        self.assertEqual(rule.prefix, 'INV')
+        self.assertEqual(rule.padding, 3)
+
+        rule.delete()
+        rule = NumberingRule.objects.create(
+            company=self.company,
+            module='invoice',
+            template='{COMPANY}-{PREFIX}-{FY_SHORT}-{NUMBER}',
+            prefix='INV',
+            separator='-',
+            padding=3,
+            reset_scope='yearly',
+            start_from=1,
+        )
+        dt = timezone.datetime(2026, 5, 1, tzinfo=dt_timezone.utc)
+        value = generate_number(self.company, 'invoice', dt=dt)
+        self.assertEqual(value, 'NUMCO-INV-2627-001')

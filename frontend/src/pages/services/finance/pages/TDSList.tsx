@@ -31,20 +31,41 @@ interface TDSPayment {
   financial_year: string;
 }
 
+// --- helpers defined outside component to avoid initialization order issues ---
+const getCurrentQuarter = (): 'Q1' | 'Q2' | 'Q3' | 'Q4' => {
+  const m = new Date().getMonth() + 1;
+  if (m >= 4 && m <= 6) return 'Q1';
+  if (m >= 7 && m <= 9) return 'Q2';
+  if (m >= 10 && m <= 12) return 'Q3';
+  return 'Q4';
+};
+
+const getCurrentFinancialYear = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  return month >= 4 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+};
+
+const getFinancialYears = () => {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const currentFYStart = currentMonth >= 4 ? currentYear : currentYear - 1;
+  return Array.from({ length: 4 }, (_, i) => {
+    const start = currentFYStart - i;
+    return { value: `${start}-${start + 1}`, label: `FY ${start}-${String(start + 1).slice(2)}` };
+  });
+};
+// -------------------------------------------------------------------------------
+
 const TDSList: React.FC = () => {
   const { sessionKey } = useServiceUserStore();
   const [payments, setPayments] = useState<TDSPayment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const getCurrentQuarter = (): 'Q1' | 'Q2' | 'Q3' | 'Q4' => {
-    const m = new Date().getMonth() + 1;
-    if (m >= 4 && m <= 6) return 'Q1';
-    if (m >= 7 && m <= 9) return 'Q2';
-    if (m >= 10 && m <= 12) return 'Q3';
-    return 'Q4';
-  };
-
   const [currentQuarter, setCurrentQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>(getCurrentQuarter);
+  const [financialYear, setFinancialYear] = useState<string>(getCurrentFinancialYear);
   const [filters, setFilters] = useState({ tdsSection: '', form16aPending: false, customerSearch: '' });
   const [stats, setStats] = useState({ totalTDS: 0, totalPayments: 0, pending16a: 0, caPending: 0 });
   const [page, setPage] = useState(1);
@@ -57,20 +78,13 @@ const TDSList: React.FC = () => {
     { value: 'Q3', label: 'Q3 (Oct-Dec)' },
     { value: 'Q4', label: 'Q4 (Jan-Mar)' },
   ];
-
-  const getCurrentFinancialYear = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    return month >= 4 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
-  };
-
   const loadPayments = async () => {
     if (!sessionKey) return;
     try {
       setLoading(true);
       const params = new URLSearchParams({
         quarter: currentQuarter,
+        financial_year: financialYear,
         session_key: sessionKey,
         page: page.toString(),
         limit: '25',
@@ -95,7 +109,7 @@ const TDSList: React.FC = () => {
     }
   };
 
-  useEffect(() => { loadPayments(); }, [currentQuarter, filters, page, sessionKey]);
+  useEffect(() => { loadPayments(); }, [currentQuarter, financialYear, filters, page, sessionKey]);
 
   const filteredPayments = useMemo(() => {
     if (!filters.customerSearch) return payments;
@@ -106,8 +120,7 @@ const TDSList: React.FC = () => {
 
   const handleExportCSV = () => {
     if (!sessionKey) return;
-    const fy = getCurrentFinancialYear();
-    const params = new URLSearchParams({ quarter: currentQuarter, financial_year: fy, session_key: sessionKey });
+    const params = new URLSearchParams({ quarter: currentQuarter, financial_year: financialYear, session_key: sessionKey });
     if (filters.tdsSection) params.append('tds_section', filters.tdsSection);
     const link = document.createElement('a');
     link.href = `/api/finance/tds/export/?${params}`;
@@ -143,11 +156,22 @@ const TDSList: React.FC = () => {
         </div>
       </div>
 
-      {/* Quarter + Filters */}
+      {/* Financial Year + Quarter + Filters */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
-          <CardHeader><CardTitle>Quarter Selection</CardTitle></CardHeader>
-          <CardContent>
+          <CardHeader><CardTitle>Period Selection</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <label className="text-sm font-medium block mb-1">Financial Year</label>
+              <Select value={financialYear} onValueChange={(v) => { setFinancialYear(v); setPage(1); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {getFinancialYears().map((fy) => (
+                    <SelectItem key={fy.value} value={fy.value}>{fy.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Tabs value={currentQuarter} onValueChange={(q) => { setCurrentQuarter(q as any); setPage(1); }}>
               <TabsList className="grid w-full grid-cols-4">
                 {quarters.map((q) => (

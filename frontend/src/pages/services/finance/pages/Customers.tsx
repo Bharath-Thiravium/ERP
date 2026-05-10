@@ -69,8 +69,6 @@ const Customers: React.FC = () => {
     setShowDetail(true)
   }
 
-
-
   const handleFormClose = () => {
     setShowForm(false)
     setSelectedCustomer(null)

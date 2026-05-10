@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { apiClient } from '../../../../lib/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
-import { Search, Plus, Eye, Edit, Trash2, FileText, MapPin, Package, Mail, Copy, X, ShoppingCart, IndianRupee, CheckCircle, Clock, TrendingUp, XCircle, ChevronUp, ChevronDown } from 'lucide-react'
+import { Search, Plus, Eye, Edit, Trash2, FileText, Package, Mail, Copy, X, ShoppingCart, IndianRupee, CheckCircle, Clock, TrendingUp, XCircle, ChevronUp, ChevronDown, User } from 'lucide-react'
 import QuotationEdit from './QuotationEdit'
 import SendEmailModal from './SendEmailModal'
 import RejectInvoiceModal from './RejectInvoiceModal'
@@ -20,6 +20,7 @@ interface Quotation {
     address: string
     is_default?: boolean
   }>
+  shipping_address_text?: string
   quotation_date: string
   valid_until: string
   status: string
@@ -59,6 +60,7 @@ interface Quotation {
 }
 
 interface QuotationListProps {
+  selectedFY?: string
   onCreateNew: () => void
   onEdit: (quotation: Quotation) => void
   onView: (quotation: Quotation) => void
@@ -68,7 +70,7 @@ interface QuotationListProps {
 
 const QUOTATIONS_PAGE_SIZE = 5
 
-const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCreatePO, onRaiseInvoice }) => {
+const QuotationList: React.FC<QuotationListProps> = ({ selectedFY, onCreateNew, onView, onCreatePO, onRaiseInvoice }) => {
   const { sessionKey } = useServiceUserStore()
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [loading, setLoading] = useState(true)
@@ -89,7 +91,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
-  const [hoveredQuotation, setHoveredQuotation] = useState<number | string | null>(null)
+  const [clickedTooltip, setClickedTooltip] = useState<number | string | null>(null)
   const [editingQuotationId, setEditingQuotationId] = useState<number | null>(null)
   const [emailQuotation, setEmailQuotation] = useState<Quotation | null>(null)
   const [rejectingQuotation, setRejectingQuotation] = useState<Quotation | null>(null)
@@ -146,6 +148,14 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
       params.append('page_size', QUOTATIONS_PAGE_SIZE.toString())
       if (debouncedSearchTerm) params.append('search', debouncedSearchTerm)
       if (statusFilter) params.append('status', statusFilter)
+      if (selectedFY) {
+        params.append('financial_year', selectedFY)
+        console.log(`[QuotationList] Fetching with FY: ${selectedFY}`)
+      } else {
+        params.append('financial_year', 'all')
+        console.log('[QuotationList] Fetching with FY: all')
+      }
+      console.log('[QuotationList] API params:', params.toString())
       params.append('ordering', sortBy)
 
       const response = await apiClient.getFinanceQuotations(Object.fromEntries(params))
@@ -193,7 +203,11 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
 
   useEffect(() => {
     fetchQuotations(currentPage)
-  }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter])
+  }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter, selectedFY])
+
+  const toggleTooltip = (value: number | string) => {
+    setClickedTooltip(prev => prev === value ? null : value)
+  }
 
   const handleDelete = async (quotation: Quotation) => {
     if (!confirm(`Are you sure you want to delete quotation ${quotation.quotation_number}?`)) {
@@ -341,6 +355,8 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
 
   return (
     <div className="space-y-6">
+
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -396,48 +412,56 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
       </div>
 
       {/* Search and Filters */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search quotations by number, customer name, or reference..."
-                value={searchTerm}
-                onChange={(e) => {
-                  resetToFirstPage()
-                  setSearchTerm(e.target.value)
-                }}
-                className="w-full pl-10 pr-12 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-              />
-              {/* Show loading indicator when search is being debounced */}
-              {searchTerm !== debouncedSearchTerm && (
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                </div>
-              )}
-            </div>
+      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search by quotation number, customer, or reference..."
+              value={searchTerm}
+              onChange={(e) => {
+                resetToFirstPage()
+                setSearchTerm(e.target.value)
+              }}
+              className="w-full pl-10 pr-12 py-2 border border-gray-300/50 dark:border-gray-600/50 rounded-xl focus:ring-2 focus:ring-athenas-blue/50 focus:border-athenas-blue/50 bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 backdrop-blur-sm transition-all duration-200"
+            />
+            {searchTerm !== debouncedSearchTerm && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-athenas-blue"></div>
+              </div>
+            )}
           </div>
-          <div className="sm:w-48">
+          <div className="flex items-center gap-2">
             <select
               value={statusFilter}
               onChange={(e) => {
                 resetToFirstPage()
                 setStatusFilter(e.target.value)
               }}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="px-3 py-2 border border-gray-300/50 dark:border-gray-600/50 rounded-xl focus:ring-2 focus:ring-athenas-blue/50 focus:border-athenas-blue/50 bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white backdrop-blur-sm transition-all duration-200"
             >
               {statusOptions.map(option => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
+            <button
+              onClick={() => {
+                setSearchTerm('')
+                setDebouncedSearchTerm('')
+                setStatusFilter('')
+                setCurrentPage(1)
+              }}
+              className="px-4 py-2 bg-gray-100/50 dark:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-200/50 dark:hover:bg-gray-500/50 transition-colors backdrop-blur-sm whitespace-nowrap"
+            >
+              Clear Filters
+            </button>
           </div>
         </div>
       </div>
 
       {/* Quotations List */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+      <div className="relative z-20 isolate bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 shadow-xl overflow-visible">
         {quotations.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="mx-auto h-12 w-12 text-gray-400" />
@@ -455,102 +479,58 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-700">
+          <div className="relative z-20 overflow-x-auto overflow-y-visible max-w-full">
+              <table className="w-full table-fixed">
+                <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="w-[18%] px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       <span onClick={() => handleSort('quotation_number')} className="cursor-pointer hover:text-gray-700 dark:hover:text-white select-none">Quote# <SortIcon field="quotation_number" /></span>
                       <span className="mx-1 text-gray-300">|</span>
                       <span onClick={() => handleSort('quotation_date')} className="cursor-pointer hover:text-gray-700 dark:hover:text-white select-none">Date <SortIcon field="quotation_date" /></span>
                     </th>
-                    <th onClick={() => handleSort('customer_name')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Customer <SortIcon field="customer_name" /></th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date &amp; Validity</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status & GST</th>
-                    <th onClick={() => handleSort('total_amount')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Amount <SortIcon field="total_amount" /></th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    <th onClick={() => handleSort('customer_name')} className="w-[22%] px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Customer <SortIcon field="customer_name" /></th>
+                    <th className="w-[18%] px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Description</th>
+                    <th onClick={() => handleSort('total_amount')} className="w-[16%] px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none">Amount <SortIcon field="total_amount" /></th>
+                    <th className="w-[14%] px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                    <th className="w-[12%] px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="bg-white/50 dark:bg-gray-800/50 divide-y divide-gray-200/50 dark:divide-gray-700/50 overflow-visible">
                   {quotations.map((quotation) => (
-                    <tr key={quotation.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <td className="px-6 py-4 whitespace-nowrap">
+                    <tr key={quotation.id} className="transition-colors duration-200">
+                      <td className="px-6 py-4 whitespace-nowrap overflow-visible">
                         <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white flex items-center space-x-2">
-                            <span>{quotation.quotation_number}</span>
+                          <div className="text-sm font-medium flex items-center space-x-2">
+                            <span 
+                              onClick={() => onView(quotation)}
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 cursor-pointer underline-offset-2 hover:underline transition-colors"
+                            >
+                              {quotation.quotation_number}
+                            </span>
                             {quotation.is_revised && (
                               <span className="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300">
                                 Revised
                               </span>
                             )}
                           </div>
-                          <div
-                            className="text-sm text-gray-500 dark:text-gray-400 cursor-help relative"
-                            onMouseEnter={() => setHoveredQuotation(quotation.id)}
-                            onMouseLeave={() => setHoveredQuotation(null)}
-                          >
-                            <Package className="w-3 h-3 inline mr-1" />
-                            {quotation.item_count} item{quotation.item_count !== 1 ? 's' : ''}
-
-                            {/* Items Tooltip */}
-                            {hoveredQuotation === quotation.id && (
-                              <div className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 min-w-80 max-w-96 pointer-events-none"
-                                   style={{
-                                     left: '50%',
-                                     top: '50%',
-                                     transform: 'translate(-50%, -50%)',
-                                   }}>
-                                <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Items in this quotation:</div>
-                                <div className="space-y-1 max-h-48 overflow-y-auto">
-                                  {quotation.quotation_items && quotation.quotation_items.length > 0 ? (
-                                    quotation.quotation_items.map((item, index) => (
-                                      <div key={index} className="flex justify-between items-center text-xs">
-                                        <div className="flex-1 truncate pr-2">
-                                          <span className="font-medium text-gray-900 dark:text-white">{item.product_name}</span>
-                                        </div>
-                                        <div className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                                          {item.quantity} {item.unit} × ₹{item.unit_price.toFixed(2)} = ₹{item.line_total.toFixed(2)}
-                                        </div>
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <div className="text-xs text-gray-500 dark:text-gray-400">No items data available</div>
-                                  )}
-                                  {quotation.item_count > 10 && (
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 text-center pt-1 border-t">
-                                      ... and {quotation.item_count - 10} more items
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Customer Address Tooltip */}
-                            {hoveredQuotation === `customer-${quotation.id}` && quotation.customer_shipping_addresses && quotation.customer_shipping_addresses.length > 0 && (
-                              <div className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 max-w-2xl pointer-events-none"
-                                   style={{
-                                     left: '50%',
-                                     top: '50%',
-                                     transform: 'translate(-50%, -50%)',
-                                   }}>
-                                <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3 pb-2 border-b border-gray-200 dark:border-gray-600">
-                                  {quotation.customer_name}
-                                </div>
-                                <div className="space-y-2 max-h-96 overflow-y-auto">
-                                  {quotation.customer_shipping_addresses.map((addr, index) => (
+                          <div className="text-sm text-gray-500 dark:text-gray-400 relative">
+                            <button
+                              onClick={() => toggleTooltip(quotation.id)}
+                              className="hover:text-gray-700 dark:hover:text-gray-300"
+                              title="Click to view items"
+                            >
+                              <Package className="w-3 h-3 inline mr-1" />
+                              {quotation.item_count} item{quotation.item_count !== 1 ? 's' : ''}
+                            </button>
+                            {clickedTooltip === quotation.id && quotation.quotation_items && quotation.quotation_items.length > 0 && (
+                              <div className="absolute left-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 min-w-[300px]">
+                                <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Items:</div>
+                                <div className="space-y-1 max-h-60 overflow-y-auto">
+                                  {quotation.quotation_items.map((item, index) => (
                                     <div key={index} className="text-xs">
-                                      <div className={`font-semibold mb-1 flex items-center gap-1 ${
-                                        addr.type === 'Billing' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'
-                                      }`}>
-                                        {addr.type === 'Billing' ? '🏠' : '🏢'} {addr.type}
-                                        {addr.is_default && (
-                                          <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-1 py-0.5 rounded text-xs font-medium">
-                                            DEFAULT
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-gray-700 dark:text-gray-300 leading-relaxed pl-4">
-                                        {addr.address}
+                                      <div className="font-medium text-gray-900 dark:text-white">{item.product_name}</div>
+                                      <div className="text-gray-500 dark:text-gray-400">
+                                        {parseFloat(String(item.quantity || 0)).toFixed(2)} {item.unit} x ₹{parseFloat(String(item.unit_price || 0)).toFixed(2)} = ₹{parseFloat(String(item.line_total || 0)).toFixed(2)}
                                       </div>
                                     </div>
                                   ))}
@@ -558,78 +538,105 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                               </div>
                             )}
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          {/* Customer Name with Tooltip */}
-                          {quotation.customer_shipping_addresses && quotation.customer_shipping_addresses.length > 0 ? (
-                            <div 
-                              className="text-sm font-medium text-blue-600 cursor-pointer border-b border-dotted border-blue-600 hover:text-blue-800"
-                              onMouseEnter={() => setHoveredQuotation(`customer-${quotation.id}`)}
-                              onMouseLeave={() => setHoveredQuotation(null)}
-                            >
-                              {quotation.customer_name}
-                            </div>
-                          ) : (
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              {quotation.customer_name}
-                            </div>
-                          )}
                           <div className="text-sm text-gray-500 dark:text-gray-400">
-                            {quotation.customer_code}
-                            {quotation.customer_project_area && (
-                              <div className="flex items-center mt-1">
-                                <MapPin className="w-3 h-3 mr-1" />
-                                <span className="truncate">{quotation.customer_project_area}</span>
-                              </div>
-                            )}
+                            {quotation.reference ? `Ref: ${quotation.reference}` : `Valid until: ${formatDate(quotation.valid_until)}`}
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-4 whitespace-nowrap overflow-visible">
+                        <div className="flex items-center">
+                          <User className="w-4 h-4 text-gray-400 mr-2" />
+                          <div>
+                          <div className="relative">
+                            <button
+                              onClick={() => toggleTooltip(`customer-${quotation.id}`)}
+                              className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                              title="Click to view customer details"
+                            >
+                              {quotation.customer_name}
+                            </button>
+                            {clickedTooltip === `customer-${quotation.id}` && (
+                              <div className="absolute left-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl p-3 min-w-[300px]">
+                                <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                                  {quotation.customer_name}
+                                </div>
+                                {quotation.customer_email && (
+                                  <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                                    📧 {quotation.customer_email}
+                                  </div>
+                                )}
+                                {quotation.shipping_address_text ? (
+                                  <div className="text-xs">
+                                    <div className="font-semibold mb-1 text-blue-600 dark:text-blue-400">
+                                      🏢 Shipping Address
+                                    </div>
+                                    <div className="text-gray-700 dark:text-gray-300">
+                                      {quotation.shipping_address_text}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    No shipping address
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {/* Shipping Address — same style as PO/WO and Invoice list */}
+                          {quotation.shipping_address_text ? (
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[200px]">
+                              <span className="mr-1">📦</span>
+                              {quotation.shipping_address_text}
+                            </div>
+                          ) : null}
+                          {quotation.customer_project_area && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
+                              {quotation.customer_project_area}
+                            </div>
+                          )}
+                        </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 align-top">
                         <div>
                           <div className="text-sm text-gray-900 dark:text-white">
-                            {formatDate(quotation.quotation_date)}
+                            Quote: {formatDate(quotation.quotation_date)}
                           </div>
                           <div className="text-sm text-gray-500 dark:text-gray-400">
                             Valid until: {formatDate(quotation.valid_until)}
                           </div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            GST: {quotation.gst_type === 'igst' ? 'IGST' : quotation.gst_type === 'cgst_sgst' ? 'CGST+SGST' : 'Exempt'}
+                          </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="space-y-1">
-                          {getStatusBadge(quotation.status)}
-                          {getGstTypeBadge(quotation.gst_type)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-4 align-top">
                         <div>
                           <div className="text-sm font-medium text-gray-900 dark:text-white">
                             {formatCurrency(quotation.total_amount)}
+                          </div>
+                          <div className="text-xs text-gray-400 dark:text-gray-500">
+                            Base: {formatCurrency(quotation.subtotal)}
                           </div>
                           <div className="text-sm text-gray-500 dark:text-gray-400">
                             Tax: {formatCurrency(quotation.total_tax)}
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center space-x-2">
-                          {/* View button - always visible */}
-                          <button
-                            onClick={() => onView(quotation)}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                            title="View"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-
+                      <td className="px-6 py-4 align-top">
+                        <div className="flex flex-col gap-1">
+                          {getStatusBadge(quotation.status)}
+                          {getGstTypeBadge(quotation.gst_type)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium align-top">
+                        <div className="flex items-center justify-end space-x-2">
                           {/* Draft status buttons */}
                           {quotation.status === 'draft' && (
                             <>
                               <button
                                 onClick={() => setEditingQuotationId(quotation.id)}
-                                className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                                className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
                                 title="Edit"
                               >
                                 <Edit className="w-4 h-4" />
@@ -637,7 +644,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                               <button
                                 onClick={() => handleSendMail(quotation)}
                                 className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300"
-                                title="Send Mail"
+                                title="Send Email"
                               >
                                 <Mail className="w-4 h-4" />
                               </button>
@@ -657,74 +664,20 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                           {/* Sent status buttons */}
                           {quotation.status === 'sent' && (
                             <>
-                              {/* Show Create PO button only if no PO created AND no invoices created from this quotation */}
-                              {!quotation.po_created && !quotation.invoice_created && !quotation.proforma_created && (
-                                <button
-                                  onClick={() => {
-                                    // Import and use session manager
-                                    import('../../../../utils/sessionManager').then(({ SessionManager }) => {
-                                      SessionManager.preserveSession()
-                                      onCreatePO(quotation)
-                                    }).catch(() => {
-                                      // Fallback if import fails
-                                      const sessionKey = sessionStorage.getItem('service_session_key')
-                                      if (!sessionKey) {
-                                        try {
-                                          const storeState = JSON.parse(localStorage.getItem('service-user-storage') || '{}')
-                                          const storeSessionKey = storeState?.state?.sessionKey
-                                          if (storeSessionKey) {
-                                            sessionStorage.setItem('service_session_key', storeSessionKey)
-                                          }
-                                        } catch (e) {
-                                          console.warn('Session restoration failed:', e)
-                                        }
-                                      }
-                                      onCreatePO(quotation)
-                                    })
-                                  }}
-                                  className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                                  title="Create PO/WO"
-                                >
-                                  <ShoppingCart className="w-4 h-4" />
-                                </button>
-                              )}
-                              {/* Show Raise Invoice button if no PO created AND available percentage > 0 */}
-                              {onRaiseInvoice && !quotation.po_created && (
-                                (quotation.available_invoice_percentage || 0) > 0 || (quotation.available_proforma_percentage || 0) > 0 || 
-                                (!quotation.invoice_created && !quotation.proforma_created)
-                              ) && (
-                                <button
-                                  onClick={() => onRaiseInvoice(quotation)}
-                                  className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
-                                  title="Raise Invoice"
-                                >
-                                  <IndianRupee className="w-4 h-4" />
-                                </button>
-                              )}
-                              {/* Show status indicators when actions are taken */}
-                              {quotation.po_created && (
-                                <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium flex items-center">
-                                  <ShoppingCart className="w-3 h-3 mr-1" />
-                                  PO Created
-                                </span>
-                              )}
                               <button
-                                onClick={() => handleCopyQuotation(quotation)}
+                                onClick={() => setEditingQuotationId(quotation.id)}
                                 className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                                title="Copy Quotation"
+                                title="Edit"
                               >
-                                <Copy className="w-4 h-4" />
+                                <Edit className="w-4 h-4" />
                               </button>
-                              {/* Only allow revise if not already revised AND no business transactions */}
-                              {!quotation.is_revised && !quotation.po_created && !quotation.invoice_created && !quotation.proforma_created && (
-                                <button
-                                  onClick={() => handleReviseQuotation(quotation)}
-                                  className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
-                                  title="Revise Quotation (Edit Once)"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </button>
-                              )}
+                              <button
+                                onClick={() => handleSendMail(quotation)}
+                                className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300"
+                                title="Send Email"
+                              >
+                                <Mail className="w-4 h-4" />
+                              </button>
                               {/* Only show reject if no PO or invoices created */}
                               {!quotation.po_created && !quotation.invoice_created && !quotation.proforma_created && (
                                 <button
@@ -742,28 +695,23 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
                           {quotation.status === 'approved' && (
                             <>
                               <button
-                                onClick={() => handleCopyQuotation(quotation)}
-                                className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                                title="Copy Quotation"
+                                onClick={() => handleSendMail(quotation)}
+                                className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300"
+                                title="Send Email"
                               >
-                                <Copy className="w-4 h-4" />
+                                <Mail className="w-4 h-4" />
                               </button>
-                              <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium flex items-center">
-                                <ShoppingCart className="w-3 h-3 mr-1" />
-                                PO Created ✓
-                              </span>
                             </>
                           )}
 
-                          {/* Other status buttons - only show reject if no business transactions */}
-                          {(quotation.status === 'accepted' || quotation.status === 'expired' || quotation.status === 'converted') && 
-                           !quotation.po_created && !quotation.invoice_created && !quotation.proforma_created && (
+                          {/* Other status buttons */}
+                          {(quotation.status === 'accepted' || quotation.status === 'expired' || quotation.status === 'converted') && (
                             <button
-                              onClick={() => handleRejectQuotation(quotation)}
-                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                              title="Reject Quotation"
+                              onClick={() => handleSendMail(quotation)}
+                              className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300"
+                              title="Send Email"
                             >
-                              <X className="w-4 h-4" />
+                              <Mail className="w-4 h-4" />
                             </button>
                           )}
                         </div>
@@ -776,7 +724,7 @@ const QuotationList: React.FC<QuotationListProps> = ({ onCreateNew, onView, onCr
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="bg-white dark:bg-gray-800 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6">
+              <div className="bg-gradient-to-r from-gray-50/80 to-gray-100/80 dark:from-gray-800/80 dark:to-gray-700/80 backdrop-blur-sm px-6 py-4 border-t border-gray-200/50 dark:border-gray-700/50">
                 <div className="flex-1 flex justify-between sm:hidden">
                   <button
                     onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}

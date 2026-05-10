@@ -27,8 +27,12 @@ interface Payment {
 
 interface Props {
   sessionKey: string;
+  invoiceId: number;
+  invoiceType: 'tax_invoice' | 'proforma_invoice';
   tdsMax: number;           // subtotal × rate/100 — total TDS for the invoice
   tdsOutstanding: number;   // tdsMax - cert-received so far
+  tdsSection: string;
+  tdsRate: number;
   payments: Payment[];
   depositsMap: Record<number, TDSEntry[]>;
   onChanged: () => void;
@@ -37,7 +41,7 @@ interface Props {
 const today = () => new Date().toISOString().split('T')[0];
 const EMPTY = { deposit_date: today(), amount: '', challan_number: '', form16a_number: '', certificate_received: false, notes: '' };
 
-const TDSTracker: React.FC<Props> = ({ sessionKey, tdsMax, tdsOutstanding, payments, depositsMap, onChanged }) => {
+const TDSTracker: React.FC<Props> = ({ sessionKey, invoiceId, invoiceType, tdsMax, tdsOutstanding, tdsSection, tdsRate, payments, depositsMap, onChanged }) => {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm]         = useState(EMPTY);
   const [saving, setSaving]     = useState(false);
@@ -85,25 +89,43 @@ const TDSTracker: React.FC<Props> = ({ sessionKey, tdsMax, tdsOutstanding, payme
       const { default: toast } = await import('react-hot-toast');
       toast.error(`₹${fmt(amt)} exceeds TDS outstanding ₹${fmt(remaining)}`); return;
     }
-    if (!tdsPayment) {
-      const { default: toast } = await import('react-hot-toast');
-      toast.error('Record a cash payment first before adding TDS entry'); return;
-    }
+    
     setSaving(true);
     try {
       const { default: api } = await import('../../../../../lib/api');
       const { default: toast } = await import('react-hot-toast');
+      
+      // Record TDS-only payment directly
+      const endpoint = invoiceType === 'proforma_invoice'
+        ? `/api/finance/proforma-invoices/${invoiceId}/payment/`
+        : `/api/finance/invoices/${invoiceId}/payment/`;
+      
       await api.post(
-        `/api/finance/payment-tds/${tdsPayment.id}/deposits/`,
-        form,
-        { params: { session_key: sessionKey } }
+        endpoint,
+        {
+          payment_date: form.deposit_date,
+          amount_received: 0,
+          tds_amount: amt,
+          tds_percentage: tdsRate,
+          net_amount: 0,
+          payment_method: 'bank_transfer',
+          reference_number: form.challan_number,
+          notes: form.notes || 'TDS payment',
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${sessionKey}`
+          },
+          params: {}  // Override interceptor params
+        }
       );
-      toast.success('TDS entry recorded');
+      
+      toast.success('TDS payment recorded');
       setForm(EMPTY); setShowForm(false);
       onChanged();
     } catch (err: any) {
       const { default: toast } = await import('react-hot-toast');
-      toast.error(err?.response?.data?.non_field_errors?.[0] || 'Failed to save');
+      toast.error(err?.response?.data?.non_field_errors?.[0] || err?.response?.data?.detail || 'Failed to save');
     } finally { setSaving(false); }
   };
 

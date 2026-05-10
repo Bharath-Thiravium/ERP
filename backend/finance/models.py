@@ -1,9 +1,21 @@
 from html import escape
 from django.db import models
 from django.core.validators import RegexValidator, EmailValidator
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from authentication.models import Company, CompanyServiceUser
 from .unit_models import Unit
+
+
+def validate_gstin_optional(value):
+    """Custom validator for GSTIN that allows blank values"""
+    if not value or not value.strip():
+        return  # Allow empty GSTIN
+    
+    import re
+    gstin_pattern = r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+    if not re.match(gstin_pattern, value):
+        raise ValidationError('Enter a valid GSTIN number')
 
 
 class HSNCode(models.Model):
@@ -51,6 +63,9 @@ FINANCE_NUMBERING_MODULE_CHOICES = [
     ('purchase_request', 'Purchase Request'),
     ('purchase_payment', 'Purchase Payment'),
     ('vendor_invoice', 'Vendor Invoice'),
+    ('customer', 'Customer'),
+    ('vendor', 'Vendor'),
+    ('product', 'Product'),
 ]
 
 NUMBERING_RESET_SCOPE_CHOICES = [
@@ -216,6 +231,10 @@ class Product(models.Model):
                     else:
                         self.product_code = f"{company_prefix}SER01"
 
+        # Ensure unit field is populated from unit_ref if available
+        if self.unit_ref and (not self.unit or self.unit.strip() == ''):
+            self.unit = self.unit_ref.code
+
         # Handle GST rate auto-fill vs manual override
         is_new_instance = self.pk is None
         temp_manual_override = getattr(self, '_manual_gst_override', False)
@@ -286,7 +305,7 @@ class Customer(models.Model):
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='finance_customers')
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.CASCADE, related_name='created_customers', null=True, blank=True)
-    customer_code = models.CharField(max_length=20, unique=True, blank=True, help_text="Auto-generated unique customer code")
+    customer_code = models.CharField(max_length=40, unique=True, blank=True, help_text="Auto-generated unique customer code (e.g., TC-CUST-2627-001)")
 
     # Customer Type and Basic Details - MANDATORY FIELDS
     customer_type = models.CharField(max_length=20, choices=CUSTOMER_TYPE_CHOICES, help_text="MANDATORY: Customer type")
@@ -320,14 +339,13 @@ class Customer(models.Model):
     business_type = models.CharField(max_length=20, choices=BUSINESS_TYPE_CHOICES, blank=True, null=True)
     industry = models.CharField(max_length=100, blank=True, null=True)
 
-    # Tax Information - MANDATORY GSTIN
+    # Tax Information - GSTIN is OPTIONAL (only required if GST registered)
     gstin = models.CharField(
         max_length=15,
-        validators=[RegexValidator(
-            regex=r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$',
-            message='Enter a valid GSTIN number'
-        )],
-        help_text="MANDATORY: 15-digit GST Identification Number"
+        blank=True,
+        null=True,
+        validators=[validate_gstin_optional],
+        help_text="15-digit GST Identification Number (required only if GST registered)"
     )
     pan_number = models.CharField(
         max_length=10,
@@ -444,10 +462,17 @@ class Customer(models.Model):
         if not self.billing_pincode or not self.billing_pincode.strip():
             errors['billing_pincode'] = 'Billing PIN code is required.'
         
-        # MANDATORY GSTIN VALIDATION
-        if not self.gstin or not self.gstin.strip():
-            errors['gstin'] = 'GSTIN is required.'
-        else:
+        # MANDATORY GSTIN VALIDATION - Only if GST registered
+        if self.is_gst_registered:
+            if not self.gstin or not self.gstin.strip():
+                errors['gstin'] = 'GSTIN is required for GST registered customers.'
+            else:
+                import re
+                gstin_pattern = r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+                if not re.match(gstin_pattern, self.gstin):
+                    errors['gstin'] = 'Please enter a valid GSTIN (15 characters).'
+        elif self.gstin and self.gstin.strip():
+            # If GSTIN is provided but not marked as GST registered, validate format
             import re
             gstin_pattern = r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
             if not re.match(gstin_pattern, self.gstin):
@@ -604,6 +629,36 @@ class CustomerShippingAddress(models.Model):
 
     def __str__(self):
         return escape(f"{self.customer.name} - {self.label}")
+    
+    def save(self, *args, **kwargs):
+        """Override save to ensure only one default address per customer"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Log if this is an update to an existing address
+        if self.pk:
+            try:
+                old_address = CustomerShippingAddress.objects.get(pk=self.pk)
+                if (old_address.address_line1 != self.address_line1 or 
+                    old_address.city != self.city or 
+                    old_address.state != self.state or 
+                    old_address.pincode != self.pincode):
+                    logger.warning(
+                        f"Shipping address {self.pk} for customer '{self.customer.name}' is being updated. "
+                        f"This will affect all invoices/POs using this address. "
+                        f"Old: {old_address.address_line1}, {old_address.city}. "
+                        f"New: {self.address_line1}, {self.city}"
+                    )
+            except CustomerShippingAddress.DoesNotExist:
+                pass
+        
+        if self.is_default:
+            # Unset all other defaults for this customer
+            CustomerShippingAddress.objects.filter(
+                customer=self.customer,
+                is_default=True
+            ).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
 
     @property
     def full_address(self):
@@ -2218,6 +2273,10 @@ class Invoice(models.Model):
     tds_section = models.CharField(max_length=20, blank=True, help_text="TDS section code (194C, 194J, etc.)")
     tds_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="TDS rate percentage")
 
+    # Claim tracking (for invoices from PO/Quotation)
+    claim_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, help_text="Percentage claimed from PO/Quotation")
+    claim_method = models.CharField(max_length=20, blank=True, default='percentage', choices=[('percentage', 'Percentage'), ('as_per_unit', 'As Per Unit')], help_text="How the claim was made")
+
     # Audit fields
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.SET_NULL, null=True, related_name='created_invoices')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2431,7 +2490,7 @@ class Invoice(models.Model):
 
 
 class Payment(models.Model):
-    """World-Class Payment Tracking System - Links payments to specific invoice numbers"""
+    """World-Class Payment Tracking System - Links payments to specific invoice numbers or direct customer payments"""
 
     PAYMENT_METHOD_CHOICES = [
         ('cash', 'Cash'),
@@ -2455,14 +2514,24 @@ class Payment(models.Model):
         ('refunded', 'Refunded'),
     ]
 
+    PAYMENT_TYPE_CHOICES = [
+        ('invoice', 'Invoice Payment'),
+        ('direct', 'Direct Payment'),
+        ('tds_only', 'TDS Only Payment'),
+    ]
+
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='payments', null=True, blank=True)
 
-    # Invoice Linking (World-Class Feature)
-    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='payments', null=True, blank=True)
-    proforma_invoice = models.ForeignKey(ProformaInvoice, on_delete=models.CASCADE, related_name='payments', null=True, blank=True)
+    # Payment Type
+    payment_type = models.CharField(max_length=20, choices=PAYMENT_TYPE_CHOICES, default='invoice', help_text='Type of payment - linked to invoice or direct')
+    payment_purpose = models.CharField(max_length=100, blank=True, help_text='Purpose of direct payment (memo, penalty, incentive, complimentary, etc.)')
+
+    # Invoice Linking (Optional for direct payments)
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='payments', null=True, blank=True, help_text='Invoice this payment is for (optional for direct payments)')
+    proforma_invoice = models.ForeignKey(ProformaInvoice, on_delete=models.CASCADE, related_name='payments', null=True, blank=True, help_text='Proforma invoice this payment is for (optional for direct payments)')
 
     # Payment Details
     payment_number = models.CharField(max_length=50, db_index=True)
@@ -2530,6 +2599,9 @@ class Payment(models.Model):
         ]
 
     def __str__(self):
+        if self.payment_type == 'direct':
+            purpose = f" - {self.payment_purpose}" if self.payment_purpose else ""
+            return escape(f"{self.payment_number} - ₹{self.amount} - Direct Payment{purpose}")
         invoice_info = f"INV: {self.invoice.invoice_number}" if self.invoice else f"PI: {self.proforma_invoice.proforma_number}" if self.proforma_invoice else "No Invoice"
         return escape(f"{self.payment_number} - ₹{self.amount} - {invoice_info}")
 
@@ -2593,7 +2665,11 @@ class Payment(models.Model):
         
         # Calculate TDS amounts based on CA-level logic
         if self.tds_applicable:
-            if tds_amount > 0 and net_amount_received > 0:
+            # Skip TDS calculation for TDS-only payments (amount=0, tds_amount>0)
+            if amount == 0 and tds_amount > 0 and hasattr(self, 'payment_type') and self.payment_type == 'tds_only':
+                # TDS-only payment - don't recalculate, keep as set
+                pass
+            elif tds_amount > 0 and net_amount_received > 0:
                 # Frontend already computed correct values — trust them
                 self.tds_amount = tds_amount
                 self.net_amount_received = net_amount_received
@@ -2618,8 +2694,9 @@ class Payment(models.Model):
 
         super().save(*args, **kwargs)
 
-        # Update related invoice/proforma payment status
-        self.update_invoice_payment_status()
+        # Update related invoice/proforma payment status only for invoice payments
+        if self.payment_type == 'invoice':
+            self.update_invoice_payment_status()
 
     def update_invoice_payment_status(self):
         """Update invoice outstanding.
@@ -2635,6 +2712,15 @@ class Payment(models.Model):
             """
             total = Decimal('0')
             for p in payments_qs.filter(status='completed'):
+                # For TDS-only payments, count TDS when certificate is received
+                if getattr(p, 'payment_type', None) == 'tds_only':
+                    # Check TDS deposits for certificate status
+                    from django.db.models import Sum as DSum
+                    cert_received = p.tds_deposits.filter(certificate_received=True).aggregate(
+                        t=DSum('amount'))['t'] or Decimal('0')
+                    total += cert_received
+                    continue
+                    
                 net = Decimal(str(p.net_amount_received or 0))
                 tds = Decimal(str(p.tds_amount or 0))
 
@@ -2709,6 +2795,14 @@ class Payment(models.Model):
         def calc_paid(payments_qs):
             total = Decimal('0')
             for p in payments_qs.filter(status='completed'):
+                # For TDS-only payments, count TDS when certificate is received
+                if getattr(p, 'payment_type', None) == 'tds_only':
+                    from django.db.models import Sum as DSum
+                    cert_received = p.tds_deposits.filter(certificate_received=True).aggregate(
+                        t=DSum('amount'))['t'] or Decimal('0')
+                    total += cert_received
+                    continue
+                    
                 net = Decimal(str(p.net_amount_received or 0))
                 tds = Decimal(str(p.tds_amount or 0))
                 if tds > 0:
@@ -2785,6 +2879,13 @@ class InvoiceItem(models.Model):
 
     # Line item order
     line_number = models.PositiveIntegerField(default=1)
+    
+    # Claim tracking (for invoices created from PO/Quotation)
+    po_item = models.ForeignKey('PurchaseOrderItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='invoice_items')
+    claimed_quantity_display = models.CharField(max_length=50, blank=True, help_text="Display value for claimed quantity (e.g., '10%' or '5 Nos')")
+    claim_type = models.CharField(max_length=20, blank=True, choices=[('percentage', 'Percentage'), ('unit', 'Unit'), ('as_per_unit', 'As Per Unit')], help_text="Type of claim")
+    is_claimed = models.BooleanField(default=False, help_text="Whether this line item has been claimed")
+    claimed_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="Percentage claimed if claim_type is percentage")
 
     class Meta:
         db_table = 'finance_invoice_items'

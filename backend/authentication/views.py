@@ -1833,7 +1833,9 @@ class CompanyDetailsView(APIView):
             'phone', 'address', 'business_type', 'industry', 'employee_count',
             'annual_revenue', 'website', 'gst_number', 'pan_number',
             'registration_number', 'contact_person_name', 'contact_person_title',
-            'contact_person_email', 'contact_person_phone', 'description', 'domain_name'
+            'contact_person_email', 'contact_person_phone', 'description', 'domain_name',
+            'bank_name', 'bank_account_number', 'bank_ifsc_code',
+            'bank_branch', 'bank_account_holder', 'bank_account_type',
         ]
 
         # Update only the provided fields
@@ -4105,6 +4107,12 @@ class CompanyDetailsView(APIView):
             'contact_person_phone': company.contact_person_phone,
             'description': company.description,
             'domain_name': company.domain_name,
+            'bank_name': company.bank_name,
+            'bank_account_number': company.bank_account_number,
+            'bank_ifsc_code': company.bank_ifsc_code,
+            'bank_branch': company.bank_branch,
+            'bank_account_holder': company.bank_account_holder,
+            'bank_account_type': company.bank_account_type,
             'approval_status': company.approval_status,
             'created_at': company.created_at.isoformat() if company.created_at else None,
             'updated_at': company.updated_at.isoformat() if company.updated_at else None,
@@ -4126,7 +4134,9 @@ class CompanyDetailsView(APIView):
             'phone', 'address', 'business_type', 'industry', 'employee_count',
             'annual_revenue', 'website', 'gst_number', 'pan_number',
             'registration_number', 'contact_person_name', 'contact_person_title',
-            'contact_person_email', 'contact_person_phone', 'description', 'domain_name'
+            'contact_person_email', 'contact_person_phone', 'description', 'domain_name',
+            'bank_name', 'bank_account_number', 'bank_ifsc_code',
+            'bank_branch', 'bank_account_holder', 'bank_account_type',
         ]
 
         # Update only the provided fields
@@ -4448,6 +4458,12 @@ class CompanyDetailsView(APIView):
             'contact_person_phone': company.contact_person_phone,
             'description': company.description,
             'domain_name': company.domain_name,
+            'bank_name': company.bank_name,
+            'bank_account_number': company.bank_account_number,
+            'bank_ifsc_code': company.bank_ifsc_code,
+            'bank_branch': company.bank_branch,
+            'bank_account_holder': company.bank_account_holder,
+            'bank_account_type': company.bank_account_type,
             'approval_status': company.approval_status,
             'created_at': company.created_at.isoformat() if company.created_at else None,
             'updated_at': company.updated_at.isoformat() if company.updated_at else None,
@@ -4455,92 +4471,120 @@ class CompanyDetailsView(APIView):
 
     def put(self, request):
         """Update company details"""
-        if not hasattr(request.user, 'company_user'):
-            return Response(
-                {'error': 'Only company users can update company details.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        try:
+            if not hasattr(request.user, 'company_user'):
+                return Response(
+                    {'error': 'Only company users can update company details.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
-        company_user = request.user.company_user
-        company = company_user.company
+            company_user = request.user.company_user
+            company = company_user.company
 
-        # Fields that can be updated by company users
-        updatable_fields = [
-            'phone', 'address', 'business_type', 'industry', 'employee_count',
-            'annual_revenue', 'website', 'gst_number', 'pan_number',
-            'registration_number', 'contact_person_name', 'contact_person_title',
-            'contact_person_email', 'contact_person_phone', 'description', 'domain_name',
-            'bank_name', 'bank_account_number', 'bank_ifsc_code',
-            'bank_branch', 'bank_account_holder', 'bank_account_type',
-        ]
+            # Fields that can be updated by company users
+            updatable_fields = [
+                'phone', 'address', 'business_type', 'industry', 'employee_count',
+                'annual_revenue', 'website', 'gst_number', 'pan_number',
+                'registration_number', 'contact_person_name', 'contact_person_title',
+                'contact_person_email', 'contact_person_phone', 'description', 'domain_name',
+                'bank_name', 'bank_account_number', 'bank_ifsc_code',
+                'bank_branch', 'bank_account_holder', 'bank_account_type',
+            ]
 
-
-
-
-
-
-
-        # Update only the provided fields
-        updated_fields = []
-        for field in updatable_fields:
-            if field in request.data:
-                old_value = getattr(company, field)
-                new_value = request.data[field]
-                if old_value != new_value:
-                    setattr(company, field, new_value)
-                    updated_fields.append(field)
-
-        if updated_fields:
-            company.save()
+            # Update only the provided fields
+            # Fields that have blank=True but not null=True (must use empty string, not None)
+            non_nullable_fields = ['industry', 'website', 'gst_number', 'pan_number', 'registration_number',
+                                   'contact_person_name', 'contact_person_title', 'contact_person_email', 
+                                   'contact_person_phone', 'description', 'domain_name', 'bank_name', 
+                                   'bank_account_number', 'bank_ifsc_code', 'bank_branch', 
+                                   'bank_account_holder', 'bank_account_type']
             
-            # Log the update
-            log_security_event(
-                request.user,
-                'COMPANY_DETAILS_UPDATED',
-                request,
-                f'Updated company details: {", ".join(updated_fields)}'
+            updated_fields = []
+            for field in updatable_fields:
+                if field in request.data:
+                    old_value = getattr(company, field, None)
+                    new_value = request.data[field]
+                    
+                    # Handle empty strings for different field types
+                    if new_value == '' or new_value is None:
+                        if field in non_nullable_fields:
+                            # CharField/URLField with blank=True but not null=True
+                            new_value = ''
+                        elif field in ['employee_count', 'annual_revenue']:
+                            # Numeric fields - convert empty string to None
+                            new_value = None
+                        # else: keep None for nullable fields
+                    
+                    if old_value != new_value:
+                        setattr(company, field, new_value)
+                        updated_fields.append(field)
+
+            if updated_fields:
+                try:
+                    company.save()
+                    log_security_event(
+                        request.user,
+                        'COMPANY_DETAILS_UPDATED',
+                        request,
+                        f'Updated company details: {", ".join(updated_fields)}'
+                    )
+                except Exception as save_error:
+                    print(f'🔍 DEBUG: Error saving company: {str(save_error)}')
+                    import traceback
+                    traceback.print_exc()
+                    return Response(
+                        {'error': f'Failed to save: {str(save_error)}'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
+            # Return updated company data
+            logo_url = None
+            if company.logo:
+                logo_url = request.build_absolute_uri(company.logo.url)
+
+            return Response({
+                'message': 'Company details updated successfully.',
+                'updated_fields': updated_fields,
+                'company': {
+                    'id': company.id,
+                    'name': company.name,
+                    'email': company.email,
+                    'phone': company.phone,
+                    'address': company.address,
+                    'logo': logo_url,
+                    'business_type': company.business_type,
+                    'industry': company.industry,
+                    'employee_count': company.employee_count,
+                    'annual_revenue': company.annual_revenue,
+                    'website': company.website,
+                    'gst_number': company.gst_number,
+                    'pan_number': company.pan_number,
+                    'registration_number': company.registration_number,
+                    'contact_person_name': company.contact_person_name,
+                    'contact_person_title': company.contact_person_title,
+                    'contact_person_email': company.contact_person_email,
+                    'contact_person_phone': company.contact_person_phone,
+                    'description': company.description,
+                    'domain_name': company.domain_name,
+                    'bank_name': company.bank_name,
+                    'bank_account_number': company.bank_account_number,
+                    'bank_ifsc_code': company.bank_ifsc_code,
+                    'bank_branch': company.bank_branch,
+                    'bank_account_holder': company.bank_account_holder,
+                    'bank_account_type': company.bank_account_type,
+                    'approval_status': company.approval_status,
+                    'created_at': company.created_at.isoformat() if company.created_at else None,
+                    'updated_at': company.updated_at.isoformat() if company.updated_at else None,
+                }
+            })
+        except Exception as e:
+            print(f'🔍 DEBUG: Error in put(): {str(e)}')
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Failed to update: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-        # Return updated company data
-        logo_url = None
-        if company.logo:
-            logo_url = request.build_absolute_uri(company.logo.url)
-
-        return Response({
-            'message': 'Company details updated successfully.',
-            'updated_fields': updated_fields,
-            'company': {
-                'id': company.id,
-                'name': company.name,
-                'email': company.email,
-                'phone': company.phone,
-                'address': company.address,
-                'logo': logo_url,
-                'business_type': company.business_type,
-                'industry': company.industry,
-                'employee_count': company.employee_count,
-                'annual_revenue': company.annual_revenue,
-                'website': company.website,
-                'gst_number': company.gst_number,
-                'pan_number': company.pan_number,
-                'registration_number': company.registration_number,
-                'contact_person_name': company.contact_person_name,
-                'contact_person_title': company.contact_person_title,
-                'contact_person_email': company.contact_person_email,
-                'contact_person_phone': company.contact_person_phone,
-                'description': company.description,
-                'domain_name': company.domain_name,
-                'bank_name': company.bank_name,
-                'bank_account_number': company.bank_account_number,
-                'bank_ifsc_code': company.bank_ifsc_code,
-                'bank_branch': company.bank_branch,
-                'bank_account_holder': company.bank_account_holder,
-                'bank_account_type': company.bank_account_type,
-                'approval_status': company.approval_status,
-                'created_at': company.created_at.isoformat() if company.created_at else None,
-                'updated_at': company.updated_at.isoformat() if company.updated_at else None,
-            }
-        })
 
 
 class GenerateAutoCodeView(APIView):

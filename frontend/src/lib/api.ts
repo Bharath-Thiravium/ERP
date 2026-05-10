@@ -115,6 +115,7 @@ api.interceptors.request.use(
                                    config.url?.includes('/api/finance/') ||
                                    config.url?.includes('/api/inventory/') ||
                                    config.url?.includes('/api/crm/') ||
+                                   config.url?.includes('/api/reports/') ||
                                    config.url?.includes('/api/company-dashboard/'))
       
       if (isServiceUserEndpoint) {
@@ -131,8 +132,11 @@ api.interceptors.request.use(
           })
         }
         
-        config.params = config.params || {}
-        config.params.session_key = sessionKey
+        // Skip adding session_key to params if Authorization header is already set
+        if (!config.headers.Authorization) {
+          config.params = config.params || {}
+          config.params.session_key = sessionKey
+        }
       } else {
         // Use JWT token for regular endpoints (including Athens)
         const token = getToken()
@@ -165,11 +169,12 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
 
-      // Skip token refresh for service user endpoints (HR, Finance, Inventory, CRM)
+      // Skip token refresh for service user endpoints (HR, Finance, Inventory, CRM, Reports)
       const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
                                    originalRequest.url?.includes('/api/finance/') ||
                                    originalRequest.url?.includes('/api/inventory/') ||
                                    originalRequest.url?.includes('/api/crm/') ||
+                                   originalRequest.url?.includes('/api/reports/') ||
                                    originalRequest.url?.includes('/api/company-dashboard/')
       
       if (isServiceUserEndpoint) {
@@ -228,7 +233,8 @@ api.interceptors.response.use(
         const isServiceUserEndpoint = originalRequest.url?.includes('/api/hr/') ||
                                      originalRequest.url?.includes('/api/finance/') ||
                                      originalRequest.url?.includes('/api/inventory/') ||
-                                     originalRequest.url?.includes('/api/crm/')
+                                     originalRequest.url?.includes('/api/crm/') ||
+                                     originalRequest.url?.includes('/api/reports/')
         
         if (!isServiceUserEndpoint && !originalRequest.url?.includes('/validate-token/')) {
           clearTokens()
@@ -549,11 +555,14 @@ export const apiClient = {
   getCustomerLedger: (params?: any) =>
     api.get('/api/finance/customer-ledger/', { params }),
 
+  downloadCustomerLedgerPDF: (params?: any) =>
+    api.get('/api/finance/customer-ledger/pdf/', { params, responseType: 'blob' }),
+
   getCustomerPendingStatement: (params?: any) =>
     api.get('/api/finance/customer-pending-statement/', { params }),
 
   downloadCustomerPendingStatementPDF: (params?: any) =>
-    api.get('/api/finance/customer-pending-statement/', { params: { ...params, format: 'pdf' }, responseType: 'blob' }),
+    api.get('/api/finance/customer-pending-statement/pdf/', { params, responseType: 'blob' }),
 
   getPOConsolidatedReport: (poId: number, params?: any) =>
     api.get(`/api/finance/purchase-orders/${poId}/consolidated-report/`, { params, responseType: 'blob' }),

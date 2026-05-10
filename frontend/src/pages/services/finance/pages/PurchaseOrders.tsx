@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react'
 import { Plus } from 'lucide-react'
-// import { useThemeStore } from '../../../../store/themeStore' // Removed unused import
 import PurchaseOrderList from '../components/PurchaseOrderList'
 import PurchaseOrderForm from '../components/PurchaseOrderForm'
 import PurchaseOrderView from '../components/PurchaseOrderView'
@@ -8,6 +7,8 @@ import PODetailsModal from '../components/PODetailsModal'
 import RaiseInvoiceModal from '../components/RaiseInvoiceModal'
 import SimpleProformaForm from '../components/SimpleProformaForm'
 import DynamicTaxInvoiceForm from '../components/DynamicTaxInvoiceForm'
+import FinancialYearFilter from '../components/FinancialYearFilter'
+import { getCurrentFY } from '../../../../utils/financialYearUtils'
 
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { apiClient } from '../../../../lib/api'
@@ -113,7 +114,6 @@ interface PurchaseOrdersProps {
 }
 
 const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initialAction, onActionComplete, onPOCreated }) => {
-  // const { theme } = useThemeStore() // Removed unused import
   const { sessionKey } = useServiceUserStore()
   const [showForm, setShowForm] = useState(false)
   const [showView, setShowView] = useState(false)
@@ -121,6 +121,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
   const [showRaiseInvoice, setShowRaiseInvoice] = useState(false)
   const [showProformaForm, setShowProformaForm] = useState(false)
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
+  const [selectedFY, setSelectedFY] = useState<string>(getCurrentFY())
 
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [selectedPOId, setSelectedPOId] = useState<number | null>(null)
@@ -177,6 +178,14 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
       console.error('Error loading PO details:', error)
       toast.error('Failed to load purchase order details')
     }
+  }
+
+  const handleEditFromView = async (po: PurchaseOrder) => {
+    setShowView(false)
+    setSelectedPO(po)
+    setQuotationData(null)
+    setIsEditing(true)
+    setShowForm(true)
   }
 
   const handleFormClose = () => {
@@ -332,26 +341,32 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
               Manage your purchase orders and work orders from client quotations
             </p>
           </div>
-          <button
-            onClick={handleAddPO}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
-          >
-            <Plus className="w-5 h-5" />
-            New PO/WO
-          </button>
+          <div className="flex items-center gap-4">
+            <FinancialYearFilter
+              selectedYear={selectedFY}
+              onYearChange={setSelectedFY}
+            />
+            <button
+              onClick={handleAddPO}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+            >
+              <Plus className="w-5 h-5" />
+              New PO/WO
+            </button>
+          </div>
         </div>
       </div>
 
       {/* PO List */}
       <PurchaseOrderList
-        key={refreshList} // Force re-render when refreshList changes
+        key={refreshList}
         sessionKey={sessionKey || ''}
+        selectedFY={selectedFY}
         onCreateNew={handleAddPO}
         onEdit={handleEditPO}
         onView={handleViewPO}
         onViewDetails={handleViewDetails}
         onRaiseInvoice={handleRaiseInvoice}
-
         onDelete={handlePODeleted}
       />
 
@@ -371,6 +386,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
           purchaseOrder={selectedPO}
           onClose={handleViewClose}
           sessionKey={sessionKey || ''}
+          onEdit={handleEditFromView}
         />
       )}
 

@@ -23,5 +23,6 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["**/*.backup.ts", "**/*.backup.tsx", "**/*.backup.jsx", "**/*.backup.js"]
 }

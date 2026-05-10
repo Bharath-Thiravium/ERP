@@ -1,12 +1,17 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework.exceptions import PermissionDenied
-from django.core.exceptions import FieldDoesNotExist
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import FieldDoesNotExist, ValidationError as DjangoValidationError
 from django.conf import settings
+from django.db import IntegrityError
 from authentication.authentication import ServiceUserSessionAuthentication
 from authentication.permissions import IsServiceUserAuthenticated
 from authentication.permissions import IsCompanyUser
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class GlobalModelMixin:
@@ -112,6 +117,36 @@ class CompanyScopedModelViewSet(viewsets.ModelViewSet):
                 save_kwargs['assigned_to'] = service_user.created_by
 
         serializer.save(**save_kwargs)
+
+    def create(self, request, *args, **kwargs):
+        """Wrap create with validation and integrity error handling."""
+        try:
+            return super().create(request, *args, **kwargs)
+        except (ValidationError, DjangoValidationError) as e:
+            logger.warning(f"Create validation failed: {e}")
+            errors = getattr(e, 'detail', None) or getattr(e, 'message_dict', None) or {'error': str(e)}
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        except IntegrityError as e:
+            logger.warning(f"Create integrity failed: {e}")
+            error_msg = str(e).lower()
+            if 'unique' in error_msg or 'duplicate' in error_msg:
+                return Response(
+                    {'error': 'Duplicate or unique constraint violation. Please check your input.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            return Response(
+                {'error': 'Database integrity error. Please check your input.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.exception("Create operation failed in CompanyScopedModelViewSet")
+            return Response(
+                {
+                    'error': 'Create operation failed',
+                    'message': str(e) if settings.DEBUG else 'An unexpected error occurred.'
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     def perform_update(self, serializer):
         """

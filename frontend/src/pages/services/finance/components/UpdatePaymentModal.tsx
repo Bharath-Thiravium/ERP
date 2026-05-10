@@ -221,8 +221,12 @@ const UpdatePaymentModal: React.FC<Props> = ({
           ) : (
             <TDSTracker
               sessionKey={sessionKey}
+              invoiceId={invoice.id}
+              invoiceType={invoiceType}
               tdsMax={tdsMax}
               tdsOutstanding={tdsOutstanding}
+              tdsSection={tdsSection}
+              tdsRate={tdsRate}
               payments={payments as any}
               depositsMap={depositsMap}
               onChanged={() => { fetchPayments(); onSuccess(); }}

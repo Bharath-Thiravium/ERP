@@ -268,13 +268,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
   // Handle unit search input change
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (unitSearchTerm.trim()) {
-        searchUnits(unitSearchTerm)
-        setShowUnitDropdown(true)
-      } else {
-        searchUnits('')
-        setShowUnitDropdown(false)
-      }
+      searchUnits(unitSearchTerm)
     }, 300)
 
     return () => clearTimeout(timer)

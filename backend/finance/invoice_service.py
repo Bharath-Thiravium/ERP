@@ -64,7 +64,8 @@ class InvoiceShippingAddressManager:
     
     @staticmethod
     def get_formatted_shipping_address(invoice):
-        """Get formatted shipping address for invoice display"""
+        """Get formatted shipping address for invoice display with proper priority logic"""
+        # Priority 1: Invoice's specific shipping address
         if invoice.shipping_address:
             return {
                 'type': 'specific',
@@ -72,14 +73,38 @@ class InvoiceShippingAddressManager:
                 'address': invoice.shipping_address.full_address,
                 'is_default': invoice.shipping_address.is_default
             }
-        else:
-            # Fall back to customer's shipping address
-            return {
-                'type': 'customer_default',
-                'label': 'Customer Shipping Address',
-                'address': invoice.customer.full_shipping_address,
-                'is_default': True
-            }
+        
+        # Priority 2: PO's shipping address (if invoice created from PO)
+        try:
+            if invoice.purchase_order and invoice.purchase_order.shipping_address:
+                return {
+                    'type': 'po_shipping',
+                    'label': invoice.purchase_order.shipping_address.label,
+                    'address': invoice.purchase_order.shipping_address.full_address,
+                    'is_default': invoice.purchase_order.shipping_address.is_default
+                }
+        except Exception:
+            pass
+        
+        # Priority 3: Quotation's shipping address (if invoice created from quotation)
+        try:
+            if invoice.quotation and invoice.quotation.shipping_address:
+                return {
+                    'type': 'quotation_shipping',
+                    'label': invoice.quotation.shipping_address.label,
+                    'address': invoice.quotation.shipping_address.full_address,
+                    'is_default': invoice.quotation.shipping_address.is_default
+                }
+        except Exception:
+            pass
+        
+        # Priority 4: Fall back to billing address
+        return {
+            'type': 'billing_fallback',
+            'label': 'Billing Address (Default)',
+            'address': invoice.customer.full_billing_address,
+            'is_default': True
+        }
 
 
 class InvoiceCreationService:
@@ -99,6 +124,10 @@ class InvoiceCreationService:
                     shipping_address_id=invoice_data.get('shipping_address_id')
                 )
                 
+                # Get claim information
+                claim_percentage = invoice_data.get('claim_percentage', Decimal('100'))
+                claim_method = invoice_data.get('claim_type', 'percentage')  # 'percentage' or 'as_per_unit'
+                
                 # Create invoice
                 invoice = Invoice.objects.create(
                     company=purchase_order.company,
@@ -117,7 +146,9 @@ class InvoiceCreationService:
                     other_charges=invoice_data.get('other_charges', purchase_order.other_charges),
                     notes=invoice_data.get('notes', purchase_order.notes),
                     terms_and_conditions=invoice_data.get('terms_and_conditions', purchase_order.terms_and_conditions),
-                    created_by=created_by_user
+                    created_by=created_by_user,
+                    claim_percentage=claim_percentage,
+                    claim_method=claim_method
                 )
                 
                 # Create invoice items from PO items
@@ -233,12 +264,19 @@ class InvoiceCreationService:
     def _create_invoice_items_from_po(self, invoice, purchase_order, invoice_data):
         """Create invoice items from PO items"""
         claim_percentage = invoice_data.get('claim_percentage', Decimal('100'))
+        claim_type = invoice_data.get('claim_type', 'percentage')  # 'percentage' or 'as_per_unit'
         
         for po_item in purchase_order.po_items.all():
             # Calculate claimed quantity/amount based on percentage
             claimed_quantity = (po_item.quantity * claim_percentage) / Decimal('100')
             claimed_amount = (po_item.line_total * claim_percentage) / Decimal('100')
             claimed_unit_price = claimed_amount / claimed_quantity if claimed_quantity > 0 else po_item.unit_price
+            
+            # Determine display value for claimed quantity
+            if claim_type == 'percentage':
+                claimed_display = f"{claim_percentage}%"
+            else:
+                claimed_display = f"{claimed_quantity} {po_item.unit}"
             
             InvoiceItem.objects.create(
                 invoice=invoice,
@@ -252,7 +290,10 @@ class InvoiceCreationService:
                 unit_price=claimed_unit_price,
                 line_total=claimed_amount,
                 gst_rate=po_item.gst_rate,
-                line_number=po_item.line_number
+                line_number=po_item.line_number,
+                po_item=po_item,
+                claimed_quantity_display=claimed_display,
+                claim_type=claim_type
             )
     
     def _create_invoice_items_from_quotation(self, invoice, quotation, invoice_data):

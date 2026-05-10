@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, User, MapPin, Package, Download, Printer } from 'lucide-react'
+import { X, User, MapPin, Package, Download, Printer, Edit, Copy } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface PurchaseOrder {
@@ -70,9 +70,10 @@ interface PurchaseOrderViewProps {
   purchaseOrder: PurchaseOrder
   onClose: () => void
   sessionKey?: string
+  onEdit?: (po: PurchaseOrder) => void
 }
 
-const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, onClose, sessionKey }) => {
+const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, onClose, sessionKey, onEdit }) => {
   const getStatusBadge = (status: string) => {
     const statusColors = {
       draft: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
@@ -168,7 +169,7 @@ const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, on
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-600">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
               {purchaseOrder.internal_po_number}
@@ -179,14 +180,38 @@ const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, on
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <button onClick={handleDownloadPDF} className="flex items-center space-x-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
-              <span>⬇ Download PDF</span>
+            {onEdit && (
+              <button 
+                onClick={() => onEdit(purchaseOrder)} 
+                className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium shadow-sm"
+                title="Edit PO"
+              >
+                <Edit className="w-4 h-4" />
+                <span>Edit</span>
+              </button>
+            )}
+            <button 
+              onClick={handleDownloadPDF} 
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium shadow-sm"
+              title="Download PDF"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download</span>
             </button>
-            <button onClick={handlePrint} className="flex items-center space-x-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
-              <Printer className="w-4 h-4" /><span>Print</span>
+            <button 
+              onClick={handlePrint} 
+              className="flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm font-medium shadow-sm"
+              title="Print"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Print</span>
             </button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-6 h-6" />
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              title="Close"
+            >
+              <X className="w-6 h-6 text-gray-500" />
             </button>
           </div>
         </div>

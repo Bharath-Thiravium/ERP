@@ -69,7 +69,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
   const [activeTab, setActiveTab] = useState('basic')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [shippingAddresses, setShippingAddresses] = useState<Array<{
-    id: string
+    id?: number | string
     label: string
     address_line1: string
     address_line2: string
@@ -77,6 +77,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
     state: string
     pincode: string
     country: string
+    is_default: boolean
   }>>([])
   const [stateSearchTerm, setStateSearchTerm] = useState('')
   const [showStateDropdown, setShowStateDropdown] = useState(false)
@@ -226,19 +227,23 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
       })
 
       // Load existing shipping addresses
+      console.log('Loading shipping addresses from API:', customerData.shipping_addresses)
       if (customerData.shipping_addresses && customerData.shipping_addresses.length > 0) {
-        const addresses = customerData.shipping_addresses.map((addr: any, index: number) => ({
-          id: addr.id?.toString() || `existing_${index}`,
-          label: addr.label || `Address ${index + 1}`,
+        const addresses = customerData.shipping_addresses.map((addr: any) => ({
+          id: addr.id, // Keep the actual database ID
+          label: addr.label || 'Address',
           address_line1: addr.address_line1 || '',
           address_line2: addr.address_line2 || '',
           city: addr.city || '',
           state: addr.state || '',
           pincode: addr.pincode || '',
-          country: addr.country || 'India'
+          country: addr.country || 'India',
+          is_default: addr.is_default || false
         }))
+        console.log('Mapped shipping addresses:', addresses)
         setShippingAddresses(addresses)
       } else {
+        console.log('No shipping addresses found')
         setShippingAddresses([])
       }
 
@@ -379,10 +384,12 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
       newErrors.billing_pincode = 'PIN code is required'
     }
     
-    // Tax & Legal - Mandatory fields
-    if (!formData.gstin.trim()) {
-      newErrors.gstin = 'GSTIN is required'
+    // Tax & Legal - Conditional mandatory fields
+    // GSTIN is required only if GST registered
+    if (formData.is_gst_registered && !formData.gstin.trim()) {
+      newErrors.gstin = 'GSTIN is required for GST registered customers'
     }
+    // PAN is always required
     if (!formData.pan_number.trim()) {
       newErrors.pan_number = 'PAN number is required'
     }
@@ -482,28 +489,47 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
   // Shipping address functions
   const addShippingAddress = () => {
     const newAddress = {
-      id: Date.now().toString(),
+      id: `new_${Date.now()}`, // Temporary ID for new addresses
       label: `Address ${shippingAddresses.length + 1}`,
       address_line1: '',
       address_line2: '',
       city: '',
       state: '',
       pincode: '',
-      country: 'India'
+      country: 'India',
+      is_default: shippingAddresses.length === 0 // First address is default
     }
     setShippingAddresses(prev => [...prev, newAddress])
   }
 
-  const updateShippingAddress = (id: string, field: string, value: string) => {
+  const updateShippingAddress = (id: string | number, field: string, value: string | boolean) => {
     setShippingAddresses(prev =>
-      prev.map(addr =>
-        addr.id === id ? { ...addr, [field]: value } : addr
-      )
+      prev.map(addr => {
+        if (addr.id === id) {
+          // If setting this as default, unset all others
+          if (field === 'is_default' && value === true) {
+            return { ...addr, [field]: value }
+          }
+          return { ...addr, [field]: value }
+        } else if (field === 'is_default' && value === true) {
+          // Unset default for all other addresses
+          return { ...addr, is_default: false }
+        }
+        return addr
+      })
     )
   }
 
-  const removeShippingAddress = (id: string) => {
-    setShippingAddresses(prev => prev.filter(addr => addr.id !== id))
+  const removeShippingAddress = (id: string | number) => {
+    const addressToRemove = shippingAddresses.find(addr => addr.id === id)
+    const remainingAddresses = shippingAddresses.filter(addr => addr.id !== id)
+    
+    // If removing the default address and there are other addresses, set first as default
+    if (addressToRemove?.is_default && remainingAddresses.length > 0) {
+      remainingAddresses[0].is_default = true
+    }
+    
+    setShippingAddresses(remainingAddresses)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -538,7 +564,24 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
       // Prepare clean payload
       const payload = {
         ...formData,
-        shipping_addresses: shippingAddresses, // Include multiple shipping addresses
+        // Include shipping addresses with proper ID handling
+        shipping_addresses: shippingAddresses.map(addr => {
+          const addressData: any = {
+            label: addr.label,
+            address_line1: addr.address_line1,
+            address_line2: addr.address_line2,
+            city: addr.city,
+            state: addr.state,
+            pincode: addr.pincode,
+            country: addr.country,
+            is_default: addr.is_default
+          }
+          // Include ID only if it's a number (existing address from database)
+          if (typeof addr.id === 'number') {
+            addressData.id = addr.id
+          }
+          return addressData
+        }),
         session_key: sessionKey
       }
 
@@ -564,6 +607,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
       }
 
       console.log('Sending payload:', payload)
+      console.log('Shipping addresses being sent:', payload.shipping_addresses)
       
       if (customer?.id) {
         // Update existing customer
@@ -926,18 +970,42 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   {shippingAddresses.length > 0 && !formData.shipping_same_as_billing && (
                     <div className="space-y-6">
                       {shippingAddresses.map((address, index) => (
-                        <div key={address.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
+                        <div key={address.id} className={`border rounded-lg p-4 ${
+                          address.is_default 
+                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                            : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'
+                        }`}>
                           <div className="flex items-center justify-between mb-4">
-                            <h4 className="font-medium text-gray-900 dark:text-white">
-                              Shipping Address {index + 1}
-                            </h4>
-                            <button
-                              type="button"
-                              onClick={() => removeShippingAddress(address.id)}
-                              className="text-red-600 hover:text-red-800 p-1"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-gray-900 dark:text-white">
+                                {address.label || `Shipping Address ${index + 1}`}
+                              </h4>
+                              {address.is_default && (
+                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                                  ✓ Default
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {!address.is_default && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateShippingAddress(address.id, 'is_default', true)}
+                                  className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                                  title="Set as default"
+                                >
+                                  Set Default
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeShippingAddress(address.id)}
+                                className="text-red-600 hover:text-red-800 p-1"
+                                title="Remove address"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1140,7 +1208,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      GSTIN <span className="text-red-500">*</span>
+                      GSTIN {formData.is_gst_registered && <span className="text-red-500">*</span>}
                     </label>
                     <input
                       type="text"
@@ -1163,13 +1231,15 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onClose, onSave }
                       className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 ${
                         errors.gstin ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                       }`}
-                      placeholder="15-digit GST number"
+                      placeholder="15-digit GST number (optional if not GST registered)"
                       maxLength={15}
                     />
                     {errors.gstin && (
                       <p className="text-red-500 text-sm mt-1">{errors.gstin}</p>
                     )}
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Format: 22AAAAA0000A1Z5</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {formData.is_gst_registered ? 'Format: 22AAAAA0000A1Z5 (Required)' : 'Format: 22AAAAA0000A1Z5 (Optional - check GST Registered if applicable)'}
+                    </p>
                   </div>
 
                   <div>

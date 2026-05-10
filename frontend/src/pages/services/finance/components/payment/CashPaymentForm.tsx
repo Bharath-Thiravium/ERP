@@ -36,22 +36,25 @@ const CashPaymentForm: React.FC<Props> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Regular payment validation
     if (net <= 0) return;
     if (net > cashOutstanding + 0.01) {
       const { default: toast } = await import('react-hot-toast');
       toast.error(`₹${fmt(net)} exceeds cash outstanding ₹${fmt(cashOutstanding)}`);
       return;
     }
+    
     setSaving(true);
     try {
       const { default: api } = await import('../../../../../lib/api');
       const { default: toast } = await import('react-hot-toast');
-      // When TDS is applicable, stamp the section/rate on the payment so the TDS Register picks it up.
-      // tds_amount on a cash payment = proportional share: net × (tdsRate / (100 - tdsRate))
+      
+      // Regular payment with or without TDS
       const tdsProportion = tdsApplicable && tdsRate > 0
         ? parseFloat((net * tdsRate / (100 - tdsRate)).toFixed(2))
         : 0;
-      const payload: Record<string, any> = {
+      const payload = {
         payment_date: date,
         amount: net,
         gross_payment_amount: tdsApplicable ? net + tdsProportion : net,
@@ -66,8 +69,9 @@ const CashPaymentForm: React.FC<Props> = ({
         reference_number: ref,
         notes,
         status: 'completed',
+        [invoiceType === 'proforma_invoice' ? 'proforma_invoice' : 'invoice']: invoiceId,
       };
-      payload[invoiceType === 'proforma_invoice' ? 'proforma_invoice' : 'invoice'] = invoiceId;
+      
       await api.post('/api/finance/payments/', payload, { params: { session_key: sessionKey } });
       toast.success('Payment recorded');
       setAmount(''); setRef(''); setNotes(''); setDate(today());
@@ -169,7 +173,7 @@ const CashPaymentForm: React.FC<Props> = ({
           </div>
 
           <button type="submit" disabled={saving || net <= 0}
-            className="w-full py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 font-medium"
+            className="w-full py-2 text-sm rounded-lg disabled:opacity-50 font-medium bg-blue-600 hover:bg-blue-700 text-white"
           >
             {saving ? 'Recording…' : 'Record Payment'}
           </button>

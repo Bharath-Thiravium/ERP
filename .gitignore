@@ -39,3 +39,8 @@ Thumbs.db
 # Backup files
 *.bak
 backup_*
+
+# Credential reset artifacts - never commit these
+backend/scripts/reset_credentials_*.txt
+backend/scripts/service_credentials_*.txt
+backend/scripts/security_log_*.json

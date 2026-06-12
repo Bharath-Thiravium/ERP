@@ -6,318 +6,274 @@
 <title>Proforma Invoice</title>
 <style>
 @page{size:A4;margin:0}
-:root{
-  --ink:#123044;--ink-soft:#4f6472;--muted:#7c8b96;--line:#d9e2e8;--panel:#f4f7f9;--panel-strong:#e8eef2;--accent:#0f766e;--accent-soft:#d8f0ed;--accent-deep:#0b5c56;
-}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Helvetica Neue',Arial,sans-serif;color:var(--ink);background:#eef3f6;font-size:11px}
-.page{padding:10mm 11mm 12mm}
-.topbar,.info-grid,.status-row,.section-card,.financial-grid,.declaration,.footer{page-break-inside:avoid}
-.topbar{display:table;width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 10px 28px rgba(18,48,68,.08);margin-bottom:10px}
-.brand-cell,.company-cell,.doc-cell{display:table-cell;vertical-align:top}
-.brand-cell{width:96px;background:linear-gradient(180deg,#16384c 0%,#0f766e 100%);padding:18px 14px;text-align:center}
-.logo-wrap{width:62px;height:62px;margin:0 auto;border-radius:18px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.2)}
-.logo-wrap img{max-width:46px;max-height:46px;object-fit:contain;display:block}
-.monogram{font-size:22px;font-weight:700;color:#fff;letter-spacing:-1px}
-.brand-tag{margin-top:12px;font-size:7px;letter-spacing:1.6px;text-transform:uppercase;color:rgba(255,255,255,.82)}
-.company-cell{padding:18px 18px 16px;background:#fff}
-.eyebrow{font-size:8px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
-.company-name{font-size:23px;line-height:1.05;font-weight:700;color:var(--ink);margin-bottom:8px}
-.company-meta{font-size:9.5px;line-height:1.75;color:var(--ink-soft)}
-.doc-cell{width:210px;padding:18px;background:linear-gradient(180deg,#f8fbfc 0%,#edf4f6 100%);border-left:1px solid var(--line)}
-.doc-label{font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
-.doc-number{font-size:19px;font-weight:700;line-height:1.15;color:var(--ink);word-break:break-word}
-.doc-date{font-size:10px;color:var(--ink-soft);margin-top:6px}
-.doc-pill{display:inline-block;margin-top:14px;padding:6px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent-deep);font-size:8px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
-.info-grid{display:table;width:100%;border-spacing:10px 0;margin:0 -10px 10px}
-.info-card{display:table-cell;width:33.333%;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 15px;vertical-align:top}
-.card-kicker{font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
-.party-name{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px}
-.party-body,.detail-table td{font-size:10px;line-height:1.65;color:var(--ink-soft)}
-.detail-table{width:100%;border-collapse:collapse}
-.detail-table td{padding:3px 0;vertical-align:top}
-.detail-table td:first-child{width:44%;color:var(--muted)}
-.detail-table td:last-child{text-align:right;color:var(--ink);font-weight:600}
-.status-row{background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px 14px;margin-bottom:10px}
-.metric{display:inline-block;min-width:24%;padding-right:12px}
-.metric-label{font-size:7.5px;text-transform:uppercase;letter-spacing:1.3px;color:var(--muted);margin-bottom:4px}
-.metric-value{font-size:10px;font-weight:700;color:var(--ink)}
-.section-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px 15px;margin-bottom:10px;box-shadow:0 6px 20px rgba(18,48,68,.04)}
-.section-title{font-size:8.5px;font-weight:700;letter-spacing:1.7px;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
-table.items,table.hsn{width:100%;border-collapse:separate;border-spacing:0}
-table.items thead,table.hsn thead{display:table-header-group}
-table.items th,table.hsn th{background:var(--ink);color:#fff;padding:9px 8px;font-size:7.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,.12)}
-table.items th:first-child,table.hsn th:first-child{border-top-left-radius:12px}
-table.items th:last-child,table.hsn th:last-child{border-right:none;border-top-right-radius:12px}
-table.items td,table.hsn td{padding:9px 8px;border-right:1px solid #edf2f5;border-bottom:1px solid #edf2f5;vertical-align:top;font-size:9.5px;color:var(--ink-soft);page-break-inside:avoid}
-table.items tbody tr:nth-child(even) td,table.hsn tbody tr:nth-child(even) td{background:#fafcfd}
-table.items td:last-child,table.hsn td:last-child{border-right:none}
-table.items tbody tr:last-child td:first-child,table.hsn tbody tr:last-child td:first-child{border-bottom-left-radius:12px}
-table.items tbody tr:last-child td:last-child,table.hsn tbody tr:last-child td:last-child{border-bottom-right-radius:12px}
-table.hsn tfoot td{background:#eef5f6;font-weight:700;color:var(--ink);border-bottom:none}
-.c{text-align:center}
-.r{text-align:right;font-family:'Courier New',monospace}
-.iname{font-size:10px;font-weight:700;color:var(--ink)}
-.idesc{margin-top:3px;font-size:8.5px;line-height:1.5;color:var(--muted)}
-.financial-grid{display:table;width:100%;border-spacing:10px 0;margin:0 -10px 10px}
-.finance-left,.finance-right{display:table-cell;vertical-align:top}
-.finance-left{width:60%}
-.finance-right{width:40%}
-.stack-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 15px;margin-bottom:10px}
-.words{background:linear-gradient(180deg,#f8fcfc 0%,#edf9f7 100%);border-color:#cde8e5}
-.words-value{font-size:12px;line-height:1.6;font-weight:600;color:var(--ink)}
-.bank-table{width:100%;border-collapse:collapse}
-.bank-table td{padding:5px 0;font-size:9.5px;color:var(--ink-soft)}
-.bank-table td:first-child{width:38%;color:var(--muted)}
-.bank-table td:last-child{font-weight:600;color:var(--ink)}
-.totals{background:linear-gradient(180deg,#16384c 0%,#123044 100%);color:#fff;border:none}
-.totals .section-title{color:#c4ece8}
-.totals-table{width:100%;border-collapse:collapse}
-.totals-table td{padding:7px 0;font-size:10px;border-bottom:1px solid rgba(255,255,255,.08)}
-.totals-table td:first-child{color:#bdd0dc}
-.totals-table td:last-child{text-align:right;font-family:'Courier New',monospace;font-weight:700}
-.totals-table tr:last-child td{border-bottom:none;padding-top:10px}
-.grand-line td{font-size:13px;color:#fff}
-.note-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 15px;margin-bottom:10px}
-.note-body{font-size:10px;line-height:1.7;color:var(--ink-soft);white-space:pre-line;overflow-wrap:anywhere}
-.declaration{background:#f8fbfc;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:16px;padding:13px 15px;margin-bottom:10px;font-size:9.5px;line-height:1.7;color:var(--ink-soft)}
-.declaration strong{color:var(--ink)}
-.footer{padding:8px 2px 0;font-size:8.5px;color:var(--muted);display:flex;justify-content:space-between}
-.footer strong{color:var(--ink)}
+body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1e2d4a;background:#fff}
+.page{width:210mm;min-height:297mm;display:flex;flex-direction:column}
+
+/* ── HEADER ── */
+.hdr{display:flex;align-items:stretch;min-height:80px}
+.hdr-logo{background:#f0f4f8;border-right:2px solid #c8d6e8;display:flex;align-items:center;justify-content:center;padding:10px 14px;min-width:60px;max-width:140px;width:auto;flex-shrink:0}
+.hdr-logo img{max-height:52px;max-width:112px;width:auto;height:auto;object-fit:contain;display:block}
+.hdr-logo .monogram{width:44px;height:44px;background:#1e2d4a;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:-1px;flex-shrink:0}
+.hdr-co{flex:1;background:#fff;padding:14px 20px;border-bottom:1px solid #c8d6e8;display:flex;flex-direction:column;justify-content:center}
+.hdr-co .co-name{font-size:18px;font-weight:700;color:#1e2d4a;margin-bottom:4px;letter-spacing:0.3px;font-family:'Helvetica Neue',Arial,sans-serif;text-transform:uppercase}
+.hdr-co .co-meta{font-size:9px;color:#64748b;line-height:1.7}
+.hdr-doc{background:#1e2d4a;width:158px;min-width:158px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px 16px;text-align:center}
+.hdr-doc .doc-type{font-size:11px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
+.hdr-doc .doc-num{font-size:9.5px;color:#fff;opacity:0.9;font-weight:700;margin-top:6px;word-break:break-all}
+.hdr-doc .doc-date{font-size:8.5px;color:#fff;opacity:0.75;margin-top:3px}
+.accent-rule{height:3px;background:linear-gradient(90deg,#1e2d4a,#2e6da4,#1e2d4a)}
+
+/* ── PARTY ROW ── */
+.party-row{display:flex;border-bottom:1px solid #dde6f0}
+.pc{flex:1;padding:13px 18px;border-right:1px solid #dde6f0}
+.pc:last-child{border-right:none}
+.pclbl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#2e6da4;border-bottom:1.5px solid #2e6da4;padding-bottom:3px;margin-bottom:7px;display:inline-block;font-family:Arial,sans-serif}
+.pcname{font-size:13px;font-weight:700;color:#1e2d4a;margin-bottom:3px}
+.pcaddr{font-size:10px;color:#374151;line-height:1.65}
+.pcgstin{font-size:9px;color:#64748b;margin-top:4px;font-family:Arial,sans-serif}
+
+/* ── META STRIP ── */
+.meta{background:#f0f4f8;border-bottom:1px solid #dde6f0;padding:7px 18px;display:flex}
+.ms{flex:1;padding:0 13px;border-right:1px solid #dde6f0}
+.ms:first-child{padding-left:0}
+.ms:last-child{border-right:none}
+.mslbl{color:#94a3b8;font-size:7.5px;margin-bottom:2px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:0.5px}
+.msval{font-weight:700;color:#1e2d4a;font-size:10px;font-family:Arial,sans-serif}
+
+/* ── COMPLIANCE ── */
+.comp{background:#f0f4f8;border-bottom:1px solid #c8d6e8;padding:6px 18px;display:flex;gap:26px;font-size:9px;color:#374151;font-family:Arial,sans-serif}
+.comp strong{color:#1e2d4a}
+
+/* ── BODY ── */
+.body{padding:14px 18px;flex:1}
+
+/* ── ITEMS TABLE ── */
+table.items{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:9.5px}
+table.items thead tr{background:#1e2d4a}
+table.items thead th{color:#e8f0fb;padding:8px 6px;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;border-right:1px solid #2a3d5a;font-family:Arial,sans-serif}
+table.items thead th:last-child{border-right:none}
+table.items thead th.r{text-align:right}
+table.items thead th.c{text-align:center}
+table.items tbody tr{border-bottom:1px solid #ede9e0}
+table.items tbody tr:nth-child(even){background:#f8fafc}
+table.items tbody td{padding:7px 6px;vertical-align:top;border-right:1px solid #ede9e0}
+table.items tbody td:last-child{border-right:none}
+table.items tbody td.r{text-align:right;font-family:'Courier New',monospace}
+table.items tbody td.c{text-align:center;font-family:Arial,sans-serif}
+.iname{font-weight:700;color:#1e2d4a;font-size:10px}
+.idesc{font-size:8.5px;color:#64748b;margin-top:2px;font-family:Arial,sans-serif}
+
+
+/* ── WORDS ── */
+.words{background:#f8fafc;border:1px solid #dde6f0;border-left:3px solid #2e6da4;padding:8px 12px;margin-bottom:12px;font-family:Arial,sans-serif}
+.wlbl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#94a3b8;margin-bottom:3px}
+.wval{font-size:11px;font-style:normal;color:#1e2d4a;font-family:'Helvetica Neue',Arial,sans-serif;font-weight:600}
+
+/* ── BANK + TOTALS ── */
+.bottom{display:flex;gap:12px;margin-bottom:12px}
+.bankbox{flex:1;border:1px solid #dde6f0;border-radius:2px;padding:11px 13px}
+.bbtitle{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1e2d4a;border-bottom:1.5px solid #2e6da4;padding-bottom:3px;margin-bottom:7px;display:inline-block;font-family:Arial,sans-serif}
+.bankbox table{width:100%;border-collapse:collapse;font-size:9.5px;font-family:Arial,sans-serif}
+.bankbox table td{padding:3px 0;color:#374151}
+.bankbox table td:first-child{color:#94a3b8;width:42%}
+.tbox{width:238px}
+.tbox table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif}
+.tbox table td{padding:5px 9px;border-bottom:1px solid #ede9e0;font-size:10.5px}
+.tbox table td:last-child{text-align:right;font-family:'Courier New',monospace;font-weight:600}
+.tbox table td.tl{color:#64748b}
+.tbox table tr.grand td{background:#1e2d4a;color:#fff;font-weight:700;font-size:12px;border:none;padding:9px}
+.tbox table tr.grand td:last-child{color:#a8d4f5;font-family:'Courier New',monospace}
+
+/* ── TERMS ── */
+.terms{border:1px solid #dde6f0;border-radius:2px;padding:11px 13px;margin-bottom:12px}
+.ttitle{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1e2d4a;border-bottom:1.5px solid #2e6da4;padding-bottom:3px;margin-bottom:7px;display:inline-block;font-family:Arial,sans-serif}
+.tbody{font-size:10px;color:#374151;line-height:1.75;font-family:Arial,sans-serif}
+
+/* ── DECLARATION ── */
+.decl{background:#f0f4f8;border:1px solid #c8d6e8;border-radius:2px;padding:8px 12px;margin-bottom:12px;font-size:9px;color:#374151;line-height:1.6;font-family:Arial,sans-serif}
+.decl strong{color:#1e2d4a}
+
+/* ── SIGNATURES ── */
+.sigs{display:flex;justify-content:space-between;margin-top:22px;gap:14px}
+.sig{flex:1;text-align:center;max-width:45%}
+.sigspace{height:46px;border-bottom:1.5px solid #1e2d4a;margin-bottom:5px}
+.siglbl{font-size:9.5px;font-weight:700;color:#1e2d4a;font-family:Arial,sans-serif}
+.sigco{font-size:9px;color:#64748b;font-family:Arial,sans-serif;margin-top:3px}
+
+/* ── FOOTER ── */
+.footer{background:#1e2d4a;color:#94a3b8;padding:8px 18px;display:flex;justify-content:space-between;font-size:8.5px;font-family:Arial,sans-serif;margin-top:auto}
+.footer .gstin{color:#a8d4f5;font-weight:600}
 </style>
 </head>
 <body>
 <div class="page">
-  <div class="topbar">
-    <div class="brand-cell">
-      <div class="logo-wrap">
-        {% if logo_url %}
-          <img src="{{ logo_url }}" alt="{{ company.name }}">
-        {% elif logo_path %}
-          <img src="{{ logo_path }}" alt="{{ company.name }}">
-        {% else %}
-          <div class="monogram">{{ company.name|slice:":2"|upper }}</div>
-        {% endif %}
-      </div>
-      <div class="brand-tag">Commercial Estimate</div>
-    </div>
-    <div class="company-cell">
-      <div class="eyebrow">Issued By</div>
-      <div class="company-name">{{ company.name }}</div>
-      <div class="company-meta">
-        {{ company.address_line1 }}{% if company.address_line2 %}, {{ company.address_line2 }}{% endif %}<br>
-        {{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}<br>
-        {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}<br>
-        GSTIN: {{ company_gstin|default:"N/A" }}
-      </div>
-    </div>
-    <div class="doc-cell">
-      <div class="doc-label">Proforma Invoice</div>
-      <div class="doc-number">{{ proforma.proforma_number }}</div>
-      <div class="doc-date">Issued on {{ proforma.proforma_date|date:"d M Y" }}</div>
-      <div class="doc-pill">{{ proforma.status|capfirst }}</div>
+
+<div class="hdr">
+  <div class="hdr-logo">
+    {% if logo_url %}
+      <img src="{{ logo_url }}" alt="{{ company.name }}">
+    {% elif logo_path %}
+      <img src="{{ logo_path }}" alt="{{ company.name }}">
+    {% else %}
+      <div class="monogram">{{ company.name|slice:":2"|upper }}</div>
+    {% endif %}
+  </div>
+  <div class="hdr-co">
+    <div class="co-name">{{ company.name }}</div>
+    <div class="co-meta">
+      {% if company.address %}{{ company.address|linebreaksbr }}<br>{% endif %}
+      {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}<br>
+      GSTIN: {{ company_gstin|default:"N/A" }}
     </div>
   </div>
+  <div class="hdr-doc">
+    <div class="doc-type">Proforma Invoice</div>
+    <div class="doc-num">{{ proforma.proforma_number }}</div>
+    <div class="doc-date">{{ proforma.proforma_date|date:"d M Y" }}</div>
+  </div>
+</div>
+<div class="accent-rule"></div>
 
-  <div class="info-grid">
-    <div class="info-card">
-      <div class="card-kicker">Bill To</div>
-      <div class="party-name">{{ customer.name }}</div>
-      <div class="party-body">
-        {{ customer.billing_address_line1 }}<br>
-        {% if customer.billing_address_line2 %}{{ customer.billing_address_line2 }}<br>{% endif %}
-        {{ customer.billing_city }}{% if customer.billing_state %}, {{ customer.billing_state }}{% endif %}{% if customer.billing_pincode %} - {{ customer.billing_pincode }}{% endif %}<br>
-        {% if customer.phone %}Tel: {{ customer.phone }}<br>{% endif %}
-        {% if customer.email %}{{ customer.email }}<br>{% endif %}
-        {% if customer.gstin %}GSTIN: {{ customer.gstin }}{% endif %}
-      </div>
+<div class="party-row">
+  <div class="pc">
+    <div class="pclbl">Bill To</div>
+    <div class="pcname">{{ customer.name }}</div>
+    <div class="pcaddr">
+      {{ customer.billing_address_line1 }}<br>
+      {% if customer.billing_address_line2 %}{{ customer.billing_address_line2 }}<br>{% endif %}
+      {{ customer.billing_city }}{% if customer.billing_state %}, {{ customer.billing_state }}{% endif %}{% if customer.billing_pincode %} – {{ customer.billing_pincode }}{% endif %}<br>
+      {% if customer.phone %}Tel: {{ customer.phone }}<br>{% endif %}
+      {% if customer.email %}{{ customer.email }}{% endif %}
     </div>
-    <div class="info-card">
-      <div class="card-kicker">Ship To</div>
-      <div class="party-name">{% if proforma.shipping_address %}Delivery Address{% else %}Billing Address{% endif %}</div>
-      <div class="party-body">
-        {% if proforma.shipping_address %}
-          {{ proforma.shipping_address.label }}<br>
-          {{ proforma.shipping_address.full_address }}
-        {% else %}
-          Same as billing address
+    {% if customer.gstin %}<div class="pcgstin">GSTIN: {{ customer.gstin }}</div>{% endif %}
+  </div>
+  <div class="pc">
+    <div class="pclbl">Ship To</div>
+    {% if shipping_info.address %}
+      {% if shipping_info.label %}<div class="pcname">{{ shipping_info.label }}</div>{% endif %}
+      <div class="pcaddr">{{ shipping_info.address }}</div>
+    {% else %}
+      <div class="pcaddr" style="color:#9ca3af;font-style:italic;font-family:Arial,sans-serif">Same as billing address</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="meta">
+  <div class="ms"><div class="mslbl">Proforma Invoice No.</div><div class="msval">{{ proforma.proforma_number }}</div></div>
+  <div class="ms"><div class="mslbl">Date</div><div class="msval">{{ proforma.proforma_date|date:"d/m/Y" }}</div></div>
+  <div class="ms"><div class="mslbl">Due Date</div><div class="msval">{{ proforma.due_date|date:"d/m/Y" }}</div></div>
+  <div class="ms"><div class="mslbl">GST Type</div><div class="msval">{{ proforma.gst_type|upper }}</div></div>
+  <div class="ms"><div class="mslbl">Place of Supply</div><div class="msval">{{ proforma.place_of_supply|default:customer.billing_state }}</div></div>
+  {% if proforma.reference %}<div class="ms"><div class="mslbl">Reference</div><div class="msval">{{ proforma.reference }}</div></div>{% endif %}
+</div>
+
+<div class="comp">
+  <span><strong>Reverse Charge:</strong> {% if proforma.reverse_charge_applicable %}Applicable{% else %}Not Applicable{% endif %}</span>
+  <span><strong>Currency:</strong> INR</span>
+  <span><strong>Status:</strong> {{ proforma.status|capfirst }}</span>
+</div>
+
+<div class="body">
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:4%" class="c">#</th>
+        <th style="width:36%">Description</th>
+        <th style="width:10%" class="c">HSN/SAC</th>
+        <th style="width:8%" class="c">Qty</th>
+        <th style="width:7%" class="c">Unit</th>
+        <th style="width:13%" class="r">Rate (₹)</th>
+        <th style="width:11%" class="r">Taxable (₹)</th>
+        <th style="width:11%" class="r">Amount (₹)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="c" style="color:#9ca3af;font-family:Arial,sans-serif">{{ item.line_number }}</td>
+        <td>
+          <div class="iname">{{ item.product_name }}</div>
+          {% if item.description %}<div class="idesc">{{ item.description }}</div>{% endif %}
+        </td>
+        <td class="c" style="color:#64748b;font-size:9px;font-family:Arial,sans-serif">{{ item.hsn_sac_code|default:"—" }}</td>
+        <td class="c">{{ item.quantity }}</td>
+        <td class="c" style="color:#64748b">{{ item.unit|default:"Nos" }}</td>
+        <td class="r">{{ item.unit_price|floatformat:2 }}</td>
+        <td class="r">{{ item.line_total|floatformat:2 }}</td>
+        <td class="r" style="font-weight:700">{{ item.line_total|floatformat:2 }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" style="text-align:center;padding:20px;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif">No items</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="words">
+    <div class="wlbl">Total Amount in Words</div>
+    <div class="wval">{{ proforma.total_amount|num_to_words }}</div>
+  </div>
+
+  <div class="bottom">
+    <div class="bankbox">
+      <div class="bbtitle">Bank Details for Payment</div>
+      <table>
+        <tr><td>Beneficiary</td><td><strong>{{ company.name }}</strong></td></tr>
+        <tr><td>Bank Name</td><td>{{ company.bank_name|default:"—" }}</td></tr>
+        <tr><td>Account No.</td><td>{{ company.bank_account_number|default:"—" }}</td></tr>
+        <tr><td>IFSC Code</td><td>{{ company.bank_ifsc_code|default:"—" }}</td></tr>
+        <tr><td>Account Type</td><td>Current Account</td></tr>
+        <tr><td>Branch</td><td>{{ company.bank_branch|default:"—" }}</td></tr>
+      </table>
+    </div>
+    <div class="tbox">
+      <table>
+        <tr><td class="tl">Subtotal</td><td>₹{{ proforma.subtotal|floatformat:2 }}</td></tr>
+        {% if proforma.discount_amount > 0 %}
+        <tr><td class="tl">Discount{% if proforma.discount_percentage > 0 %} ({{ proforma.discount_percentage }}%){% endif %}</td><td style="color:#c0392b">–₹{{ proforma.discount_amount|floatformat:2 }}</td></tr>
         {% endif %}
-      </div>
-    </div>
-    <div class="info-card">
-      <div class="card-kicker">Document Summary</div>
-      <table class="detail-table">
-        <tr><td>Proforma No.</td><td>{{ proforma.proforma_number }}</td></tr>
-        <tr><td>Date</td><td>{{ proforma.proforma_date|date:"d/m/Y" }}</td></tr>
-        <tr><td>Due Date</td><td>{{ proforma.due_date|date:"d/m/Y" }}</td></tr>
-        <tr><td>GST Type</td><td>{{ proforma.gst_type|upper }}</td></tr>
-        <tr><td>Reference</td><td>{{ proforma.reference|default:"N/A" }}</td></tr>
+        {% if proforma.shipping_charges > 0 %}
+        <tr><td class="tl">Shipping</td><td>₹{{ proforma.shipping_charges|floatformat:2 }}</td></tr>
+        {% endif %}
+        {% if proforma.other_charges > 0 %}
+        <tr><td class="tl">Other Charges</td><td>₹{{ proforma.other_charges|floatformat:2 }}</td></tr>
+        {% endif %}
+        <tr class="grand"><td>Grand Total</td><td>₹{{ proforma.total_amount|floatformat:2 }}</td></tr>
       </table>
     </div>
   </div>
 
-  <div class="status-row">
-    <span class="metric"><div class="metric-label">Place of Supply</div><div class="metric-value">{% if proforma.shipping_address %}{{ proforma.shipping_address.state }}{% else %}{{ proforma.place_of_supply|default:customer.billing_state }}{% endif %}</div></span>
-    <span class="metric"><div class="metric-label">Reverse Charge</div><div class="metric-value">{% if proforma.reverse_charge_applicable %}Applicable{% else %}Not Applicable{% endif %}</div></span>
-    <span class="metric"><div class="metric-label">Currency</div><div class="metric-value">INR</div></span>
-    <span class="metric"><div class="metric-label">Commercial Status</div><div class="metric-value">{{ proforma.status|capfirst }}</div></span>
-  </div>
-
-  <div class="section-card">
-    <div class="section-title">Line Items</div>
-    <table class="items">
-      <thead>
-        <tr>
-          <th style="width:3%" class="c">#</th>
-          <th style="width:26%">Description</th>
-          <th style="width:8%" class="c">HSN/SAC</th>
-          <th style="width:6%" class="c">Qty</th>
-          <th style="width:5%" class="c">Unit</th>
-          <th style="width:9%" class="r">Rate</th>
-          <th style="width:8%" class="r">Taxable</th>
-          <th style="width:6%" class="c">GST%</th>
-          {% if proforma.gst_type == "cgst_sgst" %}
-          <th style="width:7%" class="r">CGST</th>
-          <th style="width:7%" class="r">SGST</th>
-          {% else %}
-          <th style="width:9%" class="r">IGST</th>
-          {% endif %}
-          <th style="width:9%" class="r">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in items %}
-        <tr>
-          <td class="c">{{ item.line_number }}</td>
-          <td><div class="iname">{{ item.product_name }}</div>{% if item.description %}<div class="idesc">{{ item.description }}</div>{% endif %}</td>
-          <td class="c">{{ item.hsn_sac_code|default:"—" }}</td>
-          <td class="c">{{ item.quantity }}</td>
-          <td class="c">{{ item.unit|default:"Nos" }}</td>
-          <td class="r">{{ item.unit_price|floatformat:2 }}</td>
-          <td class="r">{{ item.line_total|floatformat:2 }}</td>
-          <td class="c">{{ item.gst_rate|floatformat:0 }}%</td>
-          {% if proforma.gst_type == "cgst_sgst" %}
-          <td class="r">{% widthratio item.line_total 200 item.gst_rate %}</td>
-          <td class="r">{% widthratio item.line_total 200 item.gst_rate %}</td>
-          {% else %}
-          <td class="r">{% widthratio item.line_total 100 item.gst_rate %}</td>
-          {% endif %}
-          <td class="r"><strong>{{ item.line_total|floatformat:2 }}</strong></td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="11" class="c" style="padding:22px;color:var(--muted);font-style:italic">No items</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="section-card">
-    <div class="section-title">HSN / SAC Tax Summary</div>
-    <table class="hsn">
-      <thead>
-        <tr>
-          <th>HSN/SAC</th><th>Taxable Value</th>
-          {% if proforma.gst_type == "cgst_sgst" %}
-          <th>CGST Rate</th><th>CGST</th><th>SGST Rate</th><th>SGST</th>
-          {% else %}
-          <th>IGST Rate</th><th>IGST</th>
-          {% endif %}
-          <th>Total Tax</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in items %}
-        <tr>
-          <td>{{ item.hsn_sac_code|default:"—" }}</td>
-          <td class="r">{{ item.line_total|floatformat:2 }}</td>
-          {% if proforma.gst_type == "cgst_sgst" %}
-          <td class="c">{{ item.gst_rate|floatformat:0 }}%/2</td><td class="r">{% widthratio item.line_total 200 item.gst_rate %}</td>
-          <td class="c">{{ item.gst_rate|floatformat:0 }}%/2</td><td class="r">{% widthratio item.line_total 200 item.gst_rate %}</td>
-          {% else %}
-          <td class="c">{{ item.gst_rate|floatformat:0 }}%</td><td class="r">{% widthratio item.line_total 100 item.gst_rate %}</td>
-          {% endif %}
-          <td class="r">{% widthratio item.line_total 100 item.gst_rate %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-      <tfoot>
-        <tr>
-          <td><strong>Total</strong></td><td class="r">{{ proforma.subtotal|floatformat:2 }}</td>
-          {% if proforma.gst_type == "cgst_sgst" %}
-          <td class="c">—</td><td class="r">{{ proforma.cgst_amount|floatformat:2 }}</td><td class="c">—</td><td class="r">{{ proforma.sgst_amount|floatformat:2 }}</td>
-          {% else %}
-          <td class="c">—</td><td class="r">{{ proforma.igst_amount|floatformat:2 }}</td>
-          {% endif %}
-          <td class="r">{{ proforma.total_tax|floatformat:2 }}</td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
-
-  <div class="financial-grid">
-    <div class="finance-left">
-      <div class="stack-card words">
-        <div class="section-title">Amount in Words</div>
-        <div class="words-value">{{ proforma.total_amount|num_to_words }}</div>
-      </div>
-      <div class="stack-card">
-        <div class="section-title">Banking & Settlement</div>
-        <table class="bank-table">
-          <tr><td>Beneficiary</td><td>{{ company.name }}</td></tr>
-          <tr><td>Bank Name</td><td>{{ company.bank_name|default:"—" }}</td></tr>
-          <tr><td>Account No.</td><td>{{ company.bank_account_number|default:"—" }}</td></tr>
-          <tr><td>IFSC Code</td><td>{{ company.bank_ifsc_code|default:"—" }}</td></tr>
-          <tr><td>Branch</td><td>{{ company.bank_branch|default:"—" }}</td></tr>
-        </table>
-      </div>
+  {% if proforma.notes or proforma.terms_and_conditions %}
+  <div class="terms">
+    <div class="ttitle">{% if proforma.notes %}Notes &amp; {% endif %}Terms &amp; Conditions</div>
+    <div class="tbody">
+      {% if proforma.notes %}<p style="margin-bottom:5px">{{ proforma.notes }}</p>{% endif %}
+      {% if proforma.terms_and_conditions %}{{ proforma.terms_and_conditions }}{% endif %}
     </div>
-    <div class="finance-right">
-      <div class="stack-card totals">
-        <div class="section-title">Commercial Value</div>
-        <table class="totals-table">
-          <tr><td>Subtotal</td><td>{{ proforma.subtotal|floatformat:2 }}</td></tr>
-          {% if proforma.discount_amount > 0 %}
-          <tr><td>Discount{% if proforma.discount_percentage > 0 %} ({{ proforma.discount_percentage }}%){% endif %}</td><td>-{{ proforma.discount_amount|floatformat:2 }}</td></tr>
-          {% endif %}
-          {% if proforma.shipping_charges > 0 %}
-          <tr><td>Shipping</td><td>{{ proforma.shipping_charges|floatformat:2 }}</td></tr>
-          {% endif %}
-          {% if proforma.other_charges > 0 %}
-          <tr><td>Other Charges</td><td>{{ proforma.other_charges|floatformat:2 }}</td></tr>
-          {% endif %}
-          {% if proforma.gst_type == "cgst_sgst" %}
-          <tr><td>CGST</td><td>{{ proforma.cgst_amount|floatformat:2 }}</td></tr>
-          <tr><td>SGST</td><td>{{ proforma.sgst_amount|floatformat:2 }}</td></tr>
-          {% elif proforma.gst_type == "igst" %}
-          <tr><td>IGST</td><td>{{ proforma.igst_amount|floatformat:2 }}</td></tr>
-          {% endif %}
-          <tr class="grand-line"><td>Grand Total</td><td>{{ proforma.total_amount|floatformat:2 }}</td></tr>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  {% if proforma.notes %}
-  <div class="note-card">
-    <div class="section-title">Commercial Notes</div>
-    <div class="note-body">{{ proforma.notes }}</div>
   </div>
   {% endif %}
 
-  {% if proforma.terms_and_conditions %}
-  <div class="note-card">
-    <div class="section-title">Terms &amp; Conditions</div>
-    <div class="note-body">{{ proforma.terms_and_conditions }}</div>
+  <div class="decl">
+    <strong>Declaration:</strong> We declare that this proforma invoice shows the actual price of the goods / services described and that all particulars are true and correct to the best of our knowledge and belief.
   </div>
-  {% endif %}
 
-  <div class="declaration"><strong>Declaration:</strong> This proforma invoice is issued for commercial reference and approval purposes. All values and particulars stated above are true and correct to the best of our knowledge and belief.</div>
-
-  <div class="footer">
-    <span><strong>{{ company.name }}</strong> | GSTIN: {{ company_gstin|default:"N/A" }}</span>
-    <span>Computer-generated document</span>
-    <span>{{ proforma.proforma_date|date:"d M Y" }}</span>
+  <div class="sigs">
+    <div class="sig"><div class="sigspace"></div><div class="siglbl">Customer Signature</div></div>
+    <div class="sig"><div class="sigspace"></div><div class="siglbl">Authorised Signatory</div><div class="sigco">For {{ company.name }}</div></div>
   </div>
+
+</div>
+
+<div style="background:#f0f4f8;color:#64748b;padding:6px 18px;text-align:center;font-size:8.5px;font-family:Arial,sans-serif;font-style:italic;border-top:1px solid #dde6f0">
+  This is a computer generated proforma invoice and does not require physical signature
+</div>
+
+<div class="footer">
+  <span>{{ company.name }} | <span class="gstin">GSTIN: {{ company_gstin|default:"N/A" }}</span></span>
+  <span>{{ proforma.proforma_date|date:"d M Y" }}</span>
+</div>
+
 </div>
 </body>
 </html>

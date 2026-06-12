@@ -1,4 +1,5 @@
 import React from 'react'
+import DOMPurify from 'dompurify'
 import { X } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 
@@ -37,7 +38,7 @@ export const EmailTemplatePreviewModal: React.FC<EmailTemplatePreviewModalProps>
             <h3 className="text-lg font-semibold mb-4">HTML Preview</h3>
             <div 
               className="bg-white border rounded-lg p-4 min-h-[300px]"
-              dangerouslySetInnerHTML={{ __html: template.html_content }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(template.html_content) }}
             />
           </div>
 

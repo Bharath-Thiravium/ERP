@@ -137,7 +137,7 @@ const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, on
   const handlePrint = async () => {
     if (!sessionKey) return;
     try {
-      const response = await fetch(`/api/finance/purchase-orders/${purchaseOrder.id}/pdf/?session_key=${sessionKey}`, {
+      const response = await fetch(`/api/finance/purchase-orders/${purchaseOrder.id}/pdf/`, {
         headers: { 'Authorization': `Bearer ${sessionKey}` }
       });
       if (!response.ok) throw new Error('PDF failed');
@@ -151,7 +151,7 @@ const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = ({ purchaseOrder, on
   const handleDownloadPDF = async () => {
     if (!sessionKey) return;
     try {
-      const response = await fetch(`/api/finance/purchase-orders/${purchaseOrder.id}/pdf/?session_key=${sessionKey}`, {
+      const response = await fetch(`/api/finance/purchase-orders/${purchaseOrder.id}/pdf/`, {
         headers: { 'Authorization': `Bearer ${sessionKey}` }
       });
       if (!response.ok) throw new Error('PDF failed');

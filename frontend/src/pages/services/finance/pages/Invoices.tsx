@@ -40,7 +40,7 @@ const Invoices: React.FC<InvoicesProps> = ({ sessionKey }) => {
   const [showDirectInvoiceModal, setShowDirectInvoiceModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [invoiceFilter, setInvoiceFilter] = useState('');
-  const [selectedFY, setSelectedFY] = useState<string>(getCurrentFY());
+  const [selectedFY, setSelectedFY] = useState<string>('');
 
   const fetchInvoiceStats = async () => {
     if (!sessionKey) return;

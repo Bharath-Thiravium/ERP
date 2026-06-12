@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import api from '../../../../lib/api'
 import { Button } from '../../../../components/ui/Button'
 import { 
   FileText, 
@@ -59,13 +60,8 @@ const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({ sessionKey })
 
     setLoading(true)
     try {
-      const response = await fetch(`/api/finance/compliance/dashboard/?session_key=${sessionKey}`)
-      const data = await response.json()
-      if (response.ok) {
-        setComplianceData(data)
-      } else {
-        console.error('Error fetching compliance data:', data.error)
-      }
+      const response = await api.get('/api/finance/compliance/dashboard/')
+      setComplianceData(response.data)
     } catch (error) {
       console.error('Error fetching compliance data:', error)
     } finally {
@@ -87,12 +83,15 @@ const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({ sessionKey })
       const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
       const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
 
-      const response = await fetch(
-        `/api/finance/gstr1/generate/?session_key=${sessionKey}&start_date=${startDate.toISOString().split('T')[0]}&end_date=${endDate.toISOString().split('T')[0]}`
-      )
-      const data = await response.json()
-      
-      if (response.ok) {
+      const response = await api.get('/api/finance/gstr1/generate/', {
+        params: {
+          start_date: startDate.toISOString().split('T')[0],
+          end_date: endDate.toISOString().split('T')[0],
+        }
+      })
+      const data = response.data
+
+      if (response.status === 200) {
         // Create and download JSON file
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
         const url = URL.createObjectURL(blob)

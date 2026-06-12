@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import api from '../../../../lib/api'
-import { RefreshCw, CheckCircle, Clock, XCircle, Filter, Search, ChevronUp, ChevronDown } from 'lucide-react'
+import { RefreshCw, CheckCircle, Clock, XCircle, Filter, Search, ChevronUp, ChevronDown, Calendar } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ConfirmDialog from '../../../../components/ui/ConfirmDialog'
 
@@ -52,10 +52,16 @@ export const GSTPaymentTracker: React.FC = () => {
   const [markModal, setMarkModal] = useState<MarkModalState | null>(null)
   const [confirmSave, setConfirmSave] = useState(false)
   const [saving, setSaving] = useState(false)
+  
+  // Month/Year filter state
+  const currentDate = new Date()
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
+  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
+  const [showAllMonths, setShowAllMonths] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await api.get('/api/finance/invoices/', { params: { page_size: 500 } })
+      const res = await api.get('/api/finance/invoices/', { params: { page_size: 500, financial_year: 'all' } })
       const all = (res.data.results || []).filter((inv: Invoice) => !inv.is_rejected && inv.gst_type !== 'exempt')
       setInvoices(all)
     } catch {
@@ -113,6 +119,15 @@ export const GSTPaymentTracker: React.FC = () => {
 
   const filtered = useMemo(() => {
     let result = filterStatus === 'all' ? invoices : invoices.filter(inv => inv.gst_payment_status === filterStatus)
+    
+    // Apply month/year filter
+    if (!showAllMonths) {
+      result = result.filter(inv => {
+        const invDate = new Date(inv.invoice_date)
+        return invDate.getMonth() + 1 === selectedMonth && invDate.getFullYear() === selectedYear
+      })
+    }
+    
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase()
       result = result.filter(inv =>
@@ -127,7 +142,7 @@ export const GSTPaymentTracker: React.FC = () => {
       if (av > bv) return sortDir === 'asc' ? 1 : -1
       return 0
     })
-  }, [invoices, filterStatus, searchTerm, sortField, sortDir])
+  }, [invoices, filterStatus, searchTerm, sortField, sortDir, selectedMonth, selectedYear, showAllMonths])
 
   const pendingInvoices = invoices.filter(i => i.gst_payment_status === 'pending')
   const paidInvoices = invoices.filter(i => i.gst_payment_status === 'paid')
@@ -166,6 +181,64 @@ export const GSTPaymentTracker: React.FC = () => {
           <p className="text-xl font-bold text-purple-700">{fmt(totalIGST)}</p>
           <p className="text-xs text-purple-500">Inter-state</p>
         </div>
+      </div>
+
+      {/* Month/Year Selector */}
+      <div className="flex flex-wrap items-center gap-3 bg-white border rounded-lg p-3">
+        <Calendar className="h-4 w-4 text-gray-500" />
+        <span className="text-sm font-medium text-gray-700">Period:</span>
+        
+        <select
+          value={selectedMonth}
+          onChange={(e) => { setSelectedMonth(Number(e.target.value)); setShowAllMonths(false) }}
+          disabled={showAllMonths}
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+        >
+          <option value={1}>January</option>
+          <option value={2}>February</option>
+          <option value={3}>March</option>
+          <option value={4}>April</option>
+          <option value={5}>May</option>
+          <option value={6}>June</option>
+          <option value={7}>July</option>
+          <option value={8}>August</option>
+          <option value={9}>September</option>
+          <option value={10}>October</option>
+          <option value={11}>November</option>
+          <option value={12}>December</option>
+        </select>
+        
+        <select
+          value={selectedYear}
+          onChange={(e) => { setSelectedYear(Number(e.target.value)); setShowAllMonths(false) }}
+          disabled={showAllMonths}
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+        >
+          {Array.from({ length: 10 }, (_, i) => currentDate.getFullYear() - i).map(year => (
+            <option key={year} value={year}>{year}</option>
+          ))}
+        </select>
+        
+        <label className="flex items-center gap-2 ml-4">
+          <input
+            type="checkbox"
+            checked={showAllMonths}
+            onChange={(e) => setShowAllMonths(e.target.checked)}
+            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
+          <span className="text-sm text-gray-700">Show All Months</span>
+        </label>
+        
+        <button
+          onClick={() => {
+            setSelectedMonth(currentDate.getMonth() + 1)
+            setSelectedYear(currentDate.getFullYear())
+            setShowAllMonths(false)
+          }}
+          className="ml-auto px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+        >
+          Current Month
+        </button>
       </div>
 
       {/* Filter + Search + Refresh */}

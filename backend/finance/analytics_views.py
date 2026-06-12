@@ -2,7 +2,8 @@
 Analytics and Reporting API Views
 """
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.permissions import AllowAny
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import HttpResponse, JsonResponse
@@ -32,8 +33,8 @@ def get_session_key(request):
     return session_key
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def tax_analytics_summary(request):
     """Get tax analytics summary for dashboard widgets"""
     session_key = get_session_key(request)
@@ -86,8 +87,8 @@ def tax_analytics_summary(request):
         return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def compliance_alerts(request):
     """Get compliance alerts and notifications"""
     session_key = get_session_key(request)
@@ -161,8 +162,8 @@ def compliance_alerts(request):
         return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_gstr1_report(request):
     """Generate GSTR-1 report"""
     session_key = get_session_key(request)
@@ -189,8 +190,8 @@ def generate_gstr1_report(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_gstr3b_report(request):
     """Generate GSTR-3B report"""
     session_key = get_session_key(request)
@@ -217,8 +218,8 @@ def generate_gstr3b_report(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_tds_certificate(request, payment_id):
     """Generate TDS certificate for a payment"""
     session_key = get_session_key(request)
@@ -247,8 +248,8 @@ def generate_tds_certificate(request, payment_id):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_quarterly_tds_report(request):
     """Generate quarterly TDS report"""
     session_key = get_session_key(request)
@@ -275,8 +276,8 @@ def generate_quarterly_tds_report(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def compliance_analytics_dashboard(request):
     """Get comprehensive compliance analytics dashboard"""
     session_key = get_session_key(request)
@@ -300,8 +301,8 @@ def compliance_analytics_dashboard(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def audit_trail_report(request):
     """Generate audit trail report"""
     session_key = get_session_key(request)
@@ -328,8 +329,8 @@ def audit_trail_report(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def reconciliation_report(request):
     """Generate reconciliation report"""
     session_key = get_session_key(request)
@@ -383,8 +384,8 @@ def reconciliation_report(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def export_gstr1_csv(request):
     """Export GSTR-1 data as CSV"""
     session_key = get_session_key(request)
@@ -432,8 +433,8 @@ def export_gstr1_csv(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def export_tds_csv(request):
     """Export TDS data as CSV"""
     session_key = get_session_key(request)
@@ -476,8 +477,8 @@ def export_tds_csv(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def bulk_generate_tds_certificates(request):
     """Bulk generate TDS certificates"""
     session_key = get_session_key(request)
@@ -523,8 +524,8 @@ def bulk_generate_tds_certificates(request):
 
 # Financial Reports API Views
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_profit_loss_report(request):
     """Generate Profit & Loss Statement"""
     session_key = get_session_key(request)
@@ -551,8 +552,8 @@ def generate_profit_loss_report(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_balance_sheet(request):
     """Generate Balance Sheet"""
     session_key = get_session_key(request)
@@ -575,8 +576,8 @@ def generate_balance_sheet(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_cash_flow_statement(request):
     """Generate Cash Flow Statement"""
     session_key = get_session_key(request)
@@ -604,8 +605,8 @@ def generate_cash_flow_statement(request):
 
 # AI Features API Views
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def predict_payment_likelihood(request):
     """Predict payment likelihood for a customer and invoice amount"""
     session_key = get_session_key(request)
@@ -632,8 +633,8 @@ def predict_payment_likelihood(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_payment_insights(request):
     """Generate AI-powered payment insights"""
     session_key = get_session_key(request)
@@ -667,8 +668,8 @@ def generate_payment_insights(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def detect_fraud_anomalies(request):
     """Detect fraud and anomalies using AI"""
     session_key = get_session_key(request)
@@ -703,8 +704,8 @@ def detect_fraud_anomalies(request):
 
 # Advanced Compliance API Views
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_complete_gstr3b_report(request):
     """Generate comprehensive GSTR-3B report"""
     session_key = get_session_key(request)
@@ -731,8 +732,8 @@ def generate_complete_gstr3b_report(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_eway_bill_data(request, invoice_id):
     """Generate E-way bill data for an invoice"""
     session_key = get_session_key(request)
@@ -753,8 +754,8 @@ def generate_eway_bill_data(request, invoice_id):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def generate_compliance_checklist(request):
     """Generate monthly compliance checklist"""
     session_key = get_session_key(request)

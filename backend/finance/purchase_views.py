@@ -8,6 +8,8 @@ from django.db.models import Q, Sum
 from django.db import transaction
 from django.utils import timezone
 from authentication.models import ServiceUserSession, CompanyServiceUser
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from .models import Vendor, PurchaseRequest, VendorInvoice, PurchasePayment
 from .serializers import (
     VendorListSerializer, VendorDetailSerializer, VendorCreateSerializer, VendorUpdateSerializer,
@@ -30,8 +32,8 @@ class PurchasePagination(PageNumberPagination):
 
 class VendorListCreateView(ListCreateAPIView):
     """List and create vendors"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     pagination_class = PurchasePagination
 
     def get_serializer_class(self):
@@ -120,8 +122,8 @@ class VendorListCreateView(ListCreateAPIView):
 
 class VendorDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete vendor"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
@@ -154,8 +156,8 @@ class VendorDetailView(RetrieveUpdateDestroyAPIView):
 
 class PurchaseRequestListCreateView(ListCreateAPIView):
     """List and create purchase requests"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     pagination_class = PurchasePagination
 
     def get_serializer_class(self):
@@ -237,8 +239,8 @@ class PurchaseRequestListCreateView(ListCreateAPIView):
 
 class PurchaseRequestDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete purchase request"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = PurchaseRequestDetailSerializer
 
     def get_queryset(self):
@@ -265,8 +267,8 @@ class PurchaseRequestDetailView(RetrieveUpdateDestroyAPIView):
 
 class VendorInvoiceListCreateView(ListCreateAPIView):
     """List and create vendor invoices"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     pagination_class = PurchasePagination
 
     def get_serializer_class(self):
@@ -352,8 +354,8 @@ class VendorInvoiceListCreateView(ListCreateAPIView):
 
 class VendorInvoiceDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete vendor invoice"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = VendorInvoiceDetailSerializer
 
     def get_queryset(self):
@@ -380,8 +382,8 @@ class VendorInvoiceDetailView(RetrieveUpdateDestroyAPIView):
 
 class PurchasePaymentListCreateView(ListCreateAPIView):
     """List and create purchase payments"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     pagination_class = PurchasePagination
 
     def get_serializer_class(self):
@@ -464,8 +466,8 @@ class PurchasePaymentListCreateView(ListCreateAPIView):
 
 class PurchasePaymentDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete purchase payment"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = PurchasePaymentDetailSerializer
 
     def get_queryset(self):
@@ -491,8 +493,8 @@ class PurchasePaymentDetailView(RetrieveUpdateDestroyAPIView):
 # ============================================================================
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def get_vendors(request):
     """Get all vendors for dropdown"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -515,8 +517,8 @@ def get_vendors(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def vendor_ledger(request):
     """Get vendor ledger with transaction history"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -638,8 +640,8 @@ def vendor_ledger(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def purchase_expense_stats(request):
     """Get purchase and expense statistics for dashboard"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')

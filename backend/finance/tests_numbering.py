@@ -119,6 +119,35 @@ class NumberingGeneratorTests(TestCase):
 
         self.assertEqual(value, 'NUMCO/PO/2425/000001')
 
+    def test_custom_document_numbering_supports_fy_short_placeholder(self):
+        from company_dashboard.document_numbering_models import DocumentNumberingConfig
+        from authentication.models import Service
+
+        service = Service.objects.create(
+            name='Test Service',
+            service_type='customer',
+            description='Test service for customer numbering',
+            is_active=True,
+        )
+
+        config = DocumentNumberingConfig.objects.create(
+            service=service,
+            company=self.company,
+            document_type='customer',
+            financial_year='2024-25',
+            prefix='CUST',
+            starting_number=1,
+            current_counter=0,
+            number_padding=3,
+            custom_pattern='SE-{PREFIX}-{FY_SHORT}-{NUMBER}',
+            include_company_prefix=False,
+            year_format='FY_SHORT',
+            separator='-'
+        )
+
+        next_number = config.get_next_number()
+        self.assertEqual(next_number, 'SE-CUST-24-25-001')
+
     def test_invoice_default_rule_uses_company_prefix_fy_short_and_3_digit_padding(self):
         rule = _ensure_numbering_rule(self.company, 'invoice')
         self.assertEqual(rule.template, '{COMPANY}-{PREFIX}-{FY_SHORT}-{NUMBER}')

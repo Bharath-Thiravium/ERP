@@ -130,6 +130,13 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
     valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days from today
     reference: '',
     shipping_address: null as number | null,
+    discount_percentage: 0,
+    discount_amount: 0,
+    shipping_charges: 0,
+    other_charges: 0,
+    tds_applicable: false,
+    tds_percentage: 0,
+    tds_amount: 0,
     notes: '',
     terms_and_conditions: '',
     quotation_items: [] as QuotationItem[]
@@ -163,6 +170,13 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
         valid_until: quotation.valid_until || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         reference: quotation.reference || '',
         shipping_address: quotation.shipping_address?.id || quotation.shipping_address_details?.id || null,
+        discount_percentage: parseFloat(quotation.discount_percentage) || 0,
+        discount_amount: parseFloat(quotation.discount_amount) || 0,
+        shipping_charges: parseFloat(quotation.shipping_charges) || 0,
+        other_charges: parseFloat(quotation.other_charges) || 0,
+        tds_applicable: quotation.tds_applicable || false,
+        tds_percentage: parseFloat(quotation.tds_percentage) || 0,
+        tds_amount: parseFloat(quotation.tds_amount) || 0,
         notes: quotation.notes || '',
         terms_and_conditions: quotation.terms_and_conditions || '',
         quotation_items: convertedItems
@@ -429,13 +443,20 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
     return customerStateCode === companyStateCode ? 'cgst_sgst' : 'igst'
   }
 
-  // Calculate totals with GST breakdown
+  // Calculate totals with GST breakdown and additional charges
   const calculateTotals = () => {
     const subtotal = formData.quotation_items.reduce((sum, item) => {
       const quantity = parseFloat(item.quantity?.toString() || '0') || 0
       const unitPrice = parseFloat(item.unit_price?.toString() || '0') || 0
       return sum + (quantity * unitPrice)
     }, 0)
+
+    // Apply discount
+    const discount = formData.discount_percentage > 0 
+      ? (subtotal * formData.discount_percentage / 100)
+      : formData.discount_amount
+    
+    const subtotalAfterDiscount = subtotal - discount
 
     const gstType = determineGSTType()
     let totalTax = 0
@@ -444,13 +465,16 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
     let igstAmount = 0
 
     // Calculate tax based on GST type - only if not exempt
+    // Tax is calculated on subtotal after discount
     if (gstType !== 'exempt') {
+      const discountRatio = subtotalAfterDiscount / subtotal
       formData.quotation_items.forEach(item => {
         const quantity = parseFloat(item.quantity?.toString() || '0') || 0
         const unitPrice = parseFloat(item.unit_price?.toString() || '0') || 0
         const gstRate = parseFloat(item.gst_rate?.toString() || '0') || 0
         const lineTotal = quantity * unitPrice
-        const itemTax = (lineTotal * gstRate) / 100
+        const lineTotalAfterDiscount = lineTotal * discountRatio
+        const itemTax = (lineTotalAfterDiscount * gstRate) / 100
 
         totalTax += itemTax
 
@@ -465,16 +489,30 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
       })
     }
 
-    const totalAmount = subtotal + totalTax
+    // Add additional charges (shipping, other charges)
+    const shippingCharges = parseFloat(formData.shipping_charges?.toString() || '0') || 0
+    const otherCharges = parseFloat(formData.other_charges?.toString() || '0') || 0
+    
+    // Calculate TDS (to be collected from client)
+    const tdsAmount = formData.tds_percentage > 0
+      ? (subtotalAfterDiscount * formData.tds_percentage / 100)
+      : formData.tds_amount
+    
+    const totalAmount = subtotalAfterDiscount + totalTax + shippingCharges + otherCharges + tdsAmount
 
     return {
       subtotal,
+      discount,
+      subtotalAfterDiscount,
       totalTax,
       totalAmount,
       gstType,
       cgstAmount,
       sgstAmount,
-      igstAmount
+      igstAmount,
+      shippingCharges,
+      otherCharges,
+      tdsAmount
     }
   }
 
@@ -780,44 +818,173 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ quotation, onClose, onSuc
             </div>
 
             {formData.quotation_items.length > 0 && (
-              <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Subtotal:</span>
-                    <span>₹{(totals.subtotal || 0).toFixed(2)}</span>
+              <>
+                {/* Additional Charges Section */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-4">Additional Charges</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Discount Section */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Discount (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={formData.discount_percentage}
+                        onChange={(e) => setFormData({ ...formData, discount_percentage: parseFloat(e.target.value) || 0, discount_amount: 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Discount (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.discount_amount}
+                        onChange={(e) => setFormData({ ...formData, discount_amount: parseFloat(e.target.value) || 0, discount_percentage: 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Shipping Charges (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.shipping_charges}
+                        onChange={(e) => setFormData({ ...formData, shipping_charges: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Other Charges (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.other_charges}
+                        onChange={(e) => setFormData({ ...formData, other_charges: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    {/* TDS Section */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        TDS (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={formData.tds_percentage}
+                        onChange={(e) => setFormData({ ...formData, tds_percentage: parseFloat(e.target.value) || 0, tds_amount: 0, tds_applicable: parseFloat(e.target.value) > 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        TDS Amount (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.tds_amount}
+                        onChange={(e) => setFormData({ ...formData, tds_amount: parseFloat(e.target.value) || 0, tds_percentage: 0, tds_applicable: parseFloat(e.target.value) > 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        placeholder="0.00"
+                      />
+                    </div>
                   </div>
-                  {totals.gstType === 'cgst_sgst' && (
-                    <>
-                      <div className="flex justify-between text-sm">
-                        <span>CGST:</span>
-                        <span>₹{(totals.cgstAmount || 0).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span>SGST:</span>
-                        <span>₹{(totals.sgstAmount || 0).toFixed(2)}</span>
-                      </div>
-                    </>
-                  )}
-                  {totals.gstType === 'igst' && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+                    Note: Discount is applied to subtotal before tax. Shipping, other charges, and TDS are added after tax calculation. TDS is to be collected from the client without GST.
+                  </p>
+                </div>
+
+                {/* Totals Section */}
+                <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                  <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>IGST:</span>
-                      <span>₹{(totals.igstAmount || 0).toFixed(2)}</span>
+                      <span>Subtotal:</span>
+                      <span>₹{(totals.subtotal || 0).toFixed(2)}</span>
                     </div>
-                  )}
-                  {totals.gstType === 'exempt' && (
-                    <div className="flex justify-between text-sm">
-                      <span>Tax:</span>
-                      <span>₹0.00</span>
+                    {(formData.discount_percentage > 0 || formData.discount_amount > 0) && (
+                      <div className="flex justify-between text-sm text-red-600 dark:text-red-400">
+                        <span>Discount:</span>
+                        <span>-₹{(totals.discount || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm font-medium">
+                      <span>Subtotal After Discount:</span>
+                      <span>₹{(totals.subtotalAfterDiscount || 0).toFixed(2)}</span>
                     </div>
-                  )}
-                  <div className="border-t pt-2">
-                    <div className="flex justify-between items-center text-lg font-semibold text-gray-900 dark:text-white">
-                      <span>Total Amount:</span>
-                      <span>₹{(totals.totalAmount || 0).toFixed(2)}</span>
+                    {totals.gstType === 'cgst_sgst' && (
+                      <>
+                        <div className="flex justify-between text-sm">
+                          <span>CGST:</span>
+                          <span>₹{(totals.cgstAmount || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>SGST:</span>
+                          <span>₹{(totals.sgstAmount || 0).toFixed(2)}</span>
+                        </div>
+                      </>
+                    )}
+                    {totals.gstType === 'igst' && (
+                      <div className="flex justify-between text-sm">
+                        <span>IGST:</span>
+                        <span>₹{(totals.igstAmount || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {totals.gstType === 'exempt' && (
+                      <div className="flex justify-between text-sm">
+                        <span>Tax:</span>
+                        <span>₹0.00</span>
+                      </div>
+                    )}
+                    {formData.shipping_charges > 0 && (
+                      <div className="flex justify-between text-sm text-blue-600 dark:text-blue-400">
+                        <span>Shipping Charges:</span>
+                        <span>₹{(totals.shippingCharges || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {formData.other_charges > 0 && (
+                      <div className="flex justify-between text-sm text-blue-600 dark:text-blue-400">
+                        <span>Other Charges:</span>
+                        <span>₹{(totals.otherCharges || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {(formData.tds_percentage > 0 || formData.tds_amount > 0) && (
+                      <div className="flex justify-between text-sm text-orange-600 dark:text-orange-400">
+                        <span>TDS (to be collected):</span>
+                        <span>₹{(totals.tdsAmount || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="border-t pt-2">
+                      <div className="flex justify-between items-center text-lg font-semibold text-gray-900 dark:text-white">
+                        <span>Total Amount:</span>
+                        <span>₹{(totals.totalAmount || 0).toFixed(2)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

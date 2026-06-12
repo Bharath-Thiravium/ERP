@@ -284,6 +284,18 @@
             <td class="total-label">Taxable:</td>
             <td class="total-value">₹{{ quotation.subtotal|floatformat:2 }}</td>
         </tr>
+        {% if quotation.shipping_charges > 0 %}
+        <tr>
+            <td class="total-label">Freight/Ship:</td>
+            <td class="total-value">₹{{ quotation.shipping_charges|floatformat:2 }}</td>
+        </tr>
+        {% endif %}
+        {% if quotation.other_charges > 0 %}
+        <tr>
+            <td class="total-label">Other:</td>
+            <td class="total-value">₹{{ quotation.other_charges|floatformat:2 }}</td>
+        </tr>
+        {% endif %}
         {% if quotation.total_tax > 0 %}
         <tr>
             <td class="total-label">Tax:</td>

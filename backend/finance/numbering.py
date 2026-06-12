@@ -30,13 +30,13 @@ def _financial_year_short(dt) -> str:
     return f"{str(year)[2:]}{str(year + 1)[2:]}"
 
 
-def _get_highest_sequence_number(company, module: str, rule, scope_key: str) -> int:
+def _get_highest_sequence_number(company, module: str, rule, scope_key: str, dt=None) -> int:
     """
     Scan existing document numbers for this company/module/scope and return
     the highest sequence number found, so the counter never goes backwards.
-    
-    IMPORTANT: This function must correctly identify the {SEQ} or {NUMBER} token position
-    in the template to avoid extracting FY_SHORT or other tokens as the sequence.
+
+    Handles both the current FY_SHORT format (e.g. "2627") and legacy long-form
+    FY format (e.g. "2026-27") so old invoices are correctly included in the scan.
     """
     from django.db import connection
 
@@ -56,29 +56,50 @@ def _get_highest_sequence_number(company, module: str, rule, scope_key: str) -> 
 
     table_name, field_name = module_mapping[module]
 
+    reset_scope = rule.reset_scope
+    template = rule.template
+    separator = rule.separator or '-'
+
+    # Determine FY strings for scope matching (works with or without a dt)
+    if dt is not None:
+        _fy_short = _financial_year_short(dt)
+        _fy_long = _financial_year(dt)
+    elif scope_key and len(scope_key) == 4 and scope_key.isdigit():
+        # Reconstruct from scope_key e.g. "2627" → short="2627", long="2026-27"
+        _fy_short = scope_key
+        _fy_long = f"20{scope_key[:2]}-{scope_key[2:]}"
+    else:
+        _fy_short = _fy_long = scope_key
+
     def _matches_scope(doc_number: str) -> bool:
         normalized = doc_number.replace('/', separator)
 
         if reset_scope == 'never':
             return True
 
-        scope_fragments = []
-        if '{FY_SHORT}' in template:
-            scope_fragments.append(_financial_year_short(dt))
-        if '{FY}' in template:
-            scope_fragments.append(_financial_year(dt))
+        has_date_token = False
+
+        # Accept either FY_SHORT ("2627") or long FY ("2026-27") for the same fiscal year
+        # so legacy invoices with the old format are not silently excluded.
+        if '{FY_SHORT}' in template or '{FY}' in template:
+            has_date_token = True
+            if _fy_short not in normalized and _fy_long not in normalized:
+                return False
+
         if '{YYYY}' in template:
-            scope_fragments.append(dt.strftime('%Y'))
+            has_date_token = True
+            if dt is not None and dt.strftime('%Y') not in normalized:
+                return False
         if '{YY}' in template:
-            scope_fragments.append(dt.strftime('%y'))
+            has_date_token = True
+            if dt is not None and dt.strftime('%y') not in normalized:
+                return False
         if reset_scope == 'monthly' and '{MM}' in template:
-            scope_fragments.append(dt.strftime('%m'))
+            has_date_token = True
+            if dt is not None and dt.strftime('%m') not in normalized:
+                return False
 
-        # If no date tokens are present, fall back to all documents for this module.
-        if not scope_fragments:
-            return True
-
-        return all(fragment in normalized for fragment in scope_fragments)
+        return True
 
     try:
         with connection.cursor() as cursor:
@@ -87,40 +108,39 @@ def _get_highest_sequence_number(company, module: str, rule, scope_key: str) -> 
                 [company.id]
             )
             max_seq = 0
-            
-            # Determine which position in the template contains {SEQ} or {NUMBER}
-            template = rule.template
-            separator = rule.separator or '-'
-            
+
             # Find the position of {SEQ} or {NUMBER} in the template
             seq_position = None
             template_parts = template.replace('/', separator).split(separator)
+            expected_part_count = len(template_parts)
             for i, part in enumerate(template_parts):
                 if '{SEQ}' in part or '{NUMBER}' in part:
                     seq_position = i
                     break
-            
-            # If we can't determine position, fall back to last segment (old behavior)
+
             if seq_position is None:
                 seq_position = -1
-            
+
             for (doc_number,) in cursor.fetchall():
                 if doc_number and _matches_scope(doc_number):
-                    # Split by both / and - to handle different separators
                     parts = doc_number.replace('/', separator).split(separator)
-                    
-                    # Extract the sequence from the correct position
+
                     try:
                         if seq_position == -1:
-                            # Last segment (old behavior)
                             seq_str = parts[-1]
-                        elif seq_position < len(parts):
-                            # Specific position
-                            seq_str = parts[seq_position]
                         else:
-                            continue
-                        
-                        # Remove leading zeros and convert to int
+                            # Old-format invoices may have more parts than the current template
+                            # because their FY ("2026-27") splits into two dash-separated segments
+                            # while the new FY_SHORT ("2627") is a single segment.
+                            extra = len(parts) - expected_part_count
+                            adjusted_pos = seq_position + extra
+                            if 0 <= adjusted_pos < len(parts):
+                                seq_str = parts[adjusted_pos]
+                            elif seq_position < len(parts):
+                                seq_str = parts[seq_position]
+                            else:
+                                continue
+
                         seq = int(seq_str.lstrip('0') or '0')
                         max_seq = max(max_seq, seq)
                     except (ValueError, IndexError):
@@ -156,7 +176,7 @@ def generate_number(company, module: str, dt=None) -> str:
             defaults={'next_value': rule.start_from},
         )
 
-        highest_seq = _get_highest_sequence_number(company, module, rule, scope_key)
+        highest_seq = _get_highest_sequence_number(company, module, rule, scope_key, dt)
         seq = max(counter.next_value, 1, highest_seq + 1)
 
         counter.next_value = seq + 1

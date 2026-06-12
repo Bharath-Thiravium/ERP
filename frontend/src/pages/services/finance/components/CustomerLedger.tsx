@@ -203,6 +203,8 @@ const CustomerLedger: React.FC<CustomerLedgerProps> = ({ sessionKey }) => {
         return <FileText className="w-4 h-4 text-blue-500" />;
       case 'payment':
         return <CreditCard className="w-4 h-4 text-green-500" />;
+      case 'direct payment':
+        return <CreditCard className="w-4 h-4 text-teal-500" />;
       case 'tds':
         return <IndianRupee className="w-4 h-4 text-purple-500" />;
       case 'credit_note':

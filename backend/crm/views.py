@@ -13,6 +13,8 @@ from .serializers import (
     DashboardStatsSerializer, LeadsByStatusSerializer, OpportunitiesByStageSerializer
 )
 from authentication.models import Company, ServiceUserSession
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from .security_utils import CRMSecurityValidator, validate_request_data
 from .error_handlers import safe_execute, validate_session, CRMValidationError, ErrorHandlerMixin
 from .query_optimizations import CRMQueryOptimizer, CRMCacheManager
@@ -22,8 +24,8 @@ from django.utils.decorators import method_decorator
 
 
 class CRMBaseViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
 
     def get_session_key(self):
@@ -664,8 +666,8 @@ class SalesTargetViewSet(CRMBaseViewSet):
 
 
 class DashboardViewSet(viewsets.ViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def get_session_key(self, request):
         session_key = request.headers.get('Authorization', '').replace('Bearer ', '')

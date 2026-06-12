@@ -92,8 +92,7 @@ table.items tbody td.c{text-align:center}
   <div class="hdr-co">
     <div class="co-name">{{ company.name }}</div>
     <div class="co-meta">
-      {{ company.address_line1 }}{% if company.address_line2 %}, {{ company.address_line2 }}{% endif %}<br>
-      {{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} – {{ company.pincode }}{% endif %}<br>
+      {% if company.address %}{{ company.address|linebreaksbr }}<br>{% endif %}
       {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}<br>
       GSTIN: {{ company_gstin|default:"N/A" }}
     </div>
@@ -149,7 +148,6 @@ table.items tbody td.c{text-align:center}
         <th style="width:8%" class="c">Qty</th>
         <th style="width:7%" class="c">Unit</th>
         <th style="width:12%" class="r">Rate (₹)</th>
-        <th style="width:8%" class="c">GST%</th>
         <th style="width:12%" class="r">Amount (₹)</th>
       </tr>
     </thead>
@@ -160,13 +158,11 @@ table.items tbody td.c{text-align:center}
         <td>
           <div class="iname">{{ item.product_name }}</div>
           {% if item.description %}<div class="idesc">{{ item.description }}</div>{% endif %}
-          {% if item.hsn_sac_code %}<div class="ihsn">HSN: {{ item.hsn_sac_code }}</div>{% endif %}
         </td>
         <td class="c" style="color:#6b7280">{{ item.hsn_sac_code|default:"—" }}</td>
         <td class="c">{{ item.quantity }}</td>
         <td class="c" style="color:#6b7280">{{ item.unit|default:"Nos" }}</td>
         <td class="r">{{ item.unit_price|floatformat:2 }}</td>
-        <td class="c">{{ item.gst_rate|floatformat:0 }}%</td>
         <td class="r" style="font-weight:600">{{ item.line_total|floatformat:2 }}</td>
       </tr>
       {% empty %}

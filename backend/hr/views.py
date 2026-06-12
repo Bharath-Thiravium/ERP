@@ -8,6 +8,8 @@ from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Count, Avg
 from django.db import transaction
 from authentication.models import ServiceUserSession
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from .models import Employee, Department, Designation, JobPosting, JobApplication
 from .serializers import (
     EmployeeListSerializer, EmployeeDetailSerializer, EmployeeCreateSerializer,
@@ -24,8 +26,8 @@ class HRPagination(PageNumberPagination):
 
 class HRDashboardViewSet(viewsets.ViewSet):
     """HR Dashboard ViewSet for comprehensive HR operations"""
-    authentication_classes = []  # Disable JWT authentication
-    permission_classes = [permissions.AllowAny]  # Uses session-based auth
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def list(self, request):
         """Get HR dashboard data with AI insights"""
@@ -105,8 +107,8 @@ class HRDashboardViewSet(viewsets.ViewSet):
 
 class EmployeeListCreateView(ListCreateAPIView):
     """List and create employees"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     pagination_class = HRPagination
 
     def get_serializer_class(self):
@@ -248,8 +250,8 @@ class EmployeeListCreateView(ListCreateAPIView):
 
 class EmployeeDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete employee"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = EmployeeDetailSerializer
 
     def get_queryset(self):
@@ -343,8 +345,8 @@ class EmployeeDetailView(RetrieveUpdateDestroyAPIView):
 
 class JobPostingListCreateView(ListCreateAPIView):
     """List and create job postings"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = JobPostingSerializer
     pagination_class = HRPagination
 
@@ -413,8 +415,8 @@ class JobPostingListCreateView(ListCreateAPIView):
 
 class JobPostingDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete job postings"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = JobPostingSerializer
 
     def get_queryset(self):
@@ -486,8 +488,8 @@ class JobPostingDetailView(RetrieveUpdateDestroyAPIView):
 
 class JobApplicationListCreateView(ListCreateAPIView):
     """List and create job applications"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = JobApplicationSerializer
     pagination_class = HRPagination
 
@@ -539,8 +541,8 @@ class JobApplicationListCreateView(ListCreateAPIView):
 
 class DepartmentListCreateView(ListCreateAPIView):
     """List and create departments"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = DepartmentSerializer
 
     def get_queryset(self):
@@ -579,8 +581,8 @@ class DepartmentListCreateView(ListCreateAPIView):
 
 class DepartmentDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete departments"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = DepartmentSerializer
 
     def get_queryset(self):
@@ -605,8 +607,8 @@ class DepartmentDetailView(RetrieveUpdateDestroyAPIView):
 
 class DesignationListCreateView(ListCreateAPIView):
     """List and create designations"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = DesignationSerializer
 
     def get_queryset(self):
@@ -645,8 +647,8 @@ class DesignationListCreateView(ListCreateAPIView):
 
 class DesignationDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete designations"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = DesignationSerializer
 
     def get_queryset(self):
@@ -670,8 +672,8 @@ class DesignationDetailView(RetrieveUpdateDestroyAPIView):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def get_departments(request):
     """Get all departments for dropdown"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -694,8 +696,8 @@ def get_departments(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def get_designations(request):
     """Get designations by department"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -726,8 +728,8 @@ def get_designations(request):
 
 class PublicJobListView(ListAPIView):
     """Public job listings for candidates (no authentication required)"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = JobPostingSerializer
     pagination_class = HRPagination
 
@@ -756,8 +758,8 @@ class PublicJobListView(ListAPIView):
 
 class PublicJobDetailView(RetrieveAPIView):
     """Public job detail view for candidates"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = JobPostingSerializer
     
     def get_queryset(self):
@@ -768,8 +770,8 @@ class PublicJobDetailView(RetrieveAPIView):
 
 class JobApplicationDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete job applications"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = JobApplicationSerializer
 
     def get_queryset(self):
@@ -810,8 +812,8 @@ class JobApplicationDetailView(RetrieveUpdateDestroyAPIView):
 
 class PublicJobApplicationView(CreateAPIView):
     """Public job application submission"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = JobApplicationSerializer
 
     def create(self, request, *args, **kwargs):
@@ -881,8 +883,8 @@ class PublicJobApplicationView(CreateAPIView):
 
 # Mobile App Authentication APIs
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def employee_mobile_login(request):
     """Employee login for mobile app"""
     employee_id = request.data.get('employee_id')
@@ -952,8 +954,8 @@ def employee_mobile_login(request):
 
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def set_mobile_password(request):
     """Set mobile app password for employee"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -999,8 +1001,8 @@ def set_mobile_password(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def download_mobile_credentials(request):
     """Download mobile credentials as text file"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')

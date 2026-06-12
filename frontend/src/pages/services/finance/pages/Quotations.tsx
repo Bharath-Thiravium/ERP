@@ -46,7 +46,7 @@ const Quotations: React.FC<QuotationsProps> = ({ onCreatePO }) => {
   const [currentView, setCurrentView] = useState<'list' | 'form' | 'detail' | 'edit'>('list')
   const [selectedQuotation, setSelectedQuotation] = useState<Quotation | null>(null)
   const [refreshList, setRefreshList] = useState(0)
-  const [selectedFY, setSelectedFY] = useState<string>(getCurrentFY())
+  const [selectedFY, setSelectedFY] = useState<string>('')
   
   // Invoice creation states
   const [showRaiseInvoiceModal, setShowRaiseInvoiceModal] = useState(false)

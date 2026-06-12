@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.db import connection, transaction
 from .models import DatabaseBackup, BackupUpload, RestoreOperation
 from authentication.models import Company
+from psycopg2 import sql as psql
 import logging
 
 logger = logging.getLogger(__name__)
@@ -300,14 +301,20 @@ class DatabaseBackupManager:
         with connection.cursor() as cursor:
             # Get table structure first
             if backup_type != 'data':
-                cursor.execute(f"SELECT * FROM {table_name} WHERE company_id = %s LIMIT 0", [company_id])
+                cursor.execute(
+                    psql.SQL("SELECT * FROM {} WHERE company_id = %s LIMIT 0").format(psql.Identifier(table_name)),
+                    [company_id]
+                )
                 columns = [desc[0] for desc in cursor.description]
-                
+
                 file_obj.write(f"-- Table: {table_name} (Company: {company_id})\n")
                 file_obj.write(f"DELETE FROM {table_name} WHERE company_id = {company_id};\n")
-            
+
             # Export data
-            cursor.execute(f"SELECT * FROM {table_name} WHERE company_id = %s", [company_id])
+            cursor.execute(
+                psql.SQL("SELECT * FROM {} WHERE company_id = %s").format(psql.Identifier(table_name)),
+                [company_id]
+            )
             rows = cursor.fetchall()
             
             if rows:
@@ -333,7 +340,7 @@ class DatabaseBackupManager:
             return
         
         with connection.cursor() as cursor:
-            cursor.execute(f"SELECT * FROM {table_name}")
+            cursor.execute(psql.SQL("SELECT * FROM {}").format(psql.Identifier(table_name)))
             rows = cursor.fetchall()
             
             if rows:

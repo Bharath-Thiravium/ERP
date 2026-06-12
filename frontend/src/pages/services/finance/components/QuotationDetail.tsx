@@ -73,6 +73,11 @@ interface QuotationDetail {
   created_by_name: string
   is_rejected?: boolean
   rejection_reason?: string
+  po_created?: boolean
+  invoice_created?: boolean
+  proforma_created?: boolean
+  available_invoice_percentage?: number
+  available_proforma_percentage?: number
   customer_details: Customer
   shipping_address_details: ShippingAddress | null
   quotation_items: QuotationItem[]
@@ -167,7 +172,7 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
 
     try {
       // Use the backend API to generate PDF with company logo and from address
-      const response = await fetch(`/api/finance/quotations/${quotation.id}/pdf/?session_key=${sessionKey}`, {
+      const response = await fetch(`/api/finance/quotations/${quotation.id}/pdf/`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${sessionKey}`,
@@ -200,7 +205,7 @@ const QuotationDetail: React.FC<QuotationDetailProps> = ({ quotationId, onClose,
     setIsGeneratingPDF(true)
     try {
       // Use the backend API to generate PDF with company logo and from address
-      const response = await fetch(`/api/finance/quotations/${quotation.id}/pdf/?session_key=${sessionKey}`, {
+      const response = await fetch(`/api/finance/quotations/${quotation.id}/pdf/`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${sessionKey}`,

@@ -9,6 +9,7 @@ import hmac
 import base64
 import os
 from datetime import datetime, timedelta
+from decouple import config as decouple_config
 from django.conf import settings
 from django.core.cache import cache
 from company_dashboard.government_credentials_models import CompanyGovernmentCredentials
@@ -93,7 +94,7 @@ class GSTAPIService:
     
     def _public_gstin_lookup(self, gstin):
         """Try free public GSTIN lookup via gstincheck.co.in (requires free API key)"""
-        api_key = os.getenv('GSTINCHECK_API_KEY', '')
+        api_key = decouple_config('GSTINCHECK_API_KEY', default='')
         if not api_key:
             return None
         try:
@@ -174,7 +175,7 @@ class GSTAPIService:
             'taxpayer_type': '',
             'address': '',
             'mock': True,
-            'api_key_missing': not bool(os.getenv('GSTINCHECK_API_KEY', ''))
+            'api_key_missing': not bool(decouple_config('GSTINCHECK_API_KEY', default=''))
         }
         
     def get_gst_rates(self, hsn_code):

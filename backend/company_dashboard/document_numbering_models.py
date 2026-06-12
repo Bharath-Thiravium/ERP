@@ -160,6 +160,7 @@ class DocumentNumberingConfig(models.Model):
             '{COMPANY}': self.company.company_prefix,
             '{YEAR}': self._get_year_string(),
             '{FY}': self.financial_year,
+            '{FY_SHORT}': self._get_fy_short_string(),
             '{NUMBER}': str(self.current_counter).zfill(self.number_padding),
             '{SEP}': self.separator,
         }
@@ -173,16 +174,19 @@ class DocumentNumberingConfig(models.Model):
         """Generate number using default pattern"""
         parts = []
         
-        # Add company prefix if enabled
-        if self.include_company_prefix:
+        # Add company prefix if enabled and not empty
+        if self.include_company_prefix and self.company.company_prefix:
             parts.append(self.company.company_prefix)
         
-        # Add document prefix
-        parts.append(self.prefix)
+        # Add document prefix if not empty
+        if self.prefix:
+            parts.append(self.prefix)
         
         # Add year if not NONE
         if self.year_format != 'NONE':
-            parts.append(self._get_year_string())
+            year_str = self._get_year_string()
+            if year_str:
+                parts.append(year_str)
         
         # Add padded number
         parts.append(str(self.current_counter).zfill(self.number_padding))
@@ -202,6 +206,13 @@ class DocumentNumberingConfig(models.Model):
             return f"{years[0][-2:]}-{years[1]}"
         else:
             return ''
+
+    def _get_fy_short_string(self):
+        """Get FY_SHORT format like '24-25' from financial_year '2024-25'"""
+        years = self.financial_year.split('-')
+        if len(years) == 2:
+            return f"{years[0][-2:]}-{years[1]}"
+        return self.financial_year
     
     def get_next_number_preview(self):
         """Preview what the next number would be without incrementing"""
@@ -215,6 +226,7 @@ class DocumentNumberingConfig(models.Model):
                 '{COMPANY}': self.company.company_prefix,
                 '{YEAR}': self._get_year_string(),
                 '{FY}': self.financial_year,
+                '{FY_SHORT}': self._get_fy_short_string(),
                 '{NUMBER}': str(temp_counter).zfill(self.number_padding),
                 '{SEP}': self.separator,
             }
@@ -226,13 +238,16 @@ class DocumentNumberingConfig(models.Model):
         else:
             parts = []
             
-            if self.include_company_prefix:
+            if self.include_company_prefix and self.company.company_prefix:
                 parts.append(self.company.company_prefix)
             
-            parts.append(self.prefix)
+            if self.prefix:
+                parts.append(self.prefix)
             
             if self.year_format != 'NONE':
-                parts.append(self._get_year_string())
+                year_str = self._get_year_string()
+                if year_str:
+                    parts.append(year_str)
             
             parts.append(str(temp_counter).zfill(self.number_padding))
             

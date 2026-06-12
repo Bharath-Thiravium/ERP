@@ -857,7 +857,8 @@ class QuotationCreateSerializer(serializers.ModelSerializer):
         fields = [
             'customer', 'quotation_date', 'valid_until', 'reference',
             'shipping_address', 'discount_percentage', 'discount_amount',
-            'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions',
+            'shipping_charges', 'other_charges', 'tds_applicable', 'tds_percentage', 
+            'tds_amount', 'notes', 'terms_and_conditions',
             'quotation_items', 'quotation_number'
         ]
 
@@ -1480,36 +1481,30 @@ class ProformaInvoiceListSerializer(serializers.ModelSerializer):
         ]
     
     def get_customer_shipping_addresses(self, obj):
-        """Get customer shipping addresses for tooltip with PO/WO shipping details"""
+        """Get only the shipping address relevant to this specific proforma invoice"""
         if not obj.customer:
             return []
-        
+
         addresses = []
-        
-        # Add Purchase Order shipping address if available
+
+        # If proforma has a PO with a shipping address, show only that
         if obj.purchase_order and obj.purchase_order.shipping_address:
             addresses.append({
-                'type': f'PO Shipping - {obj.purchase_order.shipping_address.label}' if obj.purchase_order.shipping_address.label else 'PO Shipping Address',
+                'type': 'PO Shipping',
                 'address': obj.purchase_order.shipping_address.full_address,
                 'is_default': False
             })
-        
-        # Add ONLY shipping addresses (exclude billing address)
-        for addr in obj.customer.shipping_addresses.all()[:5]:  # Limit to 5 addresses
+            return addresses
+
+        # Otherwise show only the default shipping address
+        default_addr = obj.customer.shipping_addresses.filter(is_default=True).first()
+        if default_addr:
             addresses.append({
-                'type': f'Customer Shipping - {addr.label}' if addr.label else 'Customer Shipping',
-                'address': addr.full_address,
-                'is_default': addr.is_default
+                'type': 'Shipping Address',
+                'address': default_addr.full_address,
+                'is_default': True
             })
-        
-        # If no shipping addresses exist, show a message
-        if not addresses:
-            addresses.append({
-                'type': 'No shipping addresses',
-                'address': 'No specific shipping addresses configured for this customer or PO',
-                'is_default': False
-            })
-        
+
         return addresses
 
 
@@ -1579,6 +1574,15 @@ class ProformaInvoiceDetailSerializer(serializers.ModelSerializer):
                     'label': default_shipping.label,
                     'address': default_shipping.full_address,
                     'is_default': True
+                }
+
+            # Priority 5: Customer direct shipping address fields
+            if getattr(obj.customer, 'shipping_same_as_billing', False) is False and obj.customer.full_shipping_address:
+                return {
+                    'source': 'Customer Shipping Address',
+                    'label': 'Shipping Address',
+                    'address': obj.customer.full_shipping_address,
+                    'is_default': False
                 }
             
             # Fallback: Customer billing address
@@ -2001,14 +2005,15 @@ class QuotationUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'customer', 'quotation_date', 'valid_until', 'reference',
             'shipping_address', 'discount_percentage', 'discount_amount',
-            'shipping_charges', 'other_charges', 'notes', 'terms_and_conditions',
+            'shipping_charges', 'other_charges', 'tds_applicable', 'tds_percentage',
+            'tds_amount', 'notes', 'terms_and_conditions',
             'status', 'quotation_items', 'is_revised'
         ]
         read_only_fields = ['quotation_number', 'company', 'created_by', 'created_at', 'revision_count', 'revised_at', 'revised_by']
 
     def validate(self, data):
         """Validate and clean decimal fields"""
-        decimal_fields = ['discount_percentage', 'discount_amount', 'shipping_charges', 'other_charges']
+        decimal_fields = ['discount_percentage', 'discount_amount', 'shipping_charges', 'other_charges', 'tds_percentage', 'tds_amount']
         for field in decimal_fields:
             if field in data:
                 value = data[field]

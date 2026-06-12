@@ -92,8 +92,7 @@ table.items tbody td.c{text-align:center}
   <div class="hdr-co">
     <div class="co-name">{{ company.name }}</div>
     <div class="co-meta">
-      {{ company.address_line1 }}{% if company.address_line2 %}, {{ company.address_line2 }}{% endif %}<br>
-      {{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} – {{ company.pincode }}{% endif %}<br>
+      {% if company.address %}{{ company.address|linebreaksbr }}<br>{% endif %}
       {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}<br>
       GSTIN: {{ company_gstin|default:"N/A" }}
     </div>

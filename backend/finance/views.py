@@ -2584,7 +2584,7 @@ def _build_customer_ledger_data(request):
                 'debit_amount': float(proforma.total_amount) if str(proforma.total_amount).lower() != "nan" else 0.0,
                 'credit_amount': 0,
                 'balance': 0,  # Will be calculated later
-                'status': proforma.status,
+                'status': proforma.payment_status,
             })
 
         # Get payments for this customer
@@ -2607,14 +2607,22 @@ def _build_customer_ledger_data(request):
             # Skip TDS-only payments from main payment entries (they only show as TDS entries)
             if payment.payment_type != 'tds_only':
                 net_amount = float(payment.net_amount_received) if payment.net_amount_received else (payment_amount - tds_amount)
-                
+
+                is_direct = payment.payment_type == 'direct'
+                doc_type = 'Direct Payment' if is_direct else 'Payment'
+                purpose = payment.payment_purpose or ''
+                description = (
+                    f'Direct payment - {purpose} - {payment.payment_method}' if is_direct
+                    else f'Payment received - {payment.payment_method}'
+                )
+
                 # Add main payment entry (net amount received)
                 entries.append({
                     'id': f'payment_{payment.id}',
                     'date': payment.payment_date.isoformat(),
-                    'document_type': 'Payment',
+                    'document_type': doc_type,
                     'document_number': payment.payment_number,
-                    'description': f'Payment received - {payment.payment_method}',
+                    'description': description,
                     'debit_amount': 0,
                     'credit_amount': net_amount,
                     'balance': 0,  # Will be calculated later
@@ -3005,7 +3013,10 @@ def generate_proforma_pdf(request, proforma_id):
         service_user = session.service_user
 
         # Get proforma invoice
-        proforma = ProformaInvoice.objects.select_related('customer', 'company').prefetch_related('proforma_items').get(
+        proforma = ProformaInvoice.objects.select_related(
+            'customer', 'company', 'shipping_address',
+            'purchase_order__shipping_address', 'quotation__shipping_address'
+        ).prefetch_related('proforma_items').get(
             id=proforma_id,
             company=service_user.company
         )

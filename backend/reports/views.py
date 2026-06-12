@@ -12,6 +12,8 @@ from .serializers import (
     InvoiceReportSerializer
 )
 from authentication.models import ServiceUserSession
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 
 
 class QuotationFilter(FilterSet):
@@ -84,8 +86,8 @@ class InvoiceFilter(FilterSet):
 
 class QuotationReportViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = QuotationReportSerializer
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = QuotationFilter
     search_fields = ['quotation_number', 'customer__name', 'reference']
@@ -132,8 +134,8 @@ class QuotationReportViewSet(viewsets.ReadOnlyModelViewSet):
 
 class PurchaseOrderReportViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PurchaseOrderReportSerializer
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = PurchaseOrderFilter
     search_fields = ['internal_po_number', 'po_number', 'customer__name']
@@ -180,8 +182,8 @@ class PurchaseOrderReportViewSet(viewsets.ReadOnlyModelViewSet):
 
 class ProformaInvoiceReportViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ProformaInvoiceReportSerializer
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = ProformaInvoiceFilter
     search_fields = ['proforma_number', 'customer__name', 'reference']
@@ -238,8 +240,8 @@ class ProformaInvoiceReportViewSet(viewsets.ReadOnlyModelViewSet):
 
 class InvoiceReportViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = InvoiceReportSerializer
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = InvoiceFilter
     search_fields = ['invoice_number', 'customer__name', 'reference']

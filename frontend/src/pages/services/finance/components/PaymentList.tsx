@@ -49,8 +49,16 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
   );
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('');
+  const [selectedFY, setSelectedFY] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+
+  const financialYearOptions = [
+    { value: 'all', label: 'All Years' },
+    { value: '2025-26', label: 'FY 2025-26' },
+    { value: '2024-25', label: 'FY 2024-25' },
+    { value: '2023-24', label: 'FY 2023-24' },
+  ];
 
   const statusOptions = [
     { value: '', label: 'All Statuses' },
@@ -95,6 +103,8 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
       if (paymentMethodFilter) params.append('payment_method', paymentMethodFilter);
       params.append('ordering', sortBy);
 
+      params.append('session_key', sessionKey);
+      params.append('financial_year', selectedFY);
       const response = await apiClient.getFinancePayments(Object.fromEntries(params));
 
       setPayments(response.data.results || []);
@@ -109,7 +119,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
 
   useEffect(() => {
     fetchPayments();
-  }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter, paymentMethodFilter, sortBy]);
+  }, [sessionKey, currentPage, debouncedSearchTerm, statusFilter, paymentMethodFilter, selectedFY, sortBy]);
 
   const handleDelete = async (id: number) => {
     try {
@@ -182,7 +192,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 lg:grid-cols-5">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
@@ -211,12 +221,22 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
+          <select
+            value={selectedFY}
+            onChange={(e) => { setSelectedFY(e.target.value); setCurrentPage(1); }}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-athenas-blue focus:border-transparent"
+          >
+            {financialYearOptions.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
           <button
             onClick={() => {
               setSearchTerm('');
               setDebouncedSearchTerm('');
               setStatusFilter('');
               setPaymentMethodFilter('');
+              setSelectedFY('all');
               setCurrentPage(1);
             }}
             className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"

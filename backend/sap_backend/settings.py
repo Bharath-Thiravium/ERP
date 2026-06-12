@@ -58,7 +58,10 @@ IS_PRODUCTION = ENVIRONMENT == 'production'
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-rh@5hj9e1o7sdlca##9(lzk#9vuu*dqv3_wdcvms74n6&ccr!3')
+_SECRET_KEY_DEFAULT = 'django-insecure-rh@5hj9e1o7sdlca##9(lzk#9vuu*dqv3_wdcvms74n6&ccr!3'
+SECRET_KEY = config('SECRET_KEY', default=_SECRET_KEY_DEFAULT)
+if ENVIRONMENT == 'production' and SECRET_KEY == _SECRET_KEY_DEFAULT:
+    raise RuntimeError('SECRET_KEY must be set to a unique value in production. Do not use the insecure default.')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config_bool('DEBUG', default=False)
@@ -295,7 +298,11 @@ SIMPLE_JWT = {
 
 # CORS Configuration
 if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOWED_ORIGINS = [
+        'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002',
+        'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'http://127.0.0.1:3002',
+    ]
+    CORS_ALLOW_ALL_ORIGINS = False
     CORS_ALLOW_CREDENTIALS = True
 else:
     CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='https://sap.athenas.co.in,http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002').split(',')

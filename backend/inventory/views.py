@@ -16,6 +16,8 @@ from django.db import transaction
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from authentication.models import ServiceUserSession
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from django.contrib.auth.hashers import make_password
 from .security_validators import InventorySecurityValidator
 from decimal import Decimal
@@ -46,8 +48,8 @@ class InventoryPagination(PageNumberPagination):
 
 class InventoryDashboardViewSet(viewsets.ViewSet):
     """Inventory Dashboard with AI insights"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]  # Session-based auth implemented in methods
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def list(self, request):
         """Get inventory dashboard data with AI insights"""
@@ -189,8 +191,8 @@ class InventoryDashboardViewSet(viewsets.ViewSet):
 
 class CategoryListCreateView(ListCreateAPIView):
     """List and create categories"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = CategorySerializer
     pagination_class = InventoryPagination
 
@@ -250,8 +252,8 @@ class CategoryListCreateView(ListCreateAPIView):
 
 class CategoryDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete category"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = CategorySerializer
 
     def get_queryset(self):
@@ -274,8 +276,8 @@ class CategoryDetailView(RetrieveUpdateDestroyAPIView):
 
 class SupplierListCreateView(ListCreateAPIView):
     """List and create suppliers"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = SupplierSerializer
     pagination_class = InventoryPagination
 
@@ -336,8 +338,8 @@ class SupplierListCreateView(ListCreateAPIView):
 
 class SupplierDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete supplier"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = SupplierSerializer
 
     def get_queryset(self):
@@ -360,8 +362,8 @@ class SupplierDetailView(RetrieveUpdateDestroyAPIView):
 
 class WarehouseListCreateView(ListCreateAPIView):
     """List and create warehouses"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = WarehouseSerializer
     pagination_class = InventoryPagination
 
@@ -421,8 +423,8 @@ class WarehouseListCreateView(ListCreateAPIView):
 
 class WarehouseDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete warehouse"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = WarehouseSerializer
 
     def get_queryset(self):
@@ -445,8 +447,8 @@ class WarehouseDetailView(RetrieveUpdateDestroyAPIView):
 
 class ProductBarcodeGenerateView(APIView):
     """Generate barcode for product"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def get_session_key(self):
         session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -511,8 +513,8 @@ class ProductBarcodeGenerateView(APIView):
 
 class ProductListCreateView(ListCreateAPIView):
     """List and create products"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     pagination_class = InventoryPagination
 
     def get_serializer_class(self):
@@ -606,8 +608,8 @@ class ProductListCreateView(ListCreateAPIView):
 
 class ProductDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete product"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = ProductDetailSerializer
 
     def get_queryset(self):
@@ -632,8 +634,8 @@ class ProductDetailView(RetrieveUpdateDestroyAPIView):
 
 class StockMovementListCreateView(ListCreateAPIView):
     """List and create stock movements"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = StockMovementSerializer
     pagination_class = InventoryPagination
 
@@ -815,8 +817,8 @@ class StockMovementListCreateView(ListCreateAPIView):
 
 class StockAlertListView(ListCreateAPIView):
     """List stock alerts"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = StockAlertSerializer
     pagination_class = InventoryPagination
 
@@ -861,8 +863,8 @@ class StockAlertListView(ListCreateAPIView):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def get_categories(request):
     """Get all categories for dropdown"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -885,8 +887,8 @@ def get_categories(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def get_suppliers(request):
     """Get all suppliers for dropdown"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -909,8 +911,8 @@ def get_suppliers(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def get_warehouses(request):
     """Get all warehouses for dropdown"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -933,8 +935,8 @@ def get_warehouses(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def low_stock_report(request):
     """Get low stock report"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -977,8 +979,8 @@ def low_stock_report(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def stock_valuation_report(request):
     """Get stock valuation report"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -1034,8 +1036,8 @@ def stock_valuation_report(request):
 
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def upload_product_image(request, product_id):
     """Upload product image"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -1115,8 +1117,8 @@ def upload_product_image(request, product_id):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def inventory_aging_report(request):
     """Get inventory aging analysis"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -1155,8 +1157,8 @@ def inventory_aging_report(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def dead_stock_report(request):
     """Get dead stock report"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -1180,8 +1182,8 @@ def dead_stock_report(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def abc_analysis_report(request):
     """Get ABC analysis report"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -1232,8 +1234,8 @@ def abc_analysis_report(request):
 
 class PurchaseOrderDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete purchase order"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     
     def get_serializer_class(self):
         from .serializers import PurchaseOrderSerializer
@@ -1304,8 +1306,8 @@ class PurchaseOrderDetailView(RetrieveUpdateDestroyAPIView):
 
 class PurchaseOrderListCreateView(ListCreateAPIView):
     """List and create purchase orders"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     
     def get_serializer_class(self):
         from .serializers import PurchaseOrderSerializer
@@ -1392,8 +1394,8 @@ class PurchaseOrderListCreateView(ListCreateAPIView):
 
 class InventoryAuditListCreateView(ListCreateAPIView):
     """List and create inventory audits"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = InventoryAuditSerializer
     pagination_class = InventoryPagination
 
@@ -1451,8 +1453,8 @@ class InventoryAuditListCreateView(ListCreateAPIView):
 
 class ProductBundleDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete product bundle"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     
     def get_serializer_class(self):
         from .serializers import ProductBundleSerializer
@@ -1480,8 +1482,8 @@ class ProductBundleDetailView(RetrieveUpdateDestroyAPIView):
 
 class ProductBundleListCreateView(ListCreateAPIView):
     """List and create product bundles"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     
     def get_serializer_class(self):
         from .serializers import ProductBundleSerializer
@@ -1544,8 +1546,8 @@ class ProductBundleListCreateView(ListCreateAPIView):
 
 class CycleCountListCreateView(ListCreateAPIView):
     """List and create cycle counts"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     
     def get_serializer_class(self):
         from .serializers import CycleCountSerializer
@@ -1621,8 +1623,8 @@ class CycleCountListCreateView(ListCreateAPIView):
 
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def start_cycle_count(request, count_id):
     """Start a cycle count"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -1656,8 +1658,8 @@ def start_cycle_count(request, count_id):
 
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def pause_cycle_count(request, count_id):
     """Pause a cycle count"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -1691,8 +1693,8 @@ def pause_cycle_count(request, count_id):
 
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def resolve_stock_alert(request, alert_id):
     """Resolve a stock alert"""
     session_key = request.headers.get('Authorization', '').replace('Bearer ', '')

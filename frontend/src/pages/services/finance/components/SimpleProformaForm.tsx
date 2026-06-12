@@ -22,14 +22,21 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
   onClose,
   onSuccess
 }) => {
-  // Use either PO or Quotation data
-  const sourceData = purchaseOrder || quotation
+  const isEditing = Boolean(editingInvoice)
+  const sourceData = purchaseOrder || quotation || (isEditing ? editingInvoice : null)
   const isFromQuotation = !!quotation
-  
+  const customerDetails = sourceData?.customer_details || editingInvoice?.customer_details || {}
+
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
   const [availableShippingAddresses, setAvailableShippingAddresses] = useState<any[]>([])
-  const [selectedShippingAddress, setSelectedShippingAddress] = useState<number | null>(null)
+  const getInitialShippingAddress = () => {
+    if (!editingInvoice?.shipping_address) return null
+    return typeof editingInvoice.shipping_address === 'number'
+      ? editingInvoice.shipping_address
+      : editingInvoice.shipping_address?.id || null
+  }
+  const [selectedShippingAddress, setSelectedShippingAddress] = useState<number | null>(getInitialShippingAddress())
   const [effectiveShippingAddress, setEffectiveShippingAddress] = useState<any>(null)
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({})
   const [itemPercentages, setItemPercentages] = useState<Record<number, number>>({})
@@ -44,8 +51,9 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
     shipping_address: editingInvoice?.shipping_address || null
   })
 
-  // Initialize default claim methods
+  // Initialize default claim methods for creation only
   useEffect(() => {
+    if (isEditing) return
     const items = isFromQuotation ? sourceData?.quotation_items : sourceData?.po_items
     if (items && Object.keys(itemClaimMethods).length === 0) {
       const defaultMethods: Record<number, 'quantity' | 'percentage'> = {}
@@ -54,16 +62,18 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
       })
       setItemClaimMethods(defaultMethods)
     }
-  }, [sourceData, isFromQuotation, itemClaimMethods])
+  }, [sourceData, isFromQuotation, itemClaimMethods, isEditing])
 
   // Fetch available shipping addresses and effective shipping address
   useEffect(() => {
     const fetchShippingAddresses = async () => {
-      if (!sessionKey || !sourceData?.customer_details?.id) return
+      const customerId = sourceData?.customer_details?.id || editingInvoice?.customer_details?.id
+      if (!sessionKey || !customerId) return
       
       try {
         // Fetch customer shipping addresses
-        const response = await api.get(`/api/finance/customers/${sourceData.customer_details.id}/`, {
+const customerId = sourceData?.customer_details?.id || editingInvoice?.customer_details?.id
+      const response = await api.get(`/api/finance/customers/${customerId}/`, {
           params: { session_key: sessionKey }
         })
         
@@ -111,6 +121,13 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
 
   // Calculate amounts (NO TAX for Proforma)
   const calculateProformaAmounts = () => {
+    if (isEditing) {
+      return {
+        proformaBaseAmount: parseFloat(editingInvoice?.subtotal?.toString() || '0'),
+        proformaTotalAmount: parseFloat(editingInvoice?.total_amount?.toString() || '0')
+      }
+    }
+
     const items = isFromQuotation ? sourceData?.quotation_items : sourceData?.po_items
     if (!items) return { proformaBaseAmount: 0, proformaTotalAmount: 0 }
 
@@ -150,19 +167,26 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
       console.log('Form already submitting, preventing double submission')
       return // Prevent double submission
     }
-    
-    // Validate that at least some items are selected
-    const hasSelections = Object.entries(itemClaimMethods).some(([itemId, method]) => {
-      if (method === 'quantity') {
-        return (selectedItems[parseInt(itemId)] || 0) > 0
-      } else {
-        return (itemPercentages[parseInt(itemId)] || 0) > 0
-      }
-    })
 
-    if (!hasSelections) {
-      toast.error('Please select at least one item with quantity or percentage greater than 0')
+    if (!sessionKey) {
+      toast.error('Session expired. Please refresh the page.')
       return
+    }
+
+    // For creation, validate that at least some items are selected
+    if (!isEditing) {
+      const hasSelections = Object.entries(itemClaimMethods).some(([itemId, method]) => {
+        if (method === 'quantity') {
+          return (selectedItems[parseInt(itemId)] || 0) > 0
+        } else {
+          return (itemPercentages[parseInt(itemId)] || 0) > 0
+        }
+      })
+
+      if (!hasSelections) {
+        toast.error('Please select at least one item with quantity or percentage greater than 0')
+        return
+      }
     }
     
     // Disable form immediately to prevent double clicks
@@ -172,66 +196,69 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
     }
     
     setLoading(true)
-    console.log('Starting proforma creation...')
 
     try {
-      // Build proforma_items array with calculated values
-      const items = isFromQuotation ? sourceData?.quotation_items : sourceData?.po_items
-      const proformaItems = items
-        .map((item: any) => {
-          const claimMethod = itemClaimMethods[item.id]
-          let quantity = 0
-          let unit = item.unit
-          let lineTotal = 0
-
-          if (claimMethod === 'quantity') {
-            quantity = selectedItems[item.id] || 0
-            if (quantity > 0) {
-              lineTotal = parseFloat(item.unit_price) * quantity
-            }
-          } else if (claimMethod === 'percentage') {
-            const percentage = itemPercentages[item.id] || 0
-            if (percentage > 0) {
-              quantity = percentage
-              unit = 'PERCENTAGE'
-              const itemTotal = parseFloat(item.unit_price) * item.quantity
-              lineTotal = (itemTotal * percentage) / 100
-            }
-          }
-
-          // Only include items with quantity/percentage > 0
-          if (quantity > 0) {
-            return {
-              product: item.product || item.id,
-              product_name: item.product_name,
-              quantity: quantity,
-              unit: unit,
-              unit_price: parseFloat(item.unit_price),
-              line_total: lineTotal
-            }
-          }
-          return null
-        })
-        .filter((item: any) => item !== null)
-
-      const dataToSend = {
+      let dataToSend: any = {
         proforma_number: formData.proforma_number,
-        customer: sourceData.customer_details.id || sourceData.customer,
-        ...(purchaseOrder && { purchase_order: purchaseOrder.id }),
-        ...(quotation && { quotation: quotation.id }),
-        claim_type: 'hybrid',
-        proforma_items: proformaItems,
         proforma_date: formData.proforma_date,
-        ...(formData.due_date && { due_date: formData.due_date }),
+        due_date: formData.due_date,
         reference: formData.reference,
         notes: formData.notes,
         terms_and_conditions: formData.terms_and_conditions,
         shipping_address: selectedShippingAddress,
-        is_advance_bill: true,
-        status: 'draft'
+        session_key: sessionKey
       }
 
-      // Use the specific quotation-based endpoint
+      if (!isEditing) {
+        const items = isFromQuotation ? sourceData?.quotation_items : sourceData?.po_items
+        const proformaItems = items
+          .map((item: any) => {
+            const claimMethod = itemClaimMethods[item.id]
+            let quantity = 0
+            let unit = item.unit
+            let lineTotal = 0
+
+            if (claimMethod === 'quantity') {
+              quantity = selectedItems[item.id] || 0
+              if (quantity > 0) {
+                lineTotal = parseFloat(item.unit_price) * quantity
+              }
+            } else if (claimMethod === 'percentage') {
+              const percentage = itemPercentages[item.id] || 0
+              if (percentage > 0) {
+                quantity = percentage
+                unit = 'PERCENTAGE'
+                const itemTotal = parseFloat(item.unit_price) * item.quantity
+                lineTotal = (itemTotal * percentage) / 100
+              }
+            }
+
+            if (quantity > 0) {
+              return {
+                product: item.product || item.id,
+                product_name: item.product_name,
+                quantity: quantity,
+                unit: unit,
+                unit_price: parseFloat(item.unit_price),
+                line_total: lineTotal
+              }
+            }
+            return null
+          })
+          .filter((item: any) => item !== null)
+
+        dataToSend = {
+          ...dataToSend,
+          customer: sourceData?.customer_details?.id || sourceData?.customer,
+          ...(purchaseOrder && { purchase_order: purchaseOrder.id }),
+          ...(quotation && { quotation: quotation.id }),
+          claim_type: 'hybrid',
+          proforma_items: proformaItems,
+          is_advance_bill: true,
+          status: 'draft'
+        }
+      }
+
       const url = editingInvoice ? `/api/finance/proforma-invoices/${editingInvoice.id}/` : '/api/finance/proforma-invoices/'
       const method = editingInvoice ? 'PUT' : 'POST'
       const response = await fetch(url, {
@@ -240,27 +267,25 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionKey}`
         },
-        body: JSON.stringify({ ...dataToSend, session_key: sessionKey })
+        body: JSON.stringify(dataToSend)
       })
       
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to create proforma invoice')
+        throw new Error(errorData.error || 'Failed to save proforma invoice')
       }
       
       await response.json()
-      
-      // Auto-update PO status if this is from a PO
-      if (purchaseOrder?.id && sessionKey) {
-        console.log('🔄 Updating PO status after proforma creation...')
+
+      if (!isEditing && purchaseOrder?.id) {
         await handlePostInvoiceStatusUpdate(purchaseOrder.id, sessionKey)
       }
       
       toast.success(editingInvoice ? 'Proforma Invoice updated successfully!' : 'Proforma Invoice created successfully!')
       onSuccess()
     } catch (error: any) {
-      console.error('Error creating proforma:', error)
-      toast.error('Failed to create proforma invoice')
+      console.error('Error saving proforma:', error)
+      toast.error('Failed to save proforma invoice')
     } finally {
       setLoading(false)
     }
@@ -294,8 +319,12 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
             
             {/* Source Reference */}
             <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
-              <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-2">{isFromQuotation ? 'Quotation' : 'Purchase Order'}</h3>
-              <p className="text-blue-700 dark:text-blue-300">{isFromQuotation ? sourceData.quotation_number : sourceData.internal_po_number}</p>
+              <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+                {isEditing ? 'Proforma Invoice' : isFromQuotation ? 'Quotation' : 'Purchase Order'}
+              </h3>
+              <p className="text-blue-700 dark:text-blue-300">
+                {isEditing ? editingInvoice?.proforma_number : isFromQuotation ? sourceData.quotation_number : sourceData.internal_po_number}
+              </p>
             </div>
 
             {/* Customer Details - Read Only */}
@@ -343,12 +372,12 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                   Billing Address
                 </h3>
                 <div className="text-sm text-gray-700 dark:text-gray-300">
-                  <p>{sourceData.customer_details.billing_address_line1}</p>
-                  {sourceData.customer_details.billing_address_line2 && (
-                    <p>{sourceData.customer_details.billing_address_line2}</p>
+                  <p>{customerDetails.billing_address_line1}</p>
+                  {customerDetails.billing_address_line2 && (
+                    <p>{customerDetails.billing_address_line2}</p>
                   )}
-                  <p>{sourceData.customer_details.billing_city}, {sourceData.customer_details.billing_state} {sourceData.customer_details.billing_pincode}</p>
-                  <p>{sourceData.customer_details.billing_country}</p>
+                  <p>{customerDetails.billing_city}, {customerDetails.billing_state} {customerDetails.billing_pincode}</p>
+                  <p>{customerDetails.billing_country}</p>
                 </div>
               </div>
               
@@ -413,14 +442,14 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
                 {/* Fallback display */}
                 {!effectiveShippingAddress && (
                   <div className="text-sm text-gray-700 dark:text-gray-300">
-                    {sourceData.shipping_address_details ? (
+                    {(sourceData?.shipping_address_details || editingInvoice?.shipping_address_details) ? (
                       <>
-                        <p>{sourceData.shipping_address_details.address_line1}</p>
-                        {sourceData.shipping_address_details.address_line2 && (
-                          <p>{sourceData.shipping_address_details.address_line2}</p>
+                        <p>{(sourceData?.shipping_address_details || editingInvoice?.shipping_address_details).address_line1}</p>
+                        {(sourceData?.shipping_address_details || editingInvoice?.shipping_address_details).address_line2 && (
+                          <p>{(sourceData?.shipping_address_details || editingInvoice?.shipping_address_details).address_line2}</p>
                         )}
-                        <p>{sourceData.shipping_address_details.city}, {sourceData.shipping_address_details.state} {sourceData.shipping_address_details.pincode}</p>
-                        <p>{sourceData.shipping_address_details.country}</p>
+                        <p>{(sourceData?.shipping_address_details || editingInvoice?.shipping_address_details).city}, {(sourceData?.shipping_address_details || editingInvoice?.shipping_address_details).state} {(sourceData?.shipping_address_details || editingInvoice?.shipping_address_details).pincode}</p>
+                        <p>{(sourceData?.shipping_address_details || editingInvoice?.shipping_address_details).country}</p>
                       </>
                     ) : (
                       <p className="text-gray-500">Same as billing address</p>
@@ -431,7 +460,31 @@ const SimpleProformaForm: React.FC<SimpleProformaFormProps> = ({
             </div>
 
             {/* Item Selection with Dynamic Claim Methods */}
-            {(sourceData.po_items || sourceData.quotation_items) && (
+            {isEditing && editingInvoice?.proforma_items?.length > 0 && (
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                <h3 className="font-medium text-gray-900 dark:text-white mb-3 flex items-center">
+                  <Package className="w-4 h-4 mr-2" />
+                  Existing Proforma Items (Read Only)
+                </h3>
+                <div className="space-y-3">
+                  {editingInvoice.proforma_items.map((item: any) => (
+                    <div key={item.id} className="p-3 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="font-medium text-gray-900 dark:text-white">{item.product_name}</span>
+                        <span className="text-gray-500 dark:text-gray-400">{item.quantity} {item.unit}</span>
+                      </div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                        ₹{parseFloat(item.unit_price).toFixed(2)} each, total ₹{parseFloat(item.line_total).toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                  Item-level edits are not supported here. Update invoice metadata and shipping details only.
+                </p>
+              </div>
+            )}
+            {!isEditing && (sourceData?.po_items || sourceData?.quotation_items) && (
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
                 <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-3 flex items-center">
                   <Package className="w-4 h-4 mr-2" />

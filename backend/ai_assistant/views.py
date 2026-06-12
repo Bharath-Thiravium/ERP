@@ -6,10 +6,20 @@ import time
 from .postgres_rag import NLQueryProcessor
 from .models import QueryHistory
 
+
+def _staff_only(request):
+    """Return 403 JsonResponse if caller is not an authenticated staff user."""
+    if not request.user.is_authenticated or not request.user.is_staff:
+        return JsonResponse({'error': 'Forbidden. Staff access required.'}, status=403)
+    return None
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def ai_query(request):
     """Process natural language queries"""
+    denied = _staff_only(request)
+    if denied:
+        return denied
     try:
         data = json.loads(request.body)
         question = data.get('question', '').strip()
@@ -68,6 +78,9 @@ def ai_query(request):
 @require_http_methods(["POST"])
 def initialize_embeddings(request):
     """Initialize database schema embeddings"""
+    denied = _staff_only(request)
+    if denied:
+        return denied
     try:
         from .postgres_rag import PostgresRAG
         rag = PostgresRAG()
@@ -87,6 +100,9 @@ def initialize_embeddings(request):
 @require_http_methods(["GET"])
 def query_history(request):
     """Get recent query history"""
+    denied = _staff_only(request)
+    if denied:
+        return denied
     try:
         history = QueryHistory.objects.order_by('-created_at')[:20]
         
@@ -106,49 +122,52 @@ def query_history(request):
             'error': str(e)
         })
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@require_http_methods(["GET"])
 def export_query_data(request):
-    """Export full query results for download"""
+    """Export results for a previously-generated server-side query by its ID."""
+    denied = _staff_only(request)
+    if denied:
+        return denied
+
+    query_id = request.GET.get('query_id', '').strip()
+    if not query_id or not query_id.isdigit():
+        return JsonResponse({'error': 'query_id (integer) is required'}, status=400)
+
     try:
-        data = json.loads(request.body)
-        sql = data.get('sql', '').strip()
-        
-        if not sql:
-            return JsonResponse({
-                'error': 'SQL query is required'
-            })
-        
-        # Execute query and get all results
+        record = QueryHistory.objects.get(id=int(query_id), success=True)
+    except QueryHistory.DoesNotExist:
+        return JsonResponse({'error': 'Query not found or was not successful'}, status=404)
+
+    sql = record.sql_generated.strip()
+
+    # Safety: only allow SELECT statements, no DDL/DML/semicolons
+    sql_upper = sql.upper().lstrip()
+    if not sql_upper.startswith('SELECT'):
+        return JsonResponse({'error': 'Only SELECT queries may be exported'}, status=400)
+    if ';' in sql:
+        return JsonResponse({'error': 'Query contains disallowed characters'}, status=400)
+
+    try:
         from django.db import connection
         with connection.cursor() as cursor:
             cursor.execute(sql)
             columns = [col[0] for col in cursor.description]
             results = []
-            
             for row in cursor.fetchall():
                 row_dict = {}
                 for i, value in enumerate(row):
-                    if hasattr(value, 'isoformat'):
-                        row_dict[columns[i]] = value.isoformat()
-                    else:
-                        row_dict[columns[i]] = value
+                    row_dict[columns[i]] = value.isoformat() if hasattr(value, 'isoformat') else value
                 results.append(row_dict)
-        
-        return JsonResponse({
-            'data': results,
-            'columns': columns,
-            'count': len(results)
-        })
-        
+        return JsonResponse({'data': results, 'columns': columns, 'count': len(results)})
     except Exception as e:
-        return JsonResponse({
-            'error': str(e)
-        })
+        return JsonResponse({'error': str(e)}, status=500)
 
 @require_http_methods(["GET"])
 def available_tables(request):
     """Get list of available tables"""
+    denied = _staff_only(request)
+    if denied:
+        return denied
     try:
         from django.db import connection
         

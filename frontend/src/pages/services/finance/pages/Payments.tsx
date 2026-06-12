@@ -54,7 +54,7 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
 
     try {
       setLoading(true);
-      const response = await apiClient.getPaymentStats({ session_key: sessionKey });
+      const response = await apiClient.getPaymentStats({ session_key: sessionKey, financial_year: 'all' });
 
       if (response.data) {
         setStats(response.data);

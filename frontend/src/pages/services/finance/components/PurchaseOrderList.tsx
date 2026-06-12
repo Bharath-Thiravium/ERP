@@ -427,13 +427,30 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, selec
           icon={XCircle}
           color="red"
         />
-        <MetricCard
-          title="Avg Deal Size"
-          value={`₹${metrics.avgDealSize.toLocaleString()}`}
-          subtitle={`₹${metrics.totalValue.toLocaleString()} total value`}
-          icon={TrendingUp}
-          color="purple"
-        />
+
+        {/* Avg Deal Size (secondary) */}
+        <div className="relative">
+          <div className="scale-90 origin-left">
+            <MetricCard
+              title="Avg Deal Size"
+              value={`₹${metrics.avgDealSize.toLocaleString()}`}
+              subtitle={`₹${metrics.totalValue.toLocaleString()} total value`}
+              icon={TrendingUp}
+              color="purple"
+            />
+          </div>
+        </div>
+
+        {/* Total Value (highlight primary) */}
+        <div className="lg:col-span-1">
+          <MetricCard
+            title="Total Value"
+            value={`₹${metrics.totalValue.toLocaleString()}`}
+            subtitle={`Across all Purchase Orders/Work Orders`}
+            icon={TrendingUp}
+            color="purple"
+          />
+        </div>
       </div>
 
       {/* Status Management */}
@@ -661,6 +678,25 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, selec
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
+                          {/* Edit (PO/WO) */}
+                          {(() => {
+                            const isEditable = !['completed', 'cancelled'].includes(po.status)
+                            return (
+                              <button
+                                onClick={() => onEdit(po)}
+                                disabled={!isEditable}
+                                className={`transition-colors ${
+                                  isEditable
+                                    ? 'text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300'
+                                    : 'text-gray-400 cursor-not-allowed'
+                                }`}
+                                title={isEditable ? 'Edit PO/WO' : `Cannot edit ${po.status} PO/WO`}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            )
+                          })()}
+
                           {/* Raise Invoice Button - Only for appropriate statuses */}
                           {canRaiseInvoice(po.status) ? (
                             <button
@@ -687,6 +723,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, selec
                               <Receipt className="w-4 h-4" />
                             </button>
                           )}
+
                           <button
                             onClick={() => onViewDetails(po)}
                             className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
@@ -694,6 +731,7 @@ const PurchaseOrderList: React.FC<PurchaseOrderListProps> = ({ sessionKey, selec
                           >
                             <FileText className="w-4 h-4" />
                           </button>
+
                           {/* Show delete only for quotation-based POs, reject for direct POs */}
                           {po.quotation_number ? (
                             <button

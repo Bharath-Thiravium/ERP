@@ -121,7 +121,7 @@ const PurchaseOrders: React.FC<PurchaseOrdersProps> = ({ quotationForPO, initial
   const [showRaiseInvoice, setShowRaiseInvoice] = useState(false)
   const [showProformaForm, setShowProformaForm] = useState(false)
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
-  const [selectedFY, setSelectedFY] = useState<string>(getCurrentFY())
+  const [selectedFY, setSelectedFY] = useState<string>('')
 
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [selectedPOId, setSelectedPOId] = useState<number | null>(null)

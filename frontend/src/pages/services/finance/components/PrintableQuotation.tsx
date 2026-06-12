@@ -201,23 +201,23 @@ const PrintableQuotation: React.FC<PrintableQuotationProps> = ({ quotation }) =>
                 <td className="py-1 text-right font-medium">{formatCurrency(quotation.subtotal)}</td>
               </tr>
               
-              {parseFloat(quotation.discount_amount) > 0 && (
+              {parseFloat(quotation.discount_amount || '0') > 0 && (
                 <tr className="text-red-600">
                   <td className="py-1 text-right pr-4">
-                    Discount {parseFloat(quotation.discount_percentage) > 0 && `(${parseFloat(quotation.discount_percentage).toFixed(2)}%)`}:
+                    Discount {parseFloat(quotation.discount_percentage || '0') > 0 && `(${parseFloat(quotation.discount_percentage).toFixed(2)}%)`}:
                   </td>
                   <td className="py-1 text-right">-{formatCurrency(quotation.discount_amount)}</td>
                 </tr>
               )}
 
-              {parseFloat(quotation.shipping_charges) > 0 && (
+              {parseFloat(quotation.shipping_charges || '0') > 0 && (
                 <tr>
-                  <td className="py-1 text-right pr-4">Shipping Charges:</td>
+                  <td className="py-1 text-right pr-4">Freight/Shipping Charges:</td>
                   <td className="py-1 text-right">{formatCurrency(quotation.shipping_charges)}</td>
                 </tr>
               )}
 
-              {parseFloat(quotation.other_charges) > 0 && (
+              {parseFloat(quotation.other_charges || '0') > 0 && (
                 <tr>
                   <td className="py-1 text-right pr-4">Other Charges:</td>
                   <td className="py-1 text-right">{formatCurrency(quotation.other_charges)}</td>

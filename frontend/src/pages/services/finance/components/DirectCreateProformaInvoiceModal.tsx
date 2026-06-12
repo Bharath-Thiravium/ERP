@@ -222,6 +222,7 @@ const DirectCreateProformaInvoiceModal: React.FC<DirectCreateProformaInvoiceModa
         ...formData,
         proforma_items: validItems,
         session_key: sessionKey,
+        shipping_address: formData.shipping_address || null,
         ...(formData.due_date && { due_date: formData.due_date })
       }
 

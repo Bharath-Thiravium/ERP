@@ -744,6 +744,11 @@ class Quotation(models.Model):
     shipping_charges = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
     other_charges = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
 
+    # TDS Information (to be collected from client)
+    tds_applicable = models.BooleanField(default=False, help_text="Whether TDS applies to this quotation")
+    tds_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="TDS percentage to be collected from client")
+    tds_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0.00, help_text="TDS amount to be collected from client")
+
     # Status and Notes
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     notes = models.TextField(blank=True, help_text="Internal notes")
@@ -946,12 +951,37 @@ class Quotation(models.Model):
             else:
                 other_charges = self.other_charges
 
-        self.total_amount = discounted_subtotal + self.total_tax + shipping_charges + other_charges
+        # Handle TDS amount - calculate from percentage if provided
+        if not hasattr(self, 'tds_percentage') or self.tds_percentage is None:
+            tds_percentage = Decimal('0')
+        else:
+            if not isinstance(self.tds_percentage, Decimal):
+                tds_percentage = Decimal(str(self.tds_percentage))
+            else:
+                tds_percentage = self.tds_percentage
+
+        if tds_percentage > 0:
+            self.tds_amount = (discounted_subtotal * tds_percentage) / Decimal('100')
+            self.tds_applicable = True
+        elif not hasattr(self, 'tds_amount') or self.tds_amount is None:
+            self.tds_amount = Decimal('0')
+        else:
+            if not isinstance(self.tds_amount, Decimal):
+                self.tds_amount = Decimal(str(self.tds_amount))
+            if self.tds_amount > 0:
+                self.tds_applicable = True
+
+        self.total_amount = discounted_subtotal + self.total_tax + shipping_charges + other_charges + self.tds_amount
+
+        # Ensure shipping_charges and other_charges are saved to the instance
+        self.shipping_charges = shipping_charges
+        self.other_charges = other_charges
 
         # Save without triggering calculate_totals again
         super().save(update_fields=[
             'subtotal', 'discount_amount', 'total_tax', 'cgst_amount',
-            'sgst_amount', 'igst_amount', 'total_amount'
+            'sgst_amount', 'igst_amount', 'total_amount', 'tds_applicable', 'tds_amount',
+            'shipping_charges', 'other_charges'
         ])
 
     def update_balance_tracking(self):

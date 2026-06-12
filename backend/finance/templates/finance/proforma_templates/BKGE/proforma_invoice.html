@@ -99,8 +99,7 @@ table.pt td{padding:6px 10px;border:1px solid #e2e8f0;color:#374151}
   <div class="hdr-co">
     <div class="co-name">{{ company.name }}</div>
     <div class="co-meta">
-      {{ company.address_line1 }}{% if company.address_line2 %}, {{ company.address_line2 }}{% endif %}<br>
-      {{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} – {{ company.pincode }}{% endif %}<br>
+      {% if company.address %}{{ company.address|linebreaksbr }}<br>{% endif %}
       {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}<br>
       GSTIN: {{ company_gstin|default:"N/A" }}
     </div>

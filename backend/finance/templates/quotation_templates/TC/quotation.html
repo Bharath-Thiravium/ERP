@@ -219,9 +219,15 @@
                 <table class="totals-table">
                     <tr><td>Subtotal</td><td>{{ quotation.subtotal|floatformat:2 }}</td></tr>
                     {% if quotation.discount_amount > 0 %}
-                    <tr><td>Discount</td><td>{{ quotation.discount_amount|floatformat:2 }}</td></tr>
+                    <tr><td>Discount</td><td>-{{ quotation.discount_amount|floatformat:2 }}</td></tr>
                     {% endif %}
                     <tr><td>Taxable</td><td>{{ quotation.subtotal|floatformat:2 }}</td></tr>
+                    {% if quotation.shipping_charges > 0 %}
+                    <tr><td>Freight/Shipping</td><td>{{ quotation.shipping_charges|floatformat:2 }}</td></tr>
+                    {% endif %}
+                    {% if quotation.other_charges > 0 %}
+                    <tr><td>Other Charges</td><td>{{ quotation.other_charges|floatformat:2 }}</td></tr>
+                    {% endif %}
                     {% if quotation.total_tax > 0 %}
                     <tr><td>Tax</td><td>{{ quotation.total_tax|floatformat:2 }}</td></tr>
                     {% endif %}

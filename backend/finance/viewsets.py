@@ -549,10 +549,6 @@ class ProformaInvoiceViewSet(CompanyScopedModelViewSet):
         ).prefetch_related('proforma_items')
         
         # Add filtering
-        status_filter = self.request.query_params.get('status', '')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-
         payment_status_filter = self.request.query_params.get('payment_status', '')
         if payment_status_filter:
             queryset = queryset.filter(payment_status=payment_status_filter)
@@ -565,18 +561,15 @@ class ProformaInvoiceViewSet(CompanyScopedModelViewSet):
         if purchase_order_id:
             queryset = queryset.filter(purchase_order_id=purchase_order_id)
 
-        # Financial Year Filter - Only apply for list action
-        if self.action == 'list':
+        # Financial Year Filter - apply for list and stats actions
+        if self.action in ['list', 'stats']:
             financial_year = self.request.query_params.get('financial_year', '')
             if financial_year == 'all':
-                # Explicitly show all years
                 pass
             elif financial_year:
-                # Filter by specific FY
                 from .financial_year_utils import apply_financial_year_filter
                 queryset = apply_financial_year_filter(queryset, 'proforma_date', financial_year)
             else:
-                # Default: Show current FY only for list view
                 from .financial_year_utils import get_current_financial_year, apply_financial_year_filter
                 current_fy = get_current_financial_year()
                 queryset = apply_financial_year_filter(queryset, 'proforma_date', current_fy)
@@ -623,11 +616,7 @@ class ProformaInvoiceViewSet(CompanyScopedModelViewSet):
         
         try:
             success, result_message = send_proforma_email(proforma, recipient_email, message)
-            if success:
-                proforma.status = 'sent'
-                proforma.save(update_fields=['status'])
-                proforma.refresh_from_db()
-            return Response({'message': result_message, 'success': success, 'status': proforma.status})
+            return Response({'message': result_message, 'success': success})
         except Exception as e:
             logger.error(f"Email sending failed for proforma {proforma.id}: {str(e)}")
             return Response(
@@ -646,6 +635,46 @@ class ProformaInvoiceViewSet(CompanyScopedModelViewSet):
             return Response({'error': 'This proforma invoice cannot be rejected'}, status=400)
         proforma.reject_proforma(rejection_reason, request.service_user)
         return Response({'message': 'Proforma invoice rejected successfully', 'proforma_number': proforma.proforma_number})
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Server-side proforma invoice stats using DB aggregates"""
+        from django.db.models import Sum, Count, Q
+        from django.utils import timezone as tz
+
+        qs = self.get_queryset()
+        today = tz.now().date()
+        current_month = today.month
+        current_year = today.year
+
+        agg = qs.aggregate(
+            total_count=Count('id'),
+            total_amount=Sum('total_amount'),
+            paid_amount=Sum('paid_amount'),
+            outstanding_amount=Sum('outstanding_amount'),
+            this_month=Count('id', filter=Q(
+                proforma_date__month=current_month,
+                proforma_date__year=current_year,
+            )),
+            overdue_count=Count('id', filter=Q(
+                payment_status__in=['unpaid', 'partially_paid', 'overdue'],
+                due_date__lt=today,
+                is_rejected=False,
+            )),
+            rejected_count=Count('id', filter=Q(is_rejected=True)),
+            paid_count=Count('id', filter=Q(payment_status='paid')),
+        )
+
+        return Response({
+            'total_proformas': agg['total_count'] or 0,
+            'total_amount': float(agg['total_amount'] or 0),
+            'paid_amount': float(agg['paid_amount'] or 0),
+            'outstanding_amount': float(agg['outstanding_amount'] or 0),
+            'this_month_proformas': agg['this_month'] or 0,
+            'overdue_proformas': agg['overdue_count'] or 0,
+            'rejected_proformas': agg['rejected_count'] or 0,
+            'paid_proformas': agg['paid_count'] or 0,
+        })
 
 
 class InvoiceViewSet(CompanyScopedModelViewSet):

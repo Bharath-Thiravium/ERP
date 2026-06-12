@@ -81,25 +81,72 @@ class ProformaInvoicePDFService:
             }
             
             # Add calculated fields
+            shipping_address_obj = self._resolve_effective_shipping_address(proforma)
+            if shipping_address_obj is not None:
+                # Ensure templates that reference proforma.shipping_address still work
+                proforma._state.fields_cache['shipping_address'] = shipping_address_obj
+
+            shipping_label = 'Same as Billing Address'
+            shipping_address_text = proforma.customer.full_billing_address
+            if shipping_address_obj is not None:
+                shipping_label = getattr(shipping_address_obj, 'label', 'Shipping Address')
+                shipping_address_text = getattr(shipping_address_obj, 'full_address', shipping_address_text)
+
             context.update({
                 'subtotal_before_discount': proforma.subtotal + proforma.discount_amount if proforma.discount_amount > 0 else proforma.subtotal,
                 'has_taxes': proforma.total_tax > 0,
                 'has_discount': proforma.discount_amount > 0,
                 'has_shipping': proforma.shipping_charges > 0,
                 'has_other_charges': proforma.other_charges > 0,
-                'has_specific_shipping': proforma.shipping_address is not None,
+                'has_specific_shipping': shipping_address_obj is not None,
                 'shipping_info': {
-                    'label': proforma.shipping_address.label if proforma.shipping_address else 'Same as Billing Address',
-                    'address': proforma.shipping_address.full_address if proforma.shipping_address else proforma.customer.full_billing_address
+                    'label': shipping_label,
+                    'address': shipping_address_text
                 }
             })
             
             return context
-            
         except Exception as e:
             logger.error(f"Error preparing context for proforma {proforma.proforma_number}: {str(e)}")
             raise
-    
+
+    def _resolve_effective_shipping_address(self, proforma):
+        """Resolve the shipping address used for rendering proforma PDFs."""
+        # Priority 1: Proforma-specific shipping address
+        if proforma.shipping_address:
+            return proforma.shipping_address
+
+        # Priority 2: Purchase order shipping address
+        if hasattr(proforma, 'purchase_order') and proforma.purchase_order and proforma.purchase_order.shipping_address:
+            return proforma.purchase_order.shipping_address
+
+        # Priority 3: Quotation shipping address
+        if hasattr(proforma, 'quotation') and proforma.quotation and proforma.quotation.shipping_address:
+            return proforma.quotation.shipping_address
+
+        # Priority 4: Customer default shipping address
+        if proforma.customer:
+            default_shipping = getattr(proforma.customer, 'shipping_addresses', None)
+            if default_shipping is not None:
+                default_shipping = proforma.customer.shipping_addresses.filter(is_default=True).first()
+                if default_shipping:
+                    return default_shipping
+
+            if getattr(proforma.customer, 'shipping_same_as_billing', False) is False:
+                if getattr(proforma.customer, 'full_shipping_address', None):
+                    return SimpleNamespace(
+                        label='Customer Shipping Address',
+                        full_address=proforma.customer.full_shipping_address,
+                        address_line1=proforma.customer.shipping_address_line1,
+                        address_line2=proforma.customer.shipping_address_line2,
+                        city=proforma.customer.shipping_city,
+                        state=proforma.customer.shipping_state,
+                        pincode=proforma.customer.shipping_pincode,
+                        country=proforma.customer.shipping_country or proforma.customer.billing_country
+                    )
+
+        return None
+
     def _get_logo_path(self, company):
         from finance.logo_utils import get_logo_file_path
         return get_logo_file_path(company)

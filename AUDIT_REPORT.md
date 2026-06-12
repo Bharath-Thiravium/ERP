@@ -1,4 +1,246 @@
-# Audit Report
+# Re-Audit Report
+
+Date: 2026-05-10
+Repository: `/var/www/SAP-Python`
+Scope: Follow-up static re-audit after remediation work. This section supersedes the original report below and focuses on what was rechecked, what was fixed, what still remains, and the action plan.
+
+## Executive Summary
+
+The repository is in a materially better state than the original audit, but it is not yet clean from a production-risk perspective.
+
+Updated score estimate:
+
+- Overall code health: `58/100`
+- Security: `46/100`
+- Scalability: `52/100`
+- Performance: `61/100`
+- Maintainability: `47/100`
+- Technical debt: `39/100`
+- Production readiness: `49/100`
+
+Main conclusion:
+
+1. Several high-value fixes landed.
+2. The highest-risk class is not fully closed because arbitrary SQL execution still exists in the AI assistant export path.
+3. Legacy `AllowAny` API surfaces still exist across finance, reports, HR, inventory, CRM, and company dashboard modules.
+4. Query-string `session_key` usage is still widespread in the frontend.
+5. Secret-bearing files appear removed from Git tracking but are still physically present in the working tree and `.env` defaults remain risky.
+
+## What Was Verified As Fixed
+
+### 1. API docs are no longer exposed in production
+
+Evidence:
+
+- [backend/sap_backend/urls.py](/var/www/SAP-Python/backend/sap_backend/urls.py:57)
+
+Status: `Fixed`
+
+### 2. HTML template preview now sanitizes content
+
+Evidence:
+
+- [frontend/src/pages/services/crm/components/EmailTemplatePreviewModal.tsx](/var/www/SAP-Python/frontend/src/pages/services/crm/components/EmailTemplatePreviewModal.tsx:2)
+- [frontend/src/pages/services/crm/components/EmailTemplatePreviewModal.tsx](/var/www/SAP-Python/frontend/src/pages/services/crm/components/EmailTemplatePreviewModal.tsx:41)
+
+Status: `Fixed`
+
+### 3. Dynamic SQL identifiers in backup manager are now safely quoted
+
+Evidence:
+
+- [backend/configuration/backup_manager.py](/var/www/SAP-Python/backend/configuration/backup_manager.py:304)
+- [backend/configuration/backup_manager.py](/var/www/SAP-Python/backend/configuration/backup_manager.py:343)
+
+Status: `Fixed`
+
+### 4. Company-scoped finance indexes were added
+
+Evidence:
+
+- [backend/finance/migrations/1003_add_company_scoped_indexes.py](/var/www/SAP-Python/backend/finance/migrations/1003_add_company_scoped_indexes.py:15)
+
+Status: `Fixed`
+
+## Remaining Findings
+
+### 1. Arbitrary SQL execution still exists in AI assistant export
+
+Severity: `Critical`
+Risk: `Critical`
+Priority: `P0`
+
+Evidence:
+
+- [backend/ai_assistant/views.py](/var/www/SAP-Python/backend/ai_assistant/views.py:125)
+- [backend/ai_assistant/views.py](/var/www/SAP-Python/backend/ai_assistant/views.py:133)
+- [backend/ai_assistant/views.py](/var/www/SAP-Python/backend/ai_assistant/views.py:145)
+- [backend/sap_backend/urls.py](/var/www/SAP-Python/backend/sap_backend/urls.py:44)
+
+Issue:
+
+- `export_query_data` still accepts raw `sql` from the client and executes it with `cursor.execute(sql)`.
+- `_staff_only` is an improvement over public access, but it does not make arbitrary SQL execution safe.
+- POST routes in this module still use `@csrf_exempt`.
+
+Action:
+
+1. Remove raw SQL from the API contract.
+2. Replace client-submitted SQL with server-owned `query_id`.
+3. Restrict export to stored, validated, server-generated query history.
+4. Remove `csrf_exempt` and move this surface under standard DRF auth/permission handling.
+5. Disable `/api/ai/` in production until this is done if needed.
+
+### 2. Secret and credential artifacts are still present locally, and insecure defaults remain
+
+Severity: `Critical`
+Risk: `High`
+Priority: `P0`
+
+Evidence:
+
+- [backend/.env](/var/www/SAP-Python/backend/.env:8)
+- [backend/sap_backend/settings.py](/var/www/SAP-Python/backend/sap_backend/settings.py:61)
+- `backend/scripts/reset_credentials_mak47_20260417_132524.txt` still exists in the working tree
+- `backend/scripts/reset_credentials_nisarg_20260417_131030.txt` still exists in the working tree
+- `backend/scripts/security_log_20260417_131030.json` still exists in the working tree
+
+Issue:
+
+- `backend/.env` still contains `DB_PASSWORD=mango`.
+- `settings.py` still has an insecure fallback `SECRET_KEY`.
+- Secret-bearing reset/security artifacts appear deleted from Git status but still exist on disk.
+
+Action:
+
+1. Physically remove the files from the filesystem.
+2. Rotate any credentials that ever appeared in those files.
+3. Remove insecure fallback secrets from settings.
+4. Make production startup fail when required secrets are missing.
+
+### 3. Legacy `AllowAny` APIs still exist across internal modules
+
+Severity: `High`
+Risk: `High`
+Priority: `P1`
+
+Evidence examples:
+
+- [backend/finance/analytics_views.py](/var/www/SAP-Python/backend/finance/analytics_views.py:36)
+- [backend/reports/views.py](/var/www/SAP-Python/backend/reports/views.py:88)
+- [backend/company_dashboard/advanced_security_views.py](/var/www/SAP-Python/backend/company_dashboard/advanced_security_views.py:31)
+- [backend/finance/purchase_views.py](/var/www/SAP-Python/backend/finance/purchase_views.py:37)
+- [backend/hr/views.py](/var/www/SAP-Python/backend/hr/views.py:456)
+- [backend/inventory/views.py](/var/www/SAP-Python/backend/inventory/views.py:370)
+- [backend/crm/views.py](/var/www/SAP-Python/backend/crm/views.py:56)
+
+Issue:
+
+- Internal endpoints are still routed with `@permission_classes([AllowAny])`.
+- The codebase still has mixed security models instead of a single enforceable auth/scoping layer.
+
+Action:
+
+1. Inventory all internal `AllowAny` routes.
+2. Reclassify each as public or authenticated.
+3. Migrate internal endpoints to the centralized scoped auth layer.
+4. Add tenant-isolation, role-enforcement, and lifecycle-gating tests per `AGENTS.md`.
+
+### 4. Query-string `session_key` usage is still widespread in the frontend
+
+Severity: `High`
+Risk: `High`
+Priority: `P1`
+
+Evidence examples:
+
+- [frontend/src/pages/services/finance/pages/ComplianceDashboard.tsx](/var/www/SAP-Python/frontend/src/pages/services/finance/pages/ComplianceDashboard.tsx:62)
+- [frontend/src/pages/services/finance/pages/ComplianceDashboard.tsx](/var/www/SAP-Python/frontend/src/pages/services/finance/pages/ComplianceDashboard.tsx:91)
+- [frontend/src/pages/services/finance/components/QuotationDetail.tsx](/var/www/SAP-Python/frontend/src/pages/services/finance/components/QuotationDetail.tsx:170)
+- [frontend/src/pages/services/finance/components/ProformaInvoiceView.tsx](/var/www/SAP-Python/frontend/src/pages/services/finance/components/ProformaInvoiceView.tsx:189)
+- [frontend/src/pages/services/finance/components/PurchaseOrderView.tsx](/var/www/SAP-Python/frontend/src/pages/services/finance/components/PurchaseOrderView.tsx:140)
+
+Issue:
+
+- Multiple screens still append `session_key` directly in request URLs.
+
+Action:
+
+1. Replace all query-string auth call-sites with header-based auth.
+2. Remove backend support for query-param session auth after migration.
+3. Re-audit logs for historical token leakage.
+
+### 5. Debug/permissive config defaults still need hardening
+
+Severity: `Medium`
+Risk: `Medium`
+Priority: `P2`
+
+Evidence:
+
+- [backend/sap_backend/settings.py](/var/www/SAP-Python/backend/sap_backend/settings.py:298)
+
+Issue:
+
+- `CORS_ALLOW_ALL_ORIGINS = True` still exists in the debug branch.
+
+Action:
+
+1. Restrict debug CORS to explicit local origins only.
+2. Add environment validation so production-like deployments cannot start with permissive CORS.
+
+## Action Plan
+
+### Phase 0: Immediate containment, same day
+
+1. Disable or block `/api/ai/` export endpoints until raw SQL execution is removed.
+2. Physically delete secret-bearing files under `backend/scripts/`.
+3. Rotate any credentials that were ever present in reset/security files.
+4. Remove insecure fallback secrets from `settings.py`.
+
+### Phase 1: Security normalization, 1 to 3 days
+
+1. Replace AI export raw SQL with server-owned query records and validated export flow.
+2. Remove `session_key` query-string auth usage from all frontend call-sites.
+3. Deprecate backend support for query-param session auth after frontend migration.
+4. Add startup validation for missing required production secrets.
+
+### Phase 2: Endpoint hardening, 1 to 2 weeks
+
+1. Audit all `AllowAny` endpoints.
+2. Migrate internal ones to centralized auth/scoping.
+3. Add tenant-isolation, role-enforcement, and lifecycle-gating tests per `AGENTS.md`.
+
+### Phase 3: Final cleanup, 1 to 2 weeks
+
+1. Remove residual secret/docs artifacts and legacy examples that normalize unsafe patterns.
+2. Tighten debug CORS and config validation.
+3. Re-run a targeted security audit after the endpoint migration.
+
+## Focused Remediation Workbook
+
+| Area | Severity | File | Remaining issue | Exit condition |
+|---|---|---|---|---|
+| AI export | Critical | `backend/ai_assistant/views.py` | Raw client SQL still executed | No client SQL accepted |
+| Secrets | Critical | `backend/.env`, `backend/scripts/*`, `settings.py` | Secret files/defaults remain | No secret artifacts or insecure defaults |
+| Legacy auth | High | `finance/*`, `reports/views.py`, `hr/views.py`, `inventory/views.py`, `crm/views.py` | Internal `AllowAny` surfaces remain | Internal APIs all scoped/authenticated |
+| Frontend auth transport | High | `frontend/src/pages/services/**` | `session_key=` still appended in requests | Zero query-string auth call-sites |
+| Config hardening | Medium | `backend/sap_backend/settings.py` | Permissive debug CORS remains | Explicit local-only debug allowlist |
+
+## Final Assessment
+
+This is not yet at a “nothing important left” state.
+
+- The repo is safer than before.
+- It still has one unresolved `Critical` backend execution path.
+- It still has one unresolved `Critical` secret-management class.
+- It still has broad `High` severity authorization drift across legacy routed APIs.
+
+Phase 0 and Phase 1 items should still be treated as production-priority work.
+
+---
+
+# Original Audit Report
 
 Date: 2026-05-10
 Repository: `/var/www/SAP-Python`

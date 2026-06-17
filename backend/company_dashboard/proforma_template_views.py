@@ -81,7 +81,34 @@ class ProformaTemplatePreviewView(APIView):
         from types import SimpleNamespace
 
         customer = build_mock_customer()
-        item = build_mock_item(quantity=Decimal('5'), unit='Days', unit_price=Decimal('2000.00'))
+        customer.name = 'Sample Client Pvt Ltd'
+        customer.display_name = 'Sample Client Pvt Ltd'
+        customer.customer_code = 'CUST001'
+        customer.gstin = '27AABCU9603R1ZX'
+        customer.billing_address_line1 = '456 Corporate Avenue'
+        customer.billing_address_line2 = 'Business Park'
+        customer.billing_city = 'Bangalore'
+        customer.billing_state = 'KA'
+        customer.billing_pincode = '560001'
+        customer.phone = '+91-80-5555-1234'
+        customer.email = 'client@example.com'
+
+        item = build_mock_item(
+            product_name='Consulting Services',
+            description='Business consulting and advisory',
+            hsn_sac_code='998361',
+            quantity=Decimal('5'),
+            unit='Days',
+            unit_price=Decimal('2000.00'),
+            line_total=Decimal('10000.00'),
+        )
+        item.gst_rate = Decimal('18')
+
+        shipping_address = SimpleNamespace(
+            label='Head Office',
+            full_address='Head Office, Tech Park, Bangalore, KA 560010',
+            state='KA'
+        )
 
         return SimpleNamespace(
             id=0, company=company, customer=customer,
@@ -90,12 +117,23 @@ class ProformaTemplatePreviewView(APIView):
             due_date=date.today() + timedelta(days=30),
             gst_type='igst',
             subtotal=Decimal('10000.00'),
-            discount_amount=Decimal('0'), discount_percentage=Decimal('0'),
-            shipping_charges=Decimal('0'), other_charges=Decimal('0'),
-            total_tax=Decimal('1800.00'), total_amount=Decimal('11800.00'),
+            discount_amount=Decimal('0'),
+            discount_percentage=Decimal('0'),
+            shipping_charges=Decimal('0'),
+            other_charges=Decimal('0'),
+            total_tax=Decimal('1800.00'),
+            cgst_amount=Decimal('900.00'),
+            sgst_amount=Decimal('900.00'),
+            igst_amount=Decimal('1800.00'),
+            total_amount=Decimal('11800.00'),
             notes='Sample proforma invoice for template preview.',
-            terms_and_conditions='Standard terms apply.',
-            shipping_address=None, purchase_order=None,
+            terms_and_conditions='Standard terms apply. Payment due within 30 days.',
+            shipping_address=shipping_address,
+            place_of_supply='KA',
+            reverse_charge_applicable=False,
+            reference='REF-PI-2024-001',
+            payment_status='unpaid',
+            purchase_order=None,
             quotation=SimpleNamespace(quotation_number='QT/PREVIEW/001'),
             company_gstin=getattr(company, 'gst_number', '27AABCU9603R1ZX'),
             proforma_items=SimpleNamespace(all=lambda: [item]),

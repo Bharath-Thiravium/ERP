@@ -72,37 +72,68 @@ class QuotationTemplatePreviewView(APIView):
             if not company:
                 return Response({'success': False, 'error': 'No company context available', 'message': 'Unable to identify company for preview'}, status=status.HTTP_401_UNAUTHORIZED)
 
+            # Always use fresh mock sample for preview (don't use existing DB quotation)
             sample = self._get_sample(company)
-            html_content = quotation_pdf_service.generate_quotation_html(sample, template_name)
+            # Force preview template (don't use company's saved template)
+            html_content = quotation_pdf_service.generate_quotation_html(sample, template_name=template_name)
             return HttpResponse(html_content, content_type='text/html')
         except Exception as e:
             return Response({'success': False, 'error': str(e), 'message': 'Failed to generate template preview'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def _get_sample(self, company):
-        existing = Quotation.objects.filter(company=company).order_by('-created_at').first()
-        if existing:
-            return existing
-
-        from finance.models import Customer
+        """Create fresh mock quotation with complete data for preview"""
         from decimal import Decimal
         from datetime import date, timedelta
         from types import SimpleNamespace
 
-        customer = Customer.objects.filter(company=company).first() or build_mock_customer()
-        item = build_mock_item()
+        # Build complete customer with all details
+        customer = build_mock_customer()
+        customer.name = 'Sample Client Pvt Ltd'
+        customer.display_name = 'Sample Client Pvt Ltd'
+        customer.customer_code = 'CUST001'
+        customer.gstin = '27AABCU9603R1ZX'
+        customer.billing_address_line1 = '456 Corporate Avenue'
+        customer.billing_address_line2 = 'Business Park'
+        customer.billing_city = 'Bangalore'
+        customer.billing_state = 'KA'
+        customer.billing_pincode = '560001'
+        customer.phone = '+91-80-5555-1234'
+        customer.email = 'client@example.com'
+
+        # Build complete item with all details
+        item = build_mock_item(
+            product_name='Consulting Services',
+            description='Business consulting and advisory services',
+            hsn_sac_code='998361',
+            quantity=Decimal('5'),
+            unit='Days',
+            unit_price=Decimal('2000.00'),
+            line_total=Decimal('10000.00'),
+        )
+        item.gst_rate = Decimal('18')
+        item.line_number = 1
 
         return SimpleNamespace(
-            id=0, company=company, customer=customer,
+            id=0,
+            company=company,
+            customer=customer,
             quotation_number='QT/PREVIEW/001',
             quotation_date=date.today(),
             valid_until=date.today() + timedelta(days=30),
-            status='draft', gst_type='igst',
+            status='draft',
+            gst_type='igst',
             subtotal=Decimal('10000.00'),
-            discount_percentage=Decimal('0'), discount_amount=Decimal('0'),
-            shipping_charges=Decimal('0'), other_charges=Decimal('0'),
-            total_tax=Decimal('1800.00'), total_amount=Decimal('11800.00'),
-            notes='This is a sample quotation for template preview.',
-            terms_and_conditions='Standard terms and conditions apply.',
+            discount_percentage=Decimal('0'),
+            discount_amount=Decimal('0'),
+            shipping_charges=Decimal('0'),
+            other_charges=Decimal('0'),
+            cgst_amount=Decimal('900.00'),
+            sgst_amount=Decimal('900.00'),
+            igst_amount=Decimal('1800.00'),
+            total_tax=Decimal('1800.00'),
+            total_amount=Decimal('11800.00'),
+            notes='Sample quotation for template preview.',
+            terms_and_conditions='Standard terms and conditions apply. Valid for 30 days.',
             created_by_name='Preview',
             company_gstin=getattr(company, 'gst_number', '27AABCU9603R1ZX'),
             quotation_items=SimpleNamespace(all=lambda: [item]),

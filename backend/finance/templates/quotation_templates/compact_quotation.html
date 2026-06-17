@@ -7,68 +7,92 @@
     <style>
         @page {
             size: A4;
-            margin: 15mm 10mm 15mm 10mm;
+            margin: 12mm 10mm 12mm 10mm;
+            orphans: 3;
+            widows: 3;
+        }
+        
+        * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
         
         body {
             font-family: Roboto, Arial, sans-serif;
-            font-size: 8pt;
+            font-size: 8.5pt;
             line-height: 1.2;
             margin: 0;
             padding: 0;
             color: #333;
         }
         
-        /* Compact Template - Designed for Many Items */
+        /* Compact Template - Optimized for Single Page */
         .header {
             width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 8px;
+            display: table;
+            margin-bottom: 6px;
+            page-break-inside: avoid;
         }
         
-        .header td {
-            padding: 4px;
+        .logo-section {
+            display: table-cell;
+            width: 12%;
+            text-align: center;
+            padding-right: 6px;
             vertical-align: top;
         }
         
+        .logo-section img {
+            max-width: 40px;
+            max-height: 40px;
+            display: block;
+        }
+        
         .company-section {
-            width: 65%;
+            display: table-cell;
+            width: 55%;
+            padding: 0;
+            vertical-align: top;
         }
         
         .company-name {
-            font-size: 12pt;
+            font-size: 11pt;
             font-weight: bold;
-            margin-bottom: 2px;
+            margin: 0 0 2px 0;
         }
         
         .company-details {
             font-size: 7pt;
-            line-height: 1.3;
+            line-height: 1.2;
+            margin: 0;
         }
         
         .doc-section {
-            width: 35%;
+            display: table-cell;
+            width: 33%;
             text-align: right;
             border: 1px solid #000;
-            padding: 6px;
+            padding: 4px 6px;
+            vertical-align: top;
         }
         
         .doc-title {
-            font-size: 14pt;
+            font-size: 12pt;
             font-weight: bold;
-            margin-bottom: 4px;
+            margin: 0 0 2px 0;
         }
         
         .customer-info {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 8px;
-            font-size: 7pt;
+            margin-bottom: 6px;
+            font-size: 7.5pt;
+            page-break-inside: avoid;
         }
         
         .customer-info td {
-            border: 1px solid #666;
-            padding: 4px;
+            border: 1px solid #999;
+            padding: 3px 4px;
             vertical-align: top;
         }
         
@@ -76,37 +100,39 @@
             background-color: #f0f0f0;
             font-weight: bold;
             text-align: center;
-            font-size: 8pt;
+            font-size: 7.5pt;
         }
         
         .meta-info {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             font-size: 7pt;
+            page-break-inside: avoid;
         }
         
         .meta-info td {
-            border: 1px solid #666;
-            padding: 3px 6px;
+            border: 1px solid #999;
+            padding: 2px 4px;
         }
         
         .meta-label {
             background-color: #f0f0f0;
             font-weight: bold;
-            width: 15%;
+            width: 12%;
         }
         
         .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
+            page-break-inside: avoid;
         }
         
         .items-table th {
             background-color: #333;
             color: white;
-            padding: 4px 2px;
+            padding: 3px 2px;
             font-size: 7pt;
             font-weight: bold;
             text-align: center;
@@ -114,8 +140,8 @@
         }
         
         .items-table td {
-            border: 1px solid #666;
-            padding: 3px 2px;
+            border: 1px solid #999;
+            padding: 2px 2px;
             font-size: 7pt;
         }
         
@@ -124,15 +150,16 @@
         }
         
         .totals {
-            width: 45%;
+            width: 40%;
             float: right;
             border-collapse: collapse;
-            font-size: 8pt;
+            font-size: 7.5pt;
+            page-break-inside: avoid;
         }
         
         .totals td {
-            border: 1px solid #666;
-            padding: 4px 8px;
+            border: 1px solid #999;
+            padding: 3px 6px;
         }
         
         .total-label {
@@ -154,46 +181,60 @@
         
         .amount-words {
             clear: both;
-            margin-top: 8px;
+            margin-top: 6px;
             font-size: 7pt;
             font-weight: bold;
-            border: 1px solid #666;
-            padding: 4px;
+            border: 1px solid #999;
+            padding: 3px 4px;
             background-color: #f9f9f9;
+            page-break-inside: avoid;
         }
         
         .terms {
-            margin-top: 10px;
-            font-size: 7pt;
-            border: 1px solid #666;
-            padding: 6px;
+            margin-top: 6px;
+            font-size: 6.5pt;
+            border: 1px solid #999;
+            padding: 4px;
+            page-break-inside: avoid;
+        }
+        
+        .terms strong {
+            display: inline-block;
+            min-width: 50px;
         }
         
         .signature {
-            margin-top: 15px;
+            margin-top: 8px;
             text-align: right;
-            font-size: 8pt;
+            font-size: 7pt;
+            page-break-inside: avoid;
         }
+    </style>
     </style>
 </head>
 <body>
     <!-- Compact Header -->
-    <table class="header">
-        <tr>
-            <td class="company-section">
-                <div class="company-name">{{ company.name }}</div>
-                <div class="company-details">
-                    {{ company.address|default:"" }}, {{ company.city|default:"" }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}<br>
-                    GSTIN: {{ company.gst_number|default:"N/A" }} | PAN: {{ company.pan_number|default:"N/A" }} | Ph: {{ company.phone|default:"N/A" }} | Email: {{ company.email|default:"N/A" }}
-                </div>
-            </td>
-            <td class="doc-section">
-                <div class="doc-title">QUOTATION</div>
-                <div>{{ quotation.quotation_number }}</div>
-                <div>{{ quotation.quotation_date|date:"d/m/Y" }}</div>
-            </td>
-        </tr>
-    </table>
+    <div class="header">
+        <div class="logo-section">
+            {% if logo_url %}
+                <img src="{{ logo_url }}" alt="Logo">
+            {% elif company.logo %}
+                <img src="{{ company.logo.url }}" alt="Logo">
+            {% endif %}
+        </div>
+        <div class="company-section">
+            <div class="company-name">{{ company.name }}</div>
+            <div class="company-details">
+                {{ company.address|default:"" }}, {{ company.city|default:"" }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}<br>
+                GSTIN: {{ company.gst_number|default:"N/A" }} | PAN: {{ company.pan_number|default:"N/A" }} | Ph: {{ company.phone|default:"N/A" }}
+            </div>
+        </div>
+        <div class="doc-section">
+            <div class="doc-title">QUOTATION</div>
+            <div style="font-size: 7pt; margin: 1px 0;">{{ quotation.quotation_number }}</div>
+            <div style="font-size: 7pt;">{{ quotation.quotation_date|date:"d/m/Y" }}</div>
+        </div>
+    </div>
 
     <!-- Customer Information -->
     <table class="customer-info">

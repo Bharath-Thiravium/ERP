@@ -7,213 +7,343 @@
     <style>
         @page {
             size: A4;
-            margin: 20mm 15mm 20mm 15mm;
+            margin: 12mm 12mm 12mm 12mm;
+            orphans: 2;
+            widows: 2;
         }
         
         body {
-            font-family: Roboto, Arial, sans-serif;
-            font-size: 10pt;
-            line-height: 1.4;
+            font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+            font-size: 9pt;
+            line-height: 1.3;
             margin: 0;
             padding: 0;
             color: #333;
         }
         
-        /* Modern Template - Clean Whitespace Layout */
-        .header-section {
+        /* Professional Template - Teal accents, compliance focus */
+        .header-wrapper {
+            background: linear-gradient(135deg, #0f766e 0%, #0d5f5b 100%);
+            color: white;
+            padding: 12px;
+            margin: -12px -12px 12px -12mm;
             display: table;
-            width: 100%;
-            margin-bottom: 30px;
-            border-bottom: 3px solid #2c5aa0;
-            padding-bottom: 20px;
+            width: calc(100% + 24mm);
+            margin-bottom: 12px;
+            page-break-inside: avoid;
         }
         
-        .company-info {
+        .logo-cell {
             display: table-cell;
-            width: 60%;
-            vertical-align: top;
+            width: 15%;
+            vertical-align: middle;
+            text-align: center;
+            padding-right: 12px;
+        }
+        
+        .logo-cell img {
+            max-width: 55px;
+            max-height: 55px;
+            display: block;
+            border-radius: 4px;
+        }
+        
+        .company-cell {
+            display: table-cell;
+            width: 50%;
+            vertical-align: middle;
+            padding: 0 12px;
+            border-right: 1px solid rgba(255,255,255,0.2);
         }
         
         .company-name {
-            font-size: 18pt;
+            font-size: 13pt;
             font-weight: bold;
-            color: #2c5aa0;
-            margin-bottom: 10px;
+            margin-bottom: 3px;
         }
         
         .company-details {
-            line-height: 1.5;
-            color: #666;
+            font-size: 8pt;
+            line-height: 1.3;
+            opacity: 0.95;
         }
         
-        .document-info {
+        .doc-cell {
             display: table-cell;
-            width: 40%;
+            width: 35%;
+            vertical-align: middle;
             text-align: right;
-            vertical-align: top;
+            padding: 0 12px;
         }
         
-        .document-title {
-            font-size: 24pt;
+        .doc-title {
+            font-size: 15pt;
             font-weight: bold;
-            color: #2c5aa0;
-            margin-bottom: 10px;
+            margin-bottom: 3px;
+            letter-spacing: 1px;
         }
         
-        .document-meta {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 10px;
+        .doc-meta {
+            font-size: 8pt;
+            line-height: 1.3;
+            opacity: 0.9;
         }
         
-        .customer-section {
+        .info-grid {
             display: table;
             width: 100%;
-            margin-bottom: 30px;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
         }
         
-        .bill-to, .ship-to {
+        .info-row {
+            display: table-row;
+        }
+        
+        .info-cell {
             display: table-cell;
-            width: 48%;
+            width: 50%;
+            border: 1px solid #ddd;
+            padding: 8px;
             vertical-align: top;
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
+            font-size: 8.5pt;
+            line-height: 1.4;
+            background-color: #f9f9f9;
         }
         
-        .bill-to {
-            margin-right: 4%;
+        .info-cell:nth-child(odd) {
+            background-color: white;
         }
         
-        .section-title {
-            font-size: 12pt;
+        .info-label {
             font-weight: bold;
-            color: #2c5aa0;
-            margin-bottom: 10px;
-            border-bottom: 2px solid #2c5aa0;
-            padding-bottom: 5px;
+            color: #0f766e;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+            font-size: 7.5pt;
+            letter-spacing: 0.5px;
         }
         
-        .items-container {
-            margin-bottom: 30px;
+        .compliance-row {
+            display: table;
+            width: 100%;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
+        }
+        
+        .compliance-cell {
+            display: table-cell;
+            width: 33.33%;
+            border: 1px solid #ddd;
+            padding: 8px;
+            font-size: 8pt;
+            vertical-align: top;
+        }
+        
+        .compliance-cell:nth-child(2) {
+            border-left: none;
+            border-right: none;
+        }
+        
+        .compliance-label {
+            font-weight: bold;
+            color: #0f766e;
+            margin-bottom: 2px;
+            font-size: 7.5pt;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         .items-table {
             width: 100%;
             border-collapse: collapse;
-            background-color: white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            border-radius: 8px;
-            overflow: hidden;
+            border: 1px solid #0f766e;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
         }
         
         .items-table th {
-            background-color: #2c5aa0;
+            background-color: #0f766e;
             color: white;
-            padding: 12px 8px;
-            font-size: 9pt;
+            border: 1px solid #0f766e;
+            padding: 6px 4px;
+            font-size: 8pt;
             font-weight: bold;
             text-align: center;
         }
         
         .items-table td {
-            padding: 10px 8px;
-            border-bottom: 1px solid #e9ecef;
-            font-size: 9pt;
+            border: 1px solid #ddd;
+            padding: 5px 4px;
+            font-size: 8pt;
+            line-height: 1.3;
         }
         
-        .items-table tr:hover {
-            background-color: #f8f9fa;
+        .items-table tr:nth-child(even) td {
+            background-color: #f9f9f9;
         }
         
-        .totals-section {
+        .totals-wrapper {
             display: table;
             width: 100%;
-            margin-bottom: 30px;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
         }
         
-        .totals-left {
+        .amount-words-cell {
             display: table-cell;
-            width: 50%;
+            width: 45%;
+            vertical-align: top;
+            padding-right: 12px;
+        }
+        
+        .totals-cell {
+            display: table-cell;
+            width: 55%;
             vertical-align: top;
         }
         
-        .totals-right {
-            display: table-cell;
-            width: 50%;
-            vertical-align: top;
+        .amount-words {
+            border: 1px solid #0f766e;
+            background-color: #f0fdfb;
+            padding: 8px;
+            font-size: 8.5pt;
+            line-height: 1.4;
+            page-break-inside: avoid;
         }
         
-        .totals-block {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-left: 20px;
+        .amount-words strong {
+            color: #0f766e;
+            display: block;
+            margin-bottom: 2px;
         }
         
-        .total-row {
-            display: table;
+        .totals-box {
+            border: 1px solid #0f766e;
+            border-collapse: collapse;
             width: 100%;
-            margin-bottom: 8px;
+        }
+        
+        .totals-box td {
+            border: 1px solid #ddd;
+            padding: 5px 8px;
+            font-size: 8.5pt;
         }
         
         .total-label {
-            display: table-cell;
+            background-color: #f0fdfb;
             font-weight: bold;
-            color: #666;
+            text-align: right;
+            width: 50%;
         }
         
-        .total-value {
-            display: table-cell;
+        .total-amount {
             text-align: right;
             font-weight: bold;
         }
         
         .grand-total {
-            background-color: #2c5aa0;
+            background-color: #0f766e;
             color: white;
-            padding: 12px;
-            border-radius: 6px;
-            margin-top: 10px;
+            font-weight: bold;
+            font-size: 9pt;
         }
         
-        .amount-words {
-            background-color: #e3f2fd;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+        .grand-total .total-amount {
+            color: white;
+        }
+        
+        .payment-terms {
+            border: 1px solid #0f766e;
+            margin-bottom: 12px;
+            padding: 8px;
+            page-break-inside: avoid;
+        }
+        
+        .payment-terms-title {
             font-weight: bold;
-            color: #1565c0;
+            color: #0f766e;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            font-size: 8pt;
+            letter-spacing: 0.5px;
+        }
+        
+        .payment-terms table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .payment-terms td {
+            border: 1px solid #ddd;
+            padding: 5px;
+            font-size: 8pt;
+        }
+        
+        .payment-terms td:first-child {
+            background-color: #f0fdfb;
+            font-weight: bold;
+            width: 40%;
         }
         
         .terms-section {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            border-left: 4px solid #2c5aa0;
+            border: 1px solid #ddd;
+            padding: 8px;
+            margin-bottom: 12px;
+            font-size: 8pt;
+            line-height: 1.3;
+            page-break-inside: avoid;
+            background-color: #f9f9f9;
         }
         
-        .signature-section {
-            text-align: right;
-            margin-top: 40px;
+        .terms-title {
+            font-weight: bold;
+            color: #0f766e;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            font-size: 7.5pt;
+            letter-spacing: 0.5px;
+        }
+        
+        .signature-wrapper {
+            display: table;
+            width: 100%;
+            margin-top: 20px;
+            page-break-inside: avoid;
+        }
+        
+        .signature-column {
+            display: table-cell;
+            width: 50%;
+            text-align: center;
+            padding: 0 10px;
+            font-size: 8pt;
+            vertical-align: top;
         }
         
         .signature-box {
+            border-top: 2px solid #0f766e;
+            padding: 20px 10px 0;
             display: inline-block;
-            text-align: center;
-            padding: 20px;
-            border: 2px solid #2c5aa0;
-            border-radius: 8px;
-            background-color: #f8f9fa;
+            width: 100%;
         }
     </style>
 </head>
 <body>
-    <!-- Header Section -->
-    <div class="header-section">
-        <div class="company-info">
+    <!-- Header Section: Teal gradient with logo, company, doc info -->
+    <div class="header-wrapper">
+        <div class="logo-cell">
+            {% if logo_url %}
+                <img src="{{ logo_url }}" alt="Logo">
+            {% elif company.logo %}
+                <img src="{{ company.logo.url }}" alt="Logo">
+            {% else %}
+                <div style="width: 55px; height: 55px; background: rgba(255,255,255,0.2); border-radius: 4px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                    <span style="font-size: 8pt;">LOGO</span>
+                </div>
+            {% endif %}
+        </div>
+        <div class="company-cell">
             <div class="company-name">{{ company.name }}</div>
             <div class="company-details">
                 {{ company.address|default:"" }}<br>
@@ -222,149 +352,195 @@
                 Phone: {{ company.phone|default:"N/A" }} | Email: {{ company.email|default:"N/A" }}
             </div>
         </div>
-        <div class="document-info">
-            <div class="document-title">QUOTATION</div>
-            <div class="document-meta">
-                <strong>{{ quotation.quotation_number }}</strong><br>
-                Date: {{ quotation.quotation_date|date:"d/m/Y" }}<br>
-                Valid Until: {{ quotation.valid_until|date:"d/m/Y" }}
+        <div class="doc-cell">
+            <div class="doc-title">QUOTATION</div>
+            <div class="doc-meta">
+                <div><strong>{{ quotation.quotation_number }}</strong></div>
+                <div>Issued: {{ quotation.quotation_date|date:"d M Y" }}</div>
+                <div>Valid Until: {{ quotation.valid_until|date:"d M Y" }}</div>
             </div>
         </div>
     </div>
 
-    <!-- Customer Section -->
-    <div class="customer-section">
-        <div class="bill-to">
-            <div class="section-title">BILL TO</div>
-            <strong>{{ quotation.customer.name }}</strong><br>
-            {{ quotation.customer.billing_address_line1|default:"" }}<br>
-            {% if quotation.customer.billing_address_line2 %}{{ quotation.customer.billing_address_line2 }}<br>{% endif %}
-            {{ quotation.customer.billing_city|default:"" }}, {{ quotation.customer.billing_state|default:"" }} - {{ quotation.customer.billing_pincode|default:"" }}<br>
-            GSTIN: {{ quotation.customer.gstin|default:"N/A" }}<br>
-            State Code: {{ quotation.customer.state_code|default:"N/A" }}
-        </div>
-        <div class="ship-to">
-            <div class="section-title">SHIP TO</div>
-            {% if quotation.shipping_address %}
+    <!-- Bill To / Ship To with Compliance -->
+    <div class="info-grid">
+        <div class="info-row">
+            <div class="info-cell">
+                <div class="info-label">Bill To</div>
                 <strong>{{ quotation.customer.name }}</strong><br>
-                {{ quotation.shipping_address.address_line1 }}<br>
-                {% if quotation.shipping_address.address_line2 %}{{ quotation.shipping_address.address_line2 }}<br>{% endif %}
-                {{ quotation.shipping_address.city }}, {{ quotation.shipping_address.state }} - {{ quotation.shipping_address.pincode }}
-            {% else %}
-                Same as Billing Address
-            {% endif %}
+                {{ quotation.customer.billing_address_line1|default:"" }}<br>
+                {% if quotation.customer.billing_address_line2 %}{{ quotation.customer.billing_address_line2 }}<br>{% endif %}
+                {{ quotation.customer.billing_city|default:"" }}, {{ quotation.customer.billing_state|default:"" }} - {{ quotation.customer.billing_pincode|default:"" }}<br>
+                GSTIN: {{ quotation.customer.gstin|default:"N/A" }}<br>
+                State Code: {{ quotation.customer.state_code|default:"N/A" }}
+            </div>
+            <div class="info-cell">
+                <div class="info-label">Ship To</div>
+                {% if quotation.shipping_address %}
+                    <strong>{{ quotation.customer.name }}</strong><br>
+                    {{ quotation.shipping_address.address_line1 }}<br>
+                    {% if quotation.shipping_address.address_line2 %}{{ quotation.shipping_address.address_line2 }}<br>{% endif %}
+                    {{ quotation.shipping_address.city }}, {{ quotation.shipping_address.state }} - {{ quotation.shipping_address.pincode }}
+                {% else %}
+                    Same as Billing Address
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Compliance Fields: Place of Supply, Reverse Charge -->
+    <div class="compliance-row">
+        <div class="compliance-cell">
+            <div class="compliance-label">Place of Supply</div>
+            {{ quotation.customer.billing_state|default:"N/A" }}
+        </div>
+        <div class="compliance-cell">
+            <div class="compliance-label">Reverse Charge</div>
+            {% if quotation.gst_type == 'reverse_charge' %}Yes{% else %}No{% endif %}
+        </div>
+        <div class="compliance-cell">
+            <div class="compliance-label">GST Type</div>
+            {{ quotation.gst_type|upper|default:"N/A" }}
         </div>
     </div>
 
     <!-- Items Table -->
-    <div class="items-container">
-        <table class="items-table">
-            <thead>
-                <tr>
-                    <th style="width: 5%;">S.No</th>
-                    <th style="width: 35%;">Description</th>
-                    <th style="width: 10%;">HSN/SAC</th>
-                    <th style="width: 8%;">Qty</th>
-                    <th style="width: 8%;">Unit</th>
-                    <th style="width: 12%;">Rate</th>
-                    <th style="width: 8%;">Discount</th>
-                    <th style="width: 6%;">Tax %</th>
-                    <th style="width: 8%;">Amount</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in quotation.quotation_items.all %}
-                <tr>
-                    <td style="text-align: center;">{{ forloop.counter }}</td>
-                    <td>
-                        <strong>{{ item.product_name }}</strong>
-                        {% if item.description %}<br><small style="color: #666;">{{ item.description }}</small>{% endif %}
-                    </td>
-                    <td style="text-align: center;">{{ item.hsn_sac_code|default:"N/A" }}</td>
-                    <td style="text-align: right;">{{ item.quantity|floatformat:2 }}</td>
-                    <td style="text-align: center;">{{ item.unit }}</td>
-                    <td style="text-align: right;">₹{{ item.unit_price|floatformat:2 }}</td>
-                    <td style="text-align: right;">-</td>
-                    <td style="text-align: right;">{{ item.gst_rate|floatformat:0 }}%</td>
-                    <td style="text-align: right;">₹{{ item.line_total|floatformat:2 }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 5%;">S.No</th>
+                <th style="width: 30%;">Description</th>
+                <th style="width: 10%;">HSN/SAC</th>
+                <th style="width: 8%;">Qty</th>
+                <th style="width: 8%;">Unit</th>
+                <th style="width: 11%;">Rate</th>
+                <th style="width: 8%;">Discount</th>
+                <th style="width: 6%;">Tax %</th>
+                <th style="width: 8%;">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in quotation.quotation_items.all %}
+            <tr>
+                <td style="text-align: center;">{{ forloop.counter }}</td>
+                <td>
+                    <strong>{{ item.product_name }}</strong>
+                    {% if item.description %}<br><small style="font-size: 7pt; color: #666;">{{ item.description }}</small>{% endif %}
+                </td>
+                <td style="text-align: center;">{{ item.hsn_sac_code|default:"N/A" }}</td>
+                <td style="text-align: right;">{{ item.quantity|floatformat:2 }}</td>
+                <td style="text-align: center;">{{ item.unit }}</td>
+                <td style="text-align: right;">₹{{ item.unit_price|floatformat:2 }}</td>
+                <td style="text-align: right;">-</td>
+                <td style="text-align: right;">{{ item.gst_rate|floatformat:0 }}%</td>
+                <td style="text-align: right;">₹{{ item.line_total|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 
-    <!-- Totals Section -->
-    <div class="totals-section">
-        <div class="totals-left">
+    <!-- Amount in Words + Totals -->
+    <div class="totals-wrapper">
+        <div class="amount-words-cell">
             <div class="amount-words">
-                <strong>Amount in Words:</strong><br>
+                <strong>Amount in Words</strong>
                 {{ quotation.total_amount|num_to_words }}
             </div>
         </div>
-        <div class="totals-right">
-            <div class="totals-block">
-                <div class="total-row">
-                    <div class="total-label">Subtotal:</div>
-                    <div class="total-value">₹{{ quotation.subtotal|floatformat:2 }}</div>
-                </div>
+        <div class="totals-cell">
+            <table class="totals-box">
+                <tr>
+                    <td class="total-label">Subtotal:</td>
+                    <td class="total-amount">₹{{ quotation.subtotal|floatformat:2 }}</td>
+                </tr>
                 {% if quotation.discount_amount > 0 %}
-                <div class="total-row">
-                    <div class="total-label">Discount:</div>
-                    <div class="total-value">₹{{ quotation.discount_amount|floatformat:2 }}</div>
-                </div>
+                <tr>
+                    <td class="total-label">Discount:</td>
+                    <td class="total-amount">-₹{{ quotation.discount_amount|floatformat:2 }}</td>
+                </tr>
                 {% endif %}
-                <div class="total-row">
-                    <div class="total-label">Taxable Amount:</div>
-                    <div class="total-value">₹{{ quotation.subtotal|floatformat:2 }}</div>
-                </div>
+                <tr>
+                    <td class="total-label">Taxable:</td>
+                    <td class="total-amount">₹{{ quotation.subtotal|floatformat:2 }}</td>
+                </tr>
                 {% if quotation.shipping_charges > 0 %}
-                <div class="total-row">
-                    <div class="total-label">Freight/Shipping:</div>
-                    <div class="total-value">₹{{ quotation.shipping_charges|floatformat:2 }}</div>
-                </div>
+                <tr>
+                    <td class="total-label">Shipping:</td>
+                    <td class="total-amount">₹{{ quotation.shipping_charges|floatformat:2 }}</td>
+                </tr>
                 {% endif %}
                 {% if quotation.other_charges > 0 %}
-                <div class="total-row">
-                    <div class="total-label">Other Charges:</div>
-                    <div class="total-value">₹{{ quotation.other_charges|floatformat:2 }}</div>
-                </div>
+                <tr>
+                    <td class="total-label">Other:</td>
+                    <td class="total-amount">₹{{ quotation.other_charges|floatformat:2 }}</td>
+                </tr>
                 {% endif %}
                 {% if quotation.total_tax > 0 %}
-                <div class="total-row">
-                    <div class="total-label">Tax Amount:</div>
-                    <div class="total-value">₹{{ quotation.total_tax|floatformat:2 }}</div>
-                </div>
+                <tr>
+                    <td class="total-label">Tax:</td>
+                    <td class="total-amount">₹{{ quotation.total_tax|floatformat:2 }}</td>
+                </tr>
                 {% endif %}
-                <div class="grand-total">
-                    <div class="total-row">
-                        <div class="total-label">Grand Total:</div>
-                        <div class="total-value">₹{{ quotation.total_amount|floatformat:2 }}</div>
-                    </div>
+                <tr class="grand-total">
+                    <td class="total-label">Grand Total:</td>
+                    <td class="total-amount">₹{{ quotation.total_amount|floatformat:2 }}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- Payment Terms Table -->
+    <div class="payment-terms">
+        <div class="payment-terms-title">Payment Terms</div>
+        <table>
+            <tr>
+                <td>Payment Mode</td>
+                <td>Bank Transfer / Cheque / Cash as per agreement</td>
+            </tr>
+            <tr>
+                <td>Due Date</td>
+                <td>As per agreed payment schedule</td>
+            </tr>
+            <tr>
+                <td>Currency</td>
+                <td>INR (Indian Rupee)</td>
+            </tr>
+            <tr>
+                <td>Late Payment Terms</td>
+                <td>Per company policy</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Terms & Conditions -->
+    <div class="terms-section">
+        <div class="terms-title">Scope & Terms</div>
+        <strong>Scope of Work:</strong> {{ quotation.notes|default:"As per customer requirements"|truncatechars:120 }}<br><br>
+        <strong>Terms & Conditions:</strong> {{ quotation.terms_and_conditions|default:"1. Prices valid for 30 days 2. Payment as per terms 3. Subject to local jurisdiction"|truncatechars:150 }}
+    </div>
+
+    <!-- Signature Section: 2 Signatures -->
+    <div class="signature-wrapper">
+        <div class="signature-column">
+            <div class="signature-box">
+                <div style="margin-bottom: 3px; font-size: 7pt; color: #666;">Authorized By</div>
+                <div style="margin-top: 20px;">
+                    <strong>{{ company.name|slice:":20" }}</strong><br>
+                    <small>Authorized Signatory</small>
+                </div>
+            </div>
+        </div>
+        <div class="signature-column">
+            <div class="signature-box">
+                <div style="margin-bottom: 3px; font-size: 7pt; color: #666;">Customer Acceptance</div>
+                <div style="margin-top: 20px;">
+                    <strong>{{ quotation.customer.name|slice:":20" }}</strong><br>
+                    <small>Authorized Representative</small>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Terms and Conditions -->
-    <div class="terms-section">
-        <div class="section-title">SCOPE OF WORK</div>
-        {{ quotation.notes|default:"As per customer requirements"|linebreaks }}
-        
-        <div class="section-title" style="margin-top: 15px;">DELIVERY TIMELINE</div>
-        As per agreed schedule
-        
-        <div class="section-title" style="margin-top: 15px;">TERMS & CONDITIONS</div>
-        {{ quotation.terms_and_conditions|default:"1. Prices are valid for 30 days from quotation date<br>2. Payment terms as agreed<br>3. All disputes subject to local jurisdiction"|safe }}
-    </div>
-
-    <!-- Signature -->
-    <div class="signature-section">
-        <div class="signature-box">
-            <strong>For {{ company.name }}</strong><br><br><br>
-            <div style="border-top: 2px solid #2c5aa0; padding-top: 10px; margin-top: 30px;">
-                Authorized Signatory
-            </div>
-        </div>
-    </div>
+    <div style="text-align:center;padding:10px 0 2px;font-size:7px;color:#999;border-top:1px solid #ddd;margin-top:10px">This is a computer-generated professional quotation. Please retain for records.</div>
 </body>
 </html>

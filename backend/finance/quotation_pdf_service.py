@@ -14,9 +14,9 @@ class QuotationPDFService:
     """Service for generating quotation PDFs with selectable templates"""
     
     TEMPLATE_MAPPING = {
-        'AS': 'finance/quotation_templates/AS/quotation.html',
-        'BKGE': 'finance/quotation_templates/BKGE/quotation.html', 
-        'TC': 'finance/quotation_templates/TC/quotation.html'
+        'AS': 'quotation_templates/AS/quotation.html',
+        'BKGE': 'quotation_templates/BKGE/quotation.html', 
+        'TC': 'quotation_templates/TC/quotation.html'
     }
     
     def __init__(self):
@@ -135,10 +135,16 @@ class QuotationPDFService:
             # Generate PDF using WeasyPrint
             pdf_buffer = io.BytesIO()
             
-            # WeasyPrint configuration - CSS is embedded in HTML
-            html_doc = weasyprint.HTML(string=html_content, base_url=str(self.base_template_path))
+            # WeasyPrint configuration with proper base_url for absolute URLs
+            # Using HTTPS as base_url allows WeasyPrint to fetch absolute HTTPS image URLs
+            html_doc = weasyprint.HTML(
+                string=html_content, 
+                base_url='https://sap.athenas.co.in',
+                encoding='utf-8'
+            )
             
             # Generate PDF without external CSS (styles are in HTML)
+            # Use uncompressed_pdf=False for better image embedding
             html_doc.write_pdf(pdf_buffer)
             
             # Return the bytes content

@@ -148,7 +148,7 @@ class POPDFService:
             pdf_buffer = io.BytesIO()
             
             # WeasyPrint configuration - CSS is embedded in HTML
-            html_doc = weasyprint.HTML(string=html_content, base_url=str(self.base_template_path))
+            html_doc = weasyprint.HTML(string=html_content, base_url='https://sap.athenas.co.in')
             
             # Generate PDF without external CSS (styles are in HTML)
             html_doc.write_pdf(pdf_buffer)

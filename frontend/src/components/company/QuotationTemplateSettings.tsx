@@ -42,28 +42,28 @@ const QuotationTemplateSettings: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching template info:', error);
-      // Set default templates if API fails
+      // Set default templates if API fails - NOW WITH REFACTORED DESCRIPTIONS
       setTemplates([
         {
           code: 'AS',
           name: 'Clean & Simple Template',
-          description: 'Clean and simple layout with right-aligned company info and professional styling',
-          features: ['Right-aligned company info', 'Large quotation title', 'Simple table design', 'Professional footer'],
-          best_for: 'Companies preferring minimalist, clean design'
+          description: 'Clean 3-column header with logo panel, essential fields, single signature. Best for everyday use.',
+          features: ['Logo panel', 'Bill To / Ship To', 'GST breakdown', 'Single signature', 'Professional borders'],
+          best_for: 'Small and medium businesses'
         },
         {
           code: 'BKGE', 
           name: 'Professional Template',
-          description: 'Modern professional template with centered header and structured table design',
-          features: ['Centered quotation header', 'Color-coded table headers', 'Structured customer info', 'Professional totals section'],
-          best_for: 'Businesses requiring modern, structured presentation'
+          description: 'Teal-accented header, compliance fields (Place of Supply, Reverse Charge), Amount in Words, Payment Terms table, 2 signatures. Best for growing businesses and client-facing documents.',
+          features: ['Teal gradient header', 'Compliance fields', 'Place of Supply', 'Reverse Charge', 'Amount in Words', 'Payment Terms table', '2 signatures'],
+          best_for: 'Growing businesses and client-facing documents'
         },
         {
           code: 'TC',
           name: 'Detailed Terms Template', 
-          description: 'Detailed template with comprehensive terms and conditions section',
-          features: ['Comprehensive company branding', 'Detailed information grid', 'Extensive terms and conditions', 'Professional signature box'],
-          best_for: 'Contractors and service providers with detailed terms'
+          description: 'Premium gold/charcoal header, per-line GST columns, HSN/SAC-wise tax summary, bank details, declaration, 3 signatures.',
+          features: ['Premium header', 'Per-line GST columns', 'HSN/SAC organization', 'Bank details', 'Declaration section', '3 signatures'],
+          best_for: 'Premium and enterprise customers'
         }
       ]);
     }

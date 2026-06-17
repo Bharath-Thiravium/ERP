@@ -123,7 +123,7 @@ class InvoicePDFService:
         """Generate PDF from HTML content using WeasyPrint"""
         try:
             # Create HTML object
-            html_doc = HTML(string=html_content, base_url=settings.BASE_DIR)
+            html_doc = HTML(string=html_content, base_url='https://sap.athenas.co.in')
             
             # Generate PDF
             pdf_bytes = html_doc.write_pdf(font_config=self.font_config)

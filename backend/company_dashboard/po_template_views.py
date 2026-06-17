@@ -84,6 +84,14 @@ class POTemplatePreviewView(APIView):
         vendor.name = 'Sample Vendor Pvt Ltd'
         vendor.display_name = 'Sample Vendor Pvt Ltd'
         vendor.customer_code = 'VEND001'
+        vendor.gstin = '27AABCU9603R1ZX'
+        vendor.billing_address_line1 = '123 Business Street'
+        vendor.billing_address_line2 = 'Commercial Complex'
+        vendor.billing_city = 'Mumbai'
+        vendor.billing_state = 'MH'
+        vendor.billing_pincode = '400001'
+        vendor.phone = '+91-22-1234-5678'
+        vendor.email = 'vendor@example.com'
 
         item = build_mock_item(
             product_name='Supply of Equipment',
@@ -93,6 +101,13 @@ class POTemplatePreviewView(APIView):
             unit='Nos',
             unit_price=Decimal('25000.00'),
             line_total=Decimal('50000.00'),
+        )
+        item.gst_rate = Decimal('18')
+
+        shipping_address = SimpleNamespace(
+            label='Warehouse',
+            full_address='Warehouse, Industrial Area, Mumbai, MH 400010',
+            state='MH'
         )
 
         return SimpleNamespace(
@@ -104,10 +119,20 @@ class POTemplatePreviewView(APIView):
             status='draft', gst_type='igst',
             subtotal=Decimal('50000.00'),
             discount_amount=Decimal('0'),
-            total_tax=Decimal('9000.00'), total_amount=Decimal('59000.00'),
+            discount_percentage=Decimal('0'),
+            shipping_charges=Decimal('500.00'),
+            other_charges=Decimal('0'),
+            total_tax=Decimal('9000.00'),
+            cgst_amount=Decimal('4500.00'),
+            sgst_amount=Decimal('4500.00'),
+            igst_amount=Decimal('9000.00'),
+            total_amount=Decimal('59500.00'),
             notes='Sample purchase order for template preview.',
             terms_and_conditions='Standard terms apply.',
-            shipping_address=None,
+            shipping_address=shipping_address,
+            place_of_supply='MH',
+            reverse_charge_applicable=False,
+            reference='REF-2024-001',
             company_gstin=getattr(company, 'gst_number', '27AABCU9603R1ZX'),
             po_items=SimpleNamespace(all=lambda: [item]),
         )

@@ -1,244 +1,486 @@
-<!DOCTYPE html>
 {% load finance_extras %}
-<html lang="en">
+<!DOCTYPE html>
+<html>
 <head>
-<meta charset="UTF-8">
-<title>Purchase Order </title>
-<style>
-@page{size:A4;margin:0}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#1e293b;background:#fff}
-.page{width:210mm;min-height:297mm;display:flex;flex-direction:column}
-
-/* ── HEADER: 3 columns ── */
-.hdr{display:flex;align-items:stretch;min-height:80px;border-bottom:3px solid #0f766e}
-.hdr-logo{background:#f0fdf9;border-right:2px solid #ccfbf1;display:flex;align-items:center;justify-content:center;padding:10px 14px;min-width:60px;max-width:140px;width:auto;flex-shrink:0}
-.hdr-logo img{max-height:52px;max-width:112px;width:auto;height:auto;object-fit:contain;display:block}
-.hdr-logo .monogram{width:44px;height:44px;background:#0f766e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;letter-spacing:-1px;flex-shrink:0}
-.hdr-co{flex:1;background:#fff;padding:14px 20px;display:flex;flex-direction:column;justify-content:center}
-.hdr-co .co-name{font-size:19px;font-weight:700;color:#0f766e;margin-bottom:4px}
-.hdr-co .co-meta{font-size:9px;color:#64748b;line-height:1.7}
-.hdr-doc{background:#0f766e;width:155px;min-width:155px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px 16px;text-align:center}
-.hdr-doc .doc-type{font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#fff}
-.hdr-doc .doc-num{font-size:9.5px;color:#d1fae5;font-weight:600;margin-top:6px;word-break:break-all}
-.hdr-doc .doc-date{font-size:8.5px;color:#a7f3d0;margin-top:3px}
-
-/* ── INFO STRIP ── */
-.strip{background:#f0fdf9;border-bottom:1px solid #ccfbf1;padding:11px 24px;display:flex}
-.sc{flex:1;padding:0 16px;border-right:1px solid #ccfbf1}
-.sc:first-child{padding-left:0}
-.sc:last-child{border-right:none}
-.sclbl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#0f766e;margin-bottom:4px}
-.scval{font-size:10.5px;color:#1e293b;line-height:1.6}
-.scval strong{font-size:11.5px;display:block}
-
-/* ── COMPLIANCE ── */
-.comp{background:#fff;border-bottom:1px solid #e2e8f0;padding:6px 24px;display:flex;gap:24px;font-size:9px;color:#475569}
-.comp strong{color:#1e293b}
-
-/* ── BODY ── */
-.body{padding:16px 24px;flex:1}
-
-/* table */
-table.items{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:10px}
-table.items thead tr{background:#0f766e}
-table.items thead th{color:#fff;padding:8px 8px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px}
-table.items thead th.r{text-align:right}
-table.items thead th.c{text-align:center}
-table.items tbody tr{border-bottom:1px solid #e2e8f0}
-table.items tbody tr:nth-child(even){background:#f8fafc}
-table.items tbody td{padding:8px;vertical-align:top}
-table.items tbody td.r{text-align:right;font-family:'Courier New',monospace}
-table.items tbody td.c{text-align:center}
-.iname{font-weight:600;color:#1e293b}
-.idesc{font-size:9px;color:#64748b;margin-top:1px}
-.ihsn{display:inline-block;background:#f0fdf9;border:1px solid #ccfbf1;color:#0f766e;font-size:8px;padding:1px 4px;border-radius:2px;margin-top:2px}
-
-/* totals + words */
-.bottom{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:14px}
-.words{flex:1;padding:12px;background:#f0fdf9;border:1px solid #ccfbf1;border-radius:3px}
-.wlbl{font-size:7.5px;font-weight:700;text-transform:uppercase;color:#0f766e;margin-bottom:3px}
-.wval{font-size:10.5px;font-style:italic;color:#1e293b}
-table.totals{width:252px;border-collapse:collapse}
-table.totals td{padding:6px 11px;font-size:10.5px;border-bottom:1px solid #e2e8f0}
-table.totals td:last-child{text-align:right;font-family:'Courier New',monospace;font-weight:600}
-table.totals td.tl{color:#64748b}
-table.totals tr.grand td{background:#0f766e;color:#fff;font-weight:700;font-size:12px;border:none;padding:9px 11px}
-table.totals tr.grand td:last-child{color:#d1fae5}
-
-/* payment terms */
-.pt-title{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#0f766e;margin-bottom:5px}
-table.pt{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:10px}
-table.pt th{background:#f0fdf9;color:#0f766e;padding:6px 10px;font-weight:700;border:1px solid #ccfbf1;font-size:8.5px;text-transform:uppercase}
-table.pt td{padding:6px 10px;border:1px solid #e2e8f0;color:#374151}
-
-/* notes/terms */
-.nt{display:flex;gap:12px;margin-bottom:14px}
-.ntcard{flex:1;border:1px solid #e2e8f0;border-radius:3px;overflow:hidden}
-.nthead{background:#0f766e;color:#fff;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;padding:5px 11px}
-.ntbody{padding:8px 11px;font-size:10px;color:#374151;line-height:1.6}
-
-
-/* footer */
-.footer{background:#0f766e;color:#d1fae5;padding:8px 24px;display:flex;justify-content:space-between;font-size:8.5px;margin-top:auto}
-</style>
+    <meta charset="UTF-8">
+    <title>Purchase Order - {{ purchase_order.po_number }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 12mm 12mm 12mm 12mm;
+            orphans: 2;
+            widows: 2;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+            font-size: 9pt;
+            line-height: 1.3;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        
+        .header-wrapper {
+            background: linear-gradient(135deg, #0f766e 0%, #0d5f5b 100%);
+            color: white;
+            padding: 12px;
+            margin: -12mm -12mm 12mm -12mm;
+            display: table;
+            width: calc(100% + 24mm);
+            page-break-inside: avoid;
+        }
+        
+        .logo-cell {
+            display: table-cell;
+            width: 15%;
+            vertical-align: middle;
+            text-align: center;
+            padding-right: 12px;
+        }
+        
+        .logo-cell img {
+            max-width: 55px;
+            max-height: 55px;
+            display: block;
+            border-radius: 4px;
+        }
+        
+        .company-cell {
+            display: table-cell;
+            width: 50%;
+            vertical-align: middle;
+            padding: 0 12px;
+            border-right: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .company-name {
+            font-size: 13pt;
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+        
+        .company-details {
+            font-size: 8pt;
+            line-height: 1.3;
+            opacity: 0.95;
+        }
+        
+        .doc-cell {
+            display: table-cell;
+            width: 35%;
+            vertical-align: middle;
+            text-align: right;
+            padding: 0 12px;
+        }
+        
+        .doc-title {
+            font-size: 15pt;
+            font-weight: bold;
+            margin-bottom: 3px;
+            letter-spacing: 1px;
+        }
+        
+        .doc-meta {
+            font-size: 8pt;
+            line-height: 1.3;
+            opacity: 0.9;
+        }
+        
+        .info-grid {
+            display: table;
+            width: 100%;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
+        }
+        
+        .info-row {
+            display: table-row;
+        }
+        
+        .info-cell {
+            display: table-cell;
+            width: 50%;
+            border: 1px solid #ddd;
+            padding: 8px;
+            vertical-align: top;
+            font-size: 8.5pt;
+            line-height: 1.4;
+            background-color: #f9f9f9;
+        }
+        
+        .info-cell:nth-child(odd) {
+            background-color: white;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #0f766e;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+            font-size: 7.5pt;
+            letter-spacing: 0.5px;
+        }
+        
+        .compliance-row {
+            display: table;
+            width: 100%;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
+        }
+        
+        .compliance-cell {
+            display: table-cell;
+            width: 33.33%;
+            border: 1px solid #ddd;
+            padding: 8px;
+            font-size: 8pt;
+            vertical-align: top;
+        }
+        
+        .compliance-cell:nth-child(2) {
+            border-left: none;
+            border-right: none;
+        }
+        
+        .compliance-label {
+            font-weight: bold;
+            color: #0f766e;
+            margin-bottom: 2px;
+            font-size: 7.5pt;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #0f766e;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
+        }
+        
+        .items-table th {
+            background-color: #0f766e;
+            color: white;
+            border: 1px solid #0f766e;
+            padding: 6px 4px;
+            font-size: 8pt;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .items-table td {
+            border: 1px solid #ddd;
+            padding: 5px 4px;
+            font-size: 8pt;
+            line-height: 1.3;
+        }
+        
+        .items-table tr:nth-child(even) td {
+            background-color: #f9f9f9;
+        }
+        
+        .totals-wrapper {
+            display: table;
+            width: 100%;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
+        }
+        
+        .amount-words-cell {
+            display: table-cell;
+            width: 45%;
+            vertical-align: top;
+            padding-right: 12px;
+        }
+        
+        .totals-cell {
+            display: table-cell;
+            width: 55%;
+            vertical-align: top;
+        }
+        
+        .amount-words {
+            border: 1px solid #0f766e;
+            background-color: #f0fdfb;
+            padding: 8px;
+            font-size: 8.5pt;
+            line-height: 1.4;
+            page-break-inside: avoid;
+        }
+        
+        .amount-words strong {
+            color: #0f766e;
+            display: block;
+            margin-bottom: 2px;
+        }
+        
+        .totals-box {
+            border: 1px solid #0f766e;
+            border-collapse: collapse;
+            width: 100%;
+        }
+        
+        .totals-box td {
+            border: 1px solid #ddd;
+            padding: 5px 8px;
+            font-size: 8.5pt;
+        }
+        
+        .total-label {
+            background-color: #f0fdfb;
+            font-weight: bold;
+            text-align: right;
+            width: 50%;
+        }
+        
+        .total-amount {
+            text-align: right;
+            font-weight: bold;
+        }
+        
+        .grand-total {
+            background-color: #0f766e;
+            color: white;
+            font-weight: bold;
+            font-size: 9pt;
+        }
+        
+        .grand-total .total-amount {
+            color: white;
+        }
+        
+        .terms-section {
+            border: 1px solid #ddd;
+            padding: 8px;
+            margin-bottom: 12px;
+            font-size: 8pt;
+            line-height: 1.3;
+            page-break-inside: avoid;
+            background-color: #f9f9f9;
+        }
+        
+        .terms-title {
+            font-weight: bold;
+            color: #0f766e;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            font-size: 7.5pt;
+            letter-spacing: 0.5px;
+        }
+        
+        .signature-wrapper {
+            display: table;
+            width: 100%;
+            margin-top: 20px;
+            page-break-inside: avoid;
+        }
+        
+        .signature-column {
+            display: table-cell;
+            width: 50%;
+            text-align: center;
+            padding: 0 10px;
+            font-size: 8pt;
+            vertical-align: top;
+        }
+        
+        .signature-box {
+            border-top: 2px solid #0f766e;
+            padding: 20px 10px 0;
+            display: inline-block;
+            width: 100%;
+        }
+    </style>
 </head>
 <body>
-<div class="page">
-
-<div class="hdr">
-  <div class="hdr-logo">
-    {% if logo_url %}
-      <img src="{{ logo_url }}" alt="{{ company.name }}">
-    {% elif logo_path %}
-      <img src="{{ logo_path }}" alt="{{ company.name }}">
-    {% else %}
-      <div class="monogram">{{ company.name|slice:":2"|upper }}</div>
-    {% endif %}
-  </div>
-  <div class="hdr-co">
-    <div class="co-name">{{ company.name }}</div>
-    <div class="co-meta">
-      {{ company.address_line1 }}{% if company.address_line2 %}, {{ company.address_line2 }}{% endif %}<br>
-      {{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} – {{ company.pincode }}{% endif %}<br>
-      {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}<br>
-      GSTIN: {{ company_gstin|default:"N/A" }}
+    <!-- Header -->
+    <div class="header-wrapper">
+        <div class="logo-cell">
+            {% if logo_url %}
+                <img src="{{ logo_url }}" alt="Logo">
+            {% elif company.logo %}
+                <img src="{{ company.logo.url }}" alt="Logo">
+            {% else %}
+                <div style="width: 55px; height: 55px; background: rgba(255,255,255,0.2); border-radius: 4px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                    <span style="font-size: 8pt;">LOGO</span>
+                </div>
+            {% endif %}
+        </div>
+        <div class="company-cell">
+            <div class="company-name">{{ company.name }}</div>
+            <div class="company-details">
+                {{ company.address|default:"" }}<br>
+                {{ company.city|default:"" }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}<br>
+                GSTIN: {{ company.gst_number|default:"N/A" }} | PAN: {{ company.pan_number|default:"N/A" }}<br>
+                Phone: {{ company.phone|default:"N/A" }} | Email: {{ company.email|default:"N/A" }}
+            </div>
+        </div>
+        <div class="doc-cell">
+            <div class="doc-title">PURCHASE ORDER</div>
+            <div class="doc-meta">
+                <div><strong>{{ purchase_order.po_number }}</strong></div>
+                <div>Issued: {{ purchase_order.po_date|date:"d M Y" }}</div>
+                <div>Delivery: {{ purchase_order.delivery_date|date:"d M Y" }}</div>
+            </div>
+        </div>
     </div>
-  </div>
-  <div class="hdr-doc">
-    <div class="doc-type">Purchase Order</div>
-    <div class="doc-num">{{ purchase_order.po_number }}</div>
-    <div class="doc-date">{{ purchase_order.po_date|date:"d M Y" }}</div>
-  </div>
-</div>
 
-<div class="strip">
-  <div class="sc">
-    <div class="sclbl">Vendor</div>
-    <div class="scval">
-      <strong>{{ customer.name }}</strong>
-      {{ customer.billing_address_line1 }}<br>
-      {% if customer.billing_address_line2 %}{{ customer.billing_address_line2 }}<br>{% endif %}
-      {{ customer.billing_city }}{% if customer.billing_state %}, {{ customer.billing_state }}{% endif %}{% if customer.billing_pincode %} – {{ customer.billing_pincode }}{% endif %}<br>
-      {% if customer.gstin %}GSTIN: {{ customer.gstin }}<br>{% endif %}
-      {% if customer.phone %}Tel: {{ customer.phone }}{% endif %}
+    <!-- Vendor / Ship To -->
+    <div class="info-grid">
+        <div class="info-row">
+            <div class="info-cell">
+                <div class="info-label">Vendor</div>
+                <strong>{{ customer.name }}</strong><br>
+                {{ customer.billing_address_line1|default:"" }}<br>
+                {% if customer.billing_address_line2 %}{{ customer.billing_address_line2 }}<br>{% endif %}
+                {{ customer.billing_city|default:"" }}, {{ customer.billing_state|default:"" }} - {{ customer.billing_pincode|default:"" }}<br>
+                GSTIN: {{ customer.gstin|default:"N/A" }}<br>
+                Phone: {{ customer.phone|default:"N/A" }}
+            </div>
+            <div class="info-cell">
+                <div class="info-label">Ship To</div>
+                {% if purchase_order.shipping_address %}
+                    <strong>{{ purchase_order.shipping_address.label }}</strong><br>
+                    {{ purchase_order.shipping_address.full_address }}
+                {% else %}
+                    Same as Billing Address
+                {% endif %}
+            </div>
+        </div>
     </div>
-  </div>
-  <div class="sc">
-    <div class="sclbl">Ship To</div>
-    <div class="scval">
-      {% if purchase_order.shipping_address %}{{ purchase_order.shipping_address.label }}<br>{{ purchase_order.shipping_address.full_address }}
-      {% else %}<em style="color:#94a3b8">Same as billing address</em>{% endif %}
+
+    <!-- Compliance Fields -->
+    <div class="compliance-row">
+        <div class="compliance-cell">
+            <div class="compliance-label">Place of Supply</div>
+            {{ purchase_order.place_of_supply|default:customer.billing_state|default:"N/A" }}
+        </div>
+        <div class="compliance-cell">
+            <div class="compliance-label">Reverse Charge</div>
+            {% if purchase_order.reverse_charge_applicable %}Yes{% else %}No{% endif %}
+        </div>
+        <div class="compliance-cell">
+            <div class="compliance-label">GST Type</div>
+            {{ purchase_order.gst_type|upper|default:"N/A" }}
+        </div>
     </div>
-  </div>
-  <div class="sc">
-    <div class="sclbl">Details</div>
-    <div class="scval">
-      <table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed">
-        {% if purchase_order.delivery_date %}<tr><td style="color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;width:45%">Delivery Date</td><td style="text-align:right;font-weight:600;word-break:break-word;overflow-wrap:break-word">{{ purchase_order.delivery_date|date:"d/m/Y" }}</td></tr>{% endif %}
-        <tr><td style="color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;width:45%">GST Type</td><td style="text-align:right;font-weight:600;word-break:break-word;overflow-wrap:break-word">{{ purchase_order.gst_type|upper }}</td></tr>
-        {% if purchase_order.reference %}<tr><td style="color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;width:45%">Ref</td><td style="text-align:right;font-weight:600;word-break:break-word;overflow-wrap:break-word">{{ purchase_order.reference }}</td></tr>{% endif %}
-      </table>
-    </div>
-  </div>
-</div>
 
-<div class="comp">
-  <span>{% if purchase_order.shipping_address %}<strong>Place of Supply:</strong> {{ purchase_order.shipping_address.state }}{% else %}<strong>Place of Supply:</strong> {{ purchase_order.place_of_supply|default:customer.billing_state }}{% endif %}</span>
-  <span><strong>Reverse Charge:</strong> {% if purchase_order.reverse_charge_applicable %}Yes{% else %}No{% endif %}</span>
-  <span><strong>Currency:</strong> INR</span>
-</div>
-
-<div class="body">
-
-  <table class="items">
-    <thead>
-      <tr>
-        <th style="width:4%" class="c">#</th>
-        <th style="width:33%">Item Description</th>
-        <th style="width:9%" class="c">HSN/SAC</th>
-        <th style="width:7%" class="c">Qty</th>
-        <th style="width:6%" class="c">Unit</th>
-        <th style="width:11%" class="r">Rate (₹)</th>
-        <th style="width:7%" class="c">GST%</th>
-        <th style="width:11%" class="r">Taxable (₹)</th>
-        <th style="width:11%" class="r">Amount (₹)</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in items %}
-      <tr>
-        <td class="c" style="color:#94a3b8">{{ item.line_number }}</td>
-        <td>
-          <div class="iname">{{ item.product_name }}</div>
-          {% if item.description %}<div class="idesc">{{ item.description }}</div>{% endif %}
-          {% if item.hsn_sac_code %}<span class="ihsn">{{ item.hsn_sac_code }}</span>{% endif %}
-        </td>
-        <td class="c" style="color:#64748b">{{ item.hsn_sac_code|default:"—" }}</td>
-        <td class="c">{{ item.quantity }}</td>
-        <td class="c" style="color:#64748b">{{ item.unit|default:"Nos" }}</td>
-        <td class="r">{{ item.unit_price|floatformat:2 }}</td>
-        <td class="c">{{ item.gst_rate|floatformat:0 }}%</td>
-        <td class="r">{{ item.line_total|floatformat:2 }}</td>
-        <td class="r" style="font-weight:700;color:#0f766e">{{ item.line_total|floatformat:2 }}</td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="9" style="text-align:center;padding:22px;color:#94a3b8;font-style:italic">No items</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <div class="bottom">
-    <div class="words">
-      <div class="wlbl">Amount in Words</div>
-      <div class="wval">{{ purchase_order.total_amount|num_to_words }}</div>
-      <div style="margin-top:8px;font-size:9px;color:#64748b">
-        {% if purchase_order.shipping_address %}<strong>Place of Supply:</strong> {{ purchase_order.shipping_address.state }}{% else %}<strong>Place of Supply:</strong> {{ purchase_order.place_of_supply|default:customer.billing_state }}{% endif %}<br>
-        <strong>Reverse Charge:</strong> {% if purchase_order.reverse_charge_applicable %}Applicable{% else %}Not Applicable{% endif %}
-      </div>
-    </div>
-    <table class="totals">
-      <tr><td class="tl">Subtotal</td><td>₹{{ purchase_order.subtotal|floatformat:2 }}</td></tr>
-      {% if purchase_order.discount_amount > 0 %}
-      <tr><td class="tl">Discount{% if purchase_order.discount_percentage > 0 %} ({{ purchase_order.discount_percentage }}%){% endif %}</td><td style="color:#e53e3e">–₹{{ purchase_order.discount_amount|floatformat:2 }}</td></tr>
-      {% endif %}
-      {% if purchase_order.shipping_charges > 0 %}
-      <tr><td class="tl">Shipping</td><td>₹{{ purchase_order.shipping_charges|floatformat:2 }}</td></tr>
-      {% endif %}
-      {% if purchase_order.other_charges > 0 %}
-      <tr><td class="tl">Other Charges</td><td>₹{{ purchase_order.other_charges|floatformat:2 }}</td></tr>
-      {% endif %}
-      {% if purchase_order.gst_type == "cgst_sgst" %}
-      <tr><td class="tl">CGST</td><td>₹{{ purchase_order.cgst_amount|floatformat:2 }}</td></tr>
-      <tr><td class="tl">SGST</td><td>₹{{ purchase_order.sgst_amount|floatformat:2 }}</td></tr>
-      {% elif purchase_order.gst_type == "igst" %}
-      <tr><td class="tl">IGST</td><td>₹{{ purchase_order.igst_amount|floatformat:2 }}</td></tr>
-      {% endif %}
-      <tr class="grand"><td>Grand Total</td><td>₹{{ purchase_order.total_amount|floatformat:2 }}</td></tr>
+    <!-- Items Table -->
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 5%;">S.No</th>
+                <th style="width: 30%;">Description</th>
+                <th style="width: 10%;">HSN/SAC</th>
+                <th style="width: 8%;">Qty</th>
+                <th style="width: 8%;">Unit</th>
+                <th style="width: 11%;">Rate</th>
+                <th style="width: 6%;">Tax %</th>
+                <th style="width: 8%;">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td style="text-align: center;">{{ forloop.counter }}</td>
+                <td>
+                    <strong>{{ item.product_name }}</strong>
+                    {% if item.description %}<br><small style="font-size: 7pt; color: #666;">{{ item.description }}</small>{% endif %}
+                </td>
+                <td style="text-align: center;">{{ item.hsn_sac_code|default:"N/A" }}</td>
+                <td style="text-align: right;">{{ item.quantity|floatformat:2 }}</td>
+                <td style="text-align: center;">{{ item.unit }}</td>
+                <td style="text-align: right;">₹{{ item.unit_price|floatformat:2 }}</td>
+                <td style="text-align: right;">{{ item.gst_rate|floatformat:0 }}%</td>
+                <td style="text-align: right;">₹{{ item.line_total|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
     </table>
-  </div>
 
-  {% if purchase_order.notes or purchase_order.terms_and_conditions %}
-  <div class="nt">
-    {% if purchase_order.notes %}
-    <div class="ntcard"><div class="nthead">Notes</div><div class="ntbody">{{ purchase_order.notes }}</div></div>
-    {% endif %}
-    {% if purchase_order.terms_and_conditions %}
-    <div class="ntcard"><div class="nthead">Terms &amp; Conditions</div><div class="ntbody">{{ purchase_order.terms_and_conditions }}</div></div>
-    {% endif %}
-  </div>
-  {% endif %}
+    <!-- Amount in Words + Totals -->
+    <div class="totals-wrapper">
+        <div class="amount-words-cell">
+            <div class="amount-words">
+                <strong>Amount in Words</strong>
+                {{ purchase_order.total_amount|num_to_words }}
+            </div>
+        </div>
+        <div class="totals-cell">
+            <table class="totals-box">
+                <tr>
+                    <td class="total-label">Subtotal:</td>
+                    <td class="total-amount">₹{{ purchase_order.subtotal|floatformat:2 }}</td>
+                </tr>
+                {% if purchase_order.discount_amount > 0 %}
+                <tr>
+                    <td class="total-label">Discount:</td>
+                    <td class="total-amount">-₹{{ purchase_order.discount_amount|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                <tr>
+                    <td class="total-label">Taxable:</td>
+                    <td class="total-amount">₹{{ purchase_order.subtotal|floatformat:2 }}</td>
+                </tr>
+                {% if purchase_order.shipping_charges > 0 %}
+                <tr>
+                    <td class="total-label">Shipping:</td>
+                    <td class="total-amount">₹{{ purchase_order.shipping_charges|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                {% if purchase_order.gst_type == "cgst_sgst" %}
+                <tr>
+                    <td class="total-label">CGST:</td>
+                    <td class="total-amount">₹{{ purchase_order.cgst_amount|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <td class="total-label">SGST:</td>
+                    <td class="total-amount">₹{{ purchase_order.sgst_amount|floatformat:2 }}</td>
+                </tr>
+                {% elif purchase_order.gst_type == "igst" %}
+                <tr>
+                    <td class="total-label">IGST:</td>
+                    <td class="total-amount">₹{{ purchase_order.igst_amount|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                <tr class="grand-total">
+                    <td class="total-label">Grand Total:</td>
+                    <td class="total-amount">₹{{ purchase_order.total_amount|floatformat:2 }}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
 
-</div>
+    <!-- Terms -->
+    <div class="terms-section">
+        <div class="terms-title">Terms & Conditions</div>
+        {{ purchase_order.terms_and_conditions|default:"Payment and delivery as per agreed terms. All disputes subject to local jurisdiction."|truncatechars:150 }}
+    </div>
 
-<div class="cgnotice" style="text-align:center;padding:6px 24px;font-size:8.5px;color:#94a3b8;font-family:Arial,sans-serif">This is a computer-generated document. No physical signature is required.</div>
+    <!-- Signatures -->
+    <div class="signature-wrapper">
+        <div class="signature-column">
+            <div class="signature-box">
+                <div style="margin-bottom: 3px; font-size: 7pt; color: #666;">Authorized By</div>
+                <div style="margin-top: 20px;">
+                    <strong>{{ company.name|slice:":20" }}</strong><br>
+                    <small>Authorized Signatory</small>
+                </div>
+            </div>
+        </div>
+        <div class="signature-column">
+            <div class="signature-box">
+                <div style="margin-bottom: 3px; font-size: 7pt; color: #666;">Accepted By</div>
+                <div style="margin-top: 20px;">
+                    <strong>{{ customer.name|slice:":20" }}</strong><br>
+                    <small>Authorized Representative</small>
+                </div>
+            </div>
+        </div>
+    </div>
 
-<div class="footer">
-  <span>{{ company.name }} | GSTIN: {{ company_gstin|default:"N/A" }}</span>
-  <span>Computer-generated document</span>
-  <span>{{ purchase_order.po_date|date:"d M Y" }}</span>
-</div>
-
-</div>
+    <div style="text-align:center;padding:10px 0 2px;font-size:7px;color:#999;border-top:1px solid #ddd;margin-top:10px">This is a computer-generated professional purchase order. Please retain for records.</div>
 </body>
 </html>

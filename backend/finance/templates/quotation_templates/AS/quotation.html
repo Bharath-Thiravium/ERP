@@ -7,118 +7,149 @@
     <style>
         @page {
             size: A4;
-            margin: 20mm 15mm 20mm 15mm;
+            margin: 12mm 12mm 12mm 12mm;
+            orphans: 2;
+            widows: 2;
         }
         
         body {
             font-family: Roboto, Arial, sans-serif;
-            font-size: 10pt;
+            font-size: 9pt;
             line-height: 1.3;
             margin: 0;
             padding: 0;
             color: #333;
         }
         
-        /* Classic Template - ERP Style with Strong Borders */
+        /* Clean & Simple: 3-column header */
         .header-table {
             width: 100%;
             border-collapse: collapse;
             border: 2px solid #000;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
         }
         
         .header-table td {
             border: 1px solid #000;
-            padding: 8px;
+            padding: 6px;
             vertical-align: top;
         }
         
         .company-logo {
-            width: 80px;
+            width: 15%;
             text-align: center;
             font-weight: bold;
-            font-size: 12pt;
+            font-size: 11pt;
+        }
+        
+        .company-logo img {
+            max-width: 50px;
+            max-height: 50px;
+            display: block;
+            margin: 0 auto;
         }
         
         .company-details {
-            width: 60%;
+            width: 55%;
+            font-size: 8.5pt;
+            line-height: 1.4;
         }
         
         .company-name {
-            font-size: 14pt;
+            font-size: 12pt;
             font-weight: bold;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
         
         .document-title {
-            width: 25%;
+            width: 30%;
             text-align: center;
-            background-color: #f0f0f0;
+            background-color: #f5f5f5;
+            border-left: 1px solid #000;
+            padding: 10px 6px !important;
         }
         
         .document-title h1 {
-            margin: 0;
-            font-size: 16pt;
+            margin: 0 0 4px 0;
+            font-size: 14pt;
             font-weight: bold;
+            letter-spacing: 1px;
+        }
+        
+        .doc-meta {
+            font-size: 8pt;
+            line-height: 1.3;
+            color: #555;
         }
         
         .customer-section {
             width: 100%;
             border-collapse: collapse;
             border: 2px solid #000;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
         }
         
         .customer-section td {
             border: 1px solid #000;
-            padding: 8px;
+            padding: 6px;
             vertical-align: top;
+            font-size: 8.5pt;
+            line-height: 1.4;
         }
         
         .section-header {
-            background-color: #e0e0e0;
+            background-color: #ddd;
             font-weight: bold;
             text-align: center;
+            width: 50%;
         }
         
         .items-table {
             width: 100%;
             border-collapse: collapse;
             border: 2px solid #000;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
+            page-break-inside: avoid;
         }
         
         .items-table th {
-            background-color: #d0d0d0;
+            background-color: #ccc;
             border: 1px solid #000;
-            padding: 6px 4px;
-            font-size: 9pt;
+            padding: 5px 3px;
+            font-size: 8pt;
             font-weight: bold;
             text-align: center;
         }
         
         .items-table td {
             border: 1px solid #000;
-            padding: 6px 4px;
-            font-size: 9pt;
+            padding: 5px 3px;
+            font-size: 8pt;
+            line-height: 1.3;
         }
         
         .totals-box {
-            width: 50%;
+            width: 45%;
             float: right;
             border: 2px solid #000;
             border-collapse: collapse;
+            page-break-inside: avoid;
+            margin-bottom: 12px;
         }
         
         .totals-box td {
             border: 1px solid #000;
-            padding: 6px 10px;
+            padding: 5px 8px;
+            font-size: 8.5pt;
         }
         
         .total-label {
-            background-color: #e0e0e0;
+            background-color: #ddd;
             font-weight: bold;
             text-align: right;
+            width: 50%;
         }
         
         .total-amount {
@@ -127,41 +158,58 @@
         }
         
         .grand-total {
-            background-color: #d0d0d0;
+            background-color: #ccc;
             font-weight: bold;
-            font-size: 11pt;
+            font-size: 9pt;
+        }
+        
+        .amount-words {
+            clear: both;
+            margin-bottom: 12px;
+            font-weight: bold;
+            border: 1px solid #000;
+            padding: 6px;
+            background-color: #f9f9f9;
+            font-size: 8.5pt;
+            page-break-inside: avoid;
         }
         
         .terms-section {
             clear: both;
-            margin-top: 20px;
+            margin-bottom: 12px;
             border: 1px solid #000;
-            padding: 10px;
+            padding: 6px;
+            font-size: 8pt;
+            line-height: 1.3;
+            page-break-inside: avoid;
         }
         
         .signature-section {
-            margin-top: 30px;
+            margin-top: 20px;
             text-align: right;
+            font-size: 8pt;
+            page-break-inside: avoid;
         }
         
-        .amount-words {
-            margin-top: 10px;
-            font-weight: bold;
-            border: 1px solid #000;
-            padding: 8px;
-            background-color: #f8f8f8;
+        .signature-box {
+            display: inline-block;
+            text-align: center;
+            padding: 25px 30px 0;
+            border-top: 2px solid #000;
         }
     </style>
 </head>
 <body>
-    <!-- Header Section -->
+    <!-- Header Section: 3-column layout -->
     <table class="header-table">
         <tr>
             <td class="company-logo">
-                {% if company.logo %}
-                    <img src="{{ company.logo.url }}" alt="Logo" style="max-width: 60px; max-height: 60px;">
+                {% if logo_url %}
+                    <img src="{{ logo_url }}" alt="Logo">
+                {% elif company.logo %}
+                    <img src="{{ company.logo.url }}" alt="Logo">
                 {% else %}
-                    LOGO
+                    <div style="border: 1px solid #ccc; width: 50px; height: 50px; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 9px;">LOGO</div>
                 {% endif %}
             </td>
             <td class="company-details">
@@ -173,8 +221,10 @@
             </td>
             <td class="document-title">
                 <h1>QUOTATION</h1>
-                <div>{{ quotation.quotation_number }}</div>
-                <div>{{ quotation.quotation_date|date:"d/m/Y" }}</div>
+                <div class="doc-meta">
+                    <div><strong>{{ quotation.quotation_number }}</strong></div>
+                    <div>{{ quotation.quotation_date|date:"d/m/Y" }}</div>
+                </div>
             </td>
         </tr>
     </table>
@@ -182,24 +232,22 @@
     <!-- Customer Section -->
     <table class="customer-section">
         <tr>
-            <td class="section-header" style="width: 50%;">BILL TO</td>
-            <td class="section-header" style="width: 50%;">SHIP TO</td>
+            <td class="section-header">BILL TO</td>
+            <td class="section-header">SHIP TO</td>
         </tr>
         <tr>
             <td>
-                <strong>{{ quotation.customer.name }}</strong><br>
-                {{ quotation.customer.billing_address_line1|default:"" }}<br>
-                {% if quotation.customer.billing_address_line2 %}{{ quotation.customer.billing_address_line2 }}<br>{% endif %}
-                {{ quotation.customer.billing_city|default:"" }}, {{ quotation.customer.billing_state|default:"" }} - {{ quotation.customer.billing_pincode|default:"" }}<br>
-                GSTIN: {{ quotation.customer.gstin|default:"N/A" }}<br>
-                State Code: {{ quotation.customer.state_code|default:"N/A" }}
+                <strong>{{ customer.name }}</strong><br>
+                {{ customer.billing_address_line1|default:"" }}<br>
+                {% if customer.billing_address_line2 %}{{ customer.billing_address_line2 }}<br>{% endif %}
+                {{ customer.billing_city|default:"" }}, {{ customer.billing_state|default:"" }} - {{ customer.billing_pincode|default:"" }}<br>
+                GSTIN: {{ customer.gstin|default:"N/A" }}<br>
+                Phone: {{ customer.phone|default:"N/A" }}
             </td>
             <td>
                 {% if quotation.shipping_address %}
-                    <strong>{{ quotation.customer.name }}</strong><br>
-                    {{ quotation.shipping_address.address_line1 }}<br>
-                    {% if quotation.shipping_address.address_line2 %}{{ quotation.shipping_address.address_line2 }}<br>{% endif %}
-                    {{ quotation.shipping_address.city }}, {{ quotation.shipping_address.state }} - {{ quotation.shipping_address.pincode }}
+                    <strong>{{ customer.name }}</strong><br>
+                    {{ quotation.shipping_address.full_address }}
                 {% else %}
                     Same as Billing Address
                 {% endif %}
@@ -207,19 +255,19 @@
         </tr>
     </table>
 
-    <!-- Document Meta -->
-    <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 15px;">
+    <!-- Document Info -->
+    <table style="width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 12px; page-break-inside: avoid;">
         <tr>
-            <td style="border: 1px solid #000; padding: 6px; background-color: #e0e0e0; font-weight: bold;">Quotation Number</td>
-            <td style="border: 1px solid #000; padding: 6px;">{{ quotation.quotation_number }}</td>
-            <td style="border: 1px solid #000; padding: 6px; background-color: #e0e0e0; font-weight: bold;">Date</td>
-            <td style="border: 1px solid #000; padding: 6px;">{{ quotation.quotation_date|date:"d/m/Y" }}</td>
+            <td style="border: 1px solid #000; padding: 5px; background-color: #ddd; font-weight: bold; font-size: 8pt;">Quotation #</td>
+            <td style="border: 1px solid #000; padding: 5px; font-size: 8pt;">{{ quotation.quotation_number }}</td>
+            <td style="border: 1px solid #000; padding: 5px; background-color: #ddd; font-weight: bold; font-size: 8pt;">Date</td>
+            <td style="border: 1px solid #000; padding: 5px; font-size: 8pt;">{{ quotation.quotation_date|date:"d/m/Y" }}</td>
         </tr>
         <tr>
-            <td style="border: 1px solid #000; padding: 6px; background-color: #e0e0e0; font-weight: bold;">Valid Until</td>
-            <td style="border: 1px solid #000; padding: 6px;">{{ quotation.valid_until|date:"d/m/Y" }}</td>
-            <td style="border: 1px solid #000; padding: 6px; background-color: #e0e0e0; font-weight: bold;">Reference</td>
-            <td style="border: 1px solid #000; padding: 6px;">{{ quotation.reference|default:"N/A" }}</td>
+            <td style="border: 1px solid #000; padding: 5px; background-color: #ddd; font-weight: bold; font-size: 8pt;">Valid Until</td>
+            <td style="border: 1px solid #000; padding: 5px; font-size: 8pt;">{{ quotation.valid_until|date:"d/m/Y" }}</td>
+            <td style="border: 1px solid #000; padding: 5px; background-color: #ddd; font-weight: bold; font-size: 8pt;">GST Type</td>
+            <td style="border: 1px solid #000; padding: 5px; font-size: 8pt;">{{ quotation.gst_type|upper }}</td>
         </tr>
     </table>
 
@@ -233,7 +281,6 @@
                 <th style="width: 8%;">Qty</th>
                 <th style="width: 8%;">Unit</th>
                 <th style="width: 12%;">Rate</th>
-                <th style="width: 8%;">Discount</th>
                 <th style="width: 6%;">Tax %</th>
                 <th style="width: 8%;">Amount</th>
             </tr>
@@ -244,13 +291,12 @@
                 <td style="text-align: center;">{{ forloop.counter }}</td>
                 <td>
                     <strong>{{ item.product_name }}</strong>
-                    {% if item.description %}<br><small>{{ item.description }}</small>{% endif %}
+                    {% if item.description %}<br><small style="font-size: 7pt;">{{ item.description }}</small>{% endif %}
                 </td>
                 <td style="text-align: center;">{{ item.hsn_sac_code|default:"N/A" }}</td>
                 <td style="text-align: right;">{{ item.quantity|floatformat:2 }}</td>
                 <td style="text-align: center;">{{ item.unit }}</td>
                 <td style="text-align: right;">₹{{ item.unit_price|floatformat:2 }}</td>
-                <td style="text-align: right;">-</td>
                 <td style="text-align: right;">{{ item.gst_rate|floatformat:0 }}%</td>
                 <td style="text-align: right;">₹{{ item.line_total|floatformat:2 }}</td>
             </tr>
@@ -258,7 +304,7 @@
         </tbody>
     </table>
 
-    <!-- Totals Section -->
+    <!-- Totals -->
     <table class="totals-box">
         <tr>
             <td class="total-label">Subtotal:</td>
@@ -271,25 +317,22 @@
         </tr>
         {% endif %}
         <tr>
-            <td class="total-label">Taxable Amount:</td>
+            <td class="total-label">Taxable:</td>
             <td class="total-amount">₹{{ quotation.subtotal|floatformat:2 }}</td>
         </tr>
-        {% if quotation.shipping_charges > 0 %}
+        {% if quotation.gst_type == "cgst_sgst" %}
         <tr>
-            <td class="total-label">Freight/Shipping:</td>
-            <td class="total-amount">₹{{ quotation.shipping_charges|floatformat:2 }}</td>
+            <td class="total-label">CGST:</td>
+            <td class="total-amount">₹{{ quotation.cgst_amount|floatformat:2 }}</td>
         </tr>
-        {% endif %}
-        {% if quotation.other_charges > 0 %}
         <tr>
-            <td class="total-label">Other Charges:</td>
-            <td class="total-amount">₹{{ quotation.other_charges|floatformat:2 }}</td>
+            <td class="total-label">SGST:</td>
+            <td class="total-amount">₹{{ quotation.sgst_amount|floatformat:2 }}</td>
         </tr>
-        {% endif %}
-        {% if quotation.total_tax > 0 %}
+        {% elif quotation.gst_type == "igst" %}
         <tr>
-            <td class="total-label">Tax Amount:</td>
-            <td class="total-amount">₹{{ quotation.total_tax|floatformat:2 }}</td>
+            <td class="total-label">IGST:</td>
+            <td class="total-amount">₹{{ quotation.igst_amount|floatformat:2 }}</td>
         </tr>
         {% endif %}
         <tr class="grand-total">
@@ -303,19 +346,20 @@
         <strong>Amount in Words:</strong> {{ quotation.total_amount|num_to_words }}
     </div>
 
-    <!-- Terms and Conditions -->
+    <!-- Terms -->
     <div class="terms-section">
-        <strong>Scope of Work:</strong><br>
-        {{ quotation.notes|default:"As per customer requirements"|linebreaks }}
-        
-        <br><strong>Delivery Timeline:</strong><br>
-        As per agreed schedule
-        
-        <br><strong>Terms & Conditions:</strong><br>
-        {{ quotation.terms_and_conditions|default:"1. Prices are valid for 30 days from quotation date<br>2. Payment terms as agreed<br>3. All disputes subject to local jurisdiction"|safe }}
+        <strong>Terms & Conditions:</strong><br>
+        {{ quotation.terms_and_conditions|default:"Quotation valid for 30 days from the date of issue."|truncatechars:150 }}
     </div>
 
-    <div style="text-align:center;padding:14px 0 6px;font-size:9px;color:#64748b;border-top:1px solid #e5e7eb;margin-top:16px">This is a computer-generated document. No physical signature is required.</div>
+    <!-- Signature -->
+    <div class="signature-section">
+        <div class="signature-box">
+            <div style="color: #666; font-size: 7pt; margin-bottom: 2px;">For {{ company.name }}</div>
+            <div style="margin-top: 25px; padding-top: 5px;">Authorized Signatory</div>
+        </div>
     </div>
+
+    <div style="text-align:center;padding:12px 0 2px;font-size:7px;color:#888;border-top:1px solid #ddd;margin-top:12px">This is a computer-generated document. No physical signature is required.</div>
 </body>
 </html>

@@ -84,10 +84,15 @@ class ProformaInvoicePDFService:
             shipping_address_obj = self._resolve_effective_shipping_address(proforma)
             if shipping_address_obj is not None:
                 # Ensure templates that reference proforma.shipping_address still work
-                proforma._state.fields_cache['shipping_address'] = shipping_address_obj
+                # Handle both Django model instances and SimpleNamespace mock objects
+                if hasattr(proforma, '_state'):
+                    proforma._state.fields_cache['shipping_address'] = shipping_address_obj
+                else:
+                    # For mock objects (SimpleNamespace), set as attribute
+                    proforma.shipping_address = shipping_address_obj
 
             shipping_label = 'Same as Billing Address'
-            shipping_address_text = proforma.customer.full_billing_address
+            shipping_address_text = getattr(proforma.customer, 'full_billing_address', 'Billing Address')
             if shipping_address_obj is not None:
                 shipping_label = getattr(shipping_address_obj, 'label', 'Shipping Address')
                 shipping_address_text = getattr(shipping_address_obj, 'full_address', shipping_address_text)
@@ -107,21 +112,21 @@ class ProformaInvoicePDFService:
             
             return context
         except Exception as e:
-            logger.error(f"Error preparing context for proforma {proforma.proforma_number}: {str(e)}")
+            logger.error(f"Error preparing context for proforma {getattr(proforma, 'proforma_number', 'unknown')}: {str(e)}")
             raise
 
     def _resolve_effective_shipping_address(self, proforma):
         """Resolve the shipping address used for rendering proforma PDFs."""
         # Priority 1: Proforma-specific shipping address
-        if proforma.shipping_address:
+        if getattr(proforma, 'shipping_address', None):
             return proforma.shipping_address
 
         # Priority 2: Purchase order shipping address
-        if hasattr(proforma, 'purchase_order') and proforma.purchase_order and proforma.purchase_order.shipping_address:
+        if hasattr(proforma, 'purchase_order') and proforma.purchase_order and getattr(proforma.purchase_order, 'shipping_address', None):
             return proforma.purchase_order.shipping_address
 
         # Priority 3: Quotation shipping address
-        if hasattr(proforma, 'quotation') and proforma.quotation and proforma.quotation.shipping_address:
+        if hasattr(proforma, 'quotation') and proforma.quotation and getattr(proforma.quotation, 'shipping_address', None):
             return proforma.quotation.shipping_address
 
         # Priority 4: Customer default shipping address
@@ -173,7 +178,7 @@ class ProformaInvoicePDFService:
         """Generate PDF from HTML content using WeasyPrint"""
         try:
             # Create HTML object
-            html_doc = HTML(string=html_content, base_url=settings.BASE_DIR)
+            html_doc = HTML(string=html_content, base_url='https://sap.athenas.co.in')
             
             # Generate PDF
             pdf_bytes = html_doc.write_pdf(font_config=self.font_config)

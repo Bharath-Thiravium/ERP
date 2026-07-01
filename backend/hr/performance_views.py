@@ -6,13 +6,15 @@ from django.utils import timezone
 from datetime import datetime, timedelta, date
 
 from authentication.models import ServiceUserSession
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from .models import Employee, PerformanceReview, Attendance
 from .serializers import PerformanceReviewSerializer
 
 
 class PerformanceViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = PerformanceReviewSerializer
 
     def get_queryset(self):

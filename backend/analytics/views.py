@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 from django.db.models import Count, Avg
 from django.utils import timezone
 
@@ -15,29 +16,83 @@ from .models import SystemMetrics, ServiceHealth, APIMetrics, SystemAlert
 from finance.models import Invoice, Payment
 from hr.models import Employee, Attendance
 from inventory.models import Product, StockMovement
+from authentication.permissions import IsMasterAdmin
+
+
+def _get_service_metrics_for_company(company):
+    """Build service metrics dict for a single company."""
+    finance_data = {
+        'total_invoices': Invoice.objects.filter(company=company).count(),
+        'pending_payments': Payment.objects.filter(company=company, status='pending').count(),
+        'total_revenue': sum(
+            p.amount for p in Payment.objects.filter(company=company, status='completed')
+        ),
+        'recent_transactions': Payment.objects.filter(
+            company=company,
+            created_at__gte=timezone.now() - timedelta(days=7)
+        ).count()
+    }
+
+    hr_data = {
+        'total_employees': Employee.objects.filter(company=company).count(),
+        'present_today': Attendance.objects.filter(
+            employee__company=company,
+            date=timezone.now().date(),
+            status='present'
+        ).count(),
+        'on_leave': Employee.objects.filter(company=company, status='on_leave').count(),
+        'recent_hires': Employee.objects.filter(
+            company=company,
+            date_of_joining__gte=timezone.now() - timedelta(days=30)
+        ).count()
+    }
+
+    low_stock = 0
+    out_of_stock = 0
+    for product in Product.objects.filter(company=company):
+        stock = product.current_stock
+        if stock <= product.min_stock_level and product.min_stock_level > 0:
+            low_stock += 1
+        if stock == 0:
+            out_of_stock += 1
+
+    inventory_data = {
+        'total_products': Product.objects.filter(company=company).count(),
+        'low_stock_items': low_stock,
+        'out_of_stock': out_of_stock,
+        'recent_movements': StockMovement.objects.filter(
+            product__company=company,
+            created_at__gte=timezone.now() - timedelta(days=7)
+        ).count()
+    }
+
+    return {
+        'company_id': company.id,
+        'company_name': company.name,
+        'finance': finance_data,
+        'hr': hr_data,
+        'inventory': inventory_data
+    }
+
+
+# ── System-level endpoints — Master Admin only ─────────────────────────────────
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsMasterAdmin])
 def system_overview(request):
-    """Get system overview metrics"""
-    
+    """Get system overview metrics (Master Admin only)."""
     try:
-        # Get current system metrics
         cpu_percent = psutil.cpu_percent(interval=1)
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
-        
-        # Count active users (logged in last 24 hours)
+
         active_users = User.objects.filter(
             last_login__gte=timezone.now() - timedelta(hours=24)
         ).count()
-        
-        # Database connections
+
         db_connections = len(connection.queries)
-        
-        # Get service health (without creating new records)
         services = ServiceHealth.objects.all()
-        
+
         return Response({
             'system_metrics': {
                 'cpu_usage': cpu_percent,
@@ -57,7 +112,6 @@ def system_overview(request):
             'alerts_count': SystemAlert.objects.filter(is_resolved=False).count()
         })
     except Exception as e:
-        # Return basic data if there are issues
         return Response({
             'system_metrics': {
                 'cpu_usage': 0,
@@ -72,95 +126,73 @@ def system_overview(request):
             'error': str(e)
         })
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def service_metrics(request):
-    """Get detailed service metrics per company"""
-    from authentication.models import Company
-    
-    companies_data = []
-    
-    # Get all companies
-    companies = Company.objects.filter(approval_status='approved')
-    
-    for company in companies:
-        # Finance service metrics for this company
-        finance_data = {
-            'total_invoices': Invoice.objects.filter(company=company).count(),
-            'pending_payments': Payment.objects.filter(company=company, status='pending').count(),
-            'total_revenue': sum(p.amount for p in Payment.objects.filter(company=company, status='completed')),
-            'recent_transactions': Payment.objects.filter(
-                company=company,
-                created_at__gte=timezone.now() - timedelta(days=7)
-            ).count()
-        }
-        
-        # HR service metrics for this company
-        hr_data = {
-            'total_employees': Employee.objects.filter(company=company).count(),
-            'present_today': Attendance.objects.filter(
-                employee__company=company,
-                date=timezone.now().date(),
-                status='present'
-            ).count(),
-            'on_leave': Employee.objects.filter(company=company, status='on_leave').count(),
-            'recent_hires': Employee.objects.filter(
-                company=company,
-                date_of_joining__gte=timezone.now() - timedelta(days=30)
-            ).count()
-        }
-        
-        # Inventory service metrics for this company
-        low_stock_products = 0
-        out_of_stock_products = 0
-        
-        for product in Product.objects.filter(company=company):
-            current_stock = product.current_stock
-            if current_stock <= product.min_stock_level and product.min_stock_level > 0:
-                low_stock_products += 1
-            if current_stock == 0:
-                out_of_stock_products += 1
-        
-        inventory_data = {
-            'total_products': Product.objects.filter(company=company).count(),
-            'low_stock_items': low_stock_products,
-            'out_of_stock': out_of_stock_products,
-            'recent_movements': StockMovement.objects.filter(
-                product__company=company,
-                created_at__gte=timezone.now() - timedelta(days=7)
-            ).count()
-        }
-        
-        companies_data.append({
-            'company_id': company.id,
-            'company_name': company.name,
-            'finance': finance_data,
-            'hr': hr_data,
-            'inventory': inventory_data
+    """
+    Get detailed service metrics.
+
+    Master Admin: returns data for ALL approved companies plus global totals.
+    Company User: returns data for their own company only, no global totals.
+    Service Users authenticate via a different path and are not served by this endpoint.
+    """
+    from authentication.models import Company, MasterAdmin
+
+    # Determine company scope from the authenticated caller
+    requesting_company = None
+    is_master = False
+
+    try:
+        _ = request.user.master_admin
+        is_master = True
+    except (MasterAdmin.DoesNotExist, AttributeError):
+        pass
+
+    if not is_master:
+        if hasattr(request.user, 'company_user'):
+            try:
+                requesting_company = request.user.company_user.company
+            except Exception:
+                pass
+        elif hasattr(request, 'service_user') and request.service_user:
+            requesting_company = request.service_user.company
+
+        if requesting_company is None:
+            return Response({'error': 'Could not determine company context.'}, status=403)
+
+    if requesting_company is not None:
+        # Scoped view: single company
+        entry = _get_service_metrics_for_company(requesting_company)
+        return Response({
+            'companies': [entry],
+            'totals': None,
+            'timestamp': timezone.now()
         })
-    
-    # Also provide totals across all companies
+
+    # Master Admin: all approved companies
+    companies = Company.objects.filter(approval_status='approved')
+    companies_data = [_get_service_metrics_for_company(c) for c in companies]
+
     total_finance = {
         'total_invoices': sum(c['finance']['total_invoices'] for c in companies_data),
         'pending_payments': sum(c['finance']['pending_payments'] for c in companies_data),
         'total_revenue': sum(c['finance']['total_revenue'] for c in companies_data),
         'recent_transactions': sum(c['finance']['recent_transactions'] for c in companies_data)
     }
-    
     total_hr = {
         'total_employees': sum(c['hr']['total_employees'] for c in companies_data),
         'present_today': sum(c['hr']['present_today'] for c in companies_data),
         'on_leave': sum(c['hr']['on_leave'] for c in companies_data),
         'recent_hires': sum(c['hr']['recent_hires'] for c in companies_data)
     }
-    
     total_inventory = {
         'total_products': sum(c['inventory']['total_products'] for c in companies_data),
         'low_stock_items': sum(c['inventory']['low_stock_items'] for c in companies_data),
         'out_of_stock': sum(c['inventory']['out_of_stock'] for c in companies_data),
         'recent_movements': sum(c['inventory']['recent_movements'] for c in companies_data)
     }
-    
+
     return Response({
         'companies': companies_data,
         'totals': {
@@ -171,24 +203,22 @@ def service_metrics(request):
         'timestamp': timezone.now()
     })
 
+
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsMasterAdmin])
 def performance_metrics(request):
-    """Get performance metrics over time"""
-    
-    # Get metrics from last 24 hours
+    """Get performance metrics over time (Master Admin only)."""
     metrics = SystemMetrics.objects.filter(
         timestamp__gte=timezone.now() - timedelta(hours=24)
     ).order_by('timestamp')
-    
-    # API performance
+
     api_metrics = APIMetrics.objects.filter(
         timestamp__gte=timezone.now() - timedelta(hours=24)
     ).values('endpoint').annotate(
         avg_response_time=Avg('response_time'),
         request_count=Count('id')
     )
-    
+
     return Response({
         'system_metrics': [{
             'timestamp': metric.timestamp,
@@ -206,13 +236,13 @@ def performance_metrics(request):
         } for service in ServiceHealth.objects.all()]
     })
 
+
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsMasterAdmin])
 def system_alerts(request):
-    """Get system alerts"""
-    
+    """Get system alerts (Master Admin only)."""
     alerts = SystemAlert.objects.filter(is_resolved=False).order_by('-created_at')
-    
+
     return Response({
         'alerts': [{
             'id': alert.id,
@@ -225,37 +255,39 @@ def system_alerts(request):
         } for alert in alerts]
     })
 
+
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsMasterAdmin])
 def resolve_alert(request, alert_id):
-    """Resolve a system alert"""
-    
+    """Resolve a system alert (Master Admin only)."""
     try:
         alert = SystemAlert.objects.get(id=alert_id)
         alert.is_resolved = True
         alert.resolved_at = timezone.now()
         alert.save()
-        
         return Response({'message': 'Alert resolved successfully'})
     except SystemAlert.DoesNotExist:
         return Response({'error': 'Alert not found'}, status=404)
 
+
+# ── Utilities ──────────────────────────────────────────────────────────────────
+
 def get_system_uptime():
-    """Get system uptime in seconds"""
+    """Get system uptime in seconds."""
     try:
         return time.time() - psutil.boot_time()
-    except:
+    except Exception:
         return 0
 
+
 def check_service_health():
-    """Background task to check service health"""
+    """Background task to check service health."""
     services = ['finance', 'hr', 'inventory', 'authentication', 'database']
-    
+
     for service_name in services:
         try:
             start_time = time.time()
-            
-            # Simple health check based on service
+
             if service_name == 'finance':
                 Invoice.objects.count()
             elif service_name == 'hr':
@@ -266,10 +298,9 @@ def check_service_health():
                 User.objects.count()
             elif service_name == 'database':
                 connection.cursor().execute('SELECT 1')
-            
+
             response_time = (time.time() - start_time) * 1000
-            
-            # Update or create service health record
+
             service_health, created = ServiceHealth.objects.get_or_create(
                 service_name=service_name,
                 defaults={
@@ -278,14 +309,13 @@ def check_service_health():
                     'uptime_percentage': 100.0
                 }
             )
-            
+
             if not created:
                 service_health.status = 'healthy' if response_time < 1000 else 'warning'
                 service_health.response_time = response_time
                 service_health.save()
-                
+
         except Exception as e:
-            # Mark service as down
             ServiceHealth.objects.update_or_create(
                 service_name=service_name,
                 defaults={

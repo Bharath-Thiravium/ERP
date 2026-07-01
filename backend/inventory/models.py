@@ -265,16 +265,16 @@ class Warehouse(models.Model):
     def capacity_utilization(self):
         """Calculate capacity utilization percentage"""
         try:
-            total_capacity = float(self.total_capacity or 0)
-            used_capacity = float(self.used_capacity or 0)
-            
+            total_capacity = Decimal(self.total_capacity or 0)
+            used_capacity = Decimal(self.used_capacity or 0)
+
             if total_capacity > 0:
                 return (used_capacity / total_capacity) * 100
-            return 0
+            return Decimal('0')
         except (TypeError, ZeroDivisionError, ValueError) as e:
             import logging
             logging.error(f"Error calculating capacity utilization for warehouse {self.id}: {e}")
-            return 0
+            return Decimal('0')
 
 
 class Product(models.Model):
@@ -466,20 +466,20 @@ class Product(models.Model):
     def stock_value(self):
         """Calculate total stock value"""
         try:
-            current_stock = self.current_stock or 0
-            cost_price = self.cost_price or 0
-            return float(current_stock) * float(cost_price)
+            current_stock = Decimal(self.current_stock or 0)
+            cost_price = Decimal(self.cost_price or 0)
+            return current_stock * cost_price
         except (TypeError, AttributeError, ValueError) as e:
             import logging
             logging.error(f"Error calculating stock value for product {self.id}: {e}")
-            return 0
+            return Decimal('0')
 
     def is_low_stock(self):
         """Check if product is below minimum stock level"""
         try:
-            current_stock = self.current_stock or 0
-            min_stock_level = self.min_stock_level or 0
-            return float(current_stock) <= float(min_stock_level)
+            current_stock = Decimal(self.current_stock or 0)
+            min_stock_level = Decimal(self.min_stock_level or 0)
+            return current_stock <= min_stock_level
         except (TypeError, AttributeError, ValueError) as e:
             import logging
             logging.error(f"Error checking low stock for product {self.id}: {e}")
@@ -488,9 +488,9 @@ class Product(models.Model):
     def needs_reorder(self):
         """Check if product needs reordering"""
         try:
-            current_stock = self.current_stock or 0
-            reorder_point = self.reorder_point or 0
-            return float(current_stock) <= float(reorder_point)
+            current_stock = Decimal(self.current_stock or 0)
+            reorder_point = Decimal(self.reorder_point or 0)
+            return current_stock <= reorder_point
         except (TypeError, AttributeError, ValueError) as e:
             import logging
             logging.error(f"Error checking reorder need for product {self.id}: {e}")

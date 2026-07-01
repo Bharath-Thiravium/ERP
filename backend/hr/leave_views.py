@@ -7,7 +7,10 @@ from decimal import Decimal
 import calendar as cal_module
 from django.core.exceptions import ValidationError
 
+from django.db import transaction
 from authentication.models import ServiceUserSession
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from .leave_models import LeaveType, LeaveBalance, LeaveApplication, Holiday
 from .models import Employee
 from .security_utils import SecurityValidator, secure_session_check, validate_year_param, validate_month_param, sanitize_filename
@@ -33,10 +36,35 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
 class LeaveApplicationSerializer(serializers.ModelSerializer):
     leave_type_name = serializers.CharField(source='leave_type.name', read_only=True)
     employee_name = serializers.CharField(source='employee.full_name', read_only=True)
-    
+
     class Meta:
         model = LeaveApplication
         fields = '__all__'
+
+    def _get_context_company(self):
+        request = self.context.get('request')
+        service_user = getattr(request, 'service_user', None) if request else None
+        return service_user.company if service_user else None
+
+    def validate_employee(self, value):
+        company = self._get_context_company()
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError('Employee not found or access denied.')
+        return value
+
+    def validate_leave_type(self, value):
+        company = self._get_context_company()
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError('Leave type not found or access denied.')
+        return value
+
+    def validate_approved_by(self, value):
+        if value is None:
+            return value
+        company = self._get_context_company()
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError('Approver not found or access denied.')
+        return value
 
 
 class HolidaySerializer(serializers.ModelSerializer):
@@ -47,8 +75,8 @@ class HolidaySerializer(serializers.ModelSerializer):
 
 
 class LeaveTypeViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = LeaveTypeSerializer
 
     def get_queryset(self):
@@ -148,8 +176,8 @@ class LeaveTypeViewSet(viewsets.ModelViewSet):
 
 
 class LeaveBalanceViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = LeaveBalanceSerializer
 
     def get_queryset(self):
@@ -327,8 +355,8 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
 
 
 class LeaveApplicationViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = LeaveApplicationSerializer
 
     def get_queryset(self):
@@ -363,29 +391,30 @@ class LeaveApplicationViewSet(viewsets.ModelViewSet):
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             application = self.get_object()
-            
+
             if application.status == 'approved':
                 return Response({'message': 'Leave already approved'})
 
-            application.status = 'approved'
-            application.approved_date = timezone.now()
-            application.save()
+            with transaction.atomic():
+                application.status = 'approved'
+                application.approved_date = timezone.now()
+                application.save()
 
-            days = Decimal(str(application.total_days))
-            balance, created = LeaveBalance.objects.get_or_create(
-                employee=application.employee,
-                leave_type=application.leave_type,
-                year=application.from_date.year,
-                defaults={
-                    'opening_balance': 0,
-                    'credited': application.leave_type.days_per_year,
-                    'used': days,
-                    'closing_balance': application.leave_type.days_per_year - days,
-                }
-            )
-            if not created:
-                balance.used += days
-                balance.calculate_balance()
+                days = Decimal(str(application.total_days))
+                balance, created = LeaveBalance.objects.select_for_update().get_or_create(
+                    employee=application.employee,
+                    leave_type=application.leave_type,
+                    year=application.from_date.year,
+                    defaults={
+                        'opening_balance': 0,
+                        'credited': application.leave_type.days_per_year,
+                        'used': days,
+                        'closing_balance': application.leave_type.days_per_year - days,
+                    }
+                )
+                if not created:
+                    balance.used += days
+                    balance.calculate_balance()
 
             return Response({'message': 'Leave approved successfully'})
         except ServiceUserSession.DoesNotExist:
@@ -612,8 +641,8 @@ class LeaveApplicationViewSet(viewsets.ModelViewSet):
 
 
 class HolidayViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = HolidaySerializer
 
     def get_queryset(self):

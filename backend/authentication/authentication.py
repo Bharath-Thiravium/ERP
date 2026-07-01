@@ -20,14 +20,11 @@ class ServiceUserSessionAuthentication(BaseAuthentication):
         """
         auth_header = request.META.get('HTTP_AUTHORIZATION')
         session_key = None
-        
-        # Try Authorization header first
+
+        # Accept session key only from Authorization header
         if auth_header and auth_header.startswith('Bearer '):
             session_key = auth_header[7:]
-        # Fallback to query parameter
-        elif 'session_key' in request.GET:
-            session_key = request.GET.get('session_key')
-        
+
         if not session_key:
             return None
             

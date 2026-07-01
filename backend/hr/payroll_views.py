@@ -14,7 +14,10 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.units import inch
 
+from django.db import transaction
 from authentication.models import ServiceUserSession
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from .models import (
     PayrollCycle, Payslip, PayrollSettings, SalaryComponent, PayrollReport,
     Employee, Attendance
@@ -27,8 +30,8 @@ from .payroll_serializers import (
 
 
 class PayrollViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = PayrollCycleSerializer
 
     def get_queryset(self):
@@ -135,81 +138,82 @@ class PayrollViewSet(viewsets.ModelViewSet):
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             payroll_cycle = self.get_object()
-            
-            # Get payroll settings
-            settings, created = PayrollSettings.objects.get_or_create(
-                company=session.service_user.company,
-                defaults={
-                    'pf_enabled': True,
-                    'esi_enabled': True,
-                    'pt_enabled': True,
-                    'tds_enabled': True
-                }
-            )
-            
-            # Get active employees
-            employees = Employee.objects.filter(
-                company=session.service_user.company,
-                status='active'
-            )
-            
-            payslips_created = 0
-            total_gross = total_net = 0
-            
-            for employee in employees:
-                # Get attendance data for the payroll period
-                attendance_records = Attendance.objects.filter(
-                    employee=employee,
-                    date__gte=payroll_cycle.start_date,
-                    date__lte=payroll_cycle.end_date
-                )
-                
-                # Calculate working days and present days
-                working_days = (payroll_cycle.end_date - payroll_cycle.start_date).days + 1
-                present_days = attendance_records.filter(status__in=['present', 'late']).count()
-                absent_days = working_days - present_days
-                overtime_hours = attendance_records.aggregate(Sum('overtime_hours'))['overtime_hours__sum'] or 0
-                
-                # Create or update payslip
-                payslip, created = Payslip.objects.get_or_create(
-                    payroll_cycle=payroll_cycle,
-                    employee=employee,
+
+            with transaction.atomic():
+                # Get payroll settings
+                settings, created = PayrollSettings.objects.get_or_create(
+                    company=session.service_user.company,
                     defaults={
-                        'emp_id': employee.employee_id,
-                        'emp_name': employee.full_name,
-                        'emp_department': employee.department.name,
-                        'emp_designation': employee.designation.title,
-                        'working_days': working_days,
-                        'present_days': present_days,
-                        'absent_days': absent_days,
-                        'overtime_hours': overtime_hours
+                        'pf_enabled': True,
+                        'esi_enabled': True,
+                        'pt_enabled': True,
+                        'tds_enabled': True
                     }
                 )
-                
-                # Calculate salary with enhanced statutory compliance
-                payslip.calculate_salary()
-                
-                total_gross += payslip.gross_salary
-                total_net += payslip.net_salary
-                payslips_created += 1
-            
-            # Update payroll cycle totals
-            payroll_cycle.total_employees = payslips_created
-            payroll_cycle.total_gross = total_gross
-            payroll_cycle.total_net = total_net
-            payroll_cycle.total_deductions = total_gross - total_net
-            payroll_cycle.status = 'calculated'
-            payroll_cycle.calculated_by = session.service_user
-            payroll_cycle.calculated_at = timezone.now()
-            payroll_cycle.save()
-            
+
+                # Get active employees
+                employees = Employee.objects.filter(
+                    company=session.service_user.company,
+                    status='active'
+                )
+
+                payslips_created = 0
+                total_gross = total_net = 0
+
+                for employee in employees:
+                    # Get attendance data for the payroll period
+                    attendance_records = Attendance.objects.filter(
+                        employee=employee,
+                        date__gte=payroll_cycle.start_date,
+                        date__lte=payroll_cycle.end_date
+                    )
+
+                    # Calculate working days and present days
+                    working_days = (payroll_cycle.end_date - payroll_cycle.start_date).days + 1
+                    present_days = attendance_records.filter(status__in=['present', 'late']).count()
+                    absent_days = working_days - present_days
+                    overtime_hours = attendance_records.aggregate(Sum('overtime_hours'))['overtime_hours__sum'] or 0
+
+                    # Create or update payslip
+                    payslip, created = Payslip.objects.get_or_create(
+                        payroll_cycle=payroll_cycle,
+                        employee=employee,
+                        defaults={
+                            'emp_id': employee.employee_id,
+                            'emp_name': employee.full_name,
+                            'emp_department': employee.department.name,
+                            'emp_designation': employee.designation.title,
+                            'working_days': working_days,
+                            'present_days': present_days,
+                            'absent_days': absent_days,
+                            'overtime_hours': overtime_hours
+                        }
+                    )
+
+                    # Calculate salary with enhanced statutory compliance
+                    payslip.calculate_salary()
+
+                    total_gross += payslip.gross_salary
+                    total_net += payslip.net_salary
+                    payslips_created += 1
+
+                # Update payroll cycle totals
+                payroll_cycle.total_employees = payslips_created
+                payroll_cycle.total_gross = total_gross
+                payroll_cycle.total_net = total_net
+                payroll_cycle.total_deductions = total_gross - total_net
+                payroll_cycle.status = 'calculated'
+                payroll_cycle.calculated_by = session.service_user
+                payroll_cycle.calculated_at = timezone.now()
+                payroll_cycle.save()
+
             return Response({
                 'message': f'Payroll calculated successfully for {payslips_created} employees',
                 'total_gross': total_gross,
                 'total_net': total_net,
                 'payslips_created': payslips_created
             })
-            
+
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -224,18 +228,19 @@ class PayrollViewSet(viewsets.ModelViewSet):
             payroll_cycle = self.get_object()
             
             if payroll_cycle.status != 'calculated':
-                return Response({'error': 'Payroll must be calculated before approval'}, 
+                return Response({'error': 'Payroll must be calculated before approval'},
                               status=status.HTTP_400_BAD_REQUEST)
-            
-            # Update payroll cycle status
-            payroll_cycle.status = 'approved'
-            payroll_cycle.approved_by = session.service_user
-            payroll_cycle.approved_at = timezone.now()
-            payroll_cycle.save()
-            
-            # Update all payslips to approved
-            payroll_cycle.payslips.update(status='approved')
-            
+
+            with transaction.atomic():
+                # Update payroll cycle status
+                payroll_cycle.status = 'approved'
+                payroll_cycle.approved_by = session.service_user
+                payroll_cycle.approved_at = timezone.now()
+                payroll_cycle.save()
+
+                # Update all payslips to approved
+                payroll_cycle.payslips.update(status='approved')
+
             return Response({'message': 'Payroll approved successfully'})
             
         except ServiceUserSession.DoesNotExist:
@@ -252,22 +257,23 @@ class PayrollViewSet(viewsets.ModelViewSet):
             payroll_cycle = self.get_object()
             
             if payroll_cycle.status != 'approved':
-                return Response({'error': 'Payroll must be approved before processing payments'}, 
+                return Response({'error': 'Payroll must be approved before processing payments'},
                               status=status.HTTP_400_BAD_REQUEST)
-            
-            # Update payroll cycle status
-            payroll_cycle.status = 'completed'
-            payroll_cycle.processed_by = session.service_user
-            payroll_cycle.processed_at = timezone.now()
-            payroll_cycle.save()
-            
-            # Update all payslips to paid
-            payroll_cycle.payslips.update(
-                status='paid',
-                paid_date=timezone.now().date(),
-                payment_reference=f'BATCH_{payroll_cycle.id}_{timezone.now().strftime("%Y%m%d")}'
-            )
-            
+
+            with transaction.atomic():
+                # Update payroll cycle status
+                payroll_cycle.status = 'completed'
+                payroll_cycle.processed_by = session.service_user
+                payroll_cycle.processed_at = timezone.now()
+                payroll_cycle.save()
+
+                # Update all payslips to paid
+                payroll_cycle.payslips.update(
+                    status='paid',
+                    paid_date=timezone.now().date(),
+                    payment_reference=f'BATCH_{payroll_cycle.id}_{timezone.now().strftime("%Y%m%d")}'
+                )
+
             return Response({'message': 'Payments processed successfully'})
             
         except ServiceUserSession.DoesNotExist:
@@ -275,8 +281,8 @@ class PayrollViewSet(viewsets.ModelViewSet):
 
 
 class PayslipViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = PayslipSerializer
 
     def get_queryset(self):
@@ -426,8 +432,8 @@ class PayslipViewSet(viewsets.ModelViewSet):
 
 
 class PayrollSettingsViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = PayrollSettingsSerializer
 
     def get_queryset(self):
@@ -481,20 +487,12 @@ class PayrollSettingsViewSet(viewsets.ModelViewSet):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def payroll_analytics(request):
-    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
-    if not session_key:
-        session_key = request.query_params.get('session_key')
-    
-    if not session_key:
-        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-    
     try:
-        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        company = session.service_user.company
-        
+        company = request.service_user.company
+
         # Monthly payroll trends (last 6 months)
         six_months_ago = date.today() - timedelta(days=180)
         monthly_trends = []

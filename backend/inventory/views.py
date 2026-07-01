@@ -8,6 +8,7 @@ import os
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
@@ -566,11 +567,14 @@ class ProductListCreateView(ListCreateAPIView):
                 
             low_stock = self.request.query_params.get('low_stock')
             if low_stock == 'true':
-                # This would need to be optimized with database queries
-                queryset = [p for p in queryset if p.is_low_stock()]
-                
+                # Filtering by IDs keeps this a QuerySet (rather than a plain list), so
+                # subsequent .order_by() and any DRF filter backends don't crash on it.
+                # This would need to be optimized with database queries.
+                matching_ids = [p.id for p in queryset if p.is_low_stock()]
+                queryset = queryset.filter(id__in=matching_ids)
+
             return queryset.order_by('-created_at')
-            
+
         except ServiceUserSession.DoesNotExist:
             return Product.objects.none()
 
@@ -702,35 +706,64 @@ class StockMovementListCreateView(ListCreateAPIView):
                 # Create stock movement
                 serializer = self.get_serializer(data=request.data)
                 serializer.is_valid(raise_exception=True)
-                
-                # Get or create stock level
+
+                # Get or create stock level (locked for the duration of this transaction
+                # to prevent concurrent movements from racing past the negative-stock check)
                 product_id = serializer.validated_data['product'].id
                 warehouse_id = serializer.validated_data['warehouse'].id
-                
-                stock_level, created = StockLevel.objects.get_or_create(
+
+                stock_level, created = StockLevel.objects.select_for_update().get_or_create(
                     product_id=product_id,
                     warehouse_id=warehouse_id,
                     defaults={'quantity_available': 0}
                 )
-                
+
                 # Update stock level based on movement type
                 movement_type = serializer.validated_data['movement_type']
                 quantity = serializer.validated_data['quantity']
-                
+
                 quantity_before = stock_level.quantity_available
-                
+
                 if movement_type in ['in', 'purchase', 'return', 'production']:
                     stock_level.quantity_available += quantity
                 elif movement_type in ['out', 'sale', 'damage']:
+                    if stock_level.quantity_available < quantity:
+                        raise DRFValidationError(
+                            f'Insufficient stock. Available: {stock_level.quantity_available}, requested: {quantity}'
+                        )
                     stock_level.quantity_available -= quantity
                 elif movement_type == 'adjustment':
                     # For adjustments, quantity can be positive or negative
+                    if stock_level.quantity_available + quantity < 0:
+                        raise DRFValidationError(
+                            f'Adjustment would result in negative stock. Available: {stock_level.quantity_available}'
+                        )
                     stock_level.quantity_available += quantity
-                
+                elif movement_type == 'transfer':
+                    destination_warehouse = serializer.validated_data.get('destination_warehouse')
+                    if not destination_warehouse:
+                        raise DRFValidationError('destination_warehouse is required for transfer movements')
+                    if destination_warehouse.id == warehouse_id:
+                        raise DRFValidationError('destination_warehouse must be different from the source warehouse')
+                    if stock_level.quantity_available < quantity:
+                        raise DRFValidationError(
+                            f'Insufficient stock to transfer. Available: {stock_level.quantity_available}, requested: {quantity}'
+                        )
+                    stock_level.quantity_available -= quantity
+
+                    dest_stock_level, _ = StockLevel.objects.select_for_update().get_or_create(
+                        product_id=product_id,
+                        warehouse_id=destination_warehouse.id,
+                        defaults={'quantity_available': 0}
+                    )
+                    dest_stock_level.quantity_available += quantity
+                    dest_stock_level.updated_by = service_user
+                    dest_stock_level.save()
+
                 quantity_after = stock_level.quantity_available
                 stock_level.updated_by = service_user
                 stock_level.save()
-                
+
                 # Save movement with before/after quantities
                 movement = serializer.save(
                     quantity_before=quantity_before,
@@ -1267,27 +1300,32 @@ class PurchaseOrderDetailView(RetrieveUpdateDestroyAPIView):
 
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            
+            company = session.service_user.company
+
             with transaction.atomic():
                 instance = self.get_object()
                 serializer = self.get_serializer(instance, data=request.data, partial=True)
                 serializer.is_valid(raise_exception=True)
-                
+
                 purchase_order = serializer.save()
-                
+
                 items_data = request.data.get('items', [])
                 if items_data:
                     purchase_order.items.all().delete()
-                    
+
                     for item_data in items_data:
+                        try:
+                            product = Product.objects.get(id=item_data['product'], company=company)
+                        except Product.DoesNotExist:
+                            raise DRFValidationError(f"Product {item_data.get('product')} not found or access denied.")
                         PurchaseOrderItem.objects.create(
                             purchase_order=purchase_order,
-                            product_id=item_data['product'],
+                            product=product,
                             quantity_ordered=item_data['quantity_ordered'],
                             unit_price=item_data['unit_price'],
                             notes=item_data.get('notes', '')
                         )
-                    
+
                     items = purchase_order.items.all()
                     subtotal = sum(item.total_price for item in items)
                     tax_amount = subtotal * Decimal('0.18')
@@ -1360,32 +1398,36 @@ class PurchaseOrderListCreateView(ListCreateAPIView):
             with transaction.atomic():
                 serializer = self.get_serializer(data=request.data)
                 serializer.is_valid(raise_exception=True)
-                
+
                 purchase_order = serializer.save(
                     company=service_user.company,
                     created_by=service_user
                 )
-                
+
                 items_data = request.data.get('items', [])
                 for item_data in items_data:
+                    try:
+                        product = Product.objects.get(id=item_data['product'], company=service_user.company)
+                    except Product.DoesNotExist:
+                        raise DRFValidationError(f"Product {item_data.get('product')} not found or access denied.")
                     PurchaseOrderItem.objects.create(
                         purchase_order=purchase_order,
-                        product_id=item_data['product'],
+                        product=product,
                         quantity_ordered=item_data['quantity_ordered'],
                         unit_price=item_data['unit_price'],
                         notes=item_data.get('notes', '')
                     )
-                
+
                 items = purchase_order.items.all()
                 subtotal = sum(item.total_price for item in items)
                 tax_amount = subtotal * Decimal('0.18')
                 total_amount = subtotal + tax_amount
-                
+
                 purchase_order.subtotal = subtotal
                 purchase_order.tax_amount = tax_amount
                 purchase_order.total_amount = total_amount
                 purchase_order.save()
-                
+
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:
@@ -1522,22 +1564,26 @@ class ProductBundleListCreateView(ListCreateAPIView):
             with transaction.atomic():
                 serializer = self.get_serializer(data=request.data)
                 serializer.is_valid(raise_exception=True)
-                
+
                 bundle = serializer.save(
                     company=service_user.company,
                     created_by=service_user
                 )
-                
+
                 # Add bundle items
                 items_data = request.data.get('bundle_items', [])
                 for item_data in items_data:
+                    try:
+                        product = Product.objects.get(id=item_data['product'], company=service_user.company)
+                    except Product.DoesNotExist:
+                        raise DRFValidationError(f"Product {item_data.get('product')} not found or access denied.")
                     ProductBundleItem.objects.create(
                         bundle=bundle,
-                        product_id=item_data['product'],
+                        product=product,
                         quantity=item_data['quantity'],
                         unit_price_override=item_data.get('unit_price_override')
                     )
-                
+
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:

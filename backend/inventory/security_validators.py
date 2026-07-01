@@ -3,6 +3,7 @@ Security validators for inventory module
 """
 import re
 import os
+from decimal import Decimal, InvalidOperation
 from html import escape
 from django.core.exceptions import ValidationError
 from django.utils.html import strip_tags
@@ -85,16 +86,23 @@ class InventorySecurityValidator:
     
     @staticmethod
     def validate_numeric_field(value, field_name="field"):
-        """Validate numeric fields"""
+        """Validate numeric fields.
+
+        Preserves Decimal precision instead of round-tripping through float:
+        this value is typically reassigned onto a model's DecimalField, and
+        converting to float and back introduces binary floating-point rounding
+        error (e.g. 10.10 -> 10.099999999999998...) into financial/stock
+        quantities.
+        """
         if value is None:
             return value
-            
+
         try:
-            float_value = float(value)
-            if float_value < 0:
+            numeric_value = value if isinstance(value, Decimal) else Decimal(str(value))
+            if numeric_value < 0:
                 raise ValidationError(f"{field_name} cannot be negative")
-            return float_value
-        except (ValueError, TypeError):
+            return numeric_value
+        except (ValueError, TypeError, InvalidOperation):
             raise ValidationError(f"Invalid {field_name} value")
     
     @staticmethod

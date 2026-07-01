@@ -1,9 +1,5 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import (
-    LeadViewSet, ContactViewSet, AccountViewSet, OpportunityViewSet,
-    ActivityViewSet, CampaignViewSet, SalesTargetViewSet, DashboardViewSet
-)
 from . import viewsets
 from .marketing_views import (
     EmailTemplateViewSet, MarketingCampaignViewSet, AutomationWorkflowViewSet

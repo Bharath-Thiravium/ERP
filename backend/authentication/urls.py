@@ -11,9 +11,6 @@ from .email_settings_views import (
     email_provider_templates_view,
     email_usage_stats_view
 )
-from .simple_login import simple_master_admin_login
-from .test_login import test_login
-
 # Create router for ViewSets
 router = DefaultRouter()
 
@@ -22,8 +19,6 @@ urlpatterns = [
 
     # Master Admin endpoints
     path('master-admin/login/', views.MasterAdminLoginView.as_view(), name='master_admin_login'),
-    path('master-admin/simple-login/', simple_master_admin_login, name='simple_master_admin_login'),
-    path('master-admin/test-login/', test_login, name='test_login'),
     path('master-admin/change-password/', views.MasterAdminPasswordChangeView.as_view(), name='master_admin_password_change'),
     path('master-admin/profile/', views.MasterAdminProfileView.as_view(), name='master_admin_profile'),
     
@@ -99,10 +94,7 @@ urlpatterns = [
 
     # Token validation
     path('validate-token/', views.ValidateTokenView.as_view(), name='validate_token'),
-    
-    # Test endpoint
-    path('test-no-auth/', views.test_no_auth, name='test_no_auth'),
-    
+
     # Mobile app logout
     path('logout/', views.mobile_logout, name='mobile_logout'),
     

@@ -46,6 +46,7 @@ class CRMQueryOptimizer:
     @staticmethod
     def get_optimized_accounts_queryset(company):
         """Get optimized queryset for accounts"""
+        from .models import Opportunity
         return company.accounts.select_related(
             'primary_contact',
             'account_manager',
@@ -53,7 +54,7 @@ class CRMQueryOptimizer:
         ).prefetch_related(
             Prefetch(
                 'opportunities',
-                queryset=company.opportunities.select_related('owner')
+                queryset=Opportunity.objects.select_related('owner')
             ),
             'contacts',
             'activities'

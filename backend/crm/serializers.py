@@ -8,6 +8,34 @@ from .models import (
 from django.contrib.auth.models import User
 
 
+def get_context_company(context):
+    """Resolve the authenticated company from serializer context (service user or company user)."""
+    request = context.get('request') if context else None
+    if not request:
+        return None
+    service_user = getattr(request, 'service_user', None)
+    if service_user:
+        return service_user.company
+    user = getattr(request, 'user', None)
+    if user and hasattr(user, 'company_user'):
+        return user.company_user.company
+    return None
+
+
+def validate_same_company(value, context, label):
+    """Ensure a referenced FK instance belongs to the authenticated company.
+
+    Prevents cross-tenant FK injection (e.g. a Company A user referencing a
+    Company B lead/contact/account/opportunity by guessing/enumerating its ID).
+    """
+    if value is None:
+        return value
+    company = get_context_company(context)
+    if company is not None and getattr(value, 'company_id', None) != company.id:
+        raise serializers.ValidationError(f'{label} not found or access denied.')
+    return value
+
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -23,6 +51,19 @@ class LeadSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['lead_id', 'created_at', 'updated_at', 'created_by', 'company']
 
+    def validate(self, attrs):
+        email = attrs.get('email', getattr(self.instance, 'email', None))
+        company = get_context_company(self.context)
+        if email and company and not self.context.get('skip_duplicate_check'):
+            qs = Lead.objects.filter(company=company, email__iexact=email)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'email': f'A lead with email "{email}" already exists for this company.'}
+                )
+        return attrs
+
     def create(self, validated_data):
         # The lead_id will be auto-generated in the model's save method
         return super().create(validated_data)
@@ -36,6 +77,19 @@ class ContactSerializer(serializers.ModelSerializer):
         model = Contact
         fields = '__all__'
         read_only_fields = ['contact_id', 'created_at', 'updated_at', 'created_by', 'company']
+
+    def validate(self, attrs):
+        email = attrs.get('email', getattr(self.instance, 'email', None))
+        company = get_context_company(self.context)
+        if email and company and not self.context.get('skip_duplicate_check'):
+            qs = Contact.objects.filter(company=company, email__iexact=email)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'email': f'A contact with email "{email}" already exists for this company.'}
+                )
+        return attrs
 
     def create(self, validated_data):
         # The contact_id will be auto-generated in the model's save method
@@ -54,6 +108,22 @@ class AccountSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['account_id', 'created_at', 'updated_at', 'created_by', 'company']
 
+    def validate_primary_contact(self, value):
+        return validate_same_company(value, self.context, 'Primary contact')
+
+    def validate(self, attrs):
+        name = attrs.get('name', getattr(self.instance, 'name', None))
+        company = get_context_company(self.context)
+        if name and company and not self.context.get('skip_duplicate_check'):
+            qs = Account.objects.filter(company=company, name__iexact=name)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'name': f'An account named "{name}" already exists for this company.'}
+                )
+        return attrs
+
     def create(self, validated_data):
         # The account_id will be auto-generated in the model's save method
         return super().create(validated_data)
@@ -71,6 +141,26 @@ class OpportunitySerializer(serializers.ModelSerializer):
         model = Opportunity
         fields = '__all__'
         read_only_fields = ['opportunity_id', 'created_at', 'updated_at', 'created_by', 'company']
+
+    def validate_account(self, value):
+        return validate_same_company(value, self.context, 'Account')
+
+    def validate_contact(self, value):
+        return validate_same_company(value, self.context, 'Contact')
+
+    def validate(self, attrs):
+        name = attrs.get('name', getattr(self.instance, 'name', None))
+        account = attrs.get('account', getattr(self.instance, 'account', None))
+        company = get_context_company(self.context)
+        if name and account and company and not self.context.get('skip_duplicate_check'):
+            qs = Opportunity.objects.filter(company=company, account=account, name__iexact=name)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'name': f'An opportunity named "{name}" already exists for this account.'}
+                )
+        return attrs
 
     def create(self, validated_data):
         # The opportunity_id will be auto-generated in the model's save method
@@ -91,6 +181,18 @@ class ActivitySerializer(serializers.ModelSerializer):
         model = Activity
         fields = '__all__'
         read_only_fields = ['activity_id', 'created_at', 'updated_at', 'created_by', 'company']
+
+    def validate_lead(self, value):
+        return validate_same_company(value, self.context, 'Lead')
+
+    def validate_contact(self, value):
+        return validate_same_company(value, self.context, 'Contact')
+
+    def validate_account(self, value):
+        return validate_same_company(value, self.context, 'Account')
+
+    def validate_opportunity(self, value):
+        return validate_same_company(value, self.context, 'Opportunity')
 
     def create(self, validated_data):
         # The activity_id will be auto-generated in the model's save method
@@ -121,6 +223,15 @@ class CampaignMemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignMember
         fields = '__all__'
+
+    def validate_campaign(self, value):
+        return validate_same_company(value, self.context, 'Campaign')
+
+    def validate_lead(self, value):
+        return validate_same_company(value, self.context, 'Lead')
+
+    def validate_contact(self, value):
+        return validate_same_company(value, self.context, 'Contact')
 
 
 class SalesTargetSerializer(serializers.ModelSerializer):
@@ -174,11 +285,29 @@ class TicketSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['ticket_id', 'created_by', 'created_at', 'updated_at', 'first_response_at', 'resolved_at']
 
+    def validate_contact(self, value):
+        return validate_same_company(value, self.context, 'Contact')
+
+    def validate_account(self, value):
+        return validate_same_company(value, self.context, 'Account')
+
+    def validate_category(self, value):
+        return validate_same_company(value, self.context, 'Ticket category')
+
+    def validate_sla(self, value):
+        return validate_same_company(value, self.context, 'SLA')
+
     def create(self, validated_data):
+        from authentication.utils import generate_auto_code
         company = validated_data['company']
-        # Generate ticket ID
-        ticket_count = Ticket.objects.filter(company=company).count() + 1
-        validated_data['ticket_id'] = f"{company.company_prefix}TKT{ticket_count:04d}"
+        try:
+            validated_data['ticket_id'] = generate_auto_code(company.id, 'ticket')
+        except Exception:
+            from django.db import transaction
+            with transaction.atomic():
+                last = Ticket.objects.select_for_update().filter(company=company).order_by('-id').first()
+                n = int(last.ticket_id.split('TKT')[-1]) + 1 if last and 'TKT' in last.ticket_id else 1
+                validated_data['ticket_id'] = f"{company.company_prefix}TKT{n:04d}"
         return super().create(validated_data)
 
 
@@ -190,6 +319,9 @@ class KnowledgeBaseSerializer(serializers.ModelSerializer):
         model = KnowledgeBase
         fields = '__all__'
         read_only_fields = ['created_by', 'created_at', 'updated_at', 'view_count', 'helpful_count']
+
+    def validate_category(self, value):
+        return validate_same_company(value, self.context, 'Ticket category')
 
 
 # AI Lead Scoring Serializers
@@ -204,6 +336,9 @@ class LeadScoreSerializer(serializers.ModelSerializer):
         model = LeadScore
         fields = '__all__'
         read_only_fields = ['last_calculated', 'calculation_count']
+
+    def validate_lead(self, value):
+        return validate_same_company(value, self.context, 'Lead')
 
 
 class ScoringCriteriaSerializer(serializers.ModelSerializer):
@@ -240,11 +375,29 @@ class DealSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['deal_id', 'created_at', 'updated_at']
 
+    def validate_account(self, value):
+        return validate_same_company(value, self.context, 'Account')
+
+    def validate_contact(self, value):
+        return validate_same_company(value, self.context, 'Contact')
+
+    def validate_current_stage(self, value):
+        return validate_same_company(value, self.context, 'Pipeline stage')
+
+    def validate_opportunity(self, value):
+        return validate_same_company(value, self.context, 'Opportunity')
+
     def create(self, validated_data):
+        from authentication.utils import generate_auto_code
         company = validated_data['company']
-        # Generate deal ID
-        deal_count = Deal.objects.filter(company=company).count() + 1
-        validated_data['deal_id'] = f"{company.company_prefix}DEAL{deal_count:04d}"
+        try:
+            validated_data['deal_id'] = generate_auto_code(company.id, 'deal')
+        except Exception:
+            from django.db import transaction
+            with transaction.atomic():
+                last = Deal.objects.select_for_update().filter(company=company).order_by('-id').first()
+                n = int(last.deal_id.split('DEAL')[-1]) + 1 if last and 'DEAL' in last.deal_id else 1
+                validated_data['deal_id'] = f"{company.company_prefix}DEAL{n:04d}"
         return super().create(validated_data)
 
 
@@ -257,6 +410,12 @@ class DealStageHistorySerializer(serializers.ModelSerializer):
         model = DealStageHistory
         fields = '__all__'
         read_only_fields = ['changed_at']
+
+    def validate_deal(self, value):
+        return validate_same_company(value, self.context, 'Deal')
+
+    def validate_stage(self, value):
+        return validate_same_company(value, self.context, 'Pipeline stage')
 
 
 class SalesQuotaSerializer(serializers.ModelSerializer):
@@ -284,11 +443,26 @@ class CustomerInteractionSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['interaction_id', 'created_by', 'created_at']
 
+    def validate_contact(self, value):
+        return validate_same_company(value, self.context, 'Contact')
+
+    def validate_account(self, value):
+        return validate_same_company(value, self.context, 'Account')
+
+    def validate_deal(self, value):
+        return validate_same_company(value, self.context, 'Deal')
+
     def create(self, validated_data):
+        from authentication.utils import generate_auto_code
         company = validated_data['company']
-        # Generate interaction ID
-        interaction_count = CustomerInteraction.objects.filter(company=company).count() + 1
-        validated_data['interaction_id'] = f"{company.company_prefix}INT{interaction_count:04d}"
+        try:
+            validated_data['interaction_id'] = generate_auto_code(company.id, 'interaction')
+        except Exception:
+            from django.db import transaction
+            with transaction.atomic():
+                last = CustomerInteraction.objects.select_for_update().filter(company=company).order_by('-id').first()
+                n = int(last.interaction_id.split('INT')[-1]) + 1 if last and 'INT' in last.interaction_id else 1
+                validated_data['interaction_id'] = f"{company.company_prefix}INT{n:04d}"
         return super().create(validated_data)
 
 
@@ -301,6 +475,9 @@ class CustomerHealthScoreSerializer(serializers.ModelSerializer):
         model = CustomerHealthScore
         fields = '__all__'
         read_only_fields = ['last_calculated', 'calculation_count']
+
+    def validate_account(self, value):
+        return validate_same_company(value, self.context, 'Account')
 
 
 class CustomerSegmentSerializer(serializers.ModelSerializer):
@@ -322,6 +499,12 @@ class CustomerSegmentMembershipSerializer(serializers.ModelSerializer):
         model = CustomerSegmentMembership
         fields = '__all__'
         read_only_fields = ['added_at']
+
+    def validate_segment(self, value):
+        return validate_same_company(value, self.context, 'Customer segment')
+
+    def validate_account(self, value):
+        return validate_same_company(value, self.context, 'Account')
 
 
 class SalesAnalyticsSerializer(serializers.ModelSerializer):

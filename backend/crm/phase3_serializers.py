@@ -3,6 +3,7 @@ from .phase3_models import (
     EmailTemplate, MarketingCampaign, EmailSend, AutomationWorkflow,
     ReportTemplate, Dashboard, BusinessIntelligence
 )
+from .serializers import validate_same_company
 
 
 # Marketing Automation Serializers
@@ -29,6 +30,9 @@ class MarketingCampaignSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['campaign_id', 'created_by', 'created_at', 'updated_at']
 
+    def validate_email_template(self, value):
+        return validate_same_company(value, self.context, 'Email template')
+
     def create(self, validated_data):
         company = validated_data['company']
         # Generate campaign ID
@@ -45,6 +49,9 @@ class EmailSendSerializer(serializers.ModelSerializer):
         model = EmailSend
         fields = '__all__'
         read_only_fields = ['created_at']
+
+    def validate_campaign(self, value):
+        return validate_same_company(value, self.context, 'Marketing campaign')
 
 
 class AutomationWorkflowSerializer(serializers.ModelSerializer):

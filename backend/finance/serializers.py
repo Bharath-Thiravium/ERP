@@ -61,6 +61,34 @@ def _resolve_company_and_creator(request):
     return None, None
 
 
+def _get_context_company(context):
+    """Resolve the authenticated company from serializer context (service user or company user)."""
+    request = context.get('request') if context else None
+    if not request:
+        return None
+    service_user = getattr(request, 'service_user', None)
+    if service_user:
+        return service_user.company
+    user = getattr(request, 'user', None)
+    if user and hasattr(user, 'company_user'):
+        return user.company_user.company
+    return None
+
+
+def _validate_same_company(value, context, label):
+    """Ensure a referenced FK instance belongs to the authenticated company.
+
+    Prevents cross-tenant FK injection (e.g. a Company A user referencing a
+    Company B customer/invoice/purchase order by guessing/enumerating its ID).
+    """
+    if value is None:
+        return value
+    company = _get_context_company(context)
+    if company is not None and getattr(value, 'company_id', None) != company.id:
+        raise serializers.ValidationError(f'{label} not found or access denied.')
+    return value
+
+
 def _ensure_numbering_rule(company, module):
     defaults = FINANCE_DEFAULT_TEMPLATES.get(module, {})
     defaults.setdefault('template', '{PREFIX}-{YY}-{SEQ}')
@@ -862,6 +890,17 @@ class QuotationCreateSerializer(serializers.ModelSerializer):
             'quotation_items', 'quotation_number'
         ]
 
+    def validate_customer(self, value):
+        return _validate_same_company(value, self.context, 'Customer')
+
+    def validate_shipping_address(self, value):
+        if value is None:
+            return value
+        company = _get_context_company(self.context)
+        if company is not None and value.customer.company_id != company.id:
+            raise serializers.ValidationError('Shipping address not found or access denied.')
+        return value
+
     def validate_quotation_items(self, value):
         """Validate quotation items"""
         if not value:
@@ -875,6 +914,7 @@ class QuotationCreateSerializer(serializers.ModelSerializer):
 
         return value
 
+    @transaction.atomic
     def create(self, validated_data):
         """Create quotation with items"""
         from decimal import Decimal, InvalidOperation
@@ -905,9 +945,9 @@ class QuotationCreateSerializer(serializers.ModelSerializer):
         # Create quotation items using bulk_create to avoid individual saves
         items_to_create = []
         for i, item_data in enumerate(quotation_items_data, 1):
-            # Get the product instance
+            # Get the product instance (scoped to this company to prevent cross-tenant FK injection)
             product_id = item_data.pop('product')
-            product = Product.objects.get(id=product_id)
+            product = Product.objects.get(id=product_id, company=quotation.company)
 
             # Safely convert decimal fields - handle potential string concatenation issues
             def safe_decimal_convert(value, field_name):
@@ -1200,17 +1240,26 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
             'terms_and_conditions', 'status', 'claim_type', 'po_items'
         ]
 
+    def validate_customer(self, value):
+        return _validate_same_company(value, self.context, 'Customer')
+
+    def validate_quotation(self, value):
+        return _validate_same_company(value, self.context, 'Quotation')
+
+    def validate_shipping_address(self, value):
+        if value is None:
+            return value
+        company = _get_context_company(self.context)
+        if company is not None and value.customer.company_id != company.id:
+            raise serializers.ValidationError('Shipping address not found or access denied.')
+        return value
+
     def validate(self, attrs):
         """Validate PO creation data"""
         quotation = attrs.get('quotation')
         customer = attrs.get('customer')
         shipping_address = attrs.get('shipping_address')
-        
-        # Debug logging for shipping address
-        print(f"🔍 PO Validation - shipping_address received: {shipping_address}")
-        if shipping_address:
-            print(f"🔍 Shipping address ID: {shipping_address.id}, Label: {shipping_address.label}")
-        
+
         # If no quotation is provided (direct PO), customer is required
         if not quotation:
             if not customer:
@@ -1224,6 +1273,7 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
         
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
         po_items_data = validated_data.pop('po_items')
         
@@ -1276,7 +1326,7 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
             unit_price = item_data.get('unit_price', 0)
 
             try:
-                product = Product.objects.get(id=product_id)
+                product = Product.objects.get(id=product_id, company=purchase_order.company)
 
                 # Calculate line total
                 from decimal import Decimal
@@ -1341,6 +1391,18 @@ class PurchaseOrderUpdateSerializer(serializers.ModelSerializer):
             'customer': {'required': False}  # Customer can be updated for direct POs
         }
 
+    def validate_customer(self, value):
+        return _validate_same_company(value, self.context, 'Customer')
+
+    def validate_shipping_address(self, value):
+        if value is None:
+            return value
+        company = _get_context_company(self.context)
+        if company is not None and value.customer.company_id != company.id:
+            raise serializers.ValidationError('Shipping address not found or access denied.')
+        return value
+
+    @transaction.atomic
     def update(self, instance, validated_data):
         po_items_data = validated_data.pop('po_items', None)
         
@@ -1385,7 +1447,7 @@ class PurchaseOrderUpdateSerializer(serializers.ModelSerializer):
                 unit_price = item_data.get('unit_price', 0)
 
                 try:
-                    product = Product.objects.get(id=product_id)
+                    product = Product.objects.get(id=product_id, company=instance.company)
 
                     # Calculate line total
                     from decimal import Decimal
@@ -1633,6 +1695,24 @@ class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
             'claim_type', 'claim_percentage', 'is_advance_bill', 'proforma_items', 'proforma_number'
         ]
 
+    def validate_customer(self, value):
+        return _validate_same_company(value, self.context, 'Customer')
+
+    def validate_purchase_order(self, value):
+        return _validate_same_company(value, self.context, 'Purchase order')
+
+    def validate_quotation(self, value):
+        return _validate_same_company(value, self.context, 'Quotation')
+
+    def validate_shipping_address(self, value):
+        if value is None:
+            return value
+        company = _get_context_company(self.context)
+        if company is not None and value.customer.company_id != company.id:
+            raise serializers.ValidationError('Shipping address not found or access denied.')
+        return value
+
+    @transaction.atomic
     def create(self, validated_data):
         from decimal import Decimal
 
@@ -1727,8 +1807,8 @@ class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
             for index, item_data in enumerate(proforma_items_data, 1):
                 product_id = item_data.get('product')
                 try:
-                    product = Product.objects.get(id=product_id)
-                    
+                    product = Product.objects.get(id=product_id, company=proforma_invoice.company)
+
                     # Get HSN/SAC code
                     hsn_sac_code = ''
                     if product.hsn_code:
@@ -1827,14 +1907,14 @@ class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
         
         # Create the proforma invoice
         proforma_invoice = ProformaInvoice.objects.create(**validated_data)
-        
+
         # Create items
         items_to_create = []
         for index, item_data in enumerate(proforma_items_data, 1):
             product_id = item_data.get('product')
             try:
-                product = Product.objects.get(id=product_id)
-                
+                product = Product.objects.get(id=product_id, company=proforma_invoice.company)
+
                 hsn_sac_code = ''
                 if product.hsn_code:
                     hsn_sac_code = product.hsn_code.code
@@ -1896,8 +1976,8 @@ class ProformaInvoiceCreateSerializer(serializers.ModelSerializer):
             for index, item_data in enumerate(proforma_items_data, 1):
                 product_id = item_data.get('product')
                 try:
-                    product = Product.objects.get(id=product_id)
-                    
+                    product = Product.objects.get(id=product_id, company=proforma_invoice.company)
+
                     hsn_sac_code = ''
                     if product.hsn_code:
                         hsn_sac_code = product.hsn_code.code
@@ -2043,9 +2123,21 @@ class QuotationUpdateSerializer(serializers.ModelSerializer):
                                 item[field] = Decimal('0')
                         elif isinstance(value, (int, float)):
                             item[field] = Decimal(str(value))
-        
+
         return data
 
+    def validate_customer(self, value):
+        return _validate_same_company(value, self.context, 'Customer')
+
+    def validate_shipping_address(self, value):
+        if value is None:
+            return value
+        company = _get_context_company(self.context)
+        if company is not None and value.customer.company_id != company.id:
+            raise serializers.ValidationError('Shipping address not found or access denied.')
+        return value
+
+    @transaction.atomic
     def update(self, instance, validated_data):
         """Update quotation and items"""
         quotation_items_data = validated_data.pop('quotation_items', None)
@@ -2079,9 +2171,9 @@ class QuotationUpdateSerializer(serializers.ModelSerializer):
             # Create new items in bulk to avoid multiple total calculations
             items_to_create = []
             for i, item_data in enumerate(quotation_items_data, 1):
-                # Get the product instance
+                # Get the product instance (scoped to this company to prevent cross-tenant FK injection)
                 product_id = item_data.pop('product')
-                product = Product.objects.get(id=product_id)
+                product = Product.objects.get(id=product_id, company=instance.company)
 
                 item = QuotationItem(
                     quotation=instance,
@@ -2438,6 +2530,23 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
             'customer': {'required': False}  # Make customer optional since it's populated from PO
         }
 
+    def validate_customer(self, value):
+        return _validate_same_company(value, self.context, 'Customer')
+
+    def validate_purchase_order(self, value):
+        return _validate_same_company(value, self.context, 'Purchase order')
+
+    def validate_quotation(self, value):
+        return _validate_same_company(value, self.context, 'Quotation')
+
+    def validate_shipping_address(self, value):
+        if value is None:
+            return value
+        company = _get_context_company(self.context)
+        if company is not None and value.customer.company_id != company.id:
+            raise serializers.ValidationError('Shipping address not found or access denied.')
+        return value
+
     def validate(self, data):
         """World-Class validation - Purchase Order, Quotation, or direct creation"""
         purchase_order = data.get('purchase_order')
@@ -2564,6 +2673,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
 
         return data
 
+    @transaction.atomic
     def create(self, validated_data):
         """Create invoice from Purchase Order, Quotation, or directly with automatic GST calculation"""
         # Get company from context first, before calling assign_number
@@ -2799,14 +2909,14 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         
         # Create invoice
         invoice = Invoice.objects.create(**validated_data)
-        
+
         # Create items
         items_to_create = []
         for index, item_data in enumerate(invoice_items_data, 1):
             product_id = item_data.get('product')
             try:
-                product = Product.objects.get(id=product_id)
-                
+                product = Product.objects.get(id=product_id, company=invoice.company)
+
                 hsn_sac_code = ''
                 if product.hsn_code:
                     hsn_sac_code = product.hsn_code.code
@@ -3097,6 +3207,18 @@ class InvoiceUpdateSerializer(serializers.ModelSerializer):
         
         return data
 
+    def validate_customer(self, value):
+        return _validate_same_company(value, self.context, 'Customer')
+
+    def validate_shipping_address(self, value):
+        if value is None:
+            return value
+        company = _get_context_company(self.context)
+        if company is not None and value.customer.company_id != company.id:
+            raise serializers.ValidationError('Shipping address not found or access denied.')
+        return value
+
+    @transaction.atomic
     def update(self, instance, validated_data):
         from decimal import Decimal
 
@@ -3191,7 +3313,7 @@ class InvoiceUpdateSerializer(serializers.ModelSerializer):
                 quantity = item_data.get('quantity', 1)
                 unit_price = item_data.get('unit_price', 0)
                 try:
-                    product = Product.objects.get(id=product_id)
+                    product = Product.objects.get(id=product_id, company=instance.company)
                     line_total = Decimal(str(quantity)) * Decimal(str(unit_price))
                     hsn_sac_code = ''
                     if product.hsn_code:
@@ -3331,6 +3453,12 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
         if value is not None and value <= 0:
             raise serializers.ValidationError("Payment amount must be greater than 0")
         return value
+
+    def validate_invoice(self, value):
+        return _validate_same_company(value, self.context, 'Invoice')
+
+    def validate_proforma_invoice(self, value):
+        return _validate_same_company(value, self.context, 'Proforma invoice')
 
     def to_internal_value(self, data):
         """Override to handle conflicting invoice fields before validation"""
@@ -3551,61 +3679,42 @@ class WorldClassPaymentCreateSerializer(serializers.ModelSerializer):
         
         return super().to_internal_value(data)
 
+    def validate_customer(self, value):
+        return _validate_same_company(value, self.context, 'Customer')
+
+    def validate_purchase_order(self, value):
+        return _validate_same_company(value, self.context, 'Purchase order')
+
     def validate_proforma_invoice(self, value):
-        """Custom validation for proforma_invoice field"""
-        # If value is provided, ensure it exists and belongs to the user's company
-        if value is not None:
-            # Get session from context to validate company access
-            request = self.context.get('request')
-            if request:
-                session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
-                if not session_key:
-                    session_key = request.data.get('session_key')
-                
-                if session_key:
-                    try:
-                        from authentication.models import ServiceUserSession
-                        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-                        # Check if proforma belongs to user's company
-                        if value.company != session.service_user.company:
-                            raise serializers.ValidationError("Proforma invoice not found or access denied")
-                    except ServiceUserSession.DoesNotExist:
-                        raise serializers.ValidationError("Invalid session")
-        return value
-    
+        return _validate_same_company(value, self.context, 'Proforma invoice')
+
     def validate_invoice(self, value):
-        """Custom validation for invoice field"""
-        # If value is provided, ensure it exists and belongs to the user's company
-        if value is not None:
-            # Get session from context to validate company access
-            request = self.context.get('request')
-            if request:
-                session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
-                if not session_key:
-                    session_key = request.data.get('session_key')
-                
-                if session_key:
-                    try:
-                        from authentication.models import ServiceUserSession
-                        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-                        # Check if invoice belongs to user's company
-                        if value.company != session.service_user.company:
-                            raise serializers.ValidationError("Invoice not found or access denied")
-                    except ServiceUserSession.DoesNotExist:
-                        raise serializers.ValidationError("Invalid session")
-        return value
+        return _validate_same_company(value, self.context, 'Invoice')
 
     def validate(self, data):
-        """Validate that payment is linked to either invoice or proforma"""
+        """Validate that payment is linked to either invoice or proforma, and that
+        the amount does not exceed the outstanding balance."""
         invoice = data.get('invoice')
         proforma_invoice = data.get('proforma_invoice')
-        
-        # Allow payments without invoice links (for general payments)
+        amount = data.get('amount')
+
+        # Allow payments without invoice links (for general/direct payments)
         # This is more flexible than requiring invoice linkage
-        
+
         # Check if both are provided (not allowed)
         if invoice and proforma_invoice:
             raise serializers.ValidationError("Payment cannot be linked to both Invoice and Proforma Invoice")
+
+        # Prevent payment amount from exceeding outstanding amount (allow 1 rupee tolerance for rounding)
+        if amount is not None:
+            if invoice and amount > invoice.outstanding_amount + 1:
+                raise serializers.ValidationError(
+                    f"Payment amount (₹{amount}) cannot exceed outstanding amount (₹{invoice.outstanding_amount})"
+                )
+            elif proforma_invoice and amount > proforma_invoice.outstanding_amount + 1:
+                raise serializers.ValidationError(
+                    f"Payment amount (₹{amount}) cannot exceed outstanding amount (₹{proforma_invoice.outstanding_amount})"
+                )
 
         return data
 
@@ -3827,6 +3936,10 @@ class PurchaseRequestCreateSerializer(serializers.ModelSerializer):
             'request_number'
         ]
 
+    def validate_vendor(self, value):
+        return _validate_same_company(value, self.context, 'Vendor')
+
+    @transaction.atomic
     def create(self, validated_data):
         from decimal import Decimal
         
@@ -3853,8 +3966,8 @@ class PurchaseRequestCreateSerializer(serializers.ModelSerializer):
         items_to_create = []
         for i, item_data in enumerate(request_items_data, 1):
             product_id = item_data.pop('product')
-            product = Product.objects.get(id=product_id)
-            
+            product = Product.objects.get(id=product_id, company=purchase_request.company)
+
             quantity = Decimal(str(item_data.get('quantity', 1)))
             unit_price = Decimal(str(item_data.get('unit_price', 0)))
             
@@ -3997,6 +4110,13 @@ class VendorInvoiceCreateSerializer(serializers.ModelSerializer):
             'notes', 'invoice_file', 'invoice_items'
         ]
 
+    def validate_vendor(self, value):
+        return _validate_same_company(value, self.context, 'Vendor')
+
+    def validate_purchase_request(self, value):
+        return _validate_same_company(value, self.context, 'Purchase request')
+
+    @transaction.atomic
     def create(self, validated_data):
         from decimal import Decimal
         
@@ -4024,7 +4144,7 @@ class VendorInvoiceCreateSerializer(serializers.ModelSerializer):
                 continue  # Skip items without product
             
             try:
-                product = Product.objects.get(id=product_id)
+                product = Product.objects.get(id=product_id, company=vendor_invoice.company)
             except Product.DoesNotExist:
                 continue  # Skip items with invalid product ID
             
@@ -4146,10 +4266,16 @@ class PurchasePaymentCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Payment amount must be greater than 0")
         return value
 
+    def validate_vendor(self, value):
+        return _validate_same_company(value, self.context, 'Vendor')
+
+    def validate_vendor_invoice(self, value):
+        return _validate_same_company(value, self.context, 'Vendor invoice')
+
     def validate(self, attrs):
         vendor_invoice = attrs.get('vendor_invoice')
         amount = attrs.get('amount')
-        
+
         if vendor_invoice and amount:
             if amount > vendor_invoice.outstanding_amount:
                 raise serializers.ValidationError(

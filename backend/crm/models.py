@@ -36,7 +36,7 @@ class Lead(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='leads')
-    lead_id = models.CharField(max_length=50, unique=True)
+    lead_id = models.CharField(max_length=50)
     
     # Contact Information
     first_name = models.CharField(max_length=100)
@@ -68,6 +68,7 @@ class Lead(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        unique_together = ['company', 'lead_id']
         indexes = [
             models.Index(fields=['lead_id']),
             models.Index(fields=['email']),
@@ -105,7 +106,7 @@ class Lead(models.Model):
 
 class Contact(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='contacts')
-    contact_id = models.CharField(max_length=50, unique=True)
+    contact_id = models.CharField(max_length=50)
     
     # Personal Information
     first_name = models.CharField(max_length=100)
@@ -138,6 +139,7 @@ class Contact(models.Model):
 
     class Meta:
         ordering = ['first_name', 'last_name']
+        unique_together = ['company', 'contact_id']
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
@@ -182,7 +184,7 @@ class Account(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='accounts')
-    account_id = models.CharField(max_length=50, unique=True)
+    account_id = models.CharField(max_length=50)
     
     # Company Information
     name = models.CharField(max_length=200)
@@ -216,6 +218,7 @@ class Account(models.Model):
 
     class Meta:
         ordering = ['name']
+        unique_together = ['company', 'account_id']
 
     def __str__(self):
         return self.name
@@ -261,7 +264,7 @@ class Opportunity(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='opportunities')
-    opportunity_id = models.CharField(max_length=50, unique=True)
+    opportunity_id = models.CharField(max_length=50)
     
     # Basic Information
     name = models.CharField(max_length=200)
@@ -291,6 +294,7 @@ class Opportunity(models.Model):
     class Meta:
         ordering = ['-created_at']
         verbose_name_plural = 'Opportunities'
+        unique_together = ['company', 'opportunity_id']
 
     def __str__(self):
         return f"{self.name} - {self.account.name}"
@@ -339,7 +343,7 @@ class Activity(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='activities')
-    activity_id = models.CharField(max_length=50, unique=True)
+    activity_id = models.CharField(max_length=50)
     
     # Basic Information
     subject = models.CharField(max_length=200)
@@ -372,6 +376,7 @@ class Activity(models.Model):
     class Meta:
         ordering = ['due_date']
         verbose_name_plural = 'Activities'
+        unique_together = ['company', 'activity_id']
 
     def __str__(self):
         return f"{self.subject} - {self.get_activity_type_display()}"
@@ -397,7 +402,7 @@ class Campaign(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='campaigns')
-    campaign_id = models.CharField(max_length=50, unique=True)
+    campaign_id = models.CharField(max_length=50)
     
     # Basic Information
     name = models.CharField(max_length=200)
@@ -426,6 +431,7 @@ class Campaign(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        unique_together = ['company', 'campaign_id']
 
     def __str__(self):
         return self.name
@@ -664,24 +670,19 @@ class LeadScore(models.Model):
         return f"{self.lead} - Score: {self.total_score}"
 
     def calculate_total_score(self):
-        # Weighted calculation
         weights = {
             'behavioral': 0.3,
             'demographic': 0.25,
             'engagement': 0.25,
             'predictive': 0.2
         }
-        
         total = (
             self.behavioral_score * weights['behavioral'] +
             self.demographic_score * weights['demographic'] +
             self.engagement_score * weights['engagement'] +
             self.predictive_score * weights['predictive']
         )
-        
         self.total_score = min(100, max(0, int(total)))
-        
-        # Update grade
         if self.total_score <= 25:
             self.grade = 'cold'
         elif self.total_score <= 50:
@@ -690,9 +691,13 @@ class LeadScore(models.Model):
             self.grade = 'hot'
         else:
             self.grade = 'very_hot'
-        
         self.calculation_count += 1
-        self.save()
+        # Use update_fields to avoid triggering full save signals and recursion
+        LeadScore.objects.filter(pk=self.pk).update(
+            total_score=self.total_score,
+            grade=self.grade,
+            calculation_count=self.calculation_count
+        )
         return self.total_score
 
 
@@ -1077,16 +1082,30 @@ class EmailIntegration(models.Model):
     
     company = models.ForeignKey('authentication.Company', on_delete=models.CASCADE, related_name='email_integrations')
     provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
-    credentials = models.JSONField(default=dict)  # Encrypted credentials
+    credentials = models.BinaryField()  # Store Fernet-encrypted bytes
     is_active = models.BooleanField(default=True)
     last_sync = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         unique_together = ['company', 'provider']
-    
+
     def __str__(self):
         return f"{self.company.name} - {self.get_provider_display()}"
+
+    def set_credentials(self, credentials_dict):
+        from django.conf import settings
+        from cryptography.fernet import Fernet
+        import json
+        f = Fernet(settings.EMAIL_ENCRYPTION_KEY.encode() if isinstance(settings.EMAIL_ENCRYPTION_KEY, str) else settings.EMAIL_ENCRYPTION_KEY)
+        self.credentials = f.encrypt(json.dumps(credentials_dict).encode())
+
+    def get_credentials(self):
+        from django.conf import settings
+        from cryptography.fernet import Fernet
+        import json
+        f = Fernet(settings.EMAIL_ENCRYPTION_KEY.encode() if isinstance(settings.EMAIL_ENCRYPTION_KEY, str) else settings.EMAIL_ENCRYPTION_KEY)
+        return json.loads(f.decrypt(bytes(self.credentials)).decode())
 
 class CalendarIntegration(models.Model):
     """Calendar integration settings"""
@@ -1097,17 +1116,33 @@ class CalendarIntegration(models.Model):
     
     company = models.ForeignKey('authentication.Company', on_delete=models.CASCADE, related_name='calendar_integrations')
     provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
-    credentials = models.JSONField(default=dict)  # Encrypted credentials
+    credentials = models.BinaryField(null=True, blank=True)  # Store Fernet-encrypted bytes
     calendar_id = models.CharField(max_length=255, default='primary')
     is_active = models.BooleanField(default=True)
     last_sync = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         unique_together = ['company', 'provider']
-    
+
     def __str__(self):
         return f"{self.company.name} - {self.get_provider_display()}"
+
+    def set_credentials(self, credentials_dict):
+        from django.conf import settings
+        from cryptography.fernet import Fernet
+        import json
+        f = Fernet(settings.EMAIL_ENCRYPTION_KEY.encode() if isinstance(settings.EMAIL_ENCRYPTION_KEY, str) else settings.EMAIL_ENCRYPTION_KEY)
+        self.credentials = f.encrypt(json.dumps(credentials_dict).encode())
+
+    def get_credentials(self):
+        from django.conf import settings
+        from cryptography.fernet import Fernet
+        import json
+        if not self.credentials:
+            return {}
+        f = Fernet(settings.EMAIL_ENCRYPTION_KEY.encode() if isinstance(settings.EMAIL_ENCRYPTION_KEY, str) else settings.EMAIL_ENCRYPTION_KEY)
+        return json.loads(f.decrypt(bytes(self.credentials)).decode())
 
 class EmailActivity(models.Model):
     """Track email activities"""

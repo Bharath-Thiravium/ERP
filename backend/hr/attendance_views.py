@@ -13,6 +13,8 @@ from PIL import Image
 import io
 
 from authentication.models import ServiceUserSession
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from .models import AttendanceSystem, Attendance, AttendanceDevice, AttendanceLog, Employee
 from .attendance_serializers import (
     AttendanceSystemSerializer, AttendanceSerializer, AttendanceDeviceSerializer,
@@ -21,8 +23,8 @@ from .attendance_serializers import (
 
 
 class AttendanceSystemViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = AttendanceSystemSerializer
 
     def get_queryset(self):
@@ -79,8 +81,8 @@ class AttendanceSystemViewSet(viewsets.ModelViewSet):
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     serializer_class = AttendanceSerializer
 
     def get_queryset(self):
@@ -277,27 +279,21 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def mobile_attendance(request):
     """Mobile app attendance check-in/out with face recognition and GPS"""
-    print(f"🔍 Mobile attendance request data keys: {list(request.data.keys())}")
-    print(f"🔍 Request FILES keys: {list(request.FILES.keys())}")
-    print(f"🔍 Employee ID: {request.data.get('employee_id')}")
-    print(f"🔍 Action: {request.data.get('action')}")
-    
     serializer = MobileAttendanceSerializer(data=request.data)
     if not serializer.is_valid():
-        print(f"❌ Serializer errors: {serializer.errors}")
         return Response({
             'error': 'Validation failed',
             'details': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
-    
+
     data = serializer.validated_data
-    
+
     try:
-        employee = Employee.objects.get(employee_id=data['employee_id'])
+        employee = Employee.objects.get(employee_id=data['employee_id'], company=request.service_user.company)
         today = date.today()
         
         # Check if employee has approved leave for today
@@ -413,46 +409,23 @@ def mobile_attendance(request):
 
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def face_recognition_attendance(request):
     """Enhanced face recognition attendance endpoint"""
-    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
-    if not session_key:
-        session_key = request.data.get('session_key')
-    
-    if not session_key:
-        return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-    
     serializer = FaceRecognitionSerializer(data=request.data)
     if not serializer.is_valid():
         return Response({
             'error': 'Validation failed',
             'details': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
-    
-    data = serializer.validated_data
-    face_image = data['face_image']
-    action = data['action']
-    
-    try:
-        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        
-        # This endpoint is deprecated - use mobile attendance endpoint instead
-        return Response({
-            'error': 'Face recognition endpoint deprecated',
-            'message': 'Please use mobile attendance endpoint for face recognition',
-            'redirect': '/api/hr/attendance/mobile/'
-        }, status=status.HTTP_410_GONE)
-        
-    except ServiceUserSession.DoesNotExist:
-        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
-    except Exception as e:
-        return Response({
-            'error': 'Face recognition system error',
-            'message': str(e),
-            'status': 'failed'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # This endpoint is deprecated - use mobile attendance endpoint instead
+    return Response({
+        'error': 'Face recognition endpoint deprecated',
+        'message': 'Please use mobile attendance endpoint for face recognition',
+        'redirect': '/api/hr/attendance/mobile/'
+    }, status=status.HTTP_410_GONE)
 
 
 def validate_face_recognition(employee, face_image):
@@ -584,37 +557,27 @@ def validate_employee_location(latitude, longitude, attendance_system):
 
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def validate_location(request):
     """Validate employee location against geo-fence settings"""
     latitude = request.data.get('latitude')
     longitude = request.data.get('longitude')
-    
+
     if not latitude or not longitude:
         return Response({
             'error': 'Latitude and longitude are required'
         }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Get session key from Authorization header
-    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
-    if not session_key:
-        return Response({
-            'error': 'Session key required'
-        }, status=status.HTTP_401_UNAUTHORIZED)
-    
+
     try:
-        from authentication.models import ServiceUserSession
-        # For mobile app, we need to find employee by session
-        # This is a simplified approach - in production you'd have proper mobile sessions
-        
-        # For now, let's get the first active attendance system
+        # Get this company's attendance system only (not the first one across all companies)
         attendance_systems = AttendanceSystem.objects.filter(
+            company=request.service_user.company,
             enable_geo_fencing=True,
             office_latitude__isnull=False,
             office_longitude__isnull=False
         ).first()
-        
+
         if not attendance_systems:
             return Response({
                 'isValid': True,
@@ -652,16 +615,16 @@ def validate_location(request):
 
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([permissions.AllowAny])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def biometric_sync(request):
     """Sync attendance data from biometric devices"""
     device_id = request.data.get('device_id')
     attendance_logs = request.data.get('logs', [])
-    
+
     try:
-        device = AttendanceDevice.objects.get(device_id=device_id)
-        
+        device = AttendanceDevice.objects.get(device_id=device_id, company=request.service_user.company)
+
         for log_data in attendance_logs:
             employee_id = log_data.get('employee_id')
             timestamp = log_data.get('timestamp')

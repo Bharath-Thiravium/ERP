@@ -25,13 +25,6 @@ from .utils import safe_join, validate_filename, get_safe_scripts_path
 from .security_fixes import secure_path_join, sanitize_filename, escape_content, secure_file_write
 
 
-# Test endpoint to verify authentication bypass
-@api_view(['GET'])
-@permission_classes([permissions.AllowAny])
-def test_no_auth(request):
-    """Test endpoint that should work without authentication"""
-    return Response({'message': 'This endpoint works without authentication', 'timestamp': timezone.now()})
-
 from .models import (
     MasterAdmin, Company, Service, CompanyService,
     CompanyUser, SecurityLog, CompanyServiceUser, ServiceUserSession
@@ -79,31 +72,43 @@ class MasterAdminLoginView(APIView):
     def post(self, request):
         email = request.data.get('email')
         password = request.data.get('password')
-        
+
         if not email or not password:
             return Response({'error': 'Email and password required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         try:
-            # Find user by email
             user = User.objects.get(email=email)
-            
-            # Check password
+
+            # Resolve master admin profile early for lockout enforcement
+            master_admin = getattr(user, 'master_admin', None)
+
+            if master_admin:
+                # Check account lockout
+                if master_admin.is_locked:
+                    if master_admin.locked_until and master_admin.locked_until > timezone.now():
+                        return Response(
+                            {'error': 'Account is temporarily locked. Try again later.'},
+                            status=status.HTTP_429_TOO_MANY_REQUESTS
+                        )
+                    # Auto-unlock: lockout period has passed
+                    master_admin.is_locked = False
+                    master_admin.login_attempts = 0
+                    master_admin.locked_until = None
+                    master_admin.save(update_fields=['is_locked', 'login_attempts', 'locked_until'])
+
             if user.check_password(password) and user.is_active:
-                # Check if user has master admin profile
-                if hasattr(user, 'master_admin'):
-                    # Generate JWT tokens
+                if master_admin:
                     refresh = RefreshToken.for_user(user)
                     access_token = refresh.access_token
-                    
-                    # Update master admin login info
-                    master_admin = user.master_admin
+
                     master_admin.last_login_ip = get_client_ip(request)
                     master_admin.login_attempts = 0
+                    master_admin.is_locked = False
+                    master_admin.locked_until = None
                     master_admin.save()
-                    
-                    # Log successful login
+
                     log_security_event(user, 'LOGIN_SUCCESS', request, 'Master admin login')
-                    
+
                     return Response({
                         'access': str(access_token),
                         'refresh': str(refresh),
@@ -120,8 +125,19 @@ class MasterAdminLoginView(APIView):
                 else:
                     return Response({'error': 'User is not a master admin'}, status=status.HTTP_403_FORBIDDEN)
             else:
+                # Wrong password — track failed attempts for master admin accounts
+                if master_admin:
+                    master_admin.login_attempts += 1
+                    if master_admin.login_attempts >= 5:
+                        master_admin.is_locked = True
+                        master_admin.locked_until = timezone.now() + timedelta(minutes=15)
+                    master_admin.save(update_fields=['login_attempts', 'is_locked', 'locked_until'])
+                    log_security_event(
+                        user, 'LOGIN_FAILED', request,
+                        f'Invalid password, attempt {master_admin.login_attempts}'
+                    )
                 return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-                
+
         except User.DoesNotExist:
             return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
@@ -183,10 +199,6 @@ class CompanyListCreateView(ListCreateAPIView):
                     company_id=company.id
                 )
 
-            # Save service credentials to file for master admin
-            if hasattr(company, '_service_credentials') and company._service_credentials:
-                self._save_service_credentials_file(company, company._service_credentials)
-
         # Get the company user for credentials
         company_user = company.users.first()
         user_email = company_user.user.email if company_user else None
@@ -207,60 +219,6 @@ class CompanyListCreateView(ListCreateAPIView):
         }
 
         return Response(response_data, status=status.HTTP_201_CREATED)
-
-    def _save_service_credentials_file(self, company, service_credentials):
-        """Save service credentials to a file for master admin"""
-        from datetime import datetime
-
-        # Get safe scripts directory
-        scripts_dir = get_safe_scripts_path()
-
-        # Generate safe filename
-        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
-        filename = f'service_credentials_{company_name_safe}.txt'
-        
-        # Validate filename
-        filename = validate_filename(filename)
-        
-        # Use safe path joining
-        filepath = safe_join(scripts_dir, filename)
-
-        # Get company user email
-        company_user = company.users.first()
-        user_email = company_user.user.email if company_user else 'N/A'
-
-        # Create credentials file content
-        content = f"""SERVICE CREDENTIALS FOR {company.name.upper()}
-==================================================
-
-Company: {company.name}
-User Email: {user_email}
-Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-SERVICE PASSWORDS:
---------------------
-
-"""
-
-        for cred in service_credentials:
-            content += f"""Service: {cred['service_name']}
-Type: {cred['service_type']}
-Service ID: {cred['service_id']}
-Password: {cred['password']}
-Unique Service IDs: {', '.join(cred.get('unique_service_ids', ['N/A']))}
-
-"""
-
-        content += """NOTE: These passwords expire in 90 days.
-You can change them after logging into each service.
-Use the Unique Service ID for login instead of username.
-"""
-
-        # Write to file
-        with open(filepath, 'w') as f:
-            f.write(content)
-
-        print(f"✅ Service credentials saved to: {filepath}")
 
 
 class CompanyDetailView(RetrieveUpdateDestroyAPIView):
@@ -1334,9 +1292,6 @@ class CompanyServiceCredentialsView(APIView):
                 'unique_service_ids': unique_service_ids
             })
 
-        # Save credentials to file
-        self._save_service_credentials_file(company, service_credentials)
-
         # Log security event
         log_security_event(
             request.user,
@@ -1352,8 +1307,7 @@ class CompanyServiceCredentialsView(APIView):
                 'name': company.name,
                 'email': company.email
             },
-            'service_credentials': service_credentials,
-            'credentials_file': f'service_credentials_{company.name.lower().replace(" ", "_")}.txt'
+            'service_credentials': service_credentials
         })
 
     def _generate_service_password(self, length=12):
@@ -1362,58 +1316,6 @@ class CompanyServiceCredentialsView(APIView):
         import secrets
         alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
         return ''.join(secrets.choice(alphabet) for _ in range(length))
-
-    def _save_service_credentials_file(self, company, service_credentials):
-        """Save service credentials to a file for master admin"""
-        from datetime import datetime
-
-        # Get safe scripts directory
-        scripts_dir = get_safe_scripts_path()
-
-        # Generate safe filename
-        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
-        filename = f'service_credentials_{company_name_safe}.txt'
-        
-        # Validate filename
-        filename = validate_filename(filename)
-        
-        # Use safe path joining
-        filepath = safe_join(scripts_dir, filename)
-
-        # Get company user email
-        company_user = company.users.first()
-        user_email = company_user.user.email if company_user else 'N/A'
-
-        # Create credentials file content
-        content = f"""SERVICE CREDENTIALS FOR {company.name.upper()}
-==================================================
-
-Company: {company.name}
-User Email: {user_email}
-Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-SERVICE PASSWORDS:
---------------------
-
-"""
-
-        for cred in service_credentials:
-            content += f"""Service: {cred['service_name']}
-Type: {cred['service_type']}
-Service ID: {cred['service_id']}
-Password: {cred['password']}
-Unique Service IDs: {', '.join(cred.get('unique_service_ids', ['N/A']))}
-
-"""
-
-        content += """NOTE: These passwords expire in 90 days.
-You can change them after logging into each service.
-Use the Unique Service ID for login instead of username.
-"""
-
-        # Write to file
-        with open(filepath, 'w') as f:
-            f.write(content)
 
 
 # Service User Views
@@ -1433,17 +1335,16 @@ class ServiceUserLoginView(APIView):
             service_user.login_count += 1
             service_user.save()
 
-            # Create session
+            # Create session with expiry
             from .models import ServiceUserSession
             session_key = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(40))
-            print(f'🔍 DEBUG: Creating session for user {service_user.username} with key: {session_key[:10]}...')
             ServiceUserSession.objects.create(
                 service_user=service_user,
                 session_key=session_key,
                 ip_address=get_client_ip(request),
-                user_agent=request.META.get('HTTP_USER_AGENT', '')
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                expires_at=timezone.now() + timedelta(hours=8)
             )
-            print(f'🔍 DEBUG: Session created successfully')
 
             return Response({
                 'session_key': session_key,
@@ -2030,9 +1931,6 @@ class CompanyPasswordResetView(APIView):
                     f'Reset password for company: {company.name}'
                 )
                 
-                # Save credentials to file
-                credentials_file = self._save_reset_credentials_file(company, company_user.user.email, new_password)
-                
                 return Response({
                     'message': 'Password reset successfully with enhanced security.',
                     'company': {
@@ -2044,7 +1942,6 @@ class CompanyPasswordResetView(APIView):
                         'username': company_user.user.email,
                         'password': new_password
                     },
-                    'credentials_file': credentials_file,
                     'security_actions': [
                         'Password saved to history',
                         'All active sessions terminated',
@@ -2052,7 +1949,7 @@ class CompanyPasswordResetView(APIView):
                         'Password change required on next login'
                     ]
                 })
-            
+
         except Company.DoesNotExist:
             return Response(
                 {'error': 'Company not found.'},
@@ -2071,49 +1968,6 @@ class CompanyPasswordResetView(APIView):
         alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
         return ''.join(secrets.choice(alphabet) for _ in range(length))
     
-    def _save_reset_credentials_file(self, company, username, password):
-        """Save reset credentials to file"""
-        from datetime import datetime
-        
-        # Get safe scripts directory
-        scripts_dir = get_safe_scripts_path()
-        
-        # Generate safe filename
-        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
-        filename = f'reset_credentials_{company_name_safe}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
-        
-        # Validate filename
-        filename = validate_filename(filename)
-        
-        # Use safe path joining
-        filepath = safe_join(scripts_dir, filename)
-        
-        # Create credentials file content
-        content = f"""RESET CREDENTIALS FOR {company.name.upper()}
-==================================================
-
-Company: {company.name}
-Reset Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Reset By: Master Admin
-
-LOGIN CREDENTIALS:
---------------------
-Username/Email: {username}
-New Password: {password}
-
-IMPORTANT NOTES:
-- This is a temporary password
-- You MUST change this password after first login
-- Password expires in 90 days
-- Keep this file secure and delete after use
-
-Login URL: [Your Company Login URL]
-"""
-        
-        # Write to file securely
-        secure_file_write(filepath, content)
-        
-        return filename
 
 
 class CompanyDetailsView(APIView):
@@ -2300,7 +2154,16 @@ class GenerateAutoCodeView(APIView):
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def mobile_logout(request):
-    """Simple mobile logout endpoint"""
+    """Logout endpoint — blacklists the JWT refresh token if provided."""
+    refresh_token = request.data.get('refresh')
+    if refresh_token:
+        try:
+            from rest_framework_simplejwt.tokens import RefreshToken as JWTRefreshToken
+            from rest_framework_simplejwt.exceptions import TokenError
+            token = JWTRefreshToken(refresh_token)
+            token.blacklist()
+        except Exception:
+            pass
     return Response({'message': 'Logged out successfully'})
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import api_view, permission_classes
@@ -2325,13 +2188,6 @@ import logging
 from .utils import safe_join, validate_filename, get_safe_scripts_path
 from .security_fixes import secure_path_join, sanitize_filename, escape_content, secure_file_write
 
-
-# Test endpoint to verify authentication bypass
-@api_view(['GET'])
-@permission_classes([permissions.AllowAny])
-def test_no_auth(request):
-    """Test endpoint that should work without authentication"""
-    return Response({'message': 'This endpoint works without authentication', 'timestamp': timezone.now()})
 
 from .models import (
     MasterAdmin, Company, Service, CompanyService,
@@ -2380,31 +2236,43 @@ class MasterAdminLoginView(APIView):
     def post(self, request):
         email = request.data.get('email')
         password = request.data.get('password')
-        
+
         if not email or not password:
             return Response({'error': 'Email and password required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         try:
-            # Find user by email
             user = User.objects.get(email=email)
-            
-            # Check password
+
+            # Resolve master admin profile early for lockout enforcement
+            master_admin = getattr(user, 'master_admin', None)
+
+            if master_admin:
+                # Check account lockout
+                if master_admin.is_locked:
+                    if master_admin.locked_until and master_admin.locked_until > timezone.now():
+                        return Response(
+                            {'error': 'Account is temporarily locked. Try again later.'},
+                            status=status.HTTP_429_TOO_MANY_REQUESTS
+                        )
+                    # Auto-unlock: lockout period has passed
+                    master_admin.is_locked = False
+                    master_admin.login_attempts = 0
+                    master_admin.locked_until = None
+                    master_admin.save(update_fields=['is_locked', 'login_attempts', 'locked_until'])
+
             if user.check_password(password) and user.is_active:
-                # Check if user has master admin profile
-                if hasattr(user, 'master_admin'):
-                    # Generate JWT tokens
+                if master_admin:
                     refresh = RefreshToken.for_user(user)
                     access_token = refresh.access_token
-                    
-                    # Update master admin login info
-                    master_admin = user.master_admin
+
                     master_admin.last_login_ip = get_client_ip(request)
                     master_admin.login_attempts = 0
+                    master_admin.is_locked = False
+                    master_admin.locked_until = None
                     master_admin.save()
-                    
-                    # Log successful login
+
                     log_security_event(user, 'LOGIN_SUCCESS', request, 'Master admin login')
-                    
+
                     return Response({
                         'access': str(access_token),
                         'refresh': str(refresh),
@@ -2421,8 +2289,19 @@ class MasterAdminLoginView(APIView):
                 else:
                     return Response({'error': 'User is not a master admin'}, status=status.HTTP_403_FORBIDDEN)
             else:
+                # Wrong password — track failed attempts for master admin accounts
+                if master_admin:
+                    master_admin.login_attempts += 1
+                    if master_admin.login_attempts >= 5:
+                        master_admin.is_locked = True
+                        master_admin.locked_until = timezone.now() + timedelta(minutes=15)
+                    master_admin.save(update_fields=['login_attempts', 'is_locked', 'locked_until'])
+                    log_security_event(
+                        user, 'LOGIN_FAILED', request,
+                        f'Invalid password, attempt {master_admin.login_attempts}'
+                    )
                 return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-                
+
         except User.DoesNotExist:
             return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
@@ -2484,10 +2363,6 @@ class CompanyListCreateView(ListCreateAPIView):
                     company_id=company.id
                 )
 
-            # Save service credentials to file for master admin
-            if hasattr(company, '_service_credentials') and company._service_credentials:
-                self._save_service_credentials_file(company, company._service_credentials)
-
         # Get the company user for credentials
         company_user = company.users.first()
         user_email = company_user.user.email if company_user else None
@@ -2508,60 +2383,6 @@ class CompanyListCreateView(ListCreateAPIView):
         }
 
         return Response(response_data, status=status.HTTP_201_CREATED)
-
-    def _save_service_credentials_file(self, company, service_credentials):
-        """Save service credentials to a file for master admin"""
-        from datetime import datetime
-
-        # Get safe scripts directory
-        scripts_dir = get_safe_scripts_path()
-
-        # Generate safe filename
-        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
-        filename = f'service_credentials_{company_name_safe}.txt'
-        
-        # Validate filename
-        filename = validate_filename(filename)
-        
-        # Use safe path joining
-        filepath = safe_join(scripts_dir, filename)
-
-        # Get company user email
-        company_user = company.users.first()
-        user_email = company_user.user.email if company_user else 'N/A'
-
-        # Create credentials file content
-        content = f"""SERVICE CREDENTIALS FOR {company.name.upper()}
-==================================================
-
-Company: {company.name}
-User Email: {user_email}
-Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-SERVICE PASSWORDS:
---------------------
-
-"""
-
-        for cred in service_credentials:
-            content += f"""Service: {cred['service_name']}
-Type: {cred['service_type']}
-Service ID: {cred['service_id']}
-Password: {cred['password']}
-Unique Service IDs: {', '.join(cred.get('unique_service_ids', ['N/A']))}
-
-"""
-
-        content += """NOTE: These passwords expire in 90 days.
-You can change them after logging into each service.
-Use the Unique Service ID for login instead of username.
-"""
-
-        # Write to file
-        with open(filepath, 'w') as f:
-            f.write(content)
-
-        print(f"✅ Service credentials saved to: {filepath}")
 
 
 class CompanyDetailView(RetrieveUpdateDestroyAPIView):
@@ -3635,9 +3456,6 @@ class CompanyServiceCredentialsView(APIView):
                 'unique_service_ids': unique_service_ids
             })
 
-        # Save credentials to file
-        self._save_service_credentials_file(company, service_credentials)
-
         # Log security event
         log_security_event(
             request.user,
@@ -3653,8 +3471,7 @@ class CompanyServiceCredentialsView(APIView):
                 'name': company.name,
                 'email': company.email
             },
-            'service_credentials': service_credentials,
-            'credentials_file': f'service_credentials_{company.name.lower().replace(" ", "_")}.txt'
+            'service_credentials': service_credentials
         })
 
     def _generate_service_password(self, length=12):
@@ -3663,58 +3480,6 @@ class CompanyServiceCredentialsView(APIView):
         import secrets
         alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
         return ''.join(secrets.choice(alphabet) for _ in range(length))
-
-    def _save_service_credentials_file(self, company, service_credentials):
-        """Save service credentials to a file for master admin"""
-        from datetime import datetime
-
-        # Get safe scripts directory
-        scripts_dir = get_safe_scripts_path()
-
-        # Generate safe filename
-        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
-        filename = f'service_credentials_{company_name_safe}.txt'
-        
-        # Validate filename
-        filename = validate_filename(filename)
-        
-        # Use safe path joining
-        filepath = safe_join(scripts_dir, filename)
-
-        # Get company user email
-        company_user = company.users.first()
-        user_email = company_user.user.email if company_user else 'N/A'
-
-        # Create credentials file content
-        content = f"""SERVICE CREDENTIALS FOR {company.name.upper()}
-==================================================
-
-Company: {company.name}
-User Email: {user_email}
-Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-SERVICE PASSWORDS:
---------------------
-
-"""
-
-        for cred in service_credentials:
-            content += f"""Service: {cred['service_name']}
-Type: {cred['service_type']}
-Service ID: {cred['service_id']}
-Password: {cred['password']}
-Unique Service IDs: {', '.join(cred.get('unique_service_ids', ['N/A']))}
-
-"""
-
-        content += """NOTE: These passwords expire in 90 days.
-You can change them after logging into each service.
-Use the Unique Service ID for login instead of username.
-"""
-
-        # Write to file
-        with open(filepath, 'w') as f:
-            f.write(content)
 
 
 # Service User Views
@@ -3734,17 +3499,16 @@ class ServiceUserLoginView(APIView):
             service_user.login_count += 1
             service_user.save()
 
-            # Create session
+            # Create session with expiry
             from .models import ServiceUserSession
             session_key = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(40))
-            print(f'🔍 DEBUG: Creating session for user {service_user.username} with key: {session_key[:10]}...')
             ServiceUserSession.objects.create(
                 service_user=service_user,
                 session_key=session_key,
                 ip_address=get_client_ip(request),
-                user_agent=request.META.get('HTTP_USER_AGENT', '')
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                expires_at=timezone.now() + timedelta(hours=8)
             )
-            print(f'🔍 DEBUG: Session created successfully')
 
             return Response({
                 'session_key': session_key,
@@ -4331,9 +4095,6 @@ class CompanyPasswordResetView(APIView):
                     f'Reset password for company: {company.name}'
                 )
                 
-                # Save credentials to file
-                credentials_file = self._save_reset_credentials_file(company, company_user.user.email, new_password)
-                
                 return Response({
                     'message': 'Password reset successfully with enhanced security.',
                     'company': {
@@ -4345,7 +4106,6 @@ class CompanyPasswordResetView(APIView):
                         'username': company_user.user.email,
                         'password': new_password
                     },
-                    'credentials_file': credentials_file,
                     'security_actions': [
                         'Password saved to history',
                         'All active sessions terminated',
@@ -4353,7 +4113,7 @@ class CompanyPasswordResetView(APIView):
                         'Password change required on next login'
                     ]
                 })
-            
+
         except Company.DoesNotExist:
             return Response(
                 {'error': 'Company not found.'},
@@ -4372,49 +4132,6 @@ class CompanyPasswordResetView(APIView):
         alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
         return ''.join(secrets.choice(alphabet) for _ in range(length))
     
-    def _save_reset_credentials_file(self, company, username, password):
-        """Save reset credentials to file"""
-        from datetime import datetime
-        
-        # Get safe scripts directory
-        scripts_dir = get_safe_scripts_path()
-        
-        # Generate safe filename
-        company_name_safe = ''.join(c for c in company.name if c.isalnum() or c in '_-').lower()
-        filename = f'reset_credentials_{company_name_safe}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
-        
-        # Validate filename
-        filename = validate_filename(filename)
-        
-        # Use safe path joining
-        filepath = safe_join(scripts_dir, filename)
-        
-        # Create credentials file content
-        content = f"""RESET CREDENTIALS FOR {company.name.upper()}
-==================================================
-
-Company: {company.name}
-Reset Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Reset By: Master Admin
-
-LOGIN CREDENTIALS:
---------------------
-Username/Email: {username}
-New Password: {password}
-
-IMPORTANT NOTES:
-- This is a temporary password
-- You MUST change this password after first login
-- Password expires in 90 days
-- Keep this file secure and delete after use
-
-Login URL: [Your Company Login URL]
-"""
-        
-        # Write to file securely
-        secure_file_write(filepath, content)
-        
-        return filename
 
 
 class CompanyDetailsView(APIView):
@@ -4629,5 +4346,14 @@ class GenerateAutoCodeView(APIView):
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def mobile_logout(request):
-    """Simple mobile logout endpoint"""
+    """Logout endpoint — blacklists the JWT refresh token if provided."""
+    refresh_token = request.data.get('refresh')
+    if refresh_token:
+        try:
+            from rest_framework_simplejwt.tokens import RefreshToken as JWTRefreshToken
+            from rest_framework_simplejwt.exceptions import TokenError
+            token = JWTRefreshToken(refresh_token)
+            token.blacklist()
+        except Exception:
+            pass
     return Response({'message': 'Logged out successfully'})

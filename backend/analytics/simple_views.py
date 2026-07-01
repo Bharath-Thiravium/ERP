@@ -1,13 +1,13 @@
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django.contrib.auth.models import User
+from authentication.permissions import IsMasterAdmin
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsMasterAdmin])
 def simple_system_overview(request):
-    """Simple system overview that works"""
+    """Simple system overview (Master Admin only — returns platform-wide user count)."""
     try:
+        from django.contrib.auth.models import User
         return Response({
             'system_metrics': {
                 'cpu_usage': 25.5,

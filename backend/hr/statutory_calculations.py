@@ -64,23 +64,23 @@ class StatutoryCalculator:
             # Calculate PF wages (attendance-based basic salary)
             attendance_ratio = SafeCalculator.safe_divide(Decimal(present_days), Decimal(working_days), Decimal('1'))
             pf_wages = SafeCalculator.safe_multiply(basic_salary, attendance_ratio)
-        
-        # Apply PF ceiling
-        ceiling_applied = False
-        if pf_wages > self.settings.pf_ceiling:
-            pf_wages = self.settings.pf_ceiling
-            ceiling_applied = True
-        
-        # Calculate contributions
-        employee_pf = (pf_wages * self.settings.pf_employee_rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        employer_pf = (pf_wages * self.settings.pf_employer_rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        
-        # EPS contribution (8.33% of PF wages, max ₹1,250)
-        eps_rate = Decimal('8.33')
-        eps_contribution = (pf_wages * eps_rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        if eps_contribution > Decimal('1250'):
-            eps_contribution = Decimal('1250')
-        
+
+            # Apply PF ceiling
+            ceiling_applied = False
+            if pf_wages > self.settings.pf_ceiling:
+                pf_wages = self.settings.pf_ceiling
+                ceiling_applied = True
+
+            # Calculate contributions
+            employee_pf = (pf_wages * self.settings.pf_employee_rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            employer_pf = (pf_wages * self.settings.pf_employer_rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+            # EPS contribution (8.33% of PF wages, max ₹1,250)
+            eps_rate = Decimal('8.33')
+            eps_contribution = (pf_wages * eps_rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            if eps_contribution > Decimal('1250'):
+                eps_contribution = Decimal('1250')
+
             return {
                 'employee_pf': employee_pf,
                 'employer_pf': employer_pf,
@@ -429,7 +429,14 @@ def calculate_enhanced_payslip(payslip):
     
     # Enhanced TDS calculation
     annual_gross = gross_salary * 12
-    tds_calc = calculator.calculate_tds(payslip.employee, annual_gross, hra * 12)
+    annual_basic = basic_salary * 12
+    annual_hra_paid = hra * 12
+    # HRA exemption is the minimum of the actual HRA paid and 50% of basic salary
+    # (metro-city assumption). Previously the raw actual HRA paid was passed directly
+    # as the "exemption" value, bypassing this statutory cap and understating taxable
+    # income (and therefore TDS) whenever actual HRA paid exceeds the cap.
+    capped_hra_exemption = min(annual_hra_paid, annual_basic * Decimal('0.5'))
+    tds_calc = calculator.calculate_tds(payslip.employee, annual_gross, capped_hra_exemption)
     
     # Update payslip with enhanced calculations
     payslip.basic_salary = basic_salary.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)

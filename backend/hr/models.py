@@ -580,8 +580,11 @@ class Attendance(models.Model):
         """Check if employee is late"""
         if not self.check_in_time:
             return False
-        
-        system = self.employee.company.attendance_system
+
+        try:
+            system = self.employee.company.attendance_system
+        except AttendanceSystem.DoesNotExist:
+            return False
         expected_time = system.work_start_time
         grace_period = system.grace_period_minutes
         
@@ -863,10 +866,22 @@ class Payslip(models.Model):
         return calculate_enhanced_payslip(self)
     
     def validate_payment_date(self):
-        """Validate payment date as per Payment of Wages Act"""
+        """Validate payment date as per Payment of Wages Act.
+
+        Wages must be paid within 10 days of the end of the wage period (the
+        Act specifies 7 days for establishments with fewer than 1000 employees
+        and 10 days otherwise; 10 is used here as the safe upper bound).
+        Comparing pay_date's day-of-month in isolation incorrectly rejected any
+        payroll cycle that pays after the 10th of the calendar month (e.g. an
+        end-of-month pay date), regardless of how soon after the period ended
+        it actually was.
+        """
         from django.core.exceptions import ValidationError
-        if self.payroll_cycle.pay_date.day > 10:
-            raise ValidationError("Salary must be paid by 10th of month as per Payment of Wages Act")
+        days_after_period_end = (self.payroll_cycle.pay_date - self.payroll_cycle.end_date).days
+        if days_after_period_end > 10:
+            raise ValidationError(
+                "Salary must be paid within 10 days of the wage period ending, as per Payment of Wages Act"
+            )
     
     def validate_deductions(self):
         """Validate deductions do not exceed 50% as per Payment of Wages Act"""

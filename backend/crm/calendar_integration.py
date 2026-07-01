@@ -78,11 +78,11 @@ class GoogleCalendarIntegration(CalendarIntegrationBase):
                 company_id=self.company_id,
                 provider='google'
             )
-            credentials = integration.credentials
+            credentials = integration.get_credentials()
             credentials['access_token'] = token_data['access_token']
             if 'refresh_token' in token_data:
                 credentials['refresh_token'] = token_data['refresh_token']
-            integration.credentials = credentials
+            integration.set_credentials(credentials)
             integration.save()
         except CalendarIntegration.DoesNotExist:
             pass
@@ -467,9 +467,9 @@ class CalendarIntegrationManager:
             )
             
             if provider == 'google':
-                return GoogleCalendarIntegration(company_id, integration.credentials)
+                return GoogleCalendarIntegration(company_id, integration.get_credentials())
             elif provider == 'outlook':
-                return OutlookCalendarIntegration(company_id, integration.credentials)
+                return OutlookCalendarIntegration(company_id, integration.get_credentials())
             
         except CalendarIntegration.DoesNotExist:
             pass

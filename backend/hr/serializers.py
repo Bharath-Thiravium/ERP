@@ -143,11 +143,28 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
             'local_address_line1', 'local_address_line2', 'local_city', 'local_state', 'local_pincode', 'local_country'
         ]
     
+    def _get_context_company(self):
+        request = self.context.get('request')
+        service_user = getattr(request, 'service_user', None) if request else None
+        return service_user.company if service_user else None
+
     def validate_email(self, value):
         if Employee.objects.filter(email=value).exists():
             raise serializers.ValidationError("Employee with this email already exists.")
         return value
-    
+
+    def validate_department(self, value):
+        company = self._get_context_company()
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError('Department not found or access denied.')
+        return value
+
+    def validate_designation(self, value):
+        company = self._get_context_company()
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError('Designation not found or access denied.')
+        return value
+
     def validate_skills(self, value):
         if isinstance(value, str):
             try:
@@ -210,7 +227,7 @@ class PerformanceReviewSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.full_name', read_only=True)
     reviewer_name = serializers.CharField(source='reviewer.full_name', read_only=True)
     reviewer = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), required=False, allow_null=True)
-    
+
     class Meta:
         model = PerformanceReview
         fields = [
@@ -222,6 +239,25 @@ class PerformanceReviewSerializer(serializers.ModelSerializer):
             'status', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def _get_context_company(self):
+        request = self.context.get('request')
+        service_user = getattr(request, 'service_user', None) if request else None
+        return service_user.company if service_user else None
+
+    def validate_employee(self, value):
+        company = self._get_context_company()
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError('Employee not found or access denied.')
+        return value
+
+    def validate_reviewer(self, value):
+        if value is None:
+            return value
+        company = self._get_context_company()
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError('Reviewer not found or access denied.')
+        return value
 
 
 class ComplianceFormTemplateSerializer(serializers.ModelSerializer):

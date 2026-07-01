@@ -8,6 +8,23 @@ from .models import (
 )
 
 
+def get_context_company(context):
+    """Resolve the authenticated company from serializer context."""
+    request = context.get('request')
+    service_user = getattr(request, 'service_user', None) if request else None
+    return service_user.company if service_user else None
+
+
+def validate_same_company(value, context, label):
+    """Ensure a referenced FK instance belongs to the authenticated company."""
+    if value is None:
+        return value
+    company = get_context_company(context)
+    if company is not None and getattr(value, 'company_id', None) != company.id:
+        raise serializers.ValidationError(f'{label} not found or access denied.')
+    return value
+
+
 class CategorySerializer(serializers.ModelSerializer):
     """Category serializer with AI insights"""
     subcategories_count = serializers.SerializerMethodField()
@@ -40,12 +57,15 @@ class CategorySerializer(serializers.ModelSerializer):
     
     def validate_name(self, value):
         return InventorySecurityValidator.sanitize_input(value)
-    
+
     def validate_description(self, value):
         return InventorySecurityValidator.sanitize_input(value)
-    
+
     def validate_ai_suggested_attributes(self, value):
         return InventorySecurityValidator.validate_json_field(value)
+
+    def validate_parent_category(self, value):
+        return validate_same_company(value, self.context, 'Parent category')
 
 
 class SupplierSerializer(serializers.ModelSerializer):
@@ -111,6 +131,9 @@ class WarehouseSerializer(serializers.ModelSerializer):
 
     def get_manager_name(self, obj):
         return obj.manager.full_name if obj.manager else None
+
+    def validate_manager(self, value):
+        return validate_same_company(value, self.context, 'Manager')
 
 
 class ProductVariantSerializer(serializers.ModelSerializer):
@@ -229,12 +252,18 @@ class ProductCreateSerializer(serializers.ModelSerializer):
     
     def validate_name(self, value):
         return InventorySecurityValidator.sanitize_input(value)
-    
+
     def validate_description(self, value):
         return InventorySecurityValidator.sanitize_input(value)
-    
+
     def validate_hsn_code(self, value):
         return InventorySecurityValidator.validate_hsn_code(value)
+
+    def validate_category(self, value):
+        return validate_same_company(value, self.context, 'Category')
+
+    def validate_primary_supplier(self, value):
+        return validate_same_company(value, self.context, 'Supplier')
     
     def validate_variant_attributes(self, value):
         return InventorySecurityValidator.validate_json_field(value)
@@ -275,6 +304,15 @@ class StockMovementSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at']
 
+    def validate_product(self, value):
+        return validate_same_company(value, self.context, 'Product')
+
+    def validate_warehouse(self, value):
+        return validate_same_company(value, self.context, 'Warehouse')
+
+    def validate_destination_warehouse(self, value):
+        return validate_same_company(value, self.context, 'Destination warehouse')
+
 
 class StockAlertSerializer(serializers.ModelSerializer):
     """Stock alert serializer"""
@@ -292,6 +330,12 @@ class StockAlertSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'updated_at']
 
+    def validate_product(self, value):
+        return validate_same_company(value, self.context, 'Product')
+
+    def validate_warehouse(self, value):
+        return validate_same_company(value, self.context, 'Warehouse')
+
 
 class InventoryAuditItemSerializer(serializers.ModelSerializer):
     """Inventory audit item serializer"""
@@ -307,6 +351,9 @@ class InventoryAuditItemSerializer(serializers.ModelSerializer):
             'audited_at'
         ]
         read_only_fields = ['difference', 'value_difference', 'audited_at']
+
+    def validate_product(self, value):
+        return validate_same_company(value, self.context, 'Product')
 
 
 class InventoryAuditSerializer(serializers.ModelSerializer):
@@ -326,6 +373,36 @@ class InventoryAuditSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['audit_number', 'created_at', 'completed_at']
 
+    def validate_warehouse(self, value):
+        return validate_same_company(value, self.context, 'Warehouse')
+
+    def validate_supervisor(self, value):
+        return validate_same_company(value, self.context, 'Supervisor')
+
+    def validate_categories(self, value):
+        company = get_context_company(self.context)
+        if company is not None:
+            for category in value:
+                if category.company_id != company.id:
+                    raise serializers.ValidationError('One or more categories not found or access denied.')
+        return value
+
+    def validate_products(self, value):
+        company = get_context_company(self.context)
+        if company is not None:
+            for product in value:
+                if product.company_id != company.id:
+                    raise serializers.ValidationError('One or more products not found or access denied.')
+        return value
+
+    def validate_audit_team(self, value):
+        company = get_context_company(self.context)
+        if company is not None:
+            for employee in value:
+                if employee.company_id != company.id:
+                    raise serializers.ValidationError('One or more audit team members not found or access denied.')
+        return value
+
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
     """Purchase order item serializer"""
@@ -341,6 +418,9 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
             'total_price', 'notes', 'is_fully_received', 'created_at'
         ]
         read_only_fields = ['total_price', 'created_at']
+
+    def validate_product(self, value):
+        return validate_same_company(value, self.context, 'Product')
 
 
 class PurchaseOrderSerializer(serializers.ModelSerializer):
@@ -362,13 +442,19 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['po_number', 'created_at', 'updated_at']
 
+    def validate_supplier(self, value):
+        return validate_same_company(value, self.context, 'Supplier')
+
+    def validate_warehouse(self, value):
+        return validate_same_company(value, self.context, 'Warehouse')
+
 
 class ProductBundleItemSerializer(serializers.ModelSerializer):
     """Product bundle item serializer"""
     product_name = serializers.CharField(source='product.name', read_only=True)
     effective_price = serializers.ReadOnlyField()
     line_total = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = ProductBundleItem
         fields = [
@@ -377,6 +463,9 @@ class ProductBundleItemSerializer(serializers.ModelSerializer):
             'created_at'
         ]
         read_only_fields = ['created_at']
+
+    def validate_product(self, value):
+        return validate_same_company(value, self.context, 'Product')
 
 
 class ProductBundleSerializer(serializers.ModelSerializer):
@@ -410,6 +499,9 @@ class CycleCountItemSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['variance', 'counted_at']
 
+    def validate_product(self, value):
+        return validate_same_company(value, self.context, 'Product')
+
 
 class CycleCountSerializer(serializers.ModelSerializer):
     """Cycle count serializer"""
@@ -425,6 +517,17 @@ class CycleCountSerializer(serializers.ModelSerializer):
             'accuracy_percentage', 'count_items', 'created_at', 'completed_at'
         ]
         read_only_fields = ['count_number', 'created_at', 'completed_at']
+
+    def validate_warehouse(self, value):
+        return validate_same_company(value, self.context, 'Warehouse')
+
+    def validate_categories(self, value):
+        company = get_context_company(self.context)
+        if company is not None:
+            for category in value:
+                if category.company_id != company.id:
+                    raise serializers.ValidationError('One or more categories not found or access denied.')
+        return value
 
 
 class InventoryDashboardSerializer(serializers.Serializer):

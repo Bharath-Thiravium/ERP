@@ -900,6 +900,7 @@ def employee_mobile_login(request):
     try:
         employee = Employee.objects.select_related('company', 'department', 'designation').get(
             employee_id=employee_id,
+            company=request.service_user.company,
             status='active',
             mobile_app_enabled=True
         )

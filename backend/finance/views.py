@@ -16,6 +16,8 @@ import logging
 # Set up logging
 logger = logging.getLogger(__name__)
 from authentication.models import ServiceUserSession, CompanyServiceUser
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from .models import Customer, Product, HSNCode, SACCode, Quotation, QuotationItem, PurchaseOrder, PurchaseOrderItem, ProformaInvoice, ProformaInvoiceItem, Invoice, InvoiceItem, Payment, NumberingRule, NumberingCounter, FINANCE_NUMBERING_MODULE_CHOICES, CustomerShippingAddress, TDSDeposit
 from .unit_models import Unit
 from .email_utils import send_invoice_email, send_proforma_email, send_quotation_email, send_purchase_order_email
@@ -2442,11 +2444,8 @@ def payment_stats(request):
 
 def _build_customer_ledger_data(request):
     """Build customer ledger data with transaction history."""
-    session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
-    if not session_key:
-        session_key = request.query_params.get('session_key')
-
-    if not session_key:
+    service_user = getattr(request, 'service_user', None)
+    if not service_user:
         return None, Response({'error': 'Session key required'}, status=401)
 
     customer_id = request.query_params.get('customer_id')
@@ -2454,12 +2453,6 @@ def _build_customer_ledger_data(request):
         return None, Response({'error': 'Customer ID required'}, status=400)
 
     try:
-        session = ServiceUserSession.objects.get(
-            session_key=session_key,
-            is_active=True
-        )
-        service_user = session.service_user
-
         # Get customer
         customer = Customer.objects.get(
             id=customer_id,
@@ -2823,8 +2816,8 @@ def _build_customer_ledger_html(data):
 
 
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def customer_ledger_pdf(request):
     """Download complete customer ledger as PDF."""
     ledger_data, error_response = _build_customer_ledger_data(request)
@@ -3946,22 +3939,14 @@ class FinanceNumberingPreviewView(APIView):
 
 class CustomerShippingAddressDetailView(APIView):
     """Retrieve customer shipping address details"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def get(self, request, address_id):
         """Get shipping address details"""
-        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
-        if not session_key:
-            session_key = request.query_params.get('session_key')
-
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        service_user = request.service_user
 
         try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            service_user = session.service_user
-
             # Get shipping address for this company only
             shipping_address = CustomerShippingAddress.objects.get(
                 id=address_id,
@@ -3971,8 +3956,6 @@ class CustomerShippingAddressDetailView(APIView):
             serializer = CustomerShippingAddressSerializer(shipping_address)
             return Response(serializer.data)
 
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except CustomerShippingAddress.DoesNotExist:
             return Response({'error': 'Shipping address not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
@@ -3985,8 +3968,8 @@ class CustomerShippingAddressDetailView(APIView):
 # NOTE: Legacy endpoint kept for backward compatibility with clients/tests.
 # It must preserve session_key-based auth used across finance frontend calls.
 @api_view(["GET"])
-@authentication_classes([])
-@permission_classes([])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def customer_ledger(request):
     """
     Legacy customer-ledger endpoint.
@@ -3998,22 +3981,11 @@ def customer_ledger(request):
 class TDSDepositListCreateView(ListCreateAPIView):
     """List and create split TDS deposits for a payment."""
     serializer_class = TDSDepositSerializer
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def _get_service_user(self):
-        session_key = (
-            self.request.headers.get('Authorization', '').replace('Bearer ', '')
-            or self.request.query_params.get('session_key')
-            or self.request.data.get('session_key')
-        )
-        if not session_key:
-            return None
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            return session.service_user
-        except ServiceUserSession.DoesNotExist:
-            return None
+        return getattr(self.request, 'service_user', None)
 
     def get_queryset(self):
         service_user = self._get_service_user()
@@ -4049,22 +4021,12 @@ class TDSDepositListCreateView(ListCreateAPIView):
 class TDSPaymentsListView(ListAPIView):
     """TDS Payments List - Quarter-wise grouping for Form 26Q"""
     serializer_class = TDSPaymentSerializer
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     pagination_class = None  # Manual pagination via limit/offset
 
     def _get_service_user(self):
-        session_key = (
-            self.request.headers.get('Authorization', '').replace('Bearer ', '')
-            or self.request.query_params.get('session_key')
-        )
-        if not session_key:
-            return None
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            return session.service_user
-        except ServiceUserSession.DoesNotExist:
-            return None
+        return getattr(self.request, 'service_user', None)
 
     def get_queryset(self):
         service_user = self._get_service_user()
@@ -4169,22 +4131,12 @@ class TDSPaymentsListView(ListAPIView):
 
 class TDSExportCSVView(ListAPIView):
     """Export TDS Report CSV for CA submission - Uses TDSReportGenerator"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
     renderer_classes = []  # We'll handle response manually
 
     def _get_service_user(self):
-        session_key = (
-            self.request.headers.get('Authorization', '').replace('Bearer ', '')
-            or self.request.query_params.get('session_key')
-        )
-        if not session_key:
-            return None
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            return session.service_user
-        except ServiceUserSession.DoesNotExist:
-            return None
+        return getattr(self.request, 'service_user', None)
 
     def _export(self, quarter, financial_year, service_user):
         from django.http import HttpResponse
@@ -4230,22 +4182,11 @@ class TDSExportCSVView(ListAPIView):
 class TDSDepositDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, delete a single TDS deposit."""
     serializer_class = TDSDepositSerializer
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def _get_service_user(self):
-        session_key = (
-            self.request.headers.get('Authorization', '').replace('Bearer ', '')
-            or self.request.query_params.get('session_key')
-            or self.request.data.get('session_key')
-        )
-        if not session_key:
-            return None
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            return session.service_user
-        except ServiceUserSession.DoesNotExist:
-            return None
+        return getattr(self.request, 'service_user', None)
 
     def get_queryset(self):
         service_user = self._get_service_user()
@@ -4267,22 +4208,11 @@ class TDSDepositDetailView(RetrieveUpdateDestroyAPIView):
 
 class MarkTDSCertReceivedView(APIView):
     """PATCH /api/finance/payment-tds/{id}/mark-cert-received/ — toggle tds_certificate_received on a Payment directly."""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def _get_service_user(self):
-        session_key = (
-            self.request.headers.get('Authorization', '').replace('Bearer ', '')
-            or self.request.query_params.get('session_key')
-            or self.request.data.get('session_key')
-        )
-        if not session_key:
-            return None
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            return session.service_user
-        except ServiceUserSession.DoesNotExist:
-            return None
+        return getattr(self.request, 'service_user', None)
 
     def patch(self, request, payment_id):
         service_user = self._get_service_user()
@@ -4304,9 +4234,9 @@ class PendingPaymentStatementAPIView(APIView):
     """
     Pending payment statement endpoint - returns JSON data.
     """
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
-    
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
+
     def get(self, request):
         statement_data, error_response = _build_customer_pending_statement_data(request)
         if error_response:
@@ -4486,11 +4416,8 @@ def _build_customer_pending_statement_data(request):
     import logging
     logger = logging.getLogger(__name__)
 
-    session_key = (
-        request.headers.get('Authorization', '').replace('Bearer ', '')
-        or request.query_params.get('session_key')
-    )
-    if not session_key:
+    service_user = getattr(request, 'service_user', None)
+    if not service_user:
         return None, Response({'error': 'Session key required'}, status=401)
 
     customer_id = request.query_params.get('customer_id')
@@ -4500,14 +4427,13 @@ def _build_customer_pending_statement_data(request):
     include_tds = request.query_params.get('include_tds', 'true').lower() == 'true'
 
     try:
-        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        company = session.service_user.company
+        company = service_user.company
         customer = Customer.objects.get(id=customer_id, company=company)
-    except (ServiceUserSession.DoesNotExist, Customer.DoesNotExist) as e:
-        logger.error(f"Auth/Customer error: {str(e)}")
+    except Customer.DoesNotExist as e:
+        logger.error(f"Customer error: {str(e)}")
         return None, Response({'error': 'Not found'}, status=404)
     except Exception as e:
-        logger.error(f"Unexpected error in auth: {str(e)}")
+        logger.error(f"Unexpected error: {str(e)}")
         return None, Response({'error': str(e)}, status=500)
 
     pending_invoices = Invoice.objects.filter(
@@ -4847,22 +4773,17 @@ def _build_pending_statement_html(data, company):
 # ─── PO / WO Consolidated Report ──────────────────────────────────────────────
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def po_consolidated_report(request, po_id):
     """
     Generate a consolidated PDF report for a PO/WO including:
     overview, items, claiming status, related invoices, financial summary.
     """
-    session_key = request.headers.get('Authorization', '').replace('Bearer ', '') or request.query_params.get('session_key')
-    if not session_key:
-        return Response({'error': 'Session key required'}, status=401)
-
+    company = request.service_user.company
     try:
-        session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        company = session.service_user.company
         po = PurchaseOrder.objects.get(id=po_id, company=company)
-    except (ServiceUserSession.DoesNotExist, PurchaseOrder.DoesNotExist):
+    except PurchaseOrder.DoesNotExist:
         return Response({'error': 'Not found'}, status=404)
 
     # Gather related invoices
@@ -5088,8 +5009,8 @@ def _build_po_report_html(po, company, proformas, invoices, claiming):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
 def customer_pending_statement_pdf(request):
     """PDF endpoint for pending payment statement"""
     import logging

@@ -2,6 +2,7 @@ from rest_framework import status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction
 from django.db.models import Q, Count, Sum, Avg
 from django.utils import timezone
 from datetime import timedelta
@@ -77,69 +78,70 @@ class LeadViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'])
     def convert_to_opportunity(self, request, pk=None):
         """Convert lead to opportunity"""
+        from django.db import transaction
         lead = self.get_object()
         
-        # Check if lead is already converted
         if lead.status == 'won':
             return Response({'error': 'Lead has already been converted to opportunity'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Get default user
-        from django.contrib.auth.models import User
-        default_user = User.objects.filter(is_superuser=True).first()
+        default_user = request.service_user.created_by
         if not default_user:
             return Response({'error': 'No valid user found for conversion'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Create account
-        account_data = {
-            'company': self.get_company().id,
-            'name': lead.company_name or f"{lead.first_name} {lead.last_name}",
-            'account_type': 'prospect',
-            'email': lead.email,
-            'created_by': default_user.id
-        }
-        account_serializer = AccountSerializer(data=account_data)
-        if account_serializer.is_valid():
-            account = account_serializer.save(created_by=default_user)
-        else:
-            return Response({'error': f'Failed to create account: {account_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
+        company = self.get_company()
         
-        # Create contact
-        contact_data = {
-            'company': self.get_company().id,
-            'first_name': lead.first_name,
-            'last_name': lead.last_name,
-            'email': lead.email,
-            'phone': lead.phone,
-            'job_title': lead.job_title,
-            'created_by': default_user.id
-        }
-        contact_serializer = ContactSerializer(data=contact_data)
-        if contact_serializer.is_valid():
-            contact = contact_serializer.save(created_by=default_user)
-        else:
-            return Response({'error': f'Failed to create contact: {contact_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Create opportunity
-        opportunity_data = {
-            'company': self.get_company().id,
-            'name': f"{lead.first_name} {lead.last_name} - Opportunity",
-            'account': account.id,
-            'contact': contact.id,
-            'amount': lead.estimated_value or 0,
-            'expected_close_date': lead.expected_close_date or timezone.now().date() + timedelta(days=30),
-            'owner': lead.assigned_to.id if lead.assigned_to else default_user.id,
-            'created_by': default_user.id,
-            'description': lead.description
-        }
-        opportunity_serializer = OpportunitySerializer(data=opportunity_data)
-        if opportunity_serializer.is_valid():
-            opportunity = opportunity_serializer.save(created_by=default_user, owner_id=lead.assigned_to.id if lead.assigned_to else default_user.id)
-        else:
-            return Response({'error': f'Failed to create opportunity: {opportunity_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Update lead status to converted
-        lead.status = 'won'
-        lead.save()
+        with transaction.atomic():
+            account_data = {
+                'company': company.id,
+                'name': lead.company_name or f"{lead.first_name} {lead.last_name}",
+                'account_type': 'prospect',
+                'email': lead.email,
+                'created_by': default_user.id
+            }
+            account_serializer = AccountSerializer(data=account_data)
+            if account_serializer.is_valid():
+                account = account_serializer.save(company=company, created_by=default_user)
+            else:
+                return Response({'error': f'Failed to create account: {account_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            contact_data = {
+                'company': company.id,
+                'first_name': lead.first_name,
+                'last_name': lead.last_name,
+                'email': lead.email,
+                'phone': lead.phone,
+                'job_title': lead.job_title,
+                'created_by': default_user.id
+            }
+            contact_serializer = ContactSerializer(data=contact_data)
+            if contact_serializer.is_valid():
+                contact = contact_serializer.save(company=company, created_by=default_user)
+            else:
+                return Response({'error': f'Failed to create contact: {contact_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            opportunity_data = {
+                'company': company.id,
+                'name': f"{lead.first_name} {lead.last_name} - Opportunity",
+                'account': account.id,
+                'contact': contact.id,
+                'amount': lead.estimated_value or 0,
+                'expected_close_date': lead.expected_close_date or timezone.now().date() + timedelta(days=30),
+                'owner': lead.assigned_to.id if lead.assigned_to else default_user.id,
+                'created_by': default_user.id,
+                'description': lead.description
+            }
+            opportunity_serializer = OpportunitySerializer(data=opportunity_data)
+            if opportunity_serializer.is_valid():
+                opportunity = opportunity_serializer.save(
+                    company=company,
+                    created_by=default_user,
+                    owner_id=lead.assigned_to.id if lead.assigned_to else default_user.id
+                )
+            else:
+                return Response({'error': f'Failed to create opportunity: {opportunity_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            lead.status = 'won'
+            lead.save()
         
         return Response({
             'message': 'Lead converted successfully',
@@ -343,35 +345,36 @@ class CampaignViewSet(CompanyScopedModelViewSet):
         campaign = self.get_object()
         lead_ids = request.data.get('lead_ids', [])
         contact_ids = request.data.get('contact_ids', [])
-        
+
         added_count = 0
-        
-        # Add leads
-        for lead_id in lead_ids:
-            try:
-                lead = Lead.objects.get(id=lead_id, company=campaign.company)
-                CampaignMember.objects.get_or_create(
-                    campaign=campaign,
-                    lead=lead,
-                    defaults={'sent_date': timezone.now()}
-                )
-                added_count += 1
-            except Lead.DoesNotExist:
-                continue
-        
-        # Add contacts
-        for contact_id in contact_ids:
-            try:
-                contact = Contact.objects.get(id=contact_id, company=campaign.company)
-                CampaignMember.objects.get_or_create(
-                    campaign=campaign,
-                    contact=contact,
-                    defaults={'sent_date': timezone.now()}
-                )
-                added_count += 1
-            except Contact.DoesNotExist:
-                continue
-        
+
+        with transaction.atomic():
+            # Add leads
+            for lead_id in lead_ids:
+                try:
+                    lead = Lead.objects.get(id=lead_id, company=campaign.company)
+                    CampaignMember.objects.get_or_create(
+                        campaign=campaign,
+                        lead=lead,
+                        defaults={'sent_date': timezone.now()}
+                    )
+                    added_count += 1
+                except Lead.DoesNotExist:
+                    continue
+
+            # Add contacts
+            for contact_id in contact_ids:
+                try:
+                    contact = Contact.objects.get(id=contact_id, company=campaign.company)
+                    CampaignMember.objects.get_or_create(
+                        campaign=campaign,
+                        contact=contact,
+                        defaults={'sent_date': timezone.now()}
+                    )
+                    added_count += 1
+                except Contact.DoesNotExist:
+                    continue
+
         return Response({'message': f'{added_count} members added to campaign'})
 
 
@@ -390,24 +393,25 @@ class SalesTargetViewSet(CompanyScopedModelViewSet):
         current_year = timezone.now().year
         current_month = timezone.now().month
         current_quarter = (current_month - 1) // 3 + 1
-        
+        django_user = request.service_user.created_by
+
         # Get current targets
         monthly_target = SalesTarget.objects.filter(
-            user=request.service_user,
+            user=django_user,
             period='monthly',
             year=current_year,
             month=current_month
         ).first()
         
         quarterly_target = SalesTarget.objects.filter(
-            user=request.service_user,
+            user=django_user,
             period='quarterly',
             year=current_year,
             quarter=current_quarter
         ).first()
         
         yearly_target = SalesTarget.objects.filter(
-            user=request.service_user,
+            user=django_user,
             period='yearly',
             year=current_year
         ).first()

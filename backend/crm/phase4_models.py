@@ -31,18 +31,18 @@ class ThirdPartyIntegration(models.Model):
     name = models.CharField(max_length=200)
     integration_type = models.CharField(max_length=20, choices=INTEGRATION_TYPE_CHOICES)
     provider = models.CharField(max_length=100)  # e.g., 'Gmail', 'Outlook', 'Slack'
-    
+
     # Configuration
     api_endpoint = models.URLField(blank=True)
-    api_key = models.CharField(max_length=500, blank=True)  # Encrypted
+    encrypted_api_key = models.BinaryField(null=True, blank=True)  # Fernet-encrypted bytes
     webhook_url = models.URLField(blank=True)
     config_data = models.JSONField(default=dict)  # Additional configuration
-    
+
     # Status
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     last_sync = models.DateTimeField(null=True, blank=True)
     sync_frequency = models.IntegerField(default=60)  # Minutes
-    
+
     # Tracking
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_integrations')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -53,6 +53,23 @@ class ThirdPartyIntegration(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.provider}"
+
+    def set_api_key(self, plaintext_key):
+        from django.conf import settings
+        from cryptography.fernet import Fernet
+        if not plaintext_key:
+            self.encrypted_api_key = None
+            return
+        f = Fernet(settings.EMAIL_ENCRYPTION_KEY.encode() if isinstance(settings.EMAIL_ENCRYPTION_KEY, str) else settings.EMAIL_ENCRYPTION_KEY)
+        self.encrypted_api_key = f.encrypt(plaintext_key.encode())
+
+    def get_api_key(self):
+        from django.conf import settings
+        from cryptography.fernet import Fernet
+        if not self.encrypted_api_key:
+            return ''
+        f = Fernet(settings.EMAIL_ENCRYPTION_KEY.encode() if isinstance(settings.EMAIL_ENCRYPTION_KEY, str) else settings.EMAIL_ENCRYPTION_KEY)
+        return f.decrypt(bytes(self.encrypted_api_key)).decode()
 
 
 class IntegrationLog(models.Model):

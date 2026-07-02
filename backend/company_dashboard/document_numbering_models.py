@@ -141,7 +141,12 @@ class DocumentNumberingConfig(models.Model):
             if not config:
                 raise ValueError(f"Configuration not found for {self.company.name} - {self.document_type}")
             
-            config.current_counter += 1
+            # Scan existing documents to find the highest sequence number used,
+            # so deletions never cause reuse or out-of-order numbers.
+            highest_existing = config._get_highest_existing_sequence()
+            next_counter = max(config.current_counter + 1, highest_existing + 1, config.starting_number)
+            
+            config.current_counter = next_counter
             config.save(update_fields=['current_counter'])
             
             # Generate number based on pattern
@@ -213,6 +218,71 @@ class DocumentNumberingConfig(models.Model):
         if len(years) == 2:
             return f"{years[0][-2:]}-{years[1]}"
         return self.financial_year
+
+    def _get_highest_existing_sequence(self) -> int:
+        """
+        Scan existing document numbers for this company/document_type/financial_year
+        and return the highest sequence number found.
+        This prevents gaps or reuse after deletions.
+        """
+        from django.db import connection
+
+        table_field_map = {
+            'quotation': ('finance_quotations', 'quotation_number'),
+            'purchase_order': ('finance_purchase_orders', 'internal_po_number'),
+            'proforma_invoice': ('finance_proforma_invoices', 'proforma_number'),
+            'invoice': ('finance_invoices', 'invoice_number'),
+            'payment': ('finance_payments', 'payment_number'),
+            'purchase_request': ('finance_purchase_requests', 'request_number'),
+            'purchase_payment': ('finance_purchase_payments', 'payment_number'),
+            'vendor_invoice': ('finance_vendor_invoices', 'our_reference_number'),
+            'customer': ('finance_customers', 'customer_code'),
+            'vendor': ('finance_vendors', 'vendor_code'),
+        }
+
+        if self.document_type not in table_field_map:
+            return 0
+
+        table, field = table_field_map[self.document_type]
+        sep = self.separator or '-'
+
+        # Build year strings to match against
+        fy_parts = self.financial_year.split('-')  # ['2026', '27']
+        fy_short = f"{fy_parts[0][-2:]}{fy_parts[1]}" if len(fy_parts) == 2 else ''
+        fy_long = self.financial_year  # '2026-27'
+        year_2digit = fy_parts[0][-2:] if fy_parts else ''
+        year_4digit = fy_parts[0] if fy_parts else ''
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT {field} FROM {table} WHERE company_id = %s",
+                    [self.company_id]
+                )
+                max_seq = 0
+                for (doc_number,) in cursor.fetchall():
+                    if not doc_number:
+                        continue
+                    normalized = doc_number.replace('/', sep)
+                    # Filter to current financial year only
+                    if self.year_format != 'NONE':
+                        year_match = (
+                            fy_short in normalized or
+                            fy_long.replace('-', sep) in normalized or
+                            (self.year_format == 'YY' and sep + year_2digit + sep in normalized) or
+                            (self.year_format == 'YYYY' and sep + year_4digit + sep in normalized)
+                        )
+                        if not year_match:
+                            continue
+                    parts = normalized.split(sep)
+                    # The sequence number is always the last numeric part
+                    for part in reversed(parts):
+                        if part.isdigit():
+                            max_seq = max(max_seq, int(part.lstrip('0') or '0'))
+                            break
+                return max_seq
+        except Exception:
+            return 0
     
     def get_next_number_preview(self):
         """Preview what the next number would be without incrementing"""

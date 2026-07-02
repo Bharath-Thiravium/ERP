@@ -421,6 +421,8 @@ LOGGING = {
 
 # Configuration Settings
 BACKUP_DIR = config('BACKUP_DIR', default=BASE_DIR / 'backups')
+PG_DUMP_PATH = config('PG_DUMP_PATH', default='/usr/bin/pg_dump')
+PSQL_PATH = config('PSQL_PATH', default='/usr/bin/psql')
 DJANGO_VERSION = '5.2.6'
 
 # Frontend URL for email links

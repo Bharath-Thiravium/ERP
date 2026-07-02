@@ -446,6 +446,32 @@ class DatabaseBackupManager:
                     shutil.copyfileobj(f_in, f_out)
         
         try:
+            # Detect if this is a pg_dump backup (has CREATE TABLE statements)
+            is_pg_dump = False
+            check_file = restore_file
+            with open(check_file, 'r', errors='ignore') as f:
+                for line in f:
+                    if 'PostgreSQL database dump' in line:
+                        is_pg_dump = True
+                        break
+                    if len(line) > 0:
+                        break
+
+            env = os.environ.copy()
+            env['PGPASSWORD'] = db_settings['PASSWORD']
+
+            if is_pg_dump:
+                # Step 1: Drop all existing tables to avoid "already exists" errors
+                drop_cmd = [
+                    'psql',
+                    '-h', db_settings['HOST'],
+                    '-p', str(db_settings['PORT']),
+                    '-U', db_settings['USER'],
+                    '-d', db_settings['NAME'],
+                    '-c', "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO public;"
+                ]
+                subprocess.run(drop_cmd, env=env, capture_output=True, text=True)
+
             cmd = [
                 'psql',
                 '-h', db_settings['HOST'],
@@ -454,15 +480,12 @@ class DatabaseBackupManager:
                 '-d', db_settings['NAME'],
                 '-f', restore_file
             ]
-            
-            env = os.environ.copy()
-            env['PGPASSWORD'] = db_settings['PASSWORD']
-            
+
             result = subprocess.run(cmd, env=env, capture_output=True, text=True)
-            
+
             if source_file.endswith('.gz') and restore_file != source_file:
                 os.remove(restore_file)
-            
+
             return result.returncode == 0
             
         except Exception as e:

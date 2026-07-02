@@ -468,15 +468,35 @@ class DatabaseBackupManager:
 
             if is_pg_dump:
                 # Step 1: Drop all existing tables to avoid "already exists" errors
+                db_user = db_settings['USER']
                 drop_cmd = [
                     psql_path,
                     '-h', db_settings['HOST'],
                     '-p', str(db_settings['PORT']),
-                    '-U', db_settings['USER'],
+                    '-U', db_user,
                     '-d', db_settings['NAME'],
-                    '-c', "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO public;"
+                    '-c', f"DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO {db_user}; GRANT ALL ON SCHEMA public TO public;"
                 ]
                 subprocess.run(drop_cmd, env=env, capture_output=True, text=True)
+
+                # Step 2: Strip SET ROLE and ALTER OWNER lines that require superuser
+                cleaned_file = restore_file + '.cleaned'
+                with open(restore_file, 'r', errors='ignore') as f_in:
+                    with open(cleaned_file, 'w') as f_out:
+                        for line in f_in:
+                            # Skip lines that require superuser privileges
+                            if (line.startswith('SET ROLE') or
+                                line.startswith('ALTER TABLE') and 'OWNER TO' in line or
+                                line.startswith('ALTER SEQUENCE') and 'OWNER TO' in line or
+                                line.startswith('ALTER VIEW') and 'OWNER TO' in line or
+                                line.startswith('ALTER FUNCTION') and 'OWNER TO' in line or
+                                line.startswith('REVOKE') or
+                                (line.startswith('GRANT') and 'TO postgres' in line)):
+                                continue
+                            f_out.write(line)
+                if source_file.endswith('.gz') and restore_file != source_file:
+                    os.remove(restore_file)
+                restore_file = cleaned_file
 
             cmd = [
                 psql_path,
@@ -489,7 +509,8 @@ class DatabaseBackupManager:
 
             result = subprocess.run(cmd, env=env, capture_output=True, text=True)
 
-            if source_file.endswith('.gz') and restore_file != source_file:
+            # Cleanup temp files
+            if os.path.exists(restore_file) and restore_file != source_file:
                 os.remove(restore_file)
 
             return result.returncode == 0

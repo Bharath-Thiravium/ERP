@@ -159,6 +159,18 @@ const DatabaseBackup: React.FC = () => {
     }
   })
 
+  // Restore from upload
+  const restoreUploadMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post('/api/configuration/restore-operations/restore_from_upload/', data),
+    onSuccess: () => {
+      toast.success('Restore from upload started!')
+      queryClient.invalidateQueries({ queryKey: ['restore-operations'] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to start restore from upload')
+    }
+  })
+
   // Delete backup
   const deleteBackupMutation = useMutation({
     mutationFn: (backupId: string) => apiClient.delete(`/api/configuration/backups/${backupId}/`),
@@ -550,15 +562,18 @@ const DatabaseBackup: React.FC = () => {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        restoreBackupMutation.mutate({
-                          upload_id: upload.id,
-                          restore_type: 'full_replace'
-                        })
+                        if (window.confirm(`Restore from uploaded backup "${upload.name}"? This will overwrite current data.`)) {
+                          restoreUploadMutation.mutate({
+                            upload_id: upload.id,
+                            restore_type: 'full_replace'
+                          })
+                        }
                       }}
+                      disabled={restoreUploadMutation.isPending}
                       className="text-orange-600 hover:text-orange-700"
                     >
                       <RotateCcw className="h-4 w-4 mr-1" />
-                      Restore
+                      {restoreUploadMutation.isPending ? 'Restoring...' : 'Restore'}
                     </Button>
                   )}
                 </div>

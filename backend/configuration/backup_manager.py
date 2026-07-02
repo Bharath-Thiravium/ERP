@@ -201,8 +201,11 @@ class DatabaseBackupManager:
         """Execute PostgreSQL dump command"""
         db_settings = settings.DATABASES['default']
         
+        import shutil
+        pg_dump_path = shutil.which('pg_dump') or '/usr/bin/pg_dump'
+
         cmd = [
-            'pg_dump',
+            pg_dump_path,
             '-h', db_settings['HOST'],
             '-p', str(db_settings['PORT']),
             '-U', db_settings['USER'],
@@ -461,10 +464,12 @@ class DatabaseBackupManager:
             env = os.environ.copy()
             env['PGPASSWORD'] = db_settings['PASSWORD']
 
+            psql_path = shutil.which('psql') or '/usr/bin/psql'
+
             if is_pg_dump:
                 # Step 1: Drop all existing tables to avoid "already exists" errors
                 drop_cmd = [
-                    'psql',
+                    psql_path,
                     '-h', db_settings['HOST'],
                     '-p', str(db_settings['PORT']),
                     '-U', db_settings['USER'],
@@ -474,7 +479,7 @@ class DatabaseBackupManager:
                 subprocess.run(drop_cmd, env=env, capture_output=True, text=True)
 
             cmd = [
-                'psql',
+                psql_path,
                 '-h', db_settings['HOST'],
                 '-p', str(db_settings['PORT']),
                 '-U', db_settings['USER'],

@@ -420,8 +420,9 @@ class DatabaseBackupManager:
         backup = DatabaseBackup.objects.create(
             name=backup_name,
             description=f"Pre-restore backup for operation {restore_op.id}",
-            backup_level=restore_op.restore_type.replace('_only', '').replace('_replace', ''),
+            backup_level='system',
             backup_type='full',
+            compression='gzip',
             company=restore_op.company,
             created_by=restore_op.created_by
         )

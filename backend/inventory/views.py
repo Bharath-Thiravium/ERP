@@ -54,22 +54,13 @@ class InventoryDashboardViewSet(viewsets.ViewSet):
 
     def list(self, request):
         """Get inventory dashboard data with AI insights"""
-        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
-        if not session_key:
-            session_key = request.query_params.get('session_key')
-
-        if not session_key:
+        service_user = getattr(request, 'service_user', None)
+        if not service_user:
             return Response(
                 {'error': 'Session key required'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-
         try:
-            session = ServiceUserSession.objects.get(
-                session_key=session_key,
-                is_active=True
-            )
-            service_user = session.service_user
             company = service_user.company
 
             # Basic Statistics with error handling
@@ -177,11 +168,6 @@ class InventoryDashboardViewSet(viewsets.ViewSet):
 
             return Response(dashboard_data)
 
-        except ServiceUserSession.DoesNotExist:
-            return Response(
-                {'error': 'Invalid session'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
         except Exception as e:
             logging.error(f"Unexpected error in dashboard: {e}")
             return Response(

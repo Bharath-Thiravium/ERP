@@ -154,7 +154,7 @@ export const inventoryApi = {
   },
 
   resolveAlert: async (id: number) => {
-    const response = await apiClient.post(`/api/inventory/alerts/${id}/resolve/`, {});
+    const response = await apiClient.post(`/api/inventory/stock-alerts/${id}/resolve/`, {});
     return response.data;
   },
 
@@ -318,7 +318,7 @@ export const inventoryApi = {
   },
 
   updatePurchaseOrder: async (id: number, data: any) => {
-    const response = await apiClient.put(`/api/inventory/purchase-orders/${id}/`, data);
+    const response = await apiClient.patch(`/api/inventory/purchase-orders/${id}/`, data);
     return response.data;
   },
 

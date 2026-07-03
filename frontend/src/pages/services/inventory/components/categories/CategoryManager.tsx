@@ -51,7 +51,8 @@ const CategoryManager: React.FC = () => {
     name: '',
     description: '',
     demand_pattern: 'stable' as 'seasonal' | 'trending' | 'stable' | 'declining',
-    is_active: true
+    is_active: true,
+    parent_category: null as number | null
   });
 
   // Debounced search function
@@ -137,7 +138,8 @@ const CategoryManager: React.FC = () => {
       name: '',
       description: '',
       demand_pattern: 'stable',
-      is_active: true
+      is_active: true,
+      parent_category: null
     });
     setSelectedCategory(null);
     setErrors({});
@@ -156,7 +158,8 @@ const CategoryManager: React.FC = () => {
       name: category.name,
       description: category.description,
       demand_pattern: category.demand_pattern,
-      is_active: category.is_active
+      is_active: category.is_active,
+      parent_category: (category as any).parent_category || null
     });
     setShowEditModal(true);
   };
@@ -479,6 +482,23 @@ const CategoryManager: React.FC = () => {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Parent Category (Optional)
+                      </label>
+                      <select
+                        value={formData.parent_category ?? ''}
+                        onChange={(e) => handleInputChange('parent_category', e.target.value ? Number(e.target.value) : null as any)}
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      >
+                        <option value="">-- None (Top-level category) --</option>
+                        {categories.map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Select a parent to make this a subcategory</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Demand Pattern
                       </label>
                       <select
@@ -630,6 +650,23 @@ const CategoryManager: React.FC = () => {
                         className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                         placeholder="Enter category description"
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Parent Category (Optional)
+                      </label>
+                      <select
+                        value={formData.parent_category ?? ''}
+                        onChange={(e) => handleInputChange('parent_category', e.target.value ? Number(e.target.value) : null as any)}
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      >
+                        <option value="">-- None (Top-level category) --</option>
+                        {categories.filter(cat => cat.id !== selectedCategory?.id).map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Select a parent to make this a subcategory</p>
                     </div>
 
                     <div>

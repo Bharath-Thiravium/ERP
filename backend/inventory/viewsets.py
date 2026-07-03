@@ -381,6 +381,10 @@ class StockAlertViewSet(CompanyScopedModelViewSet):
         alert_type = self.request.query_params.get('alert_type')
         if alert_type:
             queryset = queryset.filter(alert_type=alert_type)
+
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(product__name__icontains=search)
             
         return queryset.order_by('-created_at')
 
@@ -422,6 +426,41 @@ class PurchaseOrderViewSet(CompanyScopedModelViewSet):
             queryset = queryset.filter(supplier_id=supplier_id)
             
         return queryset.order_by('-created_at')
+
+    def perform_update(self, serializer):
+        old_status = serializer.instance.status
+        super().perform_update(serializer)
+        new_status = serializer.instance.status
+
+        # When PO is marked as received → create stock movements
+        if old_status != 'received' and new_status == 'received':
+            po = serializer.instance
+            service_user = self.request.service_user
+            with transaction.atomic():
+                for item in po.items.select_related('product').all():
+                    warehouse = po.warehouse
+                    if not warehouse:
+                        continue
+                    stock_level, _ = StockLevel.objects.select_for_update().get_or_create(
+                        product=item.product,
+                        warehouse=warehouse,
+                        defaults={'quantity_available': 0}
+                    )
+                    qty_before = stock_level.quantity_available
+                    stock_level.quantity_available += item.quantity_ordered
+                    stock_level.save()
+                    StockMovement.objects.create(
+                        product=item.product,
+                        warehouse=warehouse,
+                        movement_type='purchase',
+                        quantity=item.quantity_ordered,
+                        unit_cost=item.unit_price,
+                        reference_number=po.po_number,
+                        quantity_before=qty_before,
+                        quantity_after=stock_level.quantity_available,
+                        notes=f'Received from PO {po.po_number}',
+                        created_by=service_user
+                    )
 
     def create(self, request, *args, **kwargs):
         """Override create to handle purchase order items"""

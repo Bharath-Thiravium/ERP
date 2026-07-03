@@ -65,6 +65,11 @@ class CategorySerializer(serializers.ModelSerializer):
         return InventorySecurityValidator.validate_json_field(value)
 
     def validate_parent_category(self, value):
+        if value is None:
+            return value
+        # Block self-reference
+        if self.instance and value.id == self.instance.id:
+            raise serializers.ValidationError('A category cannot be its own parent.')
         return validate_same_company(value, self.context, 'Parent category')
 
 
@@ -317,14 +322,16 @@ class StockMovementSerializer(serializers.ModelSerializer):
 class StockAlertSerializer(serializers.ModelSerializer):
     """Stock alert serializer"""
     product_name = serializers.CharField(source='product.name', read_only=True)
+    product_code = serializers.CharField(source='product.sku', read_only=True)
     warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
     resolved_by_name = serializers.CharField(source='resolved_by.full_name', read_only=True)
-    
+    threshold_value = serializers.IntegerField(source='product.min_stock_level', read_only=True)
+
     class Meta:
         model = StockAlert
         fields = [
-            'id', 'product', 'product_name', 'warehouse', 'warehouse_name',
-            'alert_type', 'priority', 'message', 'current_stock',
+            'id', 'product', 'product_name', 'product_code', 'warehouse', 'warehouse_name',
+            'alert_type', 'priority', 'message', 'current_stock', 'threshold_value',
             'suggested_action', 'is_resolved', 'resolved_at', 'resolved_by_name',
             'is_ai_generated', 'ai_confidence', 'created_at', 'updated_at'
         ]

@@ -218,18 +218,20 @@ export const LeadsPage: React.FC = () => {
                   >
                     <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 w-8 p-0 hover:bg-gray-100 dark:hover:bg-gray-800"
-                    onClick={() => {
-                      setSelectedLead(lead)
-                      setShowCreateModal(true)
-                    }}
-                    title="Edit Lead"
-                  >
-                    <Edit className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                  </Button>
+                  {lead.status !== 'won' && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      onClick={() => {
+                        setSelectedLead(lead)
+                        setShowCreateModal(true)
+                      }}
+                      title="Edit Lead"
+                    >
+                      <Edit className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                    </Button>
+                  )}
                   <Button 
                     variant="ghost" 
                     size="sm" 

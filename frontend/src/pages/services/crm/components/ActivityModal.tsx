@@ -118,9 +118,10 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
         contact: formData.contact ? parseInt(formData.contact) : null,
         account: formData.account ? parseInt(formData.account) : null,
         opportunity: formData.opportunity ? parseInt(formData.opportunity) : null,
-        assigned_to: activity?.assigned_to || activity?.created_by || (activity ? activity.assigned_to : null),
         due_date: new Date(formData.due_date).toISOString()
       }
+      // Remove assigned_to from payload — backend will auto-assign to current user
+      delete (payload as any).assigned_to
 
       if (activity) {
         await crmApi.updateActivity(sessionKey!, activity.id, payload)

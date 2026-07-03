@@ -62,6 +62,11 @@ class Lead(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     last_contacted = models.DateTimeField(null=True, blank=True)
     
+    # Conversion tracking
+    converted_contact = models.ForeignKey('Contact', on_delete=models.SET_NULL, null=True, blank=True, related_name='source_lead')
+    converted_account = models.ForeignKey('Account', on_delete=models.SET_NULL, null=True, blank=True, related_name='source_lead')
+    converted_opportunity = models.ForeignKey('Opportunity', on_delete=models.SET_NULL, null=True, blank=True, related_name='source_lead')
+
     # Additional Info
     description = models.TextField(blank=True)
     tags = models.JSONField(default=list)
@@ -787,6 +792,12 @@ class Deal(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.account.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.deal_id:
+            import uuid
+            self.deal_id = f"DEAL-{uuid.uuid4().hex[:8].upper()}"
+        super().save(*args, **kwargs)
 
     @property
     def weighted_value(self):

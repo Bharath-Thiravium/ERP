@@ -141,8 +141,34 @@ class LeadViewSet(CompanyScopedModelViewSet):
                 return Response({'error': f'Failed to create opportunity: {opportunity_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
             
             lead.status = 'won'
+            lead.converted_contact = contact
+            lead.converted_account = account
+            lead.converted_opportunity = opportunity
             lead.save()
-        
+
+            # Auto-create a Deal in Sales Pipeline linked to the Opportunity
+            from .models import PipelineStage, Deal
+            first_stage = PipelineStage.objects.filter(company=company, is_active=True).order_by('order').first()
+            if not first_stage:
+                # Create default stages if none exist
+                first_stage = PipelineStage.objects.create(
+                    company=company, name='Prospecting', order=1, probability=10
+                )
+            Deal.objects.create(
+                company=company,
+                name=f"{lead.first_name} {lead.last_name} - {lead.company_name or 'Deal'}",
+                account=account,
+                contact=contact,
+                opportunity=opportunity,
+                current_stage=first_stage,
+                status='open',
+                value=lead.estimated_value or 0,
+                probability=first_stage.probability,
+                expected_close_date=lead.expected_close_date or (timezone.now().date() + timedelta(days=30)),
+                owner=default_user,
+                created_by=default_user,
+            )
+
         return Response({
             'message': 'Lead converted successfully',
             'opportunity_id': opportunity.opportunity_id,
@@ -159,6 +185,20 @@ class LeadViewSet(CompanyScopedModelViewSet):
         serializer = LeadsByStatusSerializer(stats, many=True)
         return Response(serializer.data)
 
+    def destroy(self, request, *args, **kwargs):
+        lead = self.get_object()
+        with transaction.atomic():
+            # Delete linked converted records if they exist
+            if lead.converted_opportunity:
+                # Deal is OneToOne with Opportunity — cascade handles it
+                lead.converted_opportunity.delete()
+            if lead.converted_contact:
+                lead.converted_contact.delete()
+            if lead.converted_account:
+                lead.converted_account.delete()
+            lead.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class ContactViewSet(CompanyScopedModelViewSet):
     """Contact management with centralized tenant enforcement"""
@@ -170,6 +210,12 @@ class ContactViewSet(CompanyScopedModelViewSet):
     ordering_fields = ['first_name', 'last_name', 'created_at']
     ordering = ['first_name', 'last_name']
 
+    def destroy(self, request, *args, **kwargs):
+        contact = self.get_object()
+        if contact.source_lead.exists():
+            return Response({'error': 'This contact was created from a lead conversion and cannot be deleted directly. Delete the lead instead.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
 
 class AccountViewSet(CompanyScopedModelViewSet):
     """Account management with centralized tenant enforcement"""
@@ -180,6 +226,12 @@ class AccountViewSet(CompanyScopedModelViewSet):
     search_fields = ['name', 'email', 'website']
     ordering_fields = ['name', 'created_at', 'annual_revenue']
     ordering = ['name']
+
+    def destroy(self, request, *args, **kwargs):
+        account = self.get_object()
+        if account.source_lead.exists():
+            return Response({'error': 'This account was created from a lead conversion and cannot be deleted directly. Delete the lead instead.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True)
     def opportunities(self, request, pk=None):
@@ -207,6 +259,88 @@ class OpportunityViewSet(CompanyScopedModelViewSet):
     search_fields = ['name', 'account__name', 'description']
     ordering_fields = ['created_at', 'expected_close_date', 'amount', 'probability']
     ordering = ['-created_at']
+
+    def destroy(self, request, *args, **kwargs):
+        opportunity = self.get_object()
+        if opportunity.source_lead.exists():
+            return Response({'error': 'This opportunity was created from a lead conversion and cannot be deleted directly. Delete the lead instead.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
+    def _sync_deal_stage(self, opportunity, new_stage):
+        """Sync opportunity stage change to linked Deal in Sales Pipeline."""
+        from .models import Deal, PipelineStage, DealStageHistory
+        deal = Deal.objects.filter(opportunity=opportunity).first()
+        if not deal:
+            return
+        stage_name_map = {
+            'prospecting': 'Prospecting',
+            'qualification': 'Qualification',
+            'needs_analysis': 'Needs Analysis',
+            'proposal': 'Proposal',
+            'negotiation': 'Negotiation',
+            'closed_won': 'Closed Won',
+            'closed_lost': 'Closed Lost',
+        }
+        stage_order_map = {
+            'Prospecting': (1, 10),
+            'Qualification': (2, 25),
+            'Needs Analysis': (3, 50),
+            'Proposal': (4, 75),
+            'Negotiation': (5, 90),
+            'Closed Won': (6, 100),
+            'Closed Lost': (7, 0),
+        }
+        pipeline_stage_name = stage_name_map.get(new_stage)
+        if not pipeline_stage_name:
+            return
+        company = opportunity.company
+        # Get or create the pipeline stage for this company
+        pipeline_stage = PipelineStage.objects.filter(
+            company=company,
+            name__iexact=pipeline_stage_name,
+        ).first()
+        if not pipeline_stage:
+            order, probability = stage_order_map.get(pipeline_stage_name, (99, 0))
+            pipeline_stage = PipelineStage.objects.create(
+                company=company,
+                name=pipeline_stage_name,
+                order=order,
+                probability=probability,
+                is_active=True,
+            )
+        if deal.current_stage != pipeline_stage:
+            try:
+                django_user = self.request.service_user.created_by
+            except Exception:
+                django_user = None
+            DealStageHistory.objects.create(
+                deal=deal,
+                stage=pipeline_stage,
+                changed_by=django_user,
+                notes='Synced from opportunity stage change',
+            )
+            deal.current_stage = pipeline_stage
+            deal.probability = pipeline_stage.probability
+            if new_stage == 'closed_won':
+                deal.status = 'won'
+                deal.actual_close_date = timezone.now().date()
+            elif new_stage == 'closed_lost':
+                deal.status = 'lost'
+                deal.actual_close_date = timezone.now().date()
+            deal.save()
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        old_stage = instance.stage
+        response = super().update(request, *args, **kwargs)
+        instance.refresh_from_db()
+        new_stage = instance.stage
+        if old_stage != new_stage:
+            if new_stage in ['closed_won', 'closed_lost']:
+                instance.closed_date = timezone.now().date()
+                instance.save(update_fields=['closed_date'])
+            self._sync_deal_stage(instance, new_stage)
+        return response
 
     @action(detail=False)
     def pipeline(self, request):
@@ -236,16 +370,16 @@ class OpportunityViewSet(CompanyScopedModelViewSet):
         """Update opportunity stage"""
         opportunity = self.get_object()
         new_stage = request.data.get('stage')
-        
         if new_stage in dict(Opportunity.STAGE_CHOICES):
+            old_stage = opportunity.stage
             opportunity.stage = new_stage
             if new_stage in ['closed_won', 'closed_lost']:
                 opportunity.closed_date = timezone.now().date()
             opportunity.save()
-            
+            if old_stage != new_stage:
+                self._sync_deal_stage(opportunity, new_stage)
             serializer = self.get_serializer(opportunity)
             return Response(serializer.data)
-        
         return Response({'error': 'Invalid stage'}, status=status.HTTP_400_BAD_REQUEST)
 
 

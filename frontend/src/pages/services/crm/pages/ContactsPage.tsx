@@ -69,9 +69,10 @@ export const ContactsPage: React.FC = () => {
       await crmApi.deleteContact(sessionKey!, id)
       toast.success('Contact deleted successfully!')
       fetchContacts()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting contact:', error)
-      toast.error('Failed to delete contact')
+      const msg = error.response?.data?.error
+      toast.error(msg || 'Failed to delete contact')
     }
   }
 

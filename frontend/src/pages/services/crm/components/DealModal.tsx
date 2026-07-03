@@ -74,36 +74,11 @@ export const DealModal: React.FC<DealModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      loadData()
-      if (deal) {
-        setFormData({
-          name: deal.name,
-          account: deal.account.toString(),
-          contact: deal.contact?.toString() || '',
-          current_stage: deal.current_stage.toString(),
-          value: deal.value.toString(),
-          probability: deal.probability.toString(),
-          expected_close_date: deal.expected_close_date,
-          description: deal.description || '',
-          next_action: deal.next_action || ''
-        })
-      } else {
-        setFormData({
-          name: '',
-          account: '',
-          contact: '',
-          current_stage: '',
-          value: '',
-          probability: '25',
-          expected_close_date: '',
-          description: '',
-          next_action: ''
-        })
-      }
+      loadData(deal)
     }
   }, [isOpen, deal])
 
-  const loadData = async () => {
+  const loadData = async (currentDeal?: Deal | null) => {
     try {
       const [accountsRes, contactsRes, stagesRes] = await Promise.all([
         crmApi.getAccounts(sessionKey),
@@ -111,9 +86,42 @@ export const DealModal: React.FC<DealModalProps> = ({
         crmApi.getPipelineStages(sessionKey)
       ])
       
-      setAccounts(accountsRes.data.results || accountsRes.data)
-      setContacts(contactsRes.data.results || contactsRes.data)
-      setStages(stagesRes.data.results || stagesRes.data)
+      const loadedAccounts = accountsRes.data.results || accountsRes.data
+      const loadedContacts = contactsRes.data.results || contactsRes.data
+      const loadedStages = stagesRes.data.results || stagesRes.data
+
+      setAccounts(loadedAccounts)
+      setContacts(loadedContacts)
+      setStages(loadedStages)
+
+      // Set formData AFTER stages are loaded so current_stage matches a valid option
+      if (currentDeal) {
+        setFormData({
+          name: currentDeal.name,
+          account: currentDeal.account.toString(),
+          contact: currentDeal.contact?.toString() || '',
+          current_stage: currentDeal.current_stage.toString(),
+          value: currentDeal.value.toString(),
+          probability: currentDeal.probability.toString(),
+          expected_close_date: currentDeal.expected_close_date,
+          description: currentDeal.description || '',
+          next_action: currentDeal.next_action || ''
+        })
+      } else {
+        // Default to first stage for new deals
+        const firstStage = loadedStages[0]
+        setFormData({
+          name: '',
+          account: '',
+          contact: '',
+          current_stage: firstStage ? firstStage.id.toString() : '',
+          value: '',
+          probability: firstStage ? (firstStage as any).probability?.toString() || '25' : '25',
+          expected_close_date: '',
+          description: '',
+          next_action: ''
+        })
+      }
     } catch (error) {
       console.error('Error loading data:', error)
       toast.error('Failed to load data')
@@ -295,7 +303,14 @@ export const DealModal: React.FC<DealModalProps> = ({
               <select 
                 id="current_stage"
                 value={formData.current_stage} 
-                onChange={(e) => handleInputChange('current_stage', e.target.value)}
+                onChange={(e) => {
+                  handleInputChange('current_stage', e.target.value)
+                  // Auto-set probability based on stage
+                  const stage = stages.find(s => s.id.toString() === e.target.value)
+                  if (stage && (stage as any).probability !== undefined) {
+                    handleInputChange('probability', (stage as any).probability.toString())
+                  }
+                }}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               >
                 <option value="">Select stage</option>

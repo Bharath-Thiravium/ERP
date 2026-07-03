@@ -12,7 +12,7 @@ from .phase4_serializers import (
     DataAuditLogSerializer, ComplianceRuleSerializer, ComplianceViolationSerializer,
     DataRetentionPolicySerializer, SecurityAlertSerializer, APIUsageLogSerializer
 )
-from authentication.models import Company, ServiceUserSession
+from authentication.models import Company
 from .views import CRMBaseViewSet
 import json
 
@@ -27,15 +27,10 @@ class DataAuditLogViewSet(CRMBaseViewSet):
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
         """Get audit log dashboard data"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
         
         logs = self.get_queryset()
         
@@ -75,14 +70,9 @@ class ComplianceRuleViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def activate(self, request, pk=None):
         """Activate a compliance rule"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
         
         rule = self.get_object()
         rule.status = 'active'
@@ -131,15 +121,10 @@ class ComplianceViolationViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def resolve(self, request, pk=None):
         """Resolve a compliance violation"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            user = session.service_user.created_by
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        user = su.created_by
         
         violation = self.get_object()
         resolution_notes = request.data.get('resolution_notes', '')
@@ -175,15 +160,10 @@ class ComplianceViolationViewSet(CRMBaseViewSet):
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
         """Get compliance violations dashboard data"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
         
         violations = self.get_queryset()
         
@@ -241,15 +221,10 @@ class DataRetentionPolicyViewSet(CRMBaseViewSet):
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
         """Get data retention dashboard data"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
         
         policies = self.get_queryset()
         
@@ -279,14 +254,9 @@ class SecurityAlertViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
         """Assign security alert to a user"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
         
         alert = self.get_object()
         assigned_to_id = request.data.get('assigned_to')
@@ -316,15 +286,10 @@ class SecurityAlertViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def resolve(self, request, pk=None):
         """Resolve a security alert"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            user = session.service_user.created_by
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        user = su.created_by
         
         alert = self.get_object()
         resolution_notes = request.data.get('resolution_notes', '')
@@ -343,15 +308,10 @@ class SecurityAlertViewSet(CRMBaseViewSet):
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
         """Get security alerts dashboard data"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
         
         alerts = self.get_queryset()
         
@@ -393,15 +353,10 @@ class APIUsageLogViewSet(CRMBaseViewSet):
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
         """Get API usage dashboard data"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
         
         logs = self.get_queryset()
         

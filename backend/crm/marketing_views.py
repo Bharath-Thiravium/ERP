@@ -8,8 +8,25 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .phase3_models import EmailTemplate, MarketingCampaign, EmailSend, AutomationWorkflow
 from .phase3_serializers import EmailTemplateSerializer, MarketingCampaignSerializer, EmailSendSerializer, AutomationWorkflowSerializer
-from authentication.models import ServiceUserSession
 from .views import CRMBaseViewSet
+
+
+def _create_with_user(viewset, request):
+    su = viewset._get_service_user()
+    if not su:
+        return None, Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+    data = request.data.copy()
+    data['company'] = su.company.id
+    user_id = su.created_by.id if su.created_by else None
+    if not user_id:
+        from django.contrib.auth.models import User
+        admin = User.objects.filter(is_superuser=True).first()
+        if admin:
+            user_id = admin.id
+        else:
+            return None, Response({'error': 'No valid user found'}, status=status.HTTP_400_BAD_REQUEST)
+    data['created_by'] = user_id
+    return data, None
 
 
 class EmailTemplateViewSet(CRMBaseViewSet):
@@ -20,42 +37,15 @@ class EmailTemplateViewSet(CRMBaseViewSet):
     ordering = ['-created_at']
 
     def create(self, request, *args, **kwargs):
-        """Override create to ensure proper user assignment"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
+        data, err = _create_with_user(self, request)
+        if err:
+            return err
         try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            service_user = session.service_user
-            
-            data = request.data.copy()
-            data['company'] = service_user.company.id
-            
-            # Get user for created_by field
-            user_id = None
-            if hasattr(service_user, 'created_by') and service_user.created_by:
-                user_id = service_user.created_by.id
-            else:
-                from django.contrib.auth.models import User
-                admin_user = User.objects.filter(is_superuser=True).first()
-                if admin_user:
-                    user_id = admin_user.id
-                else:
-                    return Response({'error': 'No valid user found'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            data['created_by'] = user_id
-            
+            from django.contrib.auth.models import User
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
-            
-            from django.contrib.auth.models import User
-            created_by_user = User.objects.get(id=user_id)
-            instance = serializer.save(created_by=created_by_user)
-            
+            instance = serializer.save(created_by=User.objects.get(id=data['created_by']))
             return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
             return Response({'error': f'Creation failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -68,42 +58,15 @@ class MarketingCampaignViewSet(CRMBaseViewSet):
     ordering = ['-created_at']
 
     def create(self, request, *args, **kwargs):
-        """Override create to ensure proper user assignment"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
+        data, err = _create_with_user(self, request)
+        if err:
+            return err
         try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            service_user = session.service_user
-            
-            data = request.data.copy()
-            data['company'] = service_user.company.id
-            
-            # Get user for created_by field
-            user_id = None
-            if hasattr(service_user, 'created_by') and service_user.created_by:
-                user_id = service_user.created_by.id
-            else:
-                from django.contrib.auth.models import User
-                admin_user = User.objects.filter(is_superuser=True).first()
-                if admin_user:
-                    user_id = admin_user.id
-                else:
-                    return Response({'error': 'No valid user found'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            data['created_by'] = user_id
-            
+            from django.contrib.auth.models import User
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
-            
-            from django.contrib.auth.models import User
-            created_by_user = User.objects.get(id=user_id)
-            instance = serializer.save(created_by=created_by_user)
-            
+            instance = serializer.save(created_by=User.objects.get(id=data['created_by']))
             return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
             return Response({'error': f'Creation failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -152,42 +115,15 @@ class AutomationWorkflowViewSet(CRMBaseViewSet):
     ordering = ['-created_at']
 
     def create(self, request, *args, **kwargs):
-        """Override create to ensure proper user assignment"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
+        data, err = _create_with_user(self, request)
+        if err:
+            return err
         try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            service_user = session.service_user
-            
-            data = request.data.copy()
-            data['company'] = service_user.company.id
-            
-            # Get user for created_by field
-            user_id = None
-            if hasattr(service_user, 'created_by') and service_user.created_by:
-                user_id = service_user.created_by.id
-            else:
-                from django.contrib.auth.models import User
-                admin_user = User.objects.filter(is_superuser=True).first()
-                if admin_user:
-                    user_id = admin_user.id
-                else:
-                    return Response({'error': 'No valid user found'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            data['created_by'] = user_id
-            
+            from django.contrib.auth.models import User
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
-            
-            from django.contrib.auth.models import User
-            created_by_user = User.objects.get(id=user_id)
-            instance = serializer.save(created_by=created_by_user)
-            
+            instance = serializer.save(created_by=User.objects.get(id=data['created_by']))
             return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
             return Response({'error': f'Creation failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 

@@ -6,7 +6,6 @@ from django.db.models import Avg, Count, Q
 from .models import Lead, LeadScore, ScoringCriteria
 from .serializers import LeadScoreSerializer, ScoringCriteriaSerializer
 from .lead_scoring import LeadScoringEngine
-from authentication.models import ServiceUserSession
 from .views import CRMBaseViewSet
 
 
@@ -17,29 +16,18 @@ class LeadScoreViewSet(CRMBaseViewSet):
     ordering = ['-total_score', '-last_calculated']
 
     def get_queryset(self):
-        session_key = self.get_session_key()
-        if not session_key:
+        su = self._get_service_user()
+        if not su:
             return self.queryset.none()
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-            return self.queryset.filter(lead__company=company)
-        except ServiceUserSession.DoesNotExist:
-            return self.queryset.none()
+        return self.queryset.filter(lead__company=su.company)
 
     @action(detail=False, methods=['post'])
     def calculate_score(self, request):
         """Calculate score for specific lead"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         lead_id = request.data.get('lead_id')
         if not lead_id:
@@ -58,24 +46,23 @@ class LeadScoreViewSet(CRMBaseViewSet):
     @action(detail=False, methods=['post'])
     def bulk_calculate(self, request):
         """Calculate scores for multiple leads"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         lead_ids = request.data.get('lead_ids', [])
         engine = LeadScoringEngine(company)
-        
+        leads = Lead.objects.filter(company=company)
         if lead_ids:
-            results = engine.bulk_score_leads(lead_ids)
-        else:
-            # Score all active leads
-            results = engine.bulk_score_leads()
+            leads = leads.filter(id__in=lead_ids)
+        results = []
+        for lead in leads:
+            try:
+                engine.calculate_lead_score(lead)
+                results.append({'lead_id': lead.id, 'success': True})
+            except Exception as e:
+                results.append({'lead_id': lead.id, 'success': False, 'error': str(e)})
         
         return Response({
             'message': f'Processed {len(results)} leads',
@@ -85,15 +72,10 @@ class LeadScoreViewSet(CRMBaseViewSet):
     @action(detail=False, methods=['post'])
     def calculate_all(self, request):
         """Calculate AI scores for all leads"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         # Debug: Check leads first
         total_leads = Lead.objects.filter(company=company).count()
@@ -110,9 +92,14 @@ class LeadScoreViewSet(CRMBaseViewSet):
             })
 
         engine = LeadScoringEngine(company)
-        results = engine.bulk_score_leads()
-        
-        print(f"DEBUG: Processed {len(results)} leads, Results: {results}")
+        leads = Lead.objects.filter(company=company)
+        results = []
+        for lead in leads:
+            try:
+                engine.calculate_lead_score(lead)
+                results.append({'lead_id': lead.id, 'success': True})
+            except Exception as e:
+                results.append({'lead_id': lead.id, 'success': False, 'error': str(e)})
         
         return Response({
             'success': True,
@@ -126,15 +113,10 @@ class LeadScoreViewSet(CRMBaseViewSet):
     @action(detail=False)
     def debug_leads(self, request):
         """Debug endpoint to check lead data"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         leads = Lead.objects.filter(company=company)
         lead_data = []
@@ -230,16 +212,10 @@ class ScoringCriteriaViewSet(CRMBaseViewSet):
     ordering = ['criteria_type', 'name']
 
     def get_queryset(self):
-        session_key = self.get_session_key()
-        if not session_key:
+        su = self._get_service_user()
+        if not su:
             return self.queryset.none()
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-            return self.queryset.filter(company=company)
-        except ServiceUserSession.DoesNotExist:
-            return self.queryset.none()
+        return self.queryset.filter(company=su.company)
 
     @action(detail=False)
     def by_type(self, request):
@@ -261,28 +237,17 @@ class ScoringCriteriaViewSet(CRMBaseViewSet):
         return Response(grouped)
 
 
-class LeadScoringDashboardViewSet(viewsets.ViewSet):
+class LeadScoringDashboardViewSet(CRMBaseViewSet):
     """Comprehensive lead scoring dashboard"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
-
-    def get_session_key(self, request):
-        session_key = request.headers.get('Authorization', '').replace('Bearer ', '')
-        if not session_key:
-            session_key = request.query_params.get('session_key')
-        return session_key
+    queryset = LeadScore.objects.none()
+    serializer_class = LeadScoreSerializer
 
     def list(self, request):
         """Main dashboard data"""
-        session_key = self.get_session_key(request)
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         # Get all lead scores for the company
         lead_scores = LeadScore.objects.filter(lead__company=company)
@@ -348,15 +313,10 @@ class LeadScoringDashboardViewSet(viewsets.ViewSet):
     @action(detail=False)
     def insights(self, request):
         """AI-powered insights and trends"""
-        session_key = self.get_session_key(request)
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         lead_scores = LeadScore.objects.filter(lead__company=company)
         
@@ -408,19 +368,21 @@ class LeadScoringDashboardViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def calculate_all(self, request):
         """Calculate AI scores for all leads from dashboard"""
-        session_key = self.get_session_key(request)
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         from .lead_scoring import LeadScoringEngine
         engine = LeadScoringEngine(company)
-        results = engine.bulk_score_leads()
+        leads = Lead.objects.filter(company=company)
+        results = []
+        for lead in leads:
+            try:
+                engine.calculate_lead_score(lead)
+                results.append({'lead_id': lead.id, 'success': True})
+            except Exception as e:
+                results.append({'lead_id': lead.id, 'success': False, 'error': str(e)})
         
         return Response({
             'success': True,

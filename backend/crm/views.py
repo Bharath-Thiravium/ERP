@@ -104,22 +104,25 @@ class CRMBaseViewSet(viewsets.ModelViewSet):
         su = self._get_service_user()
         if not su:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        django_user = self._get_django_user()
+
+        # Resolve owner to integer ID before serializer validation
         data = request.data.copy()
         data['company'] = su.company.id
-        django_user = self._get_django_user()
         if django_user:
             data['created_by'] = django_user.id
             if 'owner' in data:
-                if not data['owner'] or data['owner'] == 'auto':
+                try:
+                    data['owner'] = int(data['owner'])
+                except (ValueError, TypeError):
                     data['owner'] = django_user.id
-                else:
-                    try:
-                        from django.contrib.auth.models import User
-                        User.objects.get(id=int(data['owner']))
-                    except (Exception,):
-                        data['owner'] = django_user.id
-        request._full_data = data
-        return super().update(request, *args, **kwargs)
+
+        kwargs['partial'] = kwargs.get('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=data, partial=kwargs['partial'])
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):
         if not self._get_service_user():
@@ -282,6 +285,61 @@ class OpportunityViewSet(CRMBaseViewSet):
     ordering_fields = ['created_at', 'expected_close_date', 'amount', 'probability']
     ordering = ['-created_at']
 
+    def _sync_deal_stage(self, opportunity, new_stage):
+        """Sync opportunity stage change to linked Deal in Sales Pipeline."""
+        from .models import Deal, PipelineStage, DealStageHistory
+        deal = Deal.objects.filter(opportunity=opportunity).first()
+        if not deal:
+            return
+        stage_name_map = {
+            'prospecting': 'Prospecting',
+            'qualification': 'Qualification',
+            'needs_analysis': 'Needs Analysis',
+            'proposal': 'Proposal',
+            'negotiation': 'Negotiation',
+            'closed_won': 'Closed Won',
+            'closed_lost': 'Closed Lost',
+        }
+        pipeline_stage_name = stage_name_map.get(new_stage)
+        if not pipeline_stage_name:
+            return
+        pipeline_stage = PipelineStage.objects.filter(
+            company=opportunity.company,
+            name__iexact=pipeline_stage_name,
+            is_active=True
+        ).first()
+        if pipeline_stage and deal.current_stage != pipeline_stage:
+            django_user = self._get_django_user()
+            DealStageHistory.objects.create(
+                deal=deal,
+                stage=pipeline_stage,
+                changed_by=django_user,
+                notes='Synced from opportunity stage change',
+            )
+            deal.current_stage = pipeline_stage
+            deal.probability = pipeline_stage.probability
+            if new_stage == 'closed_won':
+                deal.status = 'won'
+                deal.actual_close_date = timezone.now().date()
+            elif new_stage == 'closed_lost':
+                deal.status = 'lost'
+                deal.actual_close_date = timezone.now().date()
+            deal.save()
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        old_stage = instance.stage
+        response = super().update(request, *args, **kwargs)
+        # After successful update, sync stage to Deal if stage changed
+        instance.refresh_from_db()
+        new_stage = instance.stage
+        if old_stage != new_stage:
+            if new_stage in ['closed_won', 'closed_lost']:
+                instance.closed_date = timezone.now().date()
+                instance.save(update_fields=['closed_date'])
+            self._sync_deal_stage(instance, new_stage)
+        return response
+
     @action(detail=False)
     def pipeline(self, request):
         pipeline = self.get_queryset().values('stage').annotate(
@@ -304,10 +362,13 @@ class OpportunityViewSet(CRMBaseViewSet):
         opportunity = self.get_object()
         new_stage = request.data.get('stage')
         if new_stage in dict(Opportunity.STAGE_CHOICES):
+            old_stage = opportunity.stage
             opportunity.stage = new_stage
             if new_stage in ['closed_won', 'closed_lost']:
                 opportunity.closed_date = timezone.now().date()
             opportunity.save()
+            if old_stage != new_stage:
+                self._sync_deal_stage(opportunity, new_stage)
             return Response(self.get_serializer(opportunity).data)
         return Response({'error': 'Invalid stage'}, status=status.HTTP_400_BAD_REQUEST)
 

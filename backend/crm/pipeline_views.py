@@ -8,7 +8,6 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import PipelineStage, Deal, DealStageHistory, SalesQuota
 from .serializers import PipelineStageSerializer, DealSerializer, DealStageHistorySerializer, SalesQuotaSerializer
-from authentication.models import ServiceUserSession
 from .views import CRMBaseViewSet
 
 
@@ -21,37 +20,26 @@ class PipelineStageViewSet(CRMBaseViewSet):
     
     def list(self, request, *args, **kwargs):
         """Override list to create default stages if none exist"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
-        
-        # Check if company has any pipeline stages
-        if not PipelineStage.objects.filter(company=company).exists():
-            # Create default pipeline stages
-            default_stages = [
-                {'name': 'Prospecting', 'order': 1, 'probability': 10},
-                {'name': 'Qualification', 'order': 2, 'probability': 25},
-                {'name': 'Needs Analysis', 'order': 3, 'probability': 50},
-                {'name': 'Proposal', 'order': 4, 'probability': 75},
-                {'name': 'Negotiation', 'order': 5, 'probability': 90},
-                {'name': 'Closed Won', 'order': 6, 'probability': 100},
-                {'name': 'Closed Lost', 'order': 7, 'probability': 0},
-            ]
-            
-            for stage_data in default_stages:
-                PipelineStage.objects.create(
-                    company=company,
-                    name=stage_data['name'],
-                    order=stage_data['order'],
-                    probability=stage_data['probability']
-                )
-        
+        default_stages = [
+            {'name': 'Prospecting', 'order': 1, 'probability': 10},
+            {'name': 'Qualification', 'order': 2, 'probability': 25},
+            {'name': 'Needs Analysis', 'order': 3, 'probability': 50},
+            {'name': 'Proposal', 'order': 4, 'probability': 75},
+            {'name': 'Negotiation', 'order': 5, 'probability': 90},
+            {'name': 'Closed Won', 'order': 6, 'probability': 100},
+            {'name': 'Closed Lost', 'order': 7, 'probability': 0},
+        ]
+        # Ensure ALL default stages exist — not just check if any exist
+        existing_names = set(PipelineStage.objects.filter(company=company).values_list('name', flat=True))
+        for stage_data in default_stages:
+            if stage_data['name'] not in existing_names:
+                PipelineStage.objects.create(company=company, **stage_data)
+
         return super().list(request, *args, **kwargs)
 
 
@@ -62,55 +50,28 @@ class DealViewSet(CRMBaseViewSet):
     search_fields = ['name', 'account__name', 'description']
     ordering_fields = ['created_at', 'expected_close_date', 'value']
     ordering = ['-created_at']
-    
-    def create(self, request, *args, **kwargs):
-        """Override create to ensure proper field handling for Deal model"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            service_user = session.service_user
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
-        
-        # Get user for created_by field
-        user_id = None
-        if hasattr(service_user, 'created_by') and service_user.created_by:
-            user_id = service_user.created_by.id
-        else:
-            from django.contrib.auth.models import User
-            admin_user = User.objects.filter(is_superuser=True).first()
-            if admin_user:
-                user_id = admin_user.id
-            else:
-                return Response({'error': 'No valid user found'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Prepare data with required fields
-        data = request.data.copy()
-        data['company'] = service_user.company.id
-        data['created_by'] = user_id
-        if 'owner' not in data or not data['owner']:
-            data['owner'] = user_id
-        
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        instance = serializer.save()
-        
-        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        old_stage_id = instance.current_stage_id
+        response = super().update(request, *args, **kwargs)
+        instance.refresh_from_db()
+        if old_stage_id != instance.current_stage_id:
+            su = self._get_service_user()
+            DealStageHistory.objects.create(
+                deal=instance,
+                stage=instance.current_stage,
+                changed_by=su.created_by,
+                notes='Stage updated via edit',
+            )
+        return response
 
     @action(detail=False)
     def pipeline_overview(self, request):
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         # Get pipeline data by stage
         pipeline_data = []
@@ -132,15 +93,10 @@ class DealViewSet(CRMBaseViewSet):
 
     @action(detail=True, methods=['post'])
     def move_stage(self, request, pk=None):
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            service_user = session.service_user
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        service_user = su
 
         deal = self.get_object()
         new_stage_id = request.data.get('stage_id')
@@ -161,7 +117,7 @@ class DealViewSet(CRMBaseViewSet):
         DealStageHistory.objects.create(
             deal=deal,
             stage=new_stage,
-            changed_by=service_user.created_by,
+            changed_by=su.created_by,
             notes=notes,
             duration_days=duration_days
         )
@@ -175,15 +131,10 @@ class DealViewSet(CRMBaseViewSet):
 
     @action(detail=False)
     def velocity_metrics(self, request):
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         # Calculate velocity metrics
         closed_deals = Deal.objects.filter(
@@ -231,55 +182,13 @@ class SalesQuotaViewSet(CRMBaseViewSet):
     serializer_class = SalesQuotaSerializer
     filterset_fields = ['period', 'year', 'user']
     ordering = ['-year', '-month', '-quarter']
-    
-    def create(self, request, *args, **kwargs):
-        """Override create to handle user assignment for quota"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            service_user = session.service_user
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
-        
-        # Get user for created_by and user fields
-        user_id = None
-        if hasattr(service_user, 'created_by') and service_user.created_by:
-            user_id = service_user.created_by.id
-        else:
-            from django.contrib.auth.models import User
-            admin_user = User.objects.filter(is_superuser=True).first()
-            if admin_user:
-                user_id = admin_user.id
-            else:
-                return Response({'error': 'No valid user found'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Prepare data with required fields
-        data = request.data.copy()
-        data['company'] = service_user.company.id
-        data['created_by'] = user_id
-        if 'user' not in data or not data['user'] or data['user'] == 'auto':
-            data['user'] = user_id
-        
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        instance = serializer.save()
-        
-        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False)
     def performance_dashboard(self, request):
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         current_year = timezone.now().year
         current_month = timezone.now().month

@@ -11,7 +11,7 @@ from .phase4_serializers import (
     ThirdPartyIntegrationSerializer, IntegrationLogSerializer,
     MobileDeviceSerializer, MobileSyncSerializer
 )
-from authentication.models import Company, ServiceUserSession
+from authentication.models import Company
 from .views import CRMBaseViewSet
 import json
 
@@ -26,14 +26,9 @@ class ThirdPartyIntegrationViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def test_connection(self, request, pk=None):
         """Test integration connection"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
         
         integration = self.get_object()
         
@@ -77,14 +72,9 @@ class ThirdPartyIntegrationViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def sync_data(self, request, pk=None):
         """Trigger data synchronization"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
         
         integration = self.get_object()
         
@@ -124,15 +114,10 @@ class ThirdPartyIntegrationViewSet(CRMBaseViewSet):
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
         """Get integration dashboard data"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
         
         integrations = self.get_queryset()
         
@@ -167,16 +152,10 @@ class IntegrationLogViewSet(CRMBaseViewSet):
     ordering = ['-created_at']
     
     def get_queryset(self):
-        session_key = self.get_session_key()
-        if not session_key:
+        su = self._get_service_user()
+        if not su:
             return self.queryset.none()
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-            return self.queryset.filter(integration__company=company)
-        except ServiceUserSession.DoesNotExist:
-            return self.queryset.none()
+        return self.queryset.filter(integration__company=su.company)
 
 
 class MobileDeviceViewSet(CRMBaseViewSet):
@@ -189,14 +168,9 @@ class MobileDeviceViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def block_device(self, request, pk=None):
         """Block a mobile device"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
         
         device = self.get_object()
         device.status = 'blocked'
@@ -210,14 +184,9 @@ class MobileDeviceViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def unblock_device(self, request, pk=None):
         """Unblock a mobile device"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
         
         device = self.get_object()
         device.status = 'active'
@@ -231,15 +200,10 @@ class MobileDeviceViewSet(CRMBaseViewSet):
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
         """Get mobile devices dashboard data"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
         
         devices = self.get_queryset()
         
@@ -272,30 +236,19 @@ class MobileSyncViewSet(CRMBaseViewSet):
     ordering = ['-started_at']
     
     def get_queryset(self):
-        session_key = self.get_session_key()
-        if not session_key:
+        su = self._get_service_user()
+        if not su:
             return self.queryset.none()
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-            return self.queryset.filter(device__company=company)
-        except ServiceUserSession.DoesNotExist:
-            return self.queryset.none()
+        return self.queryset.filter(device__company=su.company)
     
     @action(detail=False, methods=['post'])
     def trigger_sync(self, request):
         """Trigger sync for user's devices"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            user = session.service_user.created_by
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        user = su.created_by
+        company = su.company
         
         devices = MobileDevice.objects.filter(company=company, status='active')
         
@@ -318,15 +271,10 @@ class MobileSyncViewSet(CRMBaseViewSet):
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
         """Get mobile sync dashboard data"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
         
         syncs = self.get_queryset()
         

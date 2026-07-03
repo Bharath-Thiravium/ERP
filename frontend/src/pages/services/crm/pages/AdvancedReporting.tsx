@@ -1,20 +1,159 @@
 import React, { useState, useEffect } from 'react'
-import { 
-  BarChart3, 
-  FileText, 
-  TrendingUp, 
-  AlertTriangle, 
-  Eye, 
-  
-  Plus,
-  Calendar,
-  Brain,
-  Target
-} from 'lucide-react'
+import { BarChart3, FileText, TrendingUp, AlertTriangle, Eye, Plus, Calendar, Brain, Target } from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  PieChart, Pie, Cell,
+  LineChart, Line,
+  AreaChart, Area,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  FunnelChart, Funnel, LabelList,
+  ResponsiveContainer
+} from 'recharts'
 import { crmApi } from '../utils/api'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { ReportTemplateModal } from '../components/ReportTemplateModal'
 import toast from 'react-hot-toast'
+
+const COLORS = ['#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444']
+
+const normalizeChartData = (data: any): any[] => {
+  if (!data) return []
+  if (data?.data?.by_status) return data.data.by_status.map((d: any) => ({ name: d.status, value: d.count }))
+  if (data?.data?.by_source) return data.data.by_source.map((d: any) => ({ name: d.source, value: d.count }))
+  if (Array.isArray(data?.data)) {
+    return data.data.map((d: any) => {
+      const key = Object.keys(d).find(k => !['count','total_value','weighted_value'].includes(k)) || 'name'
+      return { name: String(d[key] ?? ''), value: Number(d.count ?? d.total_value ?? 0) }
+    })
+  }
+  // pipeline_forecast stage data
+  if (Array.isArray(data)) return data.map((d: any) => ({ name: d.current_stage__name || d.name || '', value: Number(d.total_value ?? d.count ?? 0) }))
+  return []
+}
+
+const ReportChart: React.FC<{ data: any; chartType: string }> = ({ data, chartType }) => {
+  const chartData = normalizeChartData(data)
+
+  if (!chartData.length) {
+    return <p className="text-center text-gray-400 py-8">No chart data available</p>
+  }
+
+  if (chartType === 'pie') {
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <PieChart>
+          <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110} label={({ name, value }) => `${name}: ${value}`}>
+            {chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+          </Pie>
+          <Tooltip /><Legend />
+        </PieChart>
+      </ResponsiveContainer>
+    )
+  }
+
+  if (chartType === 'line') {
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" /><YAxis /><Tooltip /><Legend />
+          <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} dot={{ fill: '#f97316' }} />
+        </LineChart>
+      </ResponsiveContainer>
+    )
+  }
+
+  if (chartType === 'area') {
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <AreaChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" /><YAxis /><Tooltip /><Legend />
+          <Area type="monotone" dataKey="value" stroke="#f97316" fill="#fed7aa" strokeWidth={2} />
+        </AreaChart>
+      </ResponsiveContainer>
+    )
+  }
+
+  if (chartType === 'radar') {
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <RadarChart data={chartData}>
+          <PolarGrid />
+          <PolarAngleAxis dataKey="name" />
+          <PolarRadiusAxis />
+          <Radar dataKey="value" stroke="#f97316" fill="#f97316" fillOpacity={0.4} />
+          <Tooltip /><Legend />
+        </RadarChart>
+      </ResponsiveContainer>
+    )
+  }
+
+  if (chartType === 'funnel') {
+    const funnelData = chartData.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <FunnelChart>
+          <Tooltip />
+          <Funnel dataKey="value" data={funnelData} isAnimationActive>
+            <LabelList position="right" fill="#374151" stroke="none" dataKey="name" />
+          </Funnel>
+        </FunnelChart>
+      </ResponsiveContainer>
+    )
+  }
+
+  if (chartType === 'metric') {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {chartData.map((d, i) => (
+          <div key={i} className="text-center p-4 rounded-lg border-2" style={{ borderColor: COLORS[i % COLORS.length] }}>
+            <p className="text-xs text-gray-500 capitalize mb-1">{d.name}</p>
+            <p className="text-2xl font-bold" style={{ color: COLORS[i % COLORS.length] }}>{d.value}</p>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (chartType === 'table') {
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-orange-50">
+              {Object.keys(chartData[0] || {}).map(k => (
+                <th key={k} className="px-4 py-2 text-left font-medium text-gray-700 border border-gray-200 capitalize">{k}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {chartData.map((row, i) => (
+              <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                {Object.values(row).map((v: any, j) => (
+                  <td key={j} className="px-4 py-2 border border-gray-200">{String(v)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  // default: bar
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={chartData}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="name" /><YAxis /><Tooltip /><Legend />
+        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+          {chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
 
 export const AdvancedReporting: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
@@ -51,9 +190,10 @@ export const AdvancedReporting: React.FC = () => {
     }
   }
 
-  const handleGenerateReport = async (reportId: number) => {
+  const handleGenerateReport = async (report: any) => {
     try {
-      const response = await crmApi.generateReport(sessionKey!, reportId)
+      setSelectedReport(report)
+      const response = await crmApi.generateReport(sessionKey!, report.id)
       setReportData(response.data)
       toast.success('Report generated successfully!')
     } catch (error) {
@@ -64,17 +204,36 @@ export const AdvancedReporting: React.FC = () => {
 
   const handleExportReport = async (reportId: number, format: string = 'csv') => {
     try {
-      const response = await crmApi.exportReport(sessionKey!, reportId, format)
-      if (response.data.export_url) {
-        // Create download link
-        const link = document.createElement('a')
-        link.href = response.data.export_url
-        link.download = `report_${reportId}.${format}`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        toast.success(`Report exported as ${format.toUpperCase()}`)
+      // Generate report data first, then export as CSV client-side
+      const response = await crmApi.generateReport(sessionKey!, reportId)
+      const data = response.data
+      
+      // Build CSV content from report data
+      let csvContent = 'data:text/csv;charset=utf-8,'
+      
+      if (data.summary) {
+        csvContent += 'Summary\r\n'
+        Object.entries(data.summary).forEach(([k, v]) => {
+          csvContent += `${k.replace(/_/g, ' ')},${v}\r\n`
+        })
+        csvContent += '\r\n'
       }
+
+      if (Array.isArray(data.data) && data.data.length > 0) {
+        const headers = Object.keys(data.data[0])
+        csvContent += headers.join(',') + '\r\n'
+        data.data.forEach((row: any) => {
+          csvContent += headers.map(h => row[h] ?? '').join(',') + '\r\n'
+        })
+      }
+
+      const link = document.createElement('a')
+      link.href = encodeURI(csvContent)
+      link.download = `report_${reportId}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      toast.success('Report exported as CSV')
     } catch (error) {
       console.error('Error exporting report:', error)
       toast.error('Failed to export report')
@@ -108,6 +267,10 @@ export const AdvancedReporting: React.FC = () => {
     try {
       await crmApi.deleteReportTemplate(sessionKey!, reportId)
       toast.success('Report template deleted successfully')
+      if (selectedReport?.id === reportId) {
+        setReportData(null)
+        setSelectedReport(null)
+      }
       loadData()
     } catch (error) {
       toast.error('Failed to delete report template')
@@ -299,7 +462,7 @@ export const AdvancedReporting: React.FC = () => {
                         </div>
                         <div className="flex flex-col gap-1">
                           <button 
-                            onClick={() => handleGenerateReport(report.id)}
+                            onClick={() => handleGenerateReport(report)}
                             className="w-full px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 flex items-center justify-center"
                           >
                             <Eye className="h-3 w-3 mr-1" />
@@ -340,34 +503,33 @@ export const AdvancedReporting: React.FC = () => {
                     <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Report Results</h3>
                     </div>
-                    <div className="p-6 space-y-4">
+                    <div className="p-6 space-y-6">
+                      {/* Summary Cards */}
                       {reportData.summary && (
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           {Object.entries(reportData.summary).map(([key, value]) => (
-                            <div key={key} className="text-center p-3 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-600 capitalize">{key.replace('_', ' ')}</p>
-                              <p className="text-lg font-bold">
-                                {typeof value === 'number' && key.includes('revenue') 
-                                  ? `$${(value as number).toLocaleString()}`
+                            <div key={key} className="text-center p-3 bg-orange-50 rounded-lg border border-orange-100">
+                              <p className="text-xs text-gray-500 capitalize mb-1">{key.replace(/_/g, ' ')}</p>
+                              <p className="text-xl font-bold text-orange-600">
+                                {typeof value === 'number' && key.includes('revenue')
+                                  ? `₹${(value as number).toLocaleString()}`
+                                  : typeof value === 'number'
+                                  ? (value as number) % 1 !== 0 ? (value as number).toFixed(1) : value
                                   : String(value)}
                               </p>
                             </div>
                           ))}
                         </div>
                       )}
-                      
-                      {reportData.data && Array.isArray(reportData.data) && (
-                        <div className="space-y-2">
-                          <h4 className="font-medium">Data Points</h4>
-                          <div className="max-h-64 overflow-y-auto">
-                            {reportData.data.map((item: any, index: number) => (
-                              <div key={index} className="flex justify-between items-center p-2 border-b">
-                                <span className="text-sm">{JSON.stringify(item)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+
+                      {/* Chart */}
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-3">Chart View</h4>
+                        <ReportChart
+                          data={reportData}
+                          chartType={selectedReport?.chart_type || reports.find(r => r.id === selectedReport?.id)?.chart_type || 'bar'}
+                        />
+                      </div>
                     </div>
                   </div>
                 ) : (

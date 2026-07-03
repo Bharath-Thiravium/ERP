@@ -81,9 +81,10 @@ export const OpportunitiesPage: React.FC = () => {
       await crmApi.deleteOpportunity(sessionKey!, id)
       toast.success('Opportunity deleted successfully!')
       fetchOpportunities()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting opportunity:', error)
-      toast.error('Failed to delete opportunity')
+      const msg = error.response?.data?.error
+      toast.error(msg || 'Failed to delete opportunity')
     }
   }
 

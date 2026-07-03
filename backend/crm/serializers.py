@@ -140,7 +140,19 @@ class OpportunitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Opportunity
         fields = '__all__'
-        read_only_fields = ['opportunity_id', 'created_at', 'updated_at', 'created_by', 'company']
+        read_only_fields = ['opportunity_id', 'created_at', 'updated_at', 'created_by', 'company', 'owner']
+
+    def validate_owner(self, value):
+        """Accept owner as int or User instance, ignore strings"""
+        from django.contrib.auth.models import User
+        if isinstance(value, User):
+            return value
+        try:
+            return User.objects.get(pk=int(value))
+        except (ValueError, TypeError, User.DoesNotExist):
+            if self.instance:
+                return self.instance.owner
+            raise
 
     def validate_account(self, value):
         return validate_same_company(value, self.context, 'Account')
@@ -181,6 +193,9 @@ class ActivitySerializer(serializers.ModelSerializer):
         model = Activity
         fields = '__all__'
         read_only_fields = ['activity_id', 'created_at', 'updated_at', 'created_by', 'company']
+        extra_kwargs = {
+            'assigned_to': {'required': False, 'allow_null': True}
+        }
 
     def validate_lead(self, value):
         return validate_same_company(value, self.context, 'Lead')

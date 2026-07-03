@@ -8,7 +8,6 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import CustomerInteraction, CustomerHealthScore, CustomerSegment, CustomerSegmentMembership, SalesAnalytics, Account, Deal
 from .serializers import CustomerInteractionSerializer, CustomerHealthScoreSerializer, CustomerSegmentSerializer, SalesAnalyticsSerializer
-from authentication.models import ServiceUserSession
 from .views import CRMBaseViewSet
 import random
 
@@ -39,15 +38,10 @@ class CustomerInteractionViewSet(CRMBaseViewSet):
 
     @action(detail=False)
     def interaction_summary(self, request):
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         # Get interaction statistics with secure queries
         interactions = CustomerInteraction.objects.filter(company=company)
@@ -75,28 +69,17 @@ class CustomerHealthScoreViewSet(CRMBaseViewSet):
     ordering = ['-overall_score']
 
     def get_queryset(self):
-        session_key = self.get_session_key()
-        if not session_key:
+        su = self._get_service_user()
+        if not su:
             return self.queryset.none()
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-            return self.queryset.filter(account__company=company)
-        except ServiceUserSession.DoesNotExist:
-            return self.queryset.none()
+        return self.queryset.filter(account__company=su.company)
 
     @action(detail=False, methods=['post'])
     def calculate_scores(self, request):
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         account_ids = request.data.get('account_ids', [])
         
@@ -186,15 +169,10 @@ class CustomerHealthScoreViewSet(CRMBaseViewSet):
 
     @action(detail=False)
     def health_dashboard(self, request):
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         # Get health score statistics
         health_scores = CustomerHealthScore.objects.filter(account__company=company)
@@ -231,15 +209,9 @@ class CustomerSegmentViewSet(CRMBaseViewSet):
 
     @action(detail=True, methods=['post'])
     def add_accounts(self, request, pk=None):
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            service_user = session.service_user
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
 
         segment = self.get_object()
         account_ids = request.data.get('account_ids', [])
@@ -251,7 +223,7 @@ class CustomerSegmentViewSet(CRMBaseViewSet):
                 membership, created = CustomerSegmentMembership.objects.get_or_create(
                     segment=segment,
                     account=account,
-                    defaults={'added_by': service_user.created_by}
+                    defaults={'added_by': su.created_by}
                 )
                 if created:
                     added_count += 1
@@ -290,15 +262,10 @@ class SalesAnalyticsViewSet(CRMBaseViewSet):
 
     @action(detail=False, methods=['post'])
     def calculate_metrics(self, request):
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         period = request.data.get('period', 'monthly')
         date_str = request.data.get('date', timezone.now().date().isoformat())
@@ -386,15 +353,10 @@ class SalesAnalyticsViewSet(CRMBaseViewSet):
 
     @action(detail=False)
     def analytics_dashboard(self, request):
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         # Get recent analytics data
         thirty_days_ago = timezone.now().date() - timedelta(days=30)

@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 from .phase3_models import ReportTemplate, Dashboard, BusinessIntelligence
 from .models import Lead, Deal, Account
 from .phase3_serializers import ReportTemplateSerializer, DashboardSerializer, BusinessIntelligenceSerializer
-from authentication.models import ServiceUserSession
 from .views import CRMBaseViewSet
 import json
 
@@ -24,13 +23,10 @@ class ReportTemplateViewSet(CRMBaseViewSet):
     @action(detail=True)
     def generate(self, request, pk=None):
         template = self.get_object()
-        session_key = self.get_session_key()
-        
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         # Generate report data based on template configuration
         report_data = self._generate_report_data(template, company)
@@ -39,20 +35,17 @@ class ReportTemplateViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def export(self, request, pk=None):
         template = self.get_object()
-        session_key = self.get_session_key()
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
         format_type = request.data.get('format', 'pdf')
-        
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
         # Generate report data
         report_data = self._generate_report_data(template, company)
         
         # Return export URL or data based on format
-        export_url = f"/api/crm/reports/{template.id}/download/?format={format_type}&session_key={session_key}"
+        export_url = f"/api/crm/reports/{template.id}/download/?format={format_type}"
         
         return Response({
             'message': f'Report exported successfully as {format_type.upper()}',
@@ -124,14 +117,11 @@ class ReportTemplateViewSet(CRMBaseViewSet):
     @action(detail=True)
     def download(self, request, pk=None):
         template = self.get_object()
-        session_key = request.GET.get('session_key')
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
         format_type = request.GET.get('format', 'pdf')
-        
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
         # Generate report data
         report_data = self._generate_report_data(template, company)
@@ -175,13 +165,10 @@ class DashboardViewSet(CRMBaseViewSet):
     @action(detail=True)
     def data(self, request, pk=None):
         dashboard = self.get_object()
-        session_key = self.get_session_key()
-        
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         # Generate dashboard data based on widgets configuration
         dashboard_data = {}
@@ -218,13 +205,10 @@ class BusinessIntelligenceViewSet(CRMBaseViewSet):
 
     @action(detail=False, methods=['post'])
     def generate_insights(self, request):
-        session_key = self.get_session_key()
-        
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         insights_generated = 0
         
@@ -275,13 +259,10 @@ class BusinessIntelligenceViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def acknowledge(self, request, pk=None):
         insight = self.get_object()
-        session_key = self.get_session_key()
-        
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            user = session.service_user.created_by
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        user = su.created_by
         
         insight.is_acknowledged = True
         insight.acknowledged_by = user
@@ -292,13 +273,10 @@ class BusinessIntelligenceViewSet(CRMBaseViewSet):
 
     @action(detail=False)
     def dashboard_insights(self, request):
-        session_key = self.get_session_key()
-        
-        try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            company = session.service_user.company
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        company = su.company
 
         insights = BusinessIntelligence.objects.filter(
             company=company,

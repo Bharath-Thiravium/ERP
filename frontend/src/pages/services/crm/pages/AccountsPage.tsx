@@ -79,9 +79,10 @@ export const AccountsPage: React.FC = () => {
       await crmApi.deleteAccount(sessionKey!, id)
       toast.success('Account deleted successfully!')
       fetchAccounts()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting account:', error)
-      toast.error('Failed to delete account')
+      const msg = error.response?.data?.error
+      toast.error(msg || 'Failed to delete account')
     }
   }
 

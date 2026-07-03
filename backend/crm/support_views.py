@@ -8,7 +8,6 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import Ticket, TicketCategory, SLA, KnowledgeBase
 from .serializers import TicketSerializer, TicketCategorySerializer, SLASerializer, KnowledgeBaseSerializer
-from authentication.models import ServiceUserSession
 from .views import CRMBaseViewSet
 
 
@@ -22,55 +21,34 @@ class TicketViewSet(CRMBaseViewSet):
 
     def create(self, request, *args, **kwargs):
         """Override create to auto-assign SLA and due dates"""
-        session_key = self.get_session_key()
-        if not session_key:
-            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-
+        su = self._get_service_user()
+        if not su:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
         try:
-            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            service_user = session.service_user
-            
             data = request.data.copy()
-            data['company'] = service_user.company.id
-            
-            # Set created_by - get valid user
-            user_id = None
-            if hasattr(service_user, 'created_by') and service_user.created_by:
-                user_id = service_user.created_by.id
-            else:
+            data['company'] = su.company.id
+            user_id = su.created_by.id if su.created_by else None
+            if not user_id:
                 from django.contrib.auth.models import User
                 admin_user = User.objects.filter(is_superuser=True).first()
-                if admin_user:
-                    user_id = admin_user.id
-                else:
-                    return Response({'error': 'No valid user found for created_by field'}, status=status.HTTP_400_BAD_REQUEST)
-            
+                user_id = admin_user.id if admin_user else None
+            if not user_id:
+                return Response({'error': 'No valid user found'}, status=status.HTTP_400_BAD_REQUEST)
             data['created_by'] = user_id
-            
-            # Auto-assign SLA based on priority
             priority = data.get('priority', 'medium')
             try:
-                sla = SLA.objects.get(company=service_user.company, priority=priority, is_active=True)
+                sla = SLA.objects.get(company=su.company, priority=priority, is_active=True)
                 data['sla'] = sla.id
-                
-                # Calculate due dates
                 now = timezone.now()
                 data['response_due'] = now + timedelta(hours=sla.response_time_hours)
                 data['resolution_due'] = now + timedelta(hours=sla.resolution_time_hours)
             except SLA.DoesNotExist:
                 pass
-            
+            from django.contrib.auth.models import User
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
-            
-            # Explicitly pass created_by to save method
-            from django.contrib.auth.models import User
-            created_by_user = User.objects.get(id=user_id)
-            instance = serializer.save(created_by=created_by_user)
-            
+            instance = serializer.save(created_by=User.objects.get(id=user_id))
             return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
-        except ServiceUserSession.DoesNotExist:
-            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
             return Response({'error': f'Ticket creation failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 

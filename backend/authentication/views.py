@@ -1409,7 +1409,7 @@ class CompanyServiceUserListCreateView(ListCreateAPIView):
             return CompanyServiceUser.objects.none()
 
         company = self.request.user.company_user.company
-        return CompanyServiceUser.objects.filter(company=company).select_related(
+        return CompanyServiceUser.objects.filter(company=company, is_active=True).select_related(
             'service', 'company', 'created_by'
         ).order_by('-created_at')
 
@@ -1448,7 +1448,7 @@ class CompanyServiceUserDetailView(RetrieveUpdateDestroyAPIView):
             return CompanyServiceUser.objects.none()
 
         company = self.request.user.company_user.company
-        return CompanyServiceUser.objects.filter(company=company).select_related(
+        return CompanyServiceUser.objects.filter(company=company, is_active=True).select_related(
             'service', 'company', 'created_by'
         )
     
@@ -1458,18 +1458,23 @@ class CompanyServiceUserDetailView(RetrieveUpdateDestroyAPIView):
         
         try:
             with transaction.atomic():
-                # Handle Athens project references
-                self._handle_athens_project_references(instance)
-                
-                # Delete the service user
-                instance.delete()
+                instance.is_active = False
+                instance.save(update_fields=['is_active', 'updated_at'])
+                ServiceUserSession.objects.filter(
+                    service_user=instance,
+                    is_active=True,
+                ).update(
+                    is_active=False,
+                    revoked_at=timezone.now(),
+                    logout_time=timezone.now(),
+                )
                 
                 # Log the deletion
                 log_security_event(
                     self.request.user,
                     'USER_DELETED',
                     self.request,
-                    f'Deleted service user: {instance.username} ({instance.service.name})'
+                    f'Deactivated service user: {instance.username} ({instance.service.name})'
                 )
                 
         except Exception as e:
@@ -3573,7 +3578,7 @@ class CompanyServiceUserListCreateView(ListCreateAPIView):
             return CompanyServiceUser.objects.none()
 
         company = self.request.user.company_user.company
-        return CompanyServiceUser.objects.filter(company=company).select_related(
+        return CompanyServiceUser.objects.filter(company=company, is_active=True).select_related(
             'service', 'company', 'created_by'
         ).order_by('-created_at')
 
@@ -3612,7 +3617,7 @@ class CompanyServiceUserDetailView(RetrieveUpdateDestroyAPIView):
             return CompanyServiceUser.objects.none()
 
         company = self.request.user.company_user.company
-        return CompanyServiceUser.objects.filter(company=company).select_related(
+        return CompanyServiceUser.objects.filter(company=company, is_active=True).select_related(
             'service', 'company', 'created_by'
         )
     
@@ -3622,18 +3627,23 @@ class CompanyServiceUserDetailView(RetrieveUpdateDestroyAPIView):
         
         try:
             with transaction.atomic():
-                # Handle Athens project references
-                self._handle_athens_project_references(instance)
-                
-                # Delete the service user
-                instance.delete()
+                instance.is_active = False
+                instance.save(update_fields=['is_active', 'updated_at'])
+                ServiceUserSession.objects.filter(
+                    service_user=instance,
+                    is_active=True,
+                ).update(
+                    is_active=False,
+                    revoked_at=timezone.now(),
+                    logout_time=timezone.now(),
+                )
                 
                 # Log the deletion
                 log_security_event(
                     self.request.user,
                     'USER_DELETED',
                     self.request,
-                    f'Deleted service user: {instance.username} ({instance.service.name})'
+                    f'Deactivated service user: {instance.username} ({instance.service.name})'
                 )
                 
         except Exception as e:

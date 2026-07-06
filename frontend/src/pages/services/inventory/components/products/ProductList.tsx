@@ -387,9 +387,11 @@ const ProductList: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
+      const deleteReason = window.prompt('Enter delete reason for admin approval:');
+      if (!deleteReason?.trim()) return;
       try {
-        await inventoryApi.deleteProduct(id);
-        toast.success('Product deleted successfully!');
+        await inventoryApi.deleteProduct(id, { delete_reason: deleteReason.trim() });
+        toast.success('Delete request sent for admin approval.');
         loadProducts();
       } catch (error) {
         console.error('Failed to delete product:', error);

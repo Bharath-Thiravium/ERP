@@ -104,6 +104,7 @@ class CompanyNotification(models.Model):
     title = models.CharField(max_length=255)
     message = models.TextField()
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
+    metadata = models.JSONField(default=dict, blank=True)
     read = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

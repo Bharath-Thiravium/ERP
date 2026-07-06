@@ -210,10 +210,41 @@ class ContactViewSet(CompanyScopedModelViewSet):
     ordering_fields = ['first_name', 'last_name', 'created_at']
     ordering = ['first_name', 'last_name']
 
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        contact = serializer.instance
+        from common.sync_services import (
+            ensure_master_customer_from_crm_contact,
+            get_data_sharing_policy,
+            request_customer_sync_from_crm_contact,
+        )
+        policy = get_data_sharing_policy(contact.company)
+        if policy.auto_sync_enabled and (policy.crm_to_finance_customers or policy.finance_to_crm_customers):
+            if policy.require_manual_approval and policy.crm_to_finance_customers:
+                request_customer_sync_from_crm_contact(contact)
+            else:
+                ensure_master_customer_from_crm_contact(contact)
+
     def destroy(self, request, *args, **kwargs):
         contact = self.get_object()
         if contact.source_lead.exists():
             return Response({'error': 'This contact was created from a lead conversion and cannot be deleted directly. Delete the lead instead.'}, status=status.HTTP_400_BAD_REQUEST)
+        from common.sync_services import is_shared_record, request_shared_delete
+        if is_shared_record(contact):
+            reason = request.query_params.get('delete_reason') or request.data.get('delete_reason') or request.data.get('reason')
+            if not reason:
+                return Response(
+                    {'error': 'Delete reason is required for shared records.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            sync_request = request_shared_delete(contact, reason, requested_by=request.service_user)
+            return Response(
+                {
+                    'message': 'Delete approval request sent to company admin.',
+                    'sync_request_id': sync_request.id,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
         return super().destroy(request, *args, **kwargs)
 
 
@@ -227,10 +258,41 @@ class AccountViewSet(CompanyScopedModelViewSet):
     ordering_fields = ['name', 'created_at', 'annual_revenue']
     ordering = ['name']
 
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        account = serializer.instance
+        from common.sync_services import (
+            ensure_master_customer_from_crm_account,
+            get_data_sharing_policy,
+            request_customer_sync_from_crm_account,
+        )
+        policy = get_data_sharing_policy(account.company)
+        if policy.auto_sync_enabled and (policy.crm_to_finance_customers or policy.finance_to_crm_customers):
+            if policy.require_manual_approval and policy.crm_to_finance_customers:
+                request_customer_sync_from_crm_account(account)
+            else:
+                ensure_master_customer_from_crm_account(account)
+
     def destroy(self, request, *args, **kwargs):
         account = self.get_object()
         if account.source_lead.exists():
             return Response({'error': 'This account was created from a lead conversion and cannot be deleted directly. Delete the lead instead.'}, status=status.HTTP_400_BAD_REQUEST)
+        from common.sync_services import is_shared_record, request_shared_delete
+        if is_shared_record(account):
+            reason = request.query_params.get('delete_reason') or request.data.get('delete_reason') or request.data.get('reason')
+            if not reason:
+                return Response(
+                    {'error': 'Delete reason is required for shared records.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            sync_request = request_shared_delete(account, reason, requested_by=request.service_user)
+            return Response(
+                {
+                    'message': 'Delete approval request sent to company admin.',
+                    'sync_request_id': sync_request.id,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True)

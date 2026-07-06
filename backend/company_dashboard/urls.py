@@ -26,6 +26,11 @@ urlpatterns = [
     
     # Domain Settings
     path('domain/', views.company_domain_settings, name='company_domain_settings'),
+
+    # Cross-service data sharing
+    path('data-sharing/', views.DataSharingPolicyView.as_view(), name='company_data_sharing_policy'),
+    path('data-sharing/approvals/', views.SyncApprovalRequestListView.as_view(), name='company_sync_approval_requests'),
+    path('data-sharing/approvals/<int:request_id>/<str:action>/', views.SyncApprovalRequestActionView.as_view(), name='company_sync_approval_action'),
     
     # Security Settings
     path('security/', include('company_dashboard.security_urls')),

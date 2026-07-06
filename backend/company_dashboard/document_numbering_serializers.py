@@ -70,7 +70,7 @@ class DocumentNumberingConfigSerializer(serializers.ModelSerializer):
     def validate_custom_pattern(self, value):
         """Validate custom pattern"""
         if value:
-            valid_placeholders = ['{PREFIX}', '{COMPANY}', '{YEAR}', '{FY}', '{NUMBER}', '{SEP}']
+            valid_placeholders = ['{PREFIX}', '{COMPANY}', '{YEAR}', '{FY}', '{FY_SHORT}', '{NUMBER}', '{SEP}']
             if '{NUMBER}' not in value:
                 raise serializers.ValidationError('Custom pattern must include {NUMBER} placeholder')
             
@@ -127,8 +127,10 @@ class FinancialYearSettingsSerializer(serializers.ModelSerializer):
             if len(years) != 2:
                 raise ValueError
             start_year = int(years[0])
-            end_year = int(years[1])
-            if end_year != start_year + 1:
+            end_year_short = int(years[1])
+            if len(years[0]) != 4 or len(years[1]) != 2:
+                raise ValueError
+            if end_year_short != (start_year + 1) % 100:
                 raise ValueError
         except (ValueError, IndexError):
             raise serializers.ValidationError('Financial year must be in format YYYY-YY (e.g., 2024-25)')
@@ -309,13 +311,34 @@ class PatternPreviewSerializer(serializers.Serializer):
     number_padding = serializers.IntegerField(min_value=1, max_value=10, default=3)
     financial_year = serializers.CharField(default='2025-26')
     company_prefix = serializers.CharField(max_length=10, default='COMP')
+
+    def validate_financial_year(self, value):
+        try:
+            years = value.split('-')
+            if len(years) != 2:
+                raise ValueError
+            start_year = int(years[0])
+            end_year_short = int(years[1])
+            if len(years[0]) != 4 or len(years[1]) != 2:
+                raise ValueError
+            if end_year_short != (start_year + 1) % 100:
+                raise ValueError
+        except (ValueError, IndexError):
+            raise serializers.ValidationError('Financial year must be in format YYYY-YY (e.g., 2026-27)')
+        return value
     
     def validate_custom_pattern(self, value):
         """Validate custom pattern"""
         if value:
-            valid_placeholders = ['{PREFIX}', '{COMPANY}', '{YEAR}', '{FY}', '{NUMBER}', '{SEP}']
+            valid_placeholders = ['{PREFIX}', '{COMPANY}', '{YEAR}', '{FY}', '{FY_SHORT}', '{NUMBER}', '{SEP}']
             if '{NUMBER}' not in value:
                 raise serializers.ValidationError('Custom pattern must include {NUMBER} placeholder')
+            
+            import re
+            placeholders = re.findall(r'\{[^}]+\}', value)
+            invalid_placeholders = [p for p in placeholders if p not in valid_placeholders]
+            if invalid_placeholders:
+                raise serializers.ValidationError(f'Invalid placeholders: {invalid_placeholders}. Valid: {valid_placeholders}')
         return value
 
 

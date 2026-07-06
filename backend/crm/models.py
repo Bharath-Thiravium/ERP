@@ -111,6 +111,13 @@ class Lead(models.Model):
 
 class Contact(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='contacts')
+    master_customer = models.ForeignKey(
+        'common.MasterCustomer',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='crm_contacts',
+    )
     contact_id = models.CharField(max_length=50)
     
     # Personal Information
@@ -189,6 +196,13 @@ class Account(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='accounts')
+    master_customer = models.ForeignKey(
+        'common.MasterCustomer',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='crm_accounts',
+    )
     account_id = models.CharField(max_length=50)
     
     # Company Information

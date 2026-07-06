@@ -48,8 +48,8 @@ export const crmApi = {
     return apiClient.updateCRMContact({ session_key: sessionKey!, id, ...data })
   },
 
-  deleteContact: async (sessionKey: string, id: number) => {
-    return apiClient.deleteCRMContact({ session_key: sessionKey!, id })
+  deleteContact: async (sessionKey: string, id: number, deleteReason?: string) => {
+    return apiClient.deleteCRMContact({ session_key: sessionKey!, id, delete_reason: deleteReason })
   },
 
   // Accounts
@@ -65,8 +65,8 @@ export const crmApi = {
     return apiClient.updateCRMAccount({ session_key: sessionKey!, id, ...data })
   },
 
-  deleteAccount: async (sessionKey: string, id: number) => {
-    return apiClient.deleteCRMAccount({ session_key: sessionKey!, id })
+  deleteAccount: async (sessionKey: string, id: number, deleteReason?: string) => {
+    return apiClient.deleteCRMAccount({ session_key: sessionKey!, id, delete_reason: deleteReason })
   },
 
   getAccountOpportunities: async (sessionKey: string, accountId: number) => {

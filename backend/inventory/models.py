@@ -298,6 +298,13 @@ class Product(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='inventory_products')
+    master_product = models.ForeignKey(
+        'common.MasterProduct',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='inventory_products',
+    )
     name = models.CharField(max_length=200)
     product_code = models.CharField(max_length=50, unique=True)
     sku = models.CharField(max_length=50, unique=True, help_text="Stock Keeping Unit")
@@ -346,7 +353,7 @@ class Product(models.Model):
     image_gallery = models.JSONField(default=list, help_text="Uploaded image files")
     
     # Barcode
-    barcode = models.CharField(max_length=50, blank=True, unique=True)
+    barcode = models.CharField(max_length=50, blank=True, null=True, unique=True)
     qr_code = models.TextField(blank=True, help_text="QR code data")
     
     # Status
@@ -413,6 +420,8 @@ class Product(models.Model):
         # Validate special fields
         if self.hsn_code:
             self.hsn_code = InventorySecurityValidator.validate_hsn_code(self.hsn_code)
+        if self.barcode == '':
+            self.barcode = None
         if self.barcode:
             self.barcode = InventorySecurityValidator.validate_barcode(self.barcode)
     
@@ -599,7 +608,7 @@ class ProductVariant(models.Model):
     
     # Inventory
     sku = models.CharField(max_length=50, unique=True)
-    barcode = models.CharField(max_length=50, blank=True, unique=True)
+    barcode = models.CharField(max_length=50, blank=True, null=True, unique=True)
     
     # Images
     variant_image = models.ImageField(upload_to='product_variants/', null=True, blank=True)

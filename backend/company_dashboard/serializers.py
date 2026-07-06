@@ -1,8 +1,58 @@
 from rest_framework import serializers
+from common.models import DataSharingPolicy, SyncApprovalRequest
 from .models import (
     ServiceUtilization, CompanyAnalytics, ServiceUserActivity,
     CompanyNotification, ServiceConfiguration, ActivityLog, CompanyEmailSettings
 )
+
+
+class DataSharingPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DataSharingPolicy
+        fields = [
+            'id',
+            'crm_to_finance_customers',
+            'finance_to_crm_customers',
+            'inventory_to_finance_products',
+            'finance_to_inventory_products',
+            'crm_opportunity_to_finance_quotation',
+            'auto_sync_enabled',
+            'require_manual_approval',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class SyncApprovalRequestSerializer(serializers.ModelSerializer):
+    request_type_display = serializers.CharField(source='get_request_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    reviewed_by_email = serializers.EmailField(source='reviewed_by.email', read_only=True)
+
+    class Meta:
+        model = SyncApprovalRequest
+        fields = [
+            'id',
+            'request_type',
+            'request_type_display',
+            'source_service',
+            'target_service',
+            'source_model',
+            'source_object_id',
+            'target_model',
+            'target_object_id',
+            'title',
+            'summary',
+            'suggested_data',
+            'approval_data',
+            'status',
+            'status_display',
+            'error_message',
+            'requested_at',
+            'reviewed_at',
+            'reviewed_by_email',
+        ]
+        read_only_fields = fields
 
 class ServiceUtilizationSerializer(serializers.ModelSerializer):
     service_name = serializers.CharField(source='service.name', read_only=True)
@@ -44,7 +94,7 @@ class CompanyNotificationSerializer(serializers.ModelSerializer):
         model = CompanyNotification
         fields = [
             'id', 'type', 'service_type', 'title', 'message', 'priority',
-            'read', 'read_at', 'created_at', 'expires_at'
+            'metadata', 'read', 'read_at', 'created_at', 'expires_at'
         ]
         read_only_fields = ['id', 'created_at', 'read_at']
 

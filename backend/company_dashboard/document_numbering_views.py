@@ -16,6 +16,107 @@ from authentication.models import Service
 from .document_numbering_models import ServiceDocumentTypes
 
 
+LOCKED_NUMBERING_FIELDS = {
+    'prefix',
+    'starting_number',
+    'number_padding',
+    'custom_pattern',
+    'include_company_prefix',
+    'year_format',
+    'separator',
+}
+
+
+def _config_has_usage(config):
+    return config.current_counter > 0 or config.history.exists()
+
+
+def _changed_locked_fields(config, data):
+    changed = []
+    for field in LOCKED_NUMBERING_FIELDS:
+        if field not in data:
+            continue
+        current_value = getattr(config, field)
+        new_value = data[field]
+        if isinstance(current_value, bool):
+            new_value = bool(new_value)
+        elif isinstance(current_value, int):
+            try:
+                new_value = int(new_value)
+            except (TypeError, ValueError):
+                pass
+        if current_value != new_value:
+            changed.append(field)
+    return changed
+
+
+def _finance_module_for_document_type(document_type):
+    return {
+        'payment': 'customer_payment',
+    }.get(document_type, document_type)
+
+
+def _dashboard_config_to_finance_template(config):
+    if config.custom_pattern:
+        year_token = {
+            'YY': '{YY}',
+            'YYYY': '{YYYY}',
+            'FY': '{FY}',
+            'FY_SHORT': '{FY_SHORT}',
+            'NONE': '',
+        }.get(config.year_format, '{YY}')
+        return (
+            config.custom_pattern
+            .replace('{NUMBER}', '{SEQ}')
+            .replace('{YEAR}', year_token)
+        )
+
+    parts = []
+    if config.include_company_prefix:
+        parts.append('{COMPANY}')
+    if config.prefix:
+        parts.append('{PREFIX}')
+    year_token = {
+        'YY': '{YY}',
+        'YYYY': '{YYYY}',
+        'FY': '{FY}',
+        'FY_SHORT': '{FY_SHORT}',
+        'NONE': '',
+    }.get(config.year_format, '{YY}')
+    if year_token:
+        parts.append(year_token)
+    parts.append('{SEQ}')
+    return (config.separator or '-').join(parts)
+
+
+def _sync_finance_numbering_rule(config):
+    if getattr(config.service, 'service_type', None) != 'finance':
+        return
+
+    try:
+        from finance.models import FINANCE_NUMBERING_MODULE_CHOICES, NumberingRule
+    except Exception:
+        return
+
+    module = _finance_module_for_document_type(config.document_type)
+    if module not in dict(FINANCE_NUMBERING_MODULE_CHOICES):
+        return
+
+    NumberingRule.objects.update_or_create(
+        company=config.company,
+        module=module,
+        defaults={
+            'template': _dashboard_config_to_finance_template(config),
+            'prefix': config.prefix or '',
+            'separator': config.separator or '-',
+            'padding': config.number_padding,
+            'reset_scope': 'yearly' if config.year_format != 'NONE' else 'never',
+            'start_from': config.starting_number,
+            'allow_manual_override': config.allow_manual_override,
+        },
+    )
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_current_financial_year(request):
@@ -89,12 +190,26 @@ def document_numbering_configs(request):
             ).first()
             
             if existing_config:
+                if _config_has_usage(existing_config):
+                    changed_fields = _changed_locked_fields(existing_config, data)
+                    if changed_fields:
+                        return Response(
+                            {
+                                'error': (
+                                    'Numbering format cannot be changed after numbers are generated. '
+                                    'Create a new financial year configuration for a new sequence.'
+                                ),
+                                'locked_fields': changed_fields,
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
                 serializer = DocumentNumberingConfigSerializer(existing_config, data=data, partial=True)
             else:
                 serializer = DocumentNumberingConfigSerializer(data=data)
             
             if serializer.is_valid():
-                serializer.save()
+                config = serializer.save()
+                _sync_finance_numbering_rule(config)
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -129,15 +244,31 @@ def document_numbering_config_detail(request, config_id):
             return Response(serializer.data)
         
         elif request.method == 'PUT':
+            if _config_has_usage(config):
+                changed_fields = _changed_locked_fields(config, request.data)
+                if changed_fields:
+                    return Response(
+                        {
+                            'error': (
+                                'Numbering format cannot be changed after numbers are generated. '
+                                'Create a new financial year configuration for a new sequence.'
+                            ),
+                            'locked_fields': changed_fields,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             serializer = DocumentNumberingConfigSerializer(config, data=request.data, partial=True)
             if serializer.is_valid():
-                serializer.save()
+                config = serializer.save()
+                _sync_finance_numbering_rule(config)
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         elif request.method == 'DELETE':
-            config.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
+            return Response(
+                {'error': 'Deleting numbering configurations is disabled to prevent number reuse.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
             
     except Exception as e:
         return Response(
@@ -217,6 +348,7 @@ def bulk_setup_numbering_legacy(request):
                     
                     if created:
                         created_configs.append(config)
+                        _sync_finance_numbering_rule(config)
         
         return Response({
             'message': f'Successfully created {len(created_configs)} document numbering configurations',
@@ -526,7 +658,8 @@ def get_document_numbering_status(request):
         return Response({
             'use_document_numbering': company.use_document_numbering,
             'status': 'enabled' if company.use_document_numbering else 'disabled',
-            'company_name': company.name
+            'company_name': company.name,
+            'company_prefix': company.company_prefix,
         })
         
     except Exception as e:
@@ -555,8 +688,21 @@ def service_wise_bulk_setup(request):
         
         created_configs = []
         updated_configs = []
+        deactivated_configs = []
         
         with transaction.atomic():
+            selected_services = Service.objects.filter(service_type__in=services_to_setup)
+            inactive_queryset = DocumentNumberingConfig.objects.filter(
+                company=company,
+                financial_year=data['financial_year'],
+                is_active=True,
+            ).exclude(service__in=selected_services)
+            for config in inactive_queryset:
+                config.is_active = False
+                config.save(update_fields=['is_active', 'updated_at'])
+                _sync_finance_numbering_rule(config)
+                deactivated_configs.append(config)
+
             for service_type in services_to_setup:
                 try:
                     service = Service.objects.get(service_type=service_type)
@@ -584,8 +730,29 @@ def service_wise_bulk_setup(request):
                     if service_type in service_configurations:
                         config_data.update(service_configurations[service_type])
                     
+                    document_key = f'{service_type}.{doc_type}'
                     if doc_type in document_configurations:
                         config_data.update(document_configurations[doc_type])
+                    if document_key in document_configurations:
+                        config_data.update(document_configurations[document_key])
+
+                    enabled = config_data.get('enabled', True)
+                    if isinstance(enabled, str):
+                        enabled = enabled.lower() not in ['false', '0', 'no']
+
+                    if not enabled:
+                        existing_config = DocumentNumberingConfig.objects.filter(
+                            service=service,
+                            company=company,
+                            document_type=doc_type,
+                            financial_year=data['financial_year'],
+                        ).first()
+                        if existing_config and existing_config.is_active:
+                            existing_config.is_active = False
+                            existing_config.save(update_fields=['is_active', 'updated_at'])
+                            _sync_finance_numbering_rule(existing_config)
+                            updated_configs.append(existing_config)
+                        continue
                     
                     # Handle custom pattern with company prefix
                     custom_pattern = config_data.get('custom_pattern', '')
@@ -607,7 +774,7 @@ def service_wise_bulk_setup(request):
                         'include_company_prefix': include_company_prefix,
                         'year_format': config_data.get('year_format', 'YY'),
                         'separator': config_data.get('separator', '-'),
-                        'is_active': True,
+                        'is_active': enabled,
                         'allow_manual_override': config_data.get('allow_manual_override', False)
                     }
                     
@@ -621,12 +788,28 @@ def service_wise_bulk_setup(request):
                     
                     if created:
                         created_configs.append(config)
+                        _sync_finance_numbering_rule(config)
                     else:
+                        if _config_has_usage(config):
+                            changed_fields = _changed_locked_fields(config, defaults)
+                            if changed_fields:
+                                return Response(
+                                    {
+                                        'error': (
+                                            f'{doc_type} numbering already has generated numbers. '
+                                            'Format changes are blocked for sales-safe numbering.'
+                                        ),
+                                        'document_type': doc_type,
+                                        'locked_fields': changed_fields,
+                                    },
+                                    status=status.HTTP_400_BAD_REQUEST,
+                                )
                         # Update existing configuration with new settings
                         for key, value in defaults.items():
                             if key != 'current_counter':  # Don't reset counter
                                 setattr(config, key, value)
                         config.save()
+                        _sync_finance_numbering_rule(config)
                         updated_configs.append(config)
 
         
@@ -634,6 +817,7 @@ def service_wise_bulk_setup(request):
             'message': f'Successfully configured {len(created_configs)} new and {len(updated_configs)} existing configurations',
             'created_count': len(created_configs),
             'updated_count': len(updated_configs),
+            'deactivated_count': len(deactivated_configs),
             'services_configured': services_to_setup
         }, status=status.HTTP_201_CREATED)
         
@@ -690,6 +874,7 @@ def preview_numbering_pattern(request):
                 '{COMPANY}': company.company_prefix,
                 '{YEAR}': get_preview_year_string(),
                 '{FY}': config_data['financial_year'],
+                '{FY_SHORT}': temp_config._get_fy_short_string(),
                 '{NUMBER}': str(temp_config.current_counter).zfill(temp_config.number_padding),
                 '{SEP}': temp_config.separator,
             }
@@ -759,7 +944,8 @@ def get_company_current_configurations(request):
         
         configs = DocumentNumberingConfig.objects.filter(
             company=company,
-            financial_year=current_fy
+            financial_year=current_fy,
+            is_active=True
         ).select_related('service').order_by('service__service_type', 'document_type')
         
         services_config = {}
@@ -797,6 +983,19 @@ def fix_company_prefix_configs(request):
             updated_count = 0
             
             for config in configs:
+                if _config_has_usage(config):
+                    return Response(
+                        {
+                            'error': (
+                                'Company prefix auto-fix is blocked because at least one numbering '
+                                'configuration already has generated numbers. Create a new financial-year '
+                                'configuration if the format must change.'
+                            ),
+                            'document_type': config.document_type,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
                 # Set include_company_prefix to True
                 config.include_company_prefix = True
                 

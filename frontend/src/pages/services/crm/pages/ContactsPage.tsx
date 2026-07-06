@@ -64,10 +64,12 @@ export const ContactsPage: React.FC = () => {
 
   const handleDeleteContact = async (id: number) => {
     if (!sessionKey || !confirm('Are you sure you want to delete this contact?')) return
+    const deleteReason = prompt('Enter delete reason for admin approval:')
+    if (!deleteReason?.trim()) return
     
     try {
-      await crmApi.deleteContact(sessionKey!, id)
-      toast.success('Contact deleted successfully!')
+      const response = await crmApi.deleteContact(sessionKey!, id, deleteReason.trim())
+      toast.success(response.status === 202 ? 'Delete request sent for admin approval.' : 'Contact deleted successfully!')
       fetchContacts()
     } catch (error: any) {
       console.error('Error deleting contact:', error)

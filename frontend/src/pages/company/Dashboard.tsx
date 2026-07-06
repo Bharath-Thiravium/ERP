@@ -167,6 +167,53 @@ const CompanyDashboard: React.FC = () => {
     queryKey: ['company-notifications'],
     queryFn: () => apiClient.get('/api/company-dashboard/notifications/'),
   })
+
+  const { data: dataSharingPolicy, isLoading: dataSharingLoading } = useQuery({
+    queryKey: ['company-data-sharing-policy'],
+    queryFn: () => apiClient.getCompanyDataSharingPolicy(),
+    enabled: isFullyAuthenticated,
+  })
+
+  const { data: syncApprovals, isLoading: syncApprovalsLoading } = useQuery({
+    queryKey: ['company-sync-approvals'],
+    queryFn: () => apiClient.getCompanySyncApprovals({ status: 'pending' }),
+    enabled: isFullyAuthenticated,
+  })
+
+  const updateDataSharingMutation = useMutation({
+    mutationFn: (data: any) => apiClient.updateCompanyDataSharingPolicy(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['company-data-sharing-policy'] })
+      toast.success('Data sharing settings updated')
+    },
+    onError: () => {
+      toast.error('Failed to update data sharing settings')
+    },
+  })
+
+  const approveSyncMutation = useMutation({
+    mutationFn: (request: any) => apiClient.approveCompanySyncRequest(request.id, {
+      approval_data: request.suggested_data || {},
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['company-sync-approvals'] })
+      toast.success('Sync request approved')
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to approve sync request')
+    },
+  })
+
+  const rejectSyncMutation = useMutation({
+    mutationFn: (requestId: number) => apiClient.rejectCompanySyncRequest(requestId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['company-sync-approvals'] })
+      toast.success('Sync request rejected')
+    },
+    onError: () => {
+      toast.error('Failed to reject sync request')
+    },
+  })
   
   // Process enhanced data
   React.useEffect(() => {
@@ -438,7 +485,8 @@ Website: https://athenas.co.in
       items: [
         { id: 'company-details', label: 'Company Details', icon: Building2 },
         { id: 'document-numbering', label: 'Document Numbering', icon: Hash },
-        { id: 'government-api', label: 'Government API', icon: Globe }
+        { id: 'government-api', label: 'Government API', icon: Globe },
+        { id: 'data-sharing', label: 'Data Sharing', icon: Server }
       ]
     },
     {
@@ -467,6 +515,7 @@ Website: https://athenas.co.in
 
   const [activeSettingsTab, setActiveSettingsTab] = useState('general')
   const [activeSecurityTab, setActiveSecurityTab] = useState('overview')
+  const unreadNotificationCount = notifications.filter((notification: any) => !notification.read).length
 
   // Security sub-tabs
   const securityTabs = [
@@ -515,9 +564,21 @@ Website: https://athenas.co.in
             {/* Actions */}
             <div className="flex items-center space-x-4">
               {/* Notifications */}
-              <button className="relative p-2 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setActiveTab('notifications')
+                  setOpenDropdown(null)
+                }}
+                className="relative p-2 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+                aria-label="Open notifications"
+                title="Notifications"
+              >
                 <Bell className="h-5 w-5" />
-                <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-400 ring-2 ring-white dark:ring-gray-800"></span>
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-400 ring-2 ring-white dark:ring-gray-800"></span>
+                )}
               </button>
 
               {/* Theme Toggle */}
@@ -839,6 +900,17 @@ Website: https://athenas.co.in
           <NotificationCenter
             notifications={notifications}
             isLoading={notificationsLoading}
+            onOpenNotification={async (notification) => {
+              if (notification.metadata?.navigate_to === 'data-sharing') {
+                try {
+                  await apiClient.post(`/api/company-dashboard/notifications/${notification.id}/read/`)
+                  queryClient.invalidateQueries({ queryKey: ['company-notifications'] })
+                } catch (error) {
+                  // Keep navigation working even if marking read fails.
+                }
+                setActiveTab('data-sharing')
+              }
+            }}
             onMarkAsRead={async (notificationId) => {
               try {
                 await apiClient.post(`/api/company-dashboard/notifications/${notificationId}/read/`)
@@ -857,6 +929,155 @@ Website: https://athenas.co.in
 
         {activeTab === 'government-api' && (
           <GovernmentAPICredentials />
+        )}
+
+        {activeTab === 'data-sharing' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                Data Sharing
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400">
+                Control how CRM, Finance, and Inventory share customers and products for this company.
+              </p>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Cross-Service Sync Settings</CardTitle>
+                <CardDescription>
+                  Keep this off for fully separate modules. Enable only the links this company purchased and wants to share.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {dataSharingLoading ? (
+                  <div className="py-8 text-center text-gray-500">Loading settings...</div>
+                ) : (
+                  <div className="space-y-4">
+                    {[
+                      ['crm_to_finance_customers', 'CRM to Finance customers', 'CRM accounts/contacts can become Finance customers.'],
+                      ['finance_to_crm_customers', 'Finance to CRM customers', 'Finance customers can be linked back to CRM accounts.'],
+                      ['inventory_to_finance_products', 'Inventory to Finance products', 'Inventory products can become invoice/quotation products.'],
+                      ['finance_to_inventory_products', 'Finance to Inventory products', 'Finance products can create inventory items when stock tracking is needed.'],
+                      ['crm_opportunity_to_finance_quotation', 'CRM opportunity to Finance quotation', 'Won or qualified CRM opportunities can start Finance quotation flow.'],
+                      ['auto_sync_enabled', 'Auto sync', 'Create master links automatically when records are created.'],
+                    ].map(([key, title, description]) => {
+                      const checked = Boolean(dataSharingPolicy?.data?.[key])
+                      return (
+                        <label
+                          key={key}
+                          className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700"
+                        >
+                          <span>
+                            <span className="block font-medium text-gray-900 dark:text-white">{title}</span>
+                            <span className="block text-sm text-gray-500 dark:text-gray-400">{description}</span>
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={updateDataSharingMutation.isPending}
+                            onChange={(event) => {
+                              updateDataSharingMutation.mutate({ [key]: event.target.checked })
+                            }}
+                            className="mt-1 h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </label>
+                      )
+                    })}
+
+                    <label className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+                      <span>
+                        <span className="block font-medium text-gray-900 dark:text-white">Require manual approval</span>
+                        <span className="block text-sm text-gray-500 dark:text-gray-400">
+                          Keep sync decisions controlled by the company admin instead of fully automatic creation.
+                        </span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(dataSharingPolicy?.data?.require_manual_approval)}
+                        disabled={updateDataSharingMutation.isPending}
+                        onChange={(event) => {
+                          updateDataSharingMutation.mutate({ require_manual_approval: event.target.checked })
+                        }}
+                        className="mt-1 h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </label>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Pending Sync Approvals</CardTitle>
+                <CardDescription>
+                  Review records before creating linked customers or products in another module.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {syncApprovalsLoading ? (
+                  <div className="py-8 text-center text-gray-500">Loading approvals...</div>
+                ) : (syncApprovals?.data || []).length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700">
+                    No pending sync approvals.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(syncApprovals?.data || []).map((request: any) => (
+                      <div
+                        key={request.id}
+                        className="rounded-lg border border-gray-200 p-4 dark:border-gray-700"
+                      >
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {request.title}
+                            </div>
+                            <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                              {request.request_type_display} · {request.source_service} to {request.target_service}
+                            </div>
+                            {request.summary && (
+                              <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                                {request.summary}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <button
+                              type="button"
+                              disabled={approveSyncMutation.isPending || rejectSyncMutation.isPending}
+                              onClick={() => approveSyncMutation.mutate(request)}
+                              className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              disabled={approveSyncMutation.isPending || rejectSyncMutation.isPending}
+                              onClick={() => rejectSyncMutation.mutate(request.id)}
+                              className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+                        {request.suggested_data && (
+                          <div className="mt-3 grid gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2 lg:grid-cols-3">
+                            {Object.entries(request.suggested_data).slice(0, 9).map(([key, value]) => (
+                              <div key={key} className="rounded bg-gray-50 px-2 py-1 dark:bg-gray-800">
+                                <span className="font-medium">{key.replaceAll('_', ' ')}:</span>{' '}
+                                <span>{String(value || '-')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         )}
 
 

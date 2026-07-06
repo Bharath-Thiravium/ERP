@@ -30,6 +30,43 @@ def _financial_year_short(dt) -> str:
     return f"{str(year)[2:]}{str(year + 1)[2:]}"
 
 
+def _dashboard_document_type(module: str) -> str:
+    return {
+        'customer_payment': 'payment',
+    }.get(module, module)
+
+
+def _generate_from_dashboard_numbering(company, module: str, dt):
+    if not getattr(company, 'use_document_numbering', False):
+        return None
+
+    from authentication.models import Service
+    from company_dashboard.document_numbering_models import DocumentNumberingConfig
+
+    try:
+        service = Service.objects.get(service_type='finance')
+    except Service.DoesNotExist:
+        return None
+
+    document_type = _dashboard_document_type(module)
+    financial_year = _financial_year(dt)
+    configs = DocumentNumberingConfig.objects.filter(
+        company=company,
+        service=service,
+        document_type=document_type,
+        financial_year=financial_year,
+    )
+    config = configs.filter(is_active=True).first()
+    if not config:
+        if configs.exists():
+            raise ValueError(f"Document numbering is inactive for company={company.id} module={module}")
+        raise ValueError(
+            f"Document numbering is not configured for Finance {document_type}. "
+            "Set it up in Company > Document Numbering before creating records."
+        )
+    return config.get_next_number()
+
+
 def _get_highest_sequence_number(company, module: str, rule, scope_key: str, dt=None) -> int:
     """
     Scan existing document numbers for this company/module/scope and return
@@ -49,6 +86,9 @@ def _get_highest_sequence_number(company, module: str, rule, scope_key: str, dt=
         'purchase_request': ('finance_purchase_requests', 'request_number'),
         'purchase_payment': ('finance_purchase_payments', 'payment_number'),
         'vendor_invoice': ('finance_vendor_invoices', 'our_reference_number'),
+        'customer': ('finance_customers', 'customer_code'),
+        'vendor': ('finance_vendors', 'vendor_code'),
+        'product': ('finance_products', 'product_code'),
     }
 
     if module not in module_mapping:
@@ -160,6 +200,10 @@ def generate_number(company, module: str, dt=None) -> str:
     # Accept date objects too
     if isinstance(dt, datetime.date) and not isinstance(dt, datetime.datetime):
         dt = datetime.datetime(dt.year, dt.month, dt.day)
+
+    dashboard_number = _generate_from_dashboard_numbering(company, module, dt)
+    if dashboard_number:
+        return dashboard_number
 
     try:
         rule = NumberingRule.objects.get(company=company, module=module)

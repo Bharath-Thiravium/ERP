@@ -11,6 +11,7 @@ from datetime import timedelta
 
 from authentication.test_fixtures import (
     create_auth_chain, auth_headers, create_test_company,
+    create_test_service, create_test_service_user, create_test_session,
     VALID_CUSTOMER_PAYLOAD, VALID_EMPLOYEE_PAYLOAD, VALID_PRODUCT_PAYLOAD
 )
 
@@ -32,6 +33,40 @@ class SecurityContractTestCase(TestCase):
         self.auth_headers_b = self.company_b_chain['auth_headers']
         self.session_a = self.company_a_chain['session']
         self.session_b = self.company_b_chain['session']
+        self.module_auth_headers_a = self._build_module_auth_headers(self.company_a, 'A')
+        self.module_auth_headers_b = self._build_module_auth_headers(self.company_b, 'B')
+
+    def _build_module_auth_headers(self, company, suffix):
+        headers = {'finance': auth_headers(create_test_session(
+            service_user=self.company_a_chain['service_user']
+            if company == self.company_a else self.company_b_chain['service_user']
+        ).session_key)}
+
+        for service_type in ['hr', 'inventory', 'crm']:
+            service = create_test_service(
+                name=f"{service_type.title()} Service",
+                service_type=service_type,
+            )
+            service_user = create_test_service_user(
+                company=company,
+                service=service,
+                username=f"{service_type.lower()}_{suffix.lower()}",
+                unique_service_id=f"{service_type.upper()}_{suffix}_001",
+            )
+            session = create_test_session(service_user=service_user)
+            headers[service_type] = auth_headers(session.session_key)
+
+        return headers
+
+    def auth_headers_for_endpoint(self, endpoint, company='a'):
+        header_map = self.module_auth_headers_a if company == 'a' else self.module_auth_headers_b
+        if endpoint.startswith('/api/hr/'):
+            return header_map['hr']
+        if endpoint.startswith('/api/inventory/'):
+            return header_map['inventory']
+        if endpoint.startswith('/api/crm/'):
+            return header_map['crm']
+        return header_map['finance']
 
 
 class AuthenticationContractTests(SecurityContractTestCase):
@@ -97,6 +132,19 @@ class AuthenticationContractTests(SecurityContractTestCase):
         response = self.client.get('/api/finance/customers/', **self.auth_headers_a)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_service_user_cannot_access_other_service_module(self):
+        """A service user can only access APIs for their own service module."""
+        test_cases = [
+            ('/api/finance/customers/', self.module_auth_headers_a['inventory']),
+            ('/api/inventory/products/', self.module_auth_headers_a['finance']),
+            ('/api/crm/leads/', self.module_auth_headers_a['finance']),
+        ]
+
+        for endpoint, headers in test_cases:
+            with self.subTest(endpoint=endpoint):
+                response = self.client.get(endpoint, **headers)
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
 
 class TenantIsolationContractTests(SecurityContractTestCase):
     """Test tenant isolation across all modules."""
@@ -143,7 +191,7 @@ class TenantIsolationContractTests(SecurityContractTestCase):
         
         for endpoint, expected_count in test_cases:
             with self.subTest(endpoint=endpoint):
-                response = self.client.get(endpoint, **self.auth_headers_a)
+                response = self.client.get(endpoint, **self.auth_headers_for_endpoint(endpoint))
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
                 self.assertEqual(len(response.data['results']), expected_count)
     
@@ -176,7 +224,7 @@ class TenantIsolationContractTests(SecurityContractTestCase):
         
         for endpoint in test_cases:
             with self.subTest(endpoint=endpoint):
-                response = self.client.get(endpoint, **self.auth_headers_a)
+                response = self.client.get(endpoint, **self.auth_headers_for_endpoint(endpoint))
                 self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
     
     def test_create_ignores_payload_company(self):
@@ -198,7 +246,12 @@ class TenantIsolationContractTests(SecurityContractTestCase):
         
         for endpoint, payload in zip(endpoints, payloads):
             with self.subTest(endpoint=endpoint):
-                response = self.client.post(endpoint, payload, format='json', **self.auth_headers_a)
+                response = self.client.post(
+                    endpoint,
+                    payload,
+                    format='json',
+                    **self.auth_headers_for_endpoint(endpoint)
+                )
                 
                 # Should succeed (201) or have validation errors (400), but not permission errors
                 self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -332,7 +385,7 @@ class HRModuleSecurityTests(SecurityContractTestCase):
             '/api/hr/employees/', 
             VALID_EMPLOYEE_PAYLOAD, 
             format='json', 
-            **self.auth_headers_a
+            **self.auth_headers_for_endpoint('/api/hr/employees/')
         )
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
 
@@ -347,7 +400,7 @@ class InventoryModuleSecurityTests(SecurityContractTestCase):
             '/api/inventory/products/', 
             VALID_PRODUCT_PAYLOAD, 
             format='json', 
-            **self.auth_headers_a
+            **self.auth_headers_for_endpoint('/api/inventory/products/')
         )
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
 
@@ -369,6 +422,6 @@ class CRMModuleSecurityTests(SecurityContractTestCase):
             '/api/crm/leads/', 
             lead_payload, 
             format='json', 
-            **self.auth_headers_a
+            **self.auth_headers_for_endpoint('/api/crm/leads/')
         )
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])

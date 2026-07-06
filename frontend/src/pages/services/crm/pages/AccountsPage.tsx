@@ -74,10 +74,12 @@ export const AccountsPage: React.FC = () => {
 
   const handleDeleteAccount = async (id: number) => {
     if (!sessionKey || !confirm('Are you sure you want to delete this account?')) return
+    const deleteReason = prompt('Enter delete reason for admin approval:')
+    if (!deleteReason?.trim()) return
     
     try {
-      await crmApi.deleteAccount(sessionKey!, id)
-      toast.success('Account deleted successfully!')
+      const response = await crmApi.deleteAccount(sessionKey!, id, deleteReason.trim())
+      toast.success(response.status === 202 ? 'Delete request sent for admin approval.' : 'Account deleted successfully!')
       fetchAccounts()
     } catch (error: any) {
       console.error('Error deleting account:', error)

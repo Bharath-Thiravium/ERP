@@ -131,8 +131,8 @@ export const inventoryApi = {
     return response.data;
   },
 
-  deleteProduct: async (id: number) => {
-    const response = await apiClient.deleteInventoryProduct(id);
+  deleteProduct: async (id: number, params?: any) => {
+    const response = await apiClient.deleteInventoryProduct(id, params);
     return response.data;
   },
 

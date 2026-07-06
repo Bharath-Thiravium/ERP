@@ -133,9 +133,12 @@ const CustomerList: React.FC<CustomerListProps> = ({
 
   const handleDeleteCustomer = async (customerId: number) => {
     if (!confirm('Are you sure you want to delete this customer?')) return
+    const deleteReason = prompt('Enter delete reason for admin approval:')
+    if (!deleteReason?.trim()) return
 
     try {
-      await apiClient.deleteFinanceCustomer(customerId, { session_key: sessionKey })
+      const response = await apiClient.deleteFinanceCustomer(customerId, { session_key: sessionKey, delete_reason: deleteReason.trim() })
+      alert(response.status === 202 ? 'Delete request sent for admin approval.' : 'Customer deleted successfully.')
       fetchCustomers() // Refresh the list
     } catch (error) {
       console.error('Error deleting customer:', error)

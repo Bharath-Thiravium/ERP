@@ -1,4 +1,5 @@
 from rest_framework import generics, status
+from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -12,9 +13,116 @@ from .models import (
 from .serializers import (
     ServiceUtilizationSerializer, CompanyAnalyticsSerializer,
     ServiceUserActivitySerializer, CompanyNotificationSerializer,
-    ServiceConfigurationSerializer, ActivityLogSerializer
+    ServiceConfigurationSerializer, ActivityLogSerializer,
+    DataSharingPolicySerializer, SyncApprovalRequestSerializer
 )
 from authentication.models import Company, Service, CompanyServiceUser
+from common.models import SyncApprovalRequest
+from common.sync_services import approve_sync_request, get_data_sharing_policy, reject_sync_request
+
+
+class DataSharingPolicyView(APIView):
+    """View and update current company's cross-service data sharing policy."""
+    permission_classes = [IsAuthenticated]
+
+    def get_company(self, request):
+        if not hasattr(request.user, 'company_user'):
+            return None
+        return request.user.company_user.company
+
+    def get(self, request):
+        company = self.get_company(request)
+        if not company:
+            return Response(
+                {'error': 'Only company users can manage data sharing.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        policy = get_data_sharing_policy(company)
+        serializer = DataSharingPolicySerializer(policy)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        company = self.get_company(request)
+        if not company:
+            return Response(
+                {'error': 'Only company users can manage data sharing.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        policy = get_data_sharing_policy(company)
+        serializer = DataSharingPolicySerializer(policy, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class SyncApprovalRequestListView(APIView):
+    """List current company's cross-service sync approval queue."""
+    permission_classes = [IsAuthenticated]
+
+    def get_company(self, request):
+        if not hasattr(request.user, 'company_user'):
+            return None
+        return request.user.company_user.company
+
+    def get(self, request):
+        company = self.get_company(request)
+        if not company:
+            return Response(
+                {'error': 'Only company users can view sync approvals.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        request_status = request.query_params.get('status')
+        queryset = SyncApprovalRequest.objects.filter(company=company)
+        if request_status:
+            queryset = queryset.filter(status=request_status)
+        serializer = SyncApprovalRequestSerializer(queryset[:100], many=True)
+        return Response(serializer.data)
+
+
+class SyncApprovalRequestActionView(APIView):
+    """Approve or reject a sync approval request."""
+    permission_classes = [IsAuthenticated]
+
+    def get_company(self, request):
+        if not hasattr(request.user, 'company_user'):
+            return None
+        return request.user.company_user.company
+
+    def post(self, request, request_id, action):
+        company = self.get_company(request)
+        if not company:
+            return Response(
+                {'error': 'Only company users can review sync approvals.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            sync_request = SyncApprovalRequest.objects.get(pk=request_id, company=company)
+        except SyncApprovalRequest.DoesNotExist:
+            return Response({'error': 'Sync request not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            if action == 'approve':
+                approve_sync_request(
+                    sync_request,
+                    reviewed_by=request.user,
+                    approval_data=request.data.get('approval_data') or {},
+                )
+            elif action == 'reject':
+                reject_sync_request(
+                    sync_request,
+                    reviewed_by=request.user,
+                    reason=request.data.get('reason') or '',
+                )
+            else:
+                return Response({'error': 'Unsupported action.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            sync_request.status = 'failed'
+            sync_request.error_message = str(exc)
+            sync_request.save(update_fields=['status', 'error_message'])
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        sync_request.refresh_from_db()
+        return Response(SyncApprovalRequestSerializer(sync_request).data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

@@ -133,6 +133,8 @@ const ProductList: React.FC<ProductListProps> = ({
 
   const handleDeleteProduct = async (productId: number) => {
     if (!confirm('Are you sure you want to delete this product?')) return
+    const deleteReason = prompt('Enter delete reason for admin approval:')
+    if (!deleteReason?.trim()) return
 
     if (!sessionKey) {
       alert('Session expired. Please login again.')
@@ -140,7 +142,8 @@ const ProductList: React.FC<ProductListProps> = ({
     }
 
     try {
-      await apiClient.deleteFinanceProduct(productId, { session_key: sessionKey })
+      const response = await apiClient.deleteFinanceProduct(productId, { session_key: sessionKey, delete_reason: deleteReason.trim() })
+      alert(response.status === 202 ? 'Delete request sent for admin approval.' : 'Product deleted successfully.')
       fetchProducts() // Refresh the list
     } catch (error: any) {
       console.error('Error deleting product:', error)

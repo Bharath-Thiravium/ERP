@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.core.exceptions import ValidationError
 from authentication.models import Company, Service
 from decimal import Decimal
@@ -238,6 +238,7 @@ class DocumentNumberingConfig(models.Model):
             'vendor_invoice': ('finance_vendor_invoices', 'our_reference_number'),
             'customer': ('finance_customers', 'customer_code'),
             'vendor': ('finance_vendors', 'vendor_code'),
+            'product': ('finance_products', 'product_code'),
         }
 
         if self.document_type not in table_field_map:
@@ -254,40 +255,43 @@ class DocumentNumberingConfig(models.Model):
         year_4digit = fy_parts[0] if fy_parts else ''
 
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    f"SELECT {field} FROM {table} WHERE company_id = %s",
-                    [self.company_id]
-                )
-                max_seq = 0
-                for (doc_number,) in cursor.fetchall():
-                    if not doc_number:
-                        continue
-                    normalized = doc_number.replace('/', sep)
-                    # Filter to current financial year only
-                    if self.year_format != 'NONE':
-                        year_match = (
-                            fy_short in normalized or
-                            fy_long.replace('-', sep) in normalized or
-                            (self.year_format == 'YY' and sep + year_2digit + sep in normalized) or
-                            (self.year_format == 'YYYY' and sep + year_4digit + sep in normalized)
-                        )
-                        if not year_match:
+            # If this optional scan ever fails inside an outer atomic request,
+            # the savepoint rollback keeps the caller's transaction usable.
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"SELECT {field} FROM {table} WHERE company_id = %s",
+                        [self.company_id]
+                    )
+                    max_seq = 0
+                    for (doc_number,) in cursor.fetchall():
+                        if not doc_number:
                             continue
-                    parts = normalized.split(sep)
-                    # The sequence number is always the last numeric part
-                    for part in reversed(parts):
-                        if part.isdigit():
-                            max_seq = max(max_seq, int(part.lstrip('0') or '0'))
-                            break
-                return max_seq
+                        normalized = doc_number.replace('/', sep)
+                        # Filter to current financial year only
+                        if self.year_format != 'NONE':
+                            year_match = (
+                                fy_short in normalized or
+                                fy_long.replace('-', sep) in normalized or
+                                (self.year_format == 'YY' and sep + year_2digit + sep in normalized) or
+                                (self.year_format == 'YYYY' and sep + year_4digit + sep in normalized)
+                            )
+                            if not year_match:
+                                continue
+                        parts = normalized.split(sep)
+                        # The sequence number is always the last numeric part
+                        for part in reversed(parts):
+                            if part.isdigit():
+                                max_seq = max(max_seq, int(part.lstrip('0') or '0'))
+                                break
+                    return max_seq
         except Exception:
             return 0
     
     def get_next_number_preview(self):
         """Preview what the next number would be without incrementing"""
-        # Create temporary config with next counter
-        temp_counter = self.current_counter + 1
+        highest_existing = self._get_highest_existing_sequence()
+        temp_counter = max(self.current_counter + 1, highest_existing + 1, self.starting_number)
         
         if self.custom_pattern:
             pattern = self.custom_pattern
@@ -324,9 +328,11 @@ class DocumentNumberingConfig(models.Model):
             return self.separator.join(parts)
     
     def reset_counter_for_new_year(self):
-        """Reset counter for new financial year"""
-        self.current_counter = 0
-        self.save(update_fields=['current_counter'])
+        """Counter reset is blocked; create a new financial-year config instead."""
+        raise ValueError(
+            'Counter reset is disabled in production to prevent document number reuse. '
+            'Create a new financial-year configuration for a new sequence.'
+        )
     
     def clean(self):
         """Validate configuration"""
@@ -339,8 +345,10 @@ class DocumentNumberingConfig(models.Model):
                 if len(years) != 2:
                     raise ValueError
                 start_year = int(years[0])
-                end_year = int(years[1])
-                if end_year != start_year + 1:
+                end_year_short = int(years[1])
+                if len(years[0]) != 4 or len(years[1]) != 2:
+                    raise ValueError
+                if end_year_short != (start_year + 1) % 100:
                     raise ValueError
             except (ValueError, IndexError):
                 errors['financial_year'] = 'Financial year must be in format YYYY-YY (e.g., 2024-25)'
@@ -351,7 +359,7 @@ class DocumentNumberingConfig(models.Model):
         
         # Validate custom pattern
         if self.custom_pattern:
-            valid_placeholders = ['{PREFIX}', '{COMPANY}', '{YEAR}', '{NUMBER}', '{SEP}']
+            valid_placeholders = ['{PREFIX}', '{COMPANY}', '{YEAR}', '{FY}', '{FY_SHORT}', '{NUMBER}', '{SEP}']
             pattern_placeholders = [p for p in valid_placeholders if p in self.custom_pattern]
             if '{NUMBER}' not in pattern_placeholders:
                 errors['custom_pattern'] = 'Custom pattern must include {NUMBER} placeholder'

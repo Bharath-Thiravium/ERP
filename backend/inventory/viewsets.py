@@ -85,6 +85,41 @@ class WarehouseViewSet(CompanyScopedModelViewSet):
 class ProductViewSet(CompanyScopedModelViewSet):
     """Product management with centralized tenant enforcement"""
     queryset = Product.objects.all()
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        product = serializer.instance
+        from common.sync_services import (
+            ensure_master_product_from_inventory_product,
+            get_data_sharing_policy,
+            request_product_sync_from_inventory,
+        )
+        policy = get_data_sharing_policy(product.company)
+        if policy.auto_sync_enabled and (policy.inventory_to_finance_products or policy.finance_to_inventory_products):
+            if policy.require_manual_approval and policy.inventory_to_finance_products:
+                request_product_sync_from_inventory(product)
+            else:
+                ensure_master_product_from_inventory_product(product)
+
+    def destroy(self, request, *args, **kwargs):
+        product = self.get_object()
+        from common.sync_services import is_shared_record, request_shared_delete
+        if is_shared_record(product):
+            reason = request.query_params.get('delete_reason') or request.data.get('delete_reason') or request.data.get('reason')
+            if not reason:
+                return Response(
+                    {'error': 'Delete reason is required for shared records.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            sync_request = request_shared_delete(product, reason, requested_by=request.service_user)
+            return Response(
+                {
+                    'message': 'Delete approval request sent to company admin.',
+                    'sync_request_id': sync_request.id,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return super().destroy(request, *args, **kwargs)
     
     def get_serializer_class(self):
         if self.action == 'create':

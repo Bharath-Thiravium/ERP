@@ -7,6 +7,17 @@ from authentication.models import Company, CompanyServiceUser
 from .unit_models import Unit
 
 
+def _generate_configured_number(company, module):
+    from finance.numbering import generate_number
+
+    try:
+        return generate_number(company, module)
+    except Exception:
+        if getattr(company, 'use_document_numbering', False):
+            raise
+        raise
+
+
 def validate_gstin_optional(value):
     """Custom validator for GSTIN that allows blank values"""
     if not value or not value.strip():
@@ -144,7 +155,14 @@ class Product(models.Model):
 
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='products')
-    product_code = models.CharField(max_length=50, unique=True, db_index=True)
+    master_product = models.ForeignKey(
+        'common.MasterProduct',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finance_products',
+    )
+    product_code = models.CharField(max_length=50, db_index=True)
     name = models.CharField(max_length=255)
     product_type = models.CharField(max_length=10, choices=PRODUCT_TYPE_CHOICES, default='product')
     description = models.TextField(blank=True)
@@ -188,11 +206,10 @@ class Product(models.Model):
         # Auto-generate product code if not provided
         if not self.product_code:
             try:
-                from authentication.utils import generate_auto_code
-                # Use product_type specific code generation
-                code_type = 'product' if self.product_type == 'product' else 'service'
-                self.product_code = generate_auto_code(self.company.id, code_type)
+                self.product_code = _generate_configured_number(self.company, 'product')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 if self.product_type == 'product':
                     # Generate company prefix + PROD codes for products
@@ -304,8 +321,15 @@ class Customer(models.Model):
 
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='finance_customers')
+    master_customer = models.ForeignKey(
+        'common.MasterCustomer',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finance_customers',
+    )
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.CASCADE, related_name='created_customers', null=True, blank=True)
-    customer_code = models.CharField(max_length=40, unique=True, blank=True, help_text="Auto-generated unique customer code (e.g., TC-CUST-2627-001)")
+    customer_code = models.CharField(max_length=40, blank=True, db_index=True, help_text="Auto-generated unique customer code (e.g., TC-CUST-2627-001)")
 
     # Customer Type and Basic Details - MANDATORY FIELDS
     customer_type = models.CharField(max_length=20, choices=CUSTOMER_TYPE_CHOICES, help_text="MANDATORY: Customer type")
@@ -528,9 +552,10 @@ class Customer(models.Model):
         
         if not self.customer_code:
             try:
-                from authentication.utils import generate_auto_code
-                self.customer_code = generate_auto_code(self.company.id, 'customer')
+                self.customer_code = _generate_configured_number(self.company, 'customer')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 max_retries = 10
                 for attempt in range(max_retries):
@@ -833,9 +858,10 @@ class Quotation(models.Model):
         # Auto-generate quotation number if not provided
         if not self.quotation_number:
             try:
-                from authentication.utils import generate_auto_code
-                self.quotation_number = generate_auto_code(self.company.id, 'quotation')
+                self.quotation_number = _generate_configured_number(self.company, 'quotation')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 from datetime import datetime
                 year = datetime.now().year
@@ -1320,8 +1346,7 @@ class PurchaseOrder(models.Model):
                     with transaction.atomic():
                         # First try the company's auto-code system
                         try:
-                            from authentication.utils import generate_auto_code
-                            generated_code = generate_auto_code(self.company.id, 'purchase_order')
+                            generated_code = _generate_configured_number(self.company, 'purchase_order')
                             
                             # Check if this generated code already exists
                             if not PurchaseOrder.objects.filter(
@@ -1331,6 +1356,8 @@ class PurchaseOrder(models.Model):
                                 self.internal_po_number = generated_code
                                 break  # Success, exit retry loop
                         except Exception:
+                            if getattr(self.company, 'use_document_numbering', False):
+                                raise
                             pass  # Fall through to manual generation
                         
                         # Fallback to manual generation
@@ -1983,9 +2010,10 @@ class ProformaInvoice(models.Model):
         # Generate proforma number if not provided
         if not self.proforma_number:
             try:
-                from authentication.utils import generate_auto_code
-                self.proforma_number = generate_auto_code(self.company.id, 'proforma_invoice')
+                self.proforma_number = _generate_configured_number(self.company, 'proforma_invoice')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 latest_proforma = ProformaInvoice.objects.filter(
                     company=self.company
@@ -2333,9 +2361,10 @@ class Invoice(models.Model):
         # Generate invoice number if not provided
         if not self.invoice_number:
             try:
-                from authentication.utils import generate_auto_code
-                self.invoice_number = generate_auto_code(self.company.id, 'invoice')
+                self.invoice_number = _generate_configured_number(self.company, 'invoice')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 latest_invoice = Invoice.objects.filter(
                     company=self.company
@@ -2639,9 +2668,10 @@ class Payment(models.Model):
         # Generate payment number if not provided
         if not self.payment_number:
             try:
-                from authentication.utils import generate_auto_code
-                self.payment_number = generate_auto_code(self.company.id, 'payment')
+                self.payment_number = _generate_configured_number(self.company, 'customer_payment')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 latest_payment = Payment.objects.filter(
                     company=self.company
@@ -2970,7 +3000,7 @@ class Vendor(models.Model):
 
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='vendors')
-    vendor_code = models.CharField(max_length=20, unique=True, blank=True)
+    vendor_code = models.CharField(max_length=20, blank=True, db_index=True)
     name = models.CharField(max_length=255)
     vendor_type = models.CharField(max_length=20, choices=VENDOR_TYPE_CHOICES, default='business')
     
@@ -3023,9 +3053,10 @@ class Vendor(models.Model):
     def save(self, *args, **kwargs):
         if not self.vendor_code:
             try:
-                from authentication.utils import generate_auto_code
-                self.vendor_code = generate_auto_code(self.company.id, 'vendor')
+                self.vendor_code = _generate_configured_number(self.company, 'vendor')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 last_vendor = Vendor.objects.filter(
                     company=self.company,
                     vendor_code__startswith='VEN-'
@@ -3109,9 +3140,10 @@ class PurchaseRequest(models.Model):
     def save(self, *args, **kwargs):
         if not self.request_number:
             try:
-                from authentication.utils import generate_auto_code
-                self.request_number = generate_auto_code(self.company.id, 'purchase_request')
+                self.request_number = _generate_configured_number(self.company, 'purchase_request')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 from datetime import datetime
                 year = datetime.now().year
                 last_request = PurchaseRequest.objects.filter(
@@ -3265,9 +3297,10 @@ class VendorInvoice(models.Model):
     def save(self, *args, **kwargs):
         if not self.our_reference_number:
             try:
-                from authentication.utils import generate_auto_code
-                self.our_reference_number = generate_auto_code(self.company.id, 'vendor_invoice')
+                self.our_reference_number = _generate_configured_number(self.company, 'vendor_invoice')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 from datetime import datetime
                 year = datetime.now().year
                 last_invoice = VendorInvoice.objects.filter(
@@ -3414,9 +3447,10 @@ class PurchasePayment(models.Model):
     def save(self, *args, **kwargs):
         if not self.payment_number:
             try:
-                from authentication.utils import generate_auto_code
-                self.payment_number = generate_auto_code(self.company.id, 'purchase_payment')
+                self.payment_number = _generate_configured_number(self.company, 'purchase_payment')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 from datetime import datetime
                 year = datetime.now().year
                 last_payment = PurchasePayment.objects.filter(

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Hash, Settings, Eye, AlertCircle, RefreshCw, 
-  FileText, Calendar, Zap, RotateCcw,
+  FileText, Calendar, Zap,
   ChevronDown, ChevronRight, X
 } from 'lucide-react'
 import { apiClient } from '../../lib/api'
@@ -31,6 +31,7 @@ interface PatternPreview {
 
 const EnhancedDocumentNumbering: React.FC = () => {
   const queryClient = useQueryClient()
+  const validServices = ['finance', 'hr', 'inventory', 'crm']
   
   // State management
   const [activeTab, setActiveTab] = useState<'setup' | 'configure' | 'history'>('setup')
@@ -78,7 +79,7 @@ const EnhancedDocumentNumbering: React.FC = () => {
   }, [])
   
   const [serviceConfigurations] = useState<Record<string, any>>({})
-  const [documentConfigurations] = useState<Record<string, any>>({})
+  const [documentConfigurations, setDocumentConfigurations] = useState<Record<string, any>>({})
   const [patternPreview, setPatternPreview] = useState<PatternPreview | null>(null)
   const [financialYear, setFinancialYear] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -99,14 +100,25 @@ const EnhancedDocumentNumbering: React.FC = () => {
   // Load existing configurations and update UI state
   useEffect(() => {
     if (currentConfigs?.data?.services) {
-      const configuredServices = currentConfigs.data.services.map((s: any) => s.service_type)
-      if (configuredServices.length > 0) {
-        // Filter out invalid services
-        const validServices = ['finance', 'hr', 'inventory', 'crm']
-        const filteredServices = configuredServices.filter((service: string) => validServices.includes(service))
-        
-        setSelectedServices(filteredServices)
-        localStorage.setItem('document-numbering-selected-services', JSON.stringify(filteredServices))
+      if (currentConfigs.data.services.length > 0) {
+        const loadedDocumentConfigurations: Record<string, any> = {}
+
+        currentConfigs.data.services.forEach((service: any) => {
+          service.configurations.forEach((config: any) => {
+            loadedDocumentConfigurations[`${service.service_type}.${config.document_type}`] = {
+              enabled: config.is_active,
+              prefix: config.prefix,
+              starting_number: config.starting_number,
+              number_padding: config.number_padding,
+              allow_manual_override: config.allow_manual_override,
+              custom_pattern: config.custom_pattern,
+              include_company_prefix: config.include_company_prefix,
+              year_format: config.year_format,
+              separator: config.separator,
+            }
+          })
+        })
+        setDocumentConfigurations(loadedDocumentConfigurations)
         
         // Check if any configuration has company prefix enabled
         const hasCompanyPrefix = currentConfigs.data.services.some((service: any) => 
@@ -132,6 +144,18 @@ const EnhancedDocumentNumbering: React.FC = () => {
   const { data: systemStatus } = useQuery({
     queryKey: ['document-numbering-status'],
     queryFn: () => apiClient.get('/api/company-dashboard/document-numbering/system-status/')
+  })
+
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ['document-numbering-history'],
+    queryFn: () => apiClient.get('/api/company-dashboard/document-numbering/history/?page_size=20'),
+    enabled: activeTab === 'history'
+  })
+
+  const { data: statsData, isLoading: statsLoading } = useQuery({
+    queryKey: ['document-numbering-stats'],
+    queryFn: () => apiClient.get('/api/company-dashboard/document-numbering/dashboard-stats/'),
+    enabled: activeTab === 'history'
   })
 
   // Initialize financial year
@@ -171,17 +195,6 @@ const EnhancedDocumentNumbering: React.FC = () => {
     }
   })
 
-  // Pattern preview mutation
-  const previewMutation = useMutation({
-    mutationFn: (data: any) => apiClient.post('/api/company-dashboard/document-numbering/preview-pattern/', data),
-    onSuccess: (response) => {
-      setPatternPreview(response.data)
-    },
-    onError: () => {
-      toast.error('Failed to generate preview')
-    }
-  })
-
   // Toggle system mutation
   const toggleSystemMutation = useMutation({
     mutationFn: (action: 'enable' | 'disable') => 
@@ -192,33 +205,6 @@ const EnhancedDocumentNumbering: React.FC = () => {
     },
     onError: () => {
       toast.error('Failed to toggle system')
-    }
-  })
-
-  // Reset counters mutation
-  const resetCountersMutation = useMutation({
-    mutationFn: () => apiClient.post('/api/company-dashboard/document-numbering/reset-all-counters/'),
-    onSuccess: (response) => {
-      toast.success(`Reset ${response.data.reset_count} counters successfully!`)
-      queryClient.invalidateQueries({ queryKey: ['current-document-configurations'] })
-      
-      // Clear any invalid services from localStorage
-      const validServices = ['finance', 'hr', 'inventory', 'crm']
-      const savedServices = localStorage.getItem('document-numbering-selected-services')
-      if (savedServices) {
-        try {
-          const parsed = JSON.parse(savedServices)
-          const filteredServices = parsed.filter((service: string) => validServices.includes(service))
-          localStorage.setItem('document-numbering-selected-services', JSON.stringify(filteredServices))
-          setSelectedServices(filteredServices)
-        } catch (error) {
-          localStorage.removeItem('document-numbering-selected-services')
-          setSelectedServices([])
-        }
-      }
-    },
-    onError: () => {
-      toast.error('Failed to reset counters')
     }
   })
 
@@ -262,10 +248,10 @@ const EnhancedDocumentNumbering: React.FC = () => {
   const services = servicesData?.data?.services || []
   const configs = currentConfigs?.data || {}
   const isSystemEnabled = systemStatus?.data?.use_document_numbering || false
+  const companyPrefix = systemStatus?.data?.company_prefix || 'COMP'
 
   const handleServiceToggle = (serviceType: string) => {
     // Only allow valid services
-    const validServices = ['finance', 'hr', 'inventory', 'crm']
     if (!validServices.includes(serviceType)) {
       toast.error(`Service ${serviceType} is not supported for document numbering`)
       return
@@ -280,6 +266,28 @@ const EnhancedDocumentNumbering: React.FC = () => {
       localStorage.setItem('document-numbering-selected-services', JSON.stringify(newServices))
       return newServices
     })
+  }
+
+  const getDocumentConfigKey = (serviceType: string, docType: string) => `${serviceType}.${docType}`
+
+  const getDocumentConfig = (serviceType: string, docType: string) => {
+    return documentConfigurations[getDocumentConfigKey(serviceType, docType)] || {}
+  }
+
+  const isDocumentEnabled = (serviceType: string, docType: string) => {
+    const config = getDocumentConfig(serviceType, docType)
+    return config.enabled !== false
+  }
+
+  const handleDocumentConfigChange = (serviceType: string, docType: string, key: string, value: any) => {
+    const configKey = getDocumentConfigKey(serviceType, docType)
+    setDocumentConfigurations(prev => ({
+      ...prev,
+      [configKey]: {
+        ...(prev[configKey] || {}),
+        [key]: value
+      }
+    }))
   }
 
   const handleServiceExpand = (serviceType: string) => {
@@ -303,6 +311,7 @@ const EnhancedDocumentNumbering: React.FC = () => {
     localStorage.removeItem('document-numbering-global-settings')
     localStorage.removeItem('document-numbering-selected-services')
     setSelectedServices([])
+    setDocumentConfigurations({})
     setGlobalSettings({
       year_format: 'YY',
       separator: '-',
@@ -351,16 +360,61 @@ const EnhancedDocumentNumbering: React.FC = () => {
       return
     }
 
-    let pattern = globalSettings.custom_pattern
-    if (!pattern) {
-      if (globalSettings.include_company_prefix) {
-        pattern = '{COMPANY}-{PREFIX}-{YEAR}-{NUMBER}'
-      } else {
-        pattern = '{PREFIX}-{YEAR}-{NUMBER}'
-      }
-    } else if (globalSettings.include_company_prefix && !pattern.includes('{COMPANY}')) {
+    let pattern = globalSettings.custom_pattern || ''
+    if (pattern && globalSettings.include_company_prefix && !pattern.includes('{COMPANY}')) {
       // Add company prefix to custom pattern if not present
-      pattern = `{COMPANY}-${pattern}`
+      pattern = `{COMPANY}{SEP}${pattern}`
+    }
+
+    const getYearString = () => {
+      const years = financialYear.split('-')
+      if (globalSettings.year_format === 'YY') {
+        return years[1] || ''
+      }
+      if (globalSettings.year_format === 'YYYY') {
+        return years[0] || ''
+      }
+      if (globalSettings.year_format === 'FY') {
+        return financialYear
+      }
+      if (globalSettings.year_format === 'FY_SHORT') {
+        return years.length === 2 ? `${years[0].slice(-2)}-${years[1]}` : financialYear
+      }
+      return ''
+    }
+
+    const buildNumber = (counter: number) => {
+      const number = String(counter).padStart(globalSettings.number_padding || 3, '0')
+      if (pattern) {
+        const replacements: Record<string, string> = {
+          '{PREFIX}': 'DOC',
+          '{COMPANY}': companyPrefix,
+          '{YEAR}': getYearString(),
+          '{FY}': financialYear,
+          '{FY_SHORT}': (() => {
+            const years = financialYear.split('-')
+            return years.length === 2 ? `${years[0].slice(-2)}-${years[1]}` : financialYear
+          })(),
+          '{NUMBER}': number,
+          '{SEP}': globalSettings.separator || '-',
+        }
+        return Object.entries(replacements).reduce(
+          (value, [placeholder, replacement]) => value.replaceAll(placeholder, replacement),
+          pattern
+        )
+      }
+
+      const parts = []
+      if (globalSettings.include_company_prefix) {
+        parts.push(companyPrefix)
+      }
+      parts.push('DOC')
+      const yearString = getYearString()
+      if (yearString) {
+        parts.push(yearString)
+      }
+      parts.push(number)
+      return parts.join(globalSettings.separator || '-')
     }
 
     const previewData = {
@@ -373,7 +427,10 @@ const EnhancedDocumentNumbering: React.FC = () => {
       financial_year: financialYear
     }
 
-    previewMutation.mutate(previewData)
+    setPatternPreview({
+      previews: [1, 2, 3, 4, 5].map(buildNumber),
+      configuration: previewData
+    })
   }
 
   const handleBulkSetup = () => {
@@ -396,6 +453,18 @@ const EnhancedDocumentNumbering: React.FC = () => {
     localStorage.setItem('document-numbering-global-settings', JSON.stringify(globalSettings))
     localStorage.setItem('document-numbering-selected-services', JSON.stringify(selectedServices))
 
+    const effectiveDocumentConfigurations = { ...documentConfigurations }
+    services
+      .filter((service: ServiceData) => selectedServices.includes(service.service))
+      .forEach((service: ServiceData) => {
+        service.document_types.forEach((docType) => {
+          const configKey = getDocumentConfigKey(service.service, docType.type)
+          if (!effectiveDocumentConfigurations[configKey]) {
+            effectiveDocumentConfigurations[configKey] = { enabled: true }
+          }
+        })
+      })
+
     const setupData = {
       financial_year: financialYear,
       start_date: startDate,
@@ -403,7 +472,7 @@ const EnhancedDocumentNumbering: React.FC = () => {
       services: selectedServices,
       global_settings: globalSettings,
       service_configurations: serviceConfigurations,
-      document_configurations: documentConfigurations
+      document_configurations: effectiveDocumentConfigurations
     }
 
     console.log('Sending setup data:', setupData)
@@ -421,11 +490,11 @@ const EnhancedDocumentNumbering: React.FC = () => {
     }, [config.custom_pattern])
 
     const patternTemplates = [
-      { name: 'Standard', pattern: '{PREFIX}-{YEAR}-{NUMBER}', example: 'INV-25-001' },
-      { name: 'With Company', pattern: '{COMPANY}-{PREFIX}-{YEAR}-{NUMBER}', example: 'ACME-INV-25-001' },
-      { name: 'Full Year', pattern: '{PREFIX}-{YYYY}-{NUMBER}', example: 'INV-2025-001' },
-      { name: 'Financial Year', pattern: '{PREFIX}-{FY}-{NUMBER}', example: 'INV-2024-25-001' },
-      { name: 'No Year', pattern: '{PREFIX}-{NUMBER}', example: 'INV-001' },
+      { name: 'Standard', pattern: '{PREFIX}{SEP}{YEAR}{SEP}{NUMBER}', example: 'INV-25-001' },
+      { name: 'With Company', pattern: '{COMPANY}{SEP}{PREFIX}{SEP}{YEAR}{SEP}{NUMBER}', example: 'ACME-INV-25-001' },
+      { name: 'Financial Year', pattern: '{PREFIX}{SEP}{FY}{SEP}{NUMBER}', example: 'INV-2024-25-001' },
+      { name: 'Short FY', pattern: '{PREFIX}{SEP}{FY_SHORT}{SEP}{NUMBER}', example: 'INV-24-25-001' },
+      { name: 'No Year', pattern: '{PREFIX}{SEP}{NUMBER}', example: 'INV-001' },
     ]
 
     const handlePatternTypeChange = (type: 'simple' | 'custom') => {
@@ -525,7 +594,7 @@ const EnhancedDocumentNumbering: React.FC = () => {
                 placeholder="{PREFIX}-{YEAR}-{NUMBER}"
               />
               <div className="text-xs text-gray-500 mt-1">
-                Available placeholders: {'{PREFIX}'}, {'{COMPANY}'}, {'{YEAR}'}, {'{FY}'}, {'{NUMBER}'}, {'{SEP}'}
+                Available placeholders: {'{PREFIX}'}, {'{COMPANY}'}, {'{YEAR}'}, {'{FY}'}, {'{FY_SHORT}'}, {'{NUMBER}'}, {'{SEP}'}
               </div>
             </div>
           </div>
@@ -575,23 +644,6 @@ const EnhancedDocumentNumbering: React.FC = () => {
                   <Settings className="h-4 w-4 mr-2" />
                 )}
                 Fix Company Prefix
-              </Button>
-              <Button
-                onClick={() => {
-                  if (confirm('Are you sure you want to reset all document counters? This will make all new documents start from 001.')) {
-                    resetCountersMutation.mutate()
-                  }
-                }}
-                variant="outline"
-                disabled={resetCountersMutation.isPending}
-                className="border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
-              >
-                {resetCountersMutation.isPending ? (
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                )}
-                Reset Counters
               </Button>
             </>
           )}
@@ -808,14 +860,81 @@ const EnhancedDocumentNumbering: React.FC = () => {
 
                         {expandedServices.includes(service.service) && (
                           <div className="mt-4 space-y-3">
-                            <h5 className="font-medium text-sm">Document Types:</h5>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                              {service.document_types.map((docType) => (
-                                <div key={docType.type} className="p-2 bg-gray-50 rounded text-sm">
-                                  <div className="font-medium">{docType.name}</div>
-                                  <div className="text-gray-500">Default: {docType.default_prefix}</div>
-                                </div>
-                              ))}
+                            <div className="flex items-center justify-between">
+                              <h5 className="font-medium text-sm">Document Types</h5>
+                              <div className="flex items-center space-x-2 text-xs">
+                                <button
+                                  type="button"
+                                  onClick={() => service.document_types.forEach((docType) => handleDocumentConfigChange(service.service, docType.type, 'enabled', true))}
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  Select all
+                                </button>
+                                <span className="text-gray-300">|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => service.document_types.forEach((docType) => handleDocumentConfigChange(service.service, docType.type, 'enabled', false))}
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  Clear all
+                                </button>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {service.document_types.map((docType) => {
+                                const docConfig = getDocumentConfig(service.service, docType.type)
+                                const enabled = isDocumentEnabled(service.service, docType.type)
+                                return (
+                                  <div
+                                    key={docType.type}
+                                    className={`p-3 border rounded-lg text-sm ${enabled ? 'bg-white' : 'bg-gray-50 opacity-70'}`}
+                                  >
+                                    <label className="flex items-start space-x-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={enabled}
+                                        onChange={(e) => handleDocumentConfigChange(service.service, docType.type, 'enabled', e.target.checked)}
+                                        className="text-blue-600 mt-1"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-medium">{docType.name}</div>
+                                        <div className="text-gray-500">Default prefix: {docType.default_prefix}</div>
+                                      </div>
+                                    </label>
+                                    {enabled && (
+                                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                                            Prefix override
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={docConfig.prefix ?? docType.default_prefix}
+                                            onChange={(e) => handleDocumentConfigChange(service.service, docType.type, 'prefix', e.target.value.toUpperCase())}
+                                            className="w-full px-2 py-1 border rounded font-mono text-xs"
+                                            maxLength={20}
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                                            Start from
+                                          </label>
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            value={docConfig.starting_number ?? globalSettings.starting_number}
+                                            onChange={(e) => handleDocumentConfigChange(service.service, docType.type, 'starting_number', parseInt(e.target.value, 10) || 1)}
+                                            className="w-full px-2 py-1 border rounded font-mono text-xs"
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              Disabled document types will not be created. Existing active configs will be marked inactive, not deleted.
                             </div>
                           </div>
                         )}
@@ -960,16 +1079,85 @@ const EnhancedDocumentNumbering: React.FC = () => {
 
       {activeTab === 'history' && (
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Coming Soon</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600">
-                Document numbering history and analytics will be available in the next update.
-              </p>
-            </CardContent>
-          </Card>
+          {statsLoading || historyLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-6 w-6 animate-spin" />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-sm text-gray-500">Financial Year</div>
+                    <div className="text-xl font-semibold">{statsData?.data?.current_financial_year || financialYear}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-sm text-gray-500">Active Configs</div>
+                    <div className="text-xl font-semibold">{statsData?.data?.total_configurations || 0}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-sm text-gray-500">Active Services</div>
+                    <div className="text-xl font-semibold">{statsData?.data?.active_services || 0}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-sm text-gray-500">Manual Overrides</div>
+                    <div className="text-xl font-semibold">{statsData?.data?.total_manual_overrides || 0}</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Number History</CardTitle>
+                  <CardDescription>
+                    Latest generated document numbers and manual overrides
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {historyData?.data?.results?.length ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2">Document Type</th>
+                            <th className="text-left py-2">Number</th>
+                            <th className="text-left py-2">Created By</th>
+                            <th className="text-left py-2">Type</th>
+                            <th className="text-left py-2">Created At</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historyData.data.results.map((item: any) => (
+                            <tr key={item.id} className="border-b">
+                              <td className="py-2">{item.document_type_display || item.document_type}</td>
+                              <td className="py-2 font-mono">{item.document_number}</td>
+                              <td className="py-2">{item.created_by_name || '-'}</td>
+                              <td className="py-2">
+                                <span className={`px-2 py-1 rounded-full text-xs ${item.is_manual_override ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+                                  {item.is_manual_override ? 'Manual' : 'Auto'}
+                                </span>
+                              </td>
+                              <td className="py-2">{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center text-gray-500">
+                      No document numbers generated yet.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
       )}
     </div>

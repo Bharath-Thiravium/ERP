@@ -106,6 +106,7 @@ api.interceptors.request.use(
         'log-activity/',
         'notifications/',
         'domain/',
+        'data-sharing/',
       ]
       const isJwtCompanyDashboard = config.url?.includes('/api/company-dashboard/') &&
         jwtCompanyDashboardPaths.some(p => config.url?.includes(p))
@@ -265,7 +266,8 @@ api.interceptors.response.use(
       const isPreApprovalEndpoint = originalRequest.url?.includes('/api/auth/company/assigned-services/') ||
                                     originalRequest.url?.includes('/api/auth/company/service-users/')
       // Don't show toasts for preview endpoints — component handles the error
-      const isPreviewEndpoint = originalRequest.url?.includes('-template-preview/')
+      const isPreviewEndpoint = originalRequest.url?.includes('-template-preview/') ||
+                                originalRequest.url?.includes('/document-numbering/preview-pattern/')
       
       if (!isAthensEmployeeEndpoint && !isPreApprovalEndpoint && !isPreviewEndpoint) {
         if (errorData?.message) {
@@ -1160,6 +1162,21 @@ export const apiClient = {
   // Company Dashboard APIs
   getCompanyDashboardOverview: () =>
     api.get('/api/company-dashboard/overview/'),
+
+  getCompanyDataSharingPolicy: () =>
+    api.get('/api/company-dashboard/data-sharing/'),
+
+  updateCompanyDataSharingPolicy: (data: any) =>
+    api.patch('/api/company-dashboard/data-sharing/', data),
+
+  getCompanySyncApprovals: (params?: any) =>
+    api.get('/api/company-dashboard/data-sharing/approvals/', { params }),
+
+  approveCompanySyncRequest: (requestId: number, data?: any) =>
+    api.post(`/api/company-dashboard/data-sharing/approvals/${requestId}/approve/`, data || {}),
+
+  rejectCompanySyncRequest: (requestId: number, data?: any) =>
+    api.post(`/api/company-dashboard/data-sharing/approvals/${requestId}/reject/`, data || {}),
 
   getServiceUtilizationStats: () =>
     api.get('/api/company-dashboard/service-utilization/'),

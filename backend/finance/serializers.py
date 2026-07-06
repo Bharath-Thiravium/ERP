@@ -139,6 +139,12 @@ def assign_number(validated_data, serializer, module, field_name, model_cls):
         provided = None
 
     if provided:
+        if not rule.allow_manual_override:
+            raise serializers.ValidationError({
+                field_name: [
+                    'Manual document number override is disabled for this document type.'
+                ]
+            })
         if model_cls.objects.filter(company=company, **{field_name: provided}).exists():
             if field_name == 'invoice_number':
                 raise serializers.ValidationError({field_name: [f'Invoice number "{provided}" is already used. Please choose a different invoice number.']})
@@ -204,7 +210,7 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = [
-            'id',  # Include id for response
+            'id', 'customer_code',  # Include generated identifiers for response
             'customer_type', 'name', 'display_name', 'email', 'phone', 'mobile', 'website',
             'billing_address_line1', 'billing_address_line2', 'billing_city', 'billing_state',
             'billing_pincode', 'billing_country', 'shipping_same_as_billing',
@@ -313,19 +319,8 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
         # Ensure customer_code is not in validated_data (let model generate it)
         validated_data.pop('customer_code', None)
         
-        try:
-            customer = Customer(**validated_data)
-            customer.save()
-        except Exception as e:
-            # Handle unique constraint errors
-            if 'unique' in str(e).lower() or 'duplicate' in str(e).lower():
-                # Retry with timestamp-based code
-                import time
-                timestamp = int(time.time() * 1000) % 1000000
-                customer.customer_code = f"CUST-{timestamp:06d}"
-                customer.save()
-            else:
-                raise e
+        customer = Customer(**validated_data)
+        customer.save()
 
         # Create shipping addresses with proper default handling
         has_default = False
@@ -641,10 +636,19 @@ class ProductCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Create product and handle manual GST rate overrides"""
-        # Auto-generate product_code if not provided
-        if 'product_code' not in validated_data or not validated_data['product_code']:
-            import uuid
-            validated_data['product_code'] = f"PROD-{uuid.uuid4().hex[:8].upper()}"
+        company = _get_context_company(self.context)
+        product_code = validated_data.get('product_code')
+        if company and getattr(company, 'use_document_numbering', False) and product_code:
+            rule = _ensure_numbering_rule(company, 'product')
+            if not rule.allow_manual_override:
+                raise serializers.ValidationError({
+                    'product_code': ['Manual product code override is disabled for this document type.']
+                })
+
+        # Let Product.save() generate product_code through the company document
+        # numbering system when the caller has not provided an explicit code.
+        if not validated_data.get('product_code'):
+            validated_data.pop('product_code', None)
         
         # Check if GST rate is being manually set
         gst_rate = validated_data.get('gst_rate')

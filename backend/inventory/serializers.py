@@ -245,6 +245,8 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_barcode(self, value):
+        if value == '':
+            return None
         if value:
             try:
                 validated_barcode = InventorySecurityValidator.validate_barcode(value)

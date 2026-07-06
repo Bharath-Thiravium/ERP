@@ -8,12 +8,14 @@ interface NotificationCenterProps {
   notifications: any[]
   isLoading: boolean
   onMarkAsRead: (notificationId: number) => void
+  onOpenNotification?: (notification: any) => void
 }
 
 const NotificationCenter: React.FC<NotificationCenterProps> = ({
   notifications,
   isLoading,
-  onMarkAsRead
+  onMarkAsRead,
+  onOpenNotification
 }) => {
   const getNotificationIcon = (type: string, priority: string) => {
     if (priority === 'critical' || priority === 'high') {
@@ -145,6 +147,16 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                       <CheckCircle className="h-4 w-4 mr-1" />
                       Mark Read
                     </Button>
+                    {notification.metadata?.navigate_to && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => onOpenNotification?.(notification)}
+                        className="ml-2"
+                      >
+                        Review
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -185,6 +197,15 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                       {notification.message}
                     </p>
+                    {notification.metadata?.navigate_to && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenNotification?.(notification)}
+                        className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                      >
+                        Review request
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

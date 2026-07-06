@@ -144,13 +144,16 @@ def create_test_session(service_user=None, session_key=None, **kwargs):
     return ServiceUserSession.objects.create(**defaults)
 
 
-def create_auth_chain(company_name="Test Company", **kwargs):
+def create_auth_chain(company_name="Test Company", service_type="finance", service_name=None, **kwargs):
     """
     Create complete authentication chain: Company -> Service -> User -> ServiceUser -> Session
     Returns dict with all created objects and auth headers.
     """
     company = create_test_company(name=company_name)
-    service = create_test_service()
+    service = create_test_service(
+        name=service_name or f"{service_type.title()} Service",
+        service_type=service_type,
+    )
     user = create_test_user()
     service_user = create_test_service_user(company=company, service=service, user=user)
     session = create_test_session(service_user=service_user, **kwargs)

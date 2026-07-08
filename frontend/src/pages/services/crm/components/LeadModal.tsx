@@ -65,16 +65,18 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, onSuccess
     }
   }, [lead, isOpen])
 
-  const statusOptions = [
+  const editableStatusOptions = [
     { value: 'new', label: 'New' },
     { value: 'contacted', label: 'Contacted' },
     { value: 'qualified', label: 'Qualified' },
     { value: 'proposal', label: 'Proposal Sent' },
     { value: 'negotiation', label: 'Negotiation' },
-    { value: 'converted', label: 'Converted' },
-    { value: 'won', label: 'Won' },
     { value: 'lost', label: 'Lost' }
   ]
+  const statusOptions = formData.status === 'converted'
+    ? [{ value: 'converted', label: 'Converted' }]
+    : editableStatusOptions
+  const isConvertedLead = formData.status === 'converted'
 
   const priorityOptions = [
     { value: 'low', label: 'Low' },
@@ -244,6 +246,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, onSuccess
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
+                  disabled={isConvertedLead}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 >
                   {statusOptions.map(option => (

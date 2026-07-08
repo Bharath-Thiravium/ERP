@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Target, IndianRupee, Calendar, Edit, Trash2 } from 'lucide-react'
+import { Plus, Search, Target, IndianRupee, Calendar, Edit, Trash2, Eye, X } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -18,6 +18,9 @@ interface Opportunity {
   expected_close_date: string
   created_at: string
   weighted_amount?: number
+  contact_name?: string
+  description?: string
+  next_step?: string
 }
 
 export const OpportunitiesPage: React.FC = () => {
@@ -27,6 +30,7 @@ export const OpportunitiesPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null)
+  const [viewOpportunity, setViewOpportunity] = useState<Opportunity | null>(null)
 
   const fetchOpportunities = async () => {
     if (!sessionKey!) return
@@ -154,6 +158,15 @@ export const OpportunitiesPage: React.FC = () => {
                 <Button 
                   variant="ghost" 
                   size="sm" 
+                  className="h-8 w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                  onClick={() => setViewOpportunity(opportunity)}
+                  title="View Opportunity"
+                >
+                  <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
                   className="h-8 w-8 p-0 hover:bg-gray-100 dark:hover:bg-gray-800"
                   onClick={() => handleEditOpportunity(opportunity)}
                   title="Edit Opportunity"
@@ -241,6 +254,78 @@ export const OpportunitiesPage: React.FC = () => {
         onSuccess={fetchOpportunities}
         opportunity={selectedOpportunity}
       />
+
+      {viewOpportunity && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Opportunity Details</h2>
+              <Button variant="ghost" size="sm" onClick={() => setViewOpportunity(null)} className="h-8 w-8 p-0">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="md:col-span-2">
+                <p className="text-gray-500">Opportunity</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewOpportunity.name}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Opportunity ID</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewOpportunity.opportunity_id}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Stage</p>
+                <p className="font-medium capitalize text-gray-900 dark:text-white">{viewOpportunity.stage.replace('_', ' ')}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Account</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewOpportunity.account_name || '-'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Contact</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewOpportunity.contact_name || '-'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Amount</p>
+                <p className="font-medium text-gray-900 dark:text-white">₹{Number(viewOpportunity.amount || 0).toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Probability</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewOpportunity.probability}%</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Weighted Amount</p>
+                <p className="font-medium text-gray-900 dark:text-white">₹{Number(viewOpportunity.weighted_amount || 0).toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Expected Close</p>
+                <p className="font-medium text-gray-900 dark:text-white">{new Date(viewOpportunity.expected_close_date).toLocaleDateString()}</p>
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-gray-500">Next Step</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewOpportunity.next_step || '-'}</p>
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-gray-500">Description</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewOpportunity.description || '-'}</p>
+              </div>
+            </div>
+            <div className="px-6 pb-6 flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setViewOpportunity(null)}>Close</Button>
+              <Button
+                onClick={() => {
+                  setSelectedOpportunity(viewOpportunity)
+                  setViewOpportunity(null)
+                  setShowModal(true)
+                }}
+                className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700"
+              >
+                Edit
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

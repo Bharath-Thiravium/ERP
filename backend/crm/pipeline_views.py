@@ -125,7 +125,35 @@ class DealViewSet(CRMBaseViewSet):
         # Update deal
         deal.current_stage = new_stage
         deal.probability = new_stage.probability
+        stage_name = (new_stage.name or '').strip().lower()
+        if stage_name == 'closed won':
+            deal.status = 'won'
+            deal.actual_close_date = timezone.now().date()
+        elif stage_name == 'closed lost':
+            deal.status = 'lost'
+            deal.actual_close_date = timezone.now().date()
+        else:
+            deal.status = 'open'
+            deal.actual_close_date = None
         deal.save()
+
+        if deal.opportunity_id:
+            opportunity_stage_map = {
+                'prospecting': 'prospecting',
+                'qualification': 'qualification',
+                'needs analysis': 'needs_analysis',
+                'proposal': 'proposal',
+                'negotiation': 'negotiation',
+                'closed won': 'closed_won',
+                'closed lost': 'closed_lost',
+            }
+            deal.opportunity.stage = opportunity_stage_map.get(stage_name, 'prospecting')
+            deal.opportunity.probability = deal.probability
+            if deal.opportunity.stage in ['closed_won', 'closed_lost']:
+                deal.opportunity.closed_date = timezone.now().date()
+            else:
+                deal.opportunity.closed_date = None
+            deal.opportunity.save(update_fields=['stage', 'probability', 'closed_date', 'updated_at'])
 
         return Response(DealSerializer(deal).data)
 

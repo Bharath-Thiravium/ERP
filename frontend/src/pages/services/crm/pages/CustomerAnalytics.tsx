@@ -142,7 +142,13 @@ export const CustomerAnalytics: React.FC<CustomerAnalyticsProps> = ({ sessionKey
           <p className="text-gray-600">Monitor customer health and relationship insights</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setShowSegmentModal(true)} variant="outline">
+          <Button
+            onClick={() => {
+              setSelectedSegment(null)
+              setShowSegmentModal(true)
+            }}
+            variant="outline"
+          >
             <Users className="h-4 w-4 mr-2" />
             New Segment
           </Button>
@@ -150,7 +156,12 @@ export const CustomerAnalytics: React.FC<CustomerAnalyticsProps> = ({ sessionKey
             <Calculator className="h-4 w-4 mr-2" />
             Calculate Scores
           </Button>
-          <Button onClick={() => setShowInteractionModal(true)}>
+          <Button
+            onClick={() => {
+              setSelectedInteraction(null)
+              setShowInteractionModal(true)
+            }}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Log Interaction
           </Button>
@@ -526,6 +537,7 @@ export const CustomerAnalytics: React.FC<CustomerAnalyticsProps> = ({ sessionKey
           onClose={() => setShowInteractionModal(false)}
           onSave={loadAnalyticsData}
           sessionKey={sessionKey}
+          interaction={selectedInteraction}
         />
       )}
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Button } from '../../../../components/ui/Button'
 import { Input } from '../../../../components/ui/Input'
 import { crmApi } from '../utils/api'
-import { Account, Contact, Deal } from '../types'
+import { Account, Contact, CustomerInteraction, Deal } from '../types'
 import { Modal } from '../../../../components/ui/Modal'
 
 interface InteractionModalProps {
@@ -10,9 +10,10 @@ interface InteractionModalProps {
   onClose: () => void
   onSave: () => void
   sessionKey: string
+  interaction?: CustomerInteraction | null
 }
 
-export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onClose, onSave, sessionKey }) => {
+export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onClose, onSave, sessionKey, interaction }) => {
   const [formData, setFormData] = useState({
     subject: '',
     interaction_type: 'call',
@@ -31,9 +32,22 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
 
   useEffect(() => {
     if (isOpen) {
+      setFormData({
+        subject: interaction?.subject || '',
+        interaction_type: interaction?.interaction_type || 'call',
+        account: interaction?.account ? String(interaction.account) : '',
+        contact: interaction?.contact ? String(interaction.contact) : '',
+        deal: interaction?.deal ? String(interaction.deal) : '',
+        interaction_date: interaction?.interaction_date
+          ? new Date(interaction.interaction_date).toISOString().split('T')[0]
+          : new Date().toISOString().split('T')[0],
+        duration_minutes: interaction?.duration_minutes ? String(interaction.duration_minutes) : '',
+        description: interaction?.description || '',
+        outcome: interaction?.outcome || ''
+      })
       loadData()
     }
-  }, [isOpen])
+  }, [isOpen, interaction])
 
   const loadData = async () => {
     try {
@@ -62,7 +76,11 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
         duration_minutes: formData.duration_minutes ? parseInt(formData.duration_minutes) : null,
         interaction_date: new Date(formData.interaction_date).toISOString()
       }
-      await crmApi.createCustomerInteraction(sessionKey!, interactionData)
+      if (interaction) {
+        await crmApi.updateCustomerInteraction(sessionKey!, interaction.id, interactionData)
+      } else {
+        await crmApi.createCustomerInteraction(sessionKey!, interactionData)
+      }
       onSave()
       onClose()
     } catch (error) {
@@ -82,7 +100,9 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
       className="max-w-2xl"
       bodyClassName="p-6"
     >
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Log Customer Interaction</h2>
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        {interaction ? 'Edit Customer Interaction' : 'Log Customer Interaction'}
+      </h2>
       <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -120,6 +140,7 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
                   value={formData.account} 
                   onChange={(e) => setFormData(prev => ({ ...prev, account: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  required
                 >
                   <option value="">Select account</option>
                   {accounts.map((account) => (
@@ -135,6 +156,7 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
                   value={formData.contact} 
                   onChange={(e) => setFormData(prev => ({ ...prev, contact: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  required
                 >
                   <option value="">Select contact</option>
                   {contacts.map((contact) => (
@@ -206,7 +228,7 @@ export const InteractionModal: React.FC<InteractionModalProps> = ({ isOpen, onCl
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
               <Button type="submit" disabled={loading}>
-                {loading ? 'Saving...' : 'Log Interaction'}
+                {loading ? 'Saving...' : interaction ? 'Update Interaction' : 'Log Interaction'}
               </Button>
             </div>
       </form>

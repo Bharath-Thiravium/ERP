@@ -394,10 +394,63 @@ class DealSerializer(serializers.ModelSerializer):
     def validate_opportunity(self, value):
         return validate_same_company(value, self.context, 'Opportunity')
 
+    @staticmethod
+    def _opportunity_stage_for_pipeline_stage(stage):
+        if not stage:
+            return 'prospecting'
+        name = (stage.name or '').strip().lower()
+        stage_map = {
+            'prospecting': 'prospecting',
+            'qualification': 'qualification',
+            'needs analysis': 'needs_analysis',
+            'proposal': 'proposal',
+            'negotiation': 'negotiation',
+            'closed won': 'closed_won',
+            'closed lost': 'closed_lost',
+        }
+        return stage_map.get(name, 'prospecting')
+
     def create(self, validated_data):
         from .models import _generate_configured_number
+        opportunity = validated_data.get('opportunity')
+        if not opportunity:
+            opportunity = Opportunity.objects.create(
+                company=validated_data['company'],
+                name=validated_data['name'],
+                account=validated_data['account'],
+                contact=validated_data.get('contact'),
+                stage=self._opportunity_stage_for_pipeline_stage(validated_data.get('current_stage')),
+                amount=validated_data['value'],
+                probability=validated_data.get('probability') or 25,
+                expected_close_date=validated_data['expected_close_date'],
+                owner=validated_data['owner'],
+                created_by=validated_data['created_by'],
+                description=validated_data.get('description', ''),
+                next_step=validated_data.get('next_action', ''),
+            )
+            validated_data['opportunity'] = opportunity
         validated_data['deal_id'] = _generate_configured_number(validated_data['company'], 'deal')
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        if instance.opportunity_id:
+            opportunity = instance.opportunity
+            opportunity.name = instance.name
+            opportunity.account = instance.account
+            opportunity.contact = instance.contact
+            opportunity.stage = self._opportunity_stage_for_pipeline_stage(instance.current_stage)
+            opportunity.amount = instance.value
+            opportunity.probability = instance.probability
+            opportunity.expected_close_date = instance.expected_close_date
+            opportunity.owner = instance.owner
+            opportunity.description = instance.description
+            opportunity.next_step = instance.next_action
+            if opportunity.stage in ['closed_won', 'closed_lost']:
+                from django.utils import timezone
+                opportunity.closed_date = timezone.now().date()
+            opportunity.save()
+        return instance
 
 
 class DealStageHistorySerializer(serializers.ModelSerializer):

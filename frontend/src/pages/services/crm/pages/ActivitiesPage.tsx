@@ -93,9 +93,9 @@ export const ActivitiesPage: React.FC = () => {
       await crmApi.deleteActivity(sessionKey!, id)
       toast.success('Activity deleted successfully!')
       fetchActivities()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting activity:', error)
-      toast.error('Failed to delete activity')
+      toast.error(error.response?.data?.error || 'Failed to delete activity')
     }
   }
 
@@ -146,7 +146,9 @@ export const ActivitiesPage: React.FC = () => {
 
       {/* Activities Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {filteredActivities.map((activity) => (
+        {filteredActivities.map((activity) => {
+          const isCompleted = activity.status === 'completed'
+          return (
           <div key={activity.id} className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-4 hover:shadow-lg transition-all duration-200 flex flex-col">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center space-x-2 min-w-0 flex-1">
@@ -161,22 +163,30 @@ export const ActivitiesPage: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center space-x-1 flex-shrink-0">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-6 w-6 p-0"
-                  onClick={() => handleEditActivity(activity)}
-                >
-                  <Edit className="h-3 w-3" />
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-6 w-6 p-0 text-red-600"
-                  onClick={() => handleDeleteActivity(activity.id)}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
+                {!isCompleted ? (
+                  <>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-6 w-6 p-0"
+                      onClick={() => handleEditActivity(activity)}
+                      title="Edit activity"
+                    >
+                      <Edit className="h-3 w-3" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-6 w-6 p-0 text-red-600"
+                      onClick={() => handleDeleteActivity(activity.id)}
+                      title="Delete activity"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-xs text-green-600 font-medium">Locked</span>
+                )}
               </div>
             </div>
 
@@ -215,7 +225,8 @@ export const ActivitiesPage: React.FC = () => {
               </div>
             </div>
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {filteredActivities.length === 0 && (

@@ -140,7 +140,7 @@ class LeadViewSet(CompanyScopedModelViewSet):
             else:
                 return Response({'error': f'Failed to create opportunity: {opportunity_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
             
-            lead.status = 'won'
+            lead.status = 'converted'
             lead.converted_contact = contact
             lead.converted_account = account
             lead.converted_opportunity = opportunity
@@ -174,7 +174,7 @@ class LeadViewSet(CompanyScopedModelViewSet):
             'opportunity_id': opportunity.opportunity_id,
             'account_id': account.account_id,
             'contact_id': contact.contact_id,
-            'lead_status': 'won'
+            'lead_status': 'converted'
         })
 
     @action(detail=False)
@@ -455,6 +455,30 @@ class ActivityViewSet(CompanyScopedModelViewSet):
     ordering_fields = ['due_date', 'created_at']
     ordering = ['due_date']
 
+    def _completed_locked_response(self):
+        return Response(
+            {'error': 'Completed activities are locked and cannot be changed.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    def update(self, request, *args, **kwargs):
+        activity = self.get_object()
+        if activity.status == 'completed':
+            return self._completed_locked_response()
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        activity = self.get_object()
+        if activity.status == 'completed':
+            return self._completed_locked_response()
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        activity = self.get_object()
+        if activity.status == 'completed':
+            return self._completed_locked_response()
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=['post'])
     def analyze_conversation(self, request, pk=None):
         """Analyze conversation using AI for insights"""
@@ -499,6 +523,11 @@ class ActivityViewSet(CompanyScopedModelViewSet):
     def complete(self, request, pk=None):
         """Mark activity as completed"""
         activity = self.get_object()
+        if activity.status == 'completed':
+            return Response(
+                {'error': 'Activity is already completed.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         activity.status = 'completed'
         activity.completed_at = timezone.now()
         activity.outcome = request.data.get('outcome', '')

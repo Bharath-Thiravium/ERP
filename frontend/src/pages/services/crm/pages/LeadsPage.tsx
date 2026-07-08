@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Filter, Eye, Edit, Trash2, Phone, Mail, User, Building, Target, Calendar } from 'lucide-react'
+import { Plus, Search, Filter, Eye, Edit, Trash2, Phone, Mail, User, Building, Target, Calendar, X } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -30,6 +30,7 @@ export const LeadsPage: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
+  const [viewLead, setViewLead] = useState<Lead | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
@@ -210,11 +211,7 @@ export const LeadsPage: React.FC = () => {
                     variant="ghost" 
                     size="sm" 
                     className="h-8 w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                    onClick={() => {
-                      setSelectedLead(lead)
-                      // You can add a view modal here or navigate to details page
-                      alert(`Lead Details:\n\nName: ${lead.first_name} ${lead.last_name}\nEmail: ${lead.email}\nPhone: ${lead.phone || 'N/A'}\nCompany: ${lead.company_name || 'N/A'}\nStatus: ${lead.status}\nPriority: ${lead.priority}\nSource: ${lead.source}\nEstimated Value: ₹${lead.estimated_value?.toLocaleString() || 0}\nExpected Close: ${lead.expected_close_date || 'N/A'}`)
-                    }}
+                    onClick={() => setViewLead(lead)}
                     title="View Lead Details"
                   >
                     <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
@@ -364,6 +361,64 @@ export const LeadsPage: React.FC = () => {
         onSuccess={fetchLeads}
         lead={selectedLead}
       />
+
+      {viewLead && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Lead Details</h2>
+              <Button variant="ghost" size="sm" onClick={() => setViewLead(null)} className="h-8 w-8 p-0">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-gray-500">Name</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewLead.first_name} {viewLead.last_name}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Lead ID</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewLead.lead_id}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Email</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewLead.email}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Phone</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewLead.phone || '-'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Company</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewLead.company_name || '-'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Job Title</p>
+                <p className="font-medium text-gray-900 dark:text-white">{viewLead.job_title || '-'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Status</p>
+                <p className="font-medium capitalize text-gray-900 dark:text-white">{viewLead.status.replace('_', ' ')}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Priority</p>
+                <p className="font-medium capitalize text-gray-900 dark:text-white">{viewLead.priority}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Estimated Value</p>
+                <p className="font-medium text-gray-900 dark:text-white">₹{Number(viewLead.estimated_value || 0).toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Added Date</p>
+                <p className="font-medium text-gray-900 dark:text-white">{new Date(viewLead.created_at).toLocaleDateString()}</p>
+              </div>
+            </div>
+            <div className="px-6 pb-6 flex justify-end">
+              <Button variant="outline" onClick={() => setViewLead(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

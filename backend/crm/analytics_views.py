@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 from .models import CustomerInteraction, CustomerHealthScore, CustomerSegment, CustomerSegmentMembership, SalesAnalytics, Account, Deal
 from .serializers import CustomerInteractionSerializer, CustomerHealthScoreSerializer, CustomerSegmentSerializer, SalesAnalyticsSerializer
 from .views import CRMBaseViewSet
-import random
 
 
 class CustomerInteractionViewSet(CRMBaseViewSet):
@@ -49,13 +48,18 @@ class CustomerInteractionViewSet(CRMBaseViewSet):
         # Last 30 days
         thirty_days_ago = timezone.now() - timedelta(days=30)
         recent_interactions = interactions.filter(interaction_date__gte=thirty_days_ago)
+        active_account_count = Account.objects.filter(company=company, is_active=True).count()
+        avg_interactions = (
+            round(recent_interactions.count() / active_account_count, 2)
+            if active_account_count else 0
+        )
         
         summary = {
             'total_interactions': interactions.count(),
             'recent_interactions': recent_interactions.count(),
             'interactions_by_type': list(recent_interactions.values('interaction_type').annotate(count=Count('id'))),
             'top_accounts': list(recent_interactions.select_related('account').values('account__name').annotate(count=Count('id')).order_by('-count')[:10]),
-            'avg_interactions_per_account': recent_interactions.values('account').distinct().count()
+            'avg_interactions_per_account': avg_interactions
         }
         
         return Response(summary)
@@ -116,8 +120,13 @@ class CustomerHealthScoreViewSet(CRMBaseViewSet):
             else:
                 health_score.satisfaction_score = 75  # Default good score if no tickets
             
-            # Calculate usage score (simulated - would be based on actual product usage)
-            health_score.usage_score = random.randint(40, 95)
+            total_interactions = CustomerInteraction.objects.filter(account=account).count()
+            open_deals = Deal.objects.filter(account=account, status='open').count()
+            won_deals = Deal.objects.filter(account=account, status='won').count()
+            health_score.usage_score = min(
+                95,
+                40 + (total_interactions * 8) + (open_deals * 5) + (won_deals * 10)
+            )
             
             # Calculate financial score (based on deal value and payment history)
             total_deal_value = Deal.objects.filter(
@@ -149,6 +158,9 @@ class CustomerHealthScoreViewSet(CRMBaseViewSet):
                 risk_factors.append("Low satisfaction scores from support tickets")
                 recommendations.append("Conduct customer satisfaction survey")
             
+            health_score.churn_risk = 0.0
+            health_score.upsell_opportunity = 0.0
+
             if health_score.overall_score < 40:
                 health_score.churn_risk = 0.8
                 recommendations.append("Immediate intervention required - high churn risk")
@@ -176,9 +188,11 @@ class CustomerHealthScoreViewSet(CRMBaseViewSet):
 
         # Get health score statistics
         health_scores = CustomerHealthScore.objects.filter(account__company=company)
+        total_accounts = Account.objects.filter(company=company, is_active=True).count()
         
         dashboard_data = {
-            'total_accounts': health_scores.count(),
+            'total_accounts': total_accounts,
+            'scored_accounts': health_scores.count(),
             'health_distribution': list(health_scores.values('health_status').annotate(count=Count('id'))),
             'avg_health_score': health_scores.aggregate(Avg('overall_score'))['overall_score__avg'] or 0,
             'high_risk_accounts': health_scores.filter(churn_risk__gte=0.7).count(),

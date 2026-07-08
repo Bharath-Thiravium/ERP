@@ -173,6 +173,7 @@ class DealViewSet(CRMBaseViewSet):
 class DealStageHistoryViewSet(CRMBaseViewSet):
     queryset = DealStageHistory.objects.all()
     serializer_class = DealStageHistorySerializer
+    company_lookup = 'deal__company'
     filterset_fields = ['deal', 'stage']
     ordering = ['-changed_at']
 

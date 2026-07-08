@@ -71,6 +71,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, onSuccess
     { value: 'qualified', label: 'Qualified' },
     { value: 'proposal', label: 'Proposal Sent' },
     { value: 'negotiation', label: 'Negotiation' },
+    { value: 'converted', label: 'Converted' },
     { value: 'won', label: 'Won' },
     { value: 'lost', label: 'Lost' }
   ]

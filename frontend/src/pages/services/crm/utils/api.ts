@@ -106,6 +106,30 @@ export const crmApi = {
     return apiClient.getCRMOpportunityForecast({ session_key: sessionKey })
   },
 
+  // Quotes
+  getQuotes: async (sessionKey: string, params?: any) => {
+    return apiClient.get('/api/crm/quotes/', { params: { session_key: sessionKey!, ...params } })
+  },
+
+  createQuote: async (sessionKey: string, data: any) => {
+    return apiClient.post('/api/crm/quotes/', { session_key: sessionKey!, ...data })
+  },
+
+  sendQuote: async (sessionKey: string, id: number) => {
+    return apiClient.post(`/api/crm/quotes/${id}/send_quote/`, { session_key: sessionKey! })
+  },
+
+  downloadQuotePdf: async (sessionKey: string, id: number) => {
+    return apiClient.get(`/api/crm/quotes/${id}/generate_pdf/`, {
+      params: { session_key: sessionKey! },
+      responseType: 'blob'
+    })
+  },
+
+  getQuoteDashboardStats: async (sessionKey: string) => {
+    return apiClient.get('/api/crm/quotes/dashboard_stats/', { params: { session_key: sessionKey! } })
+  },
+
   // Activities
   getActivities: async (sessionKey: string, params?: any) => {
     return apiClient.getCRMActivities({ session_key: sessionKey!, ...params })

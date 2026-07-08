@@ -722,6 +722,17 @@ def service_wise_bulk_setup(request):
                 )
                 
                 document_types = ServiceDocumentTypes.get_service_document_types(service_type)
+                stale_configs = DocumentNumberingConfig.objects.filter(
+                    service=service,
+                    company=company,
+                    financial_year=data['financial_year'],
+                    is_active=True,
+                ).exclude(document_type__in=document_types)
+                for stale_config in stale_configs:
+                    stale_config.is_active = False
+                    stale_config.save(update_fields=['is_active', 'updated_at'])
+                    _sync_finance_numbering_rule(stale_config)
+                    updated_configs.append(stale_config)
                 
                 for doc_type in document_types:
                     config_data = {}

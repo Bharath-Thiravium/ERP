@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Filter, Eye, Edit, Trash2, Phone, Mail, User, Building, Target } from 'lucide-react'
+import { Plus, Search, Filter, Eye, Edit, Trash2, Phone, Mail, User, Building, Target, Calendar } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -39,6 +39,7 @@ export const LeadsPage: React.FC = () => {
     { value: 'qualified', label: 'Qualified', color: 'bg-green-100 text-green-800' },
     { value: 'proposal', label: 'Proposal Sent', color: 'bg-purple-100 text-purple-800' },
     { value: 'negotiation', label: 'Negotiation', color: 'bg-orange-100 text-orange-800' },
+    { value: 'converted', label: 'Converted', color: 'bg-emerald-100 text-emerald-800' },
     { value: 'won', label: 'Won', color: 'bg-green-100 text-green-800' },
     { value: 'lost', label: 'Lost', color: 'bg-red-100 text-red-800' }
   ]
@@ -91,7 +92,7 @@ export const LeadsPage: React.FC = () => {
       setLeads(prevLeads => 
         prevLeads.map(lead => 
           lead.id === leadId 
-            ? { ...lead, status: 'won' }
+            ? { ...lead, status: 'converted' }
             : lead
         )
       )
@@ -218,7 +219,7 @@ export const LeadsPage: React.FC = () => {
                   >
                     <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   </Button>
-                  {lead.status !== 'won' && (
+                  {lead.status !== 'won' && lead.status !== 'converted' && (
                     <Button 
                       variant="ghost" 
                       size="sm" 
@@ -266,6 +267,12 @@ export const LeadsPage: React.FC = () => {
                     <span className="text-sm text-gray-600 dark:text-gray-300">₹{lead.estimated_value.toLocaleString()}</span>
                   </div>
                 )}
+                <div className="flex items-center space-x-2">
+                  <Calendar className="h-4 w-4 text-gray-400" />
+                  <span className="text-sm text-gray-600 dark:text-gray-300">
+                    Added {new Date(lead.created_at).toLocaleDateString()}
+                  </span>
+                </div>
               </div>
 
               {/* Status & Priority */}
@@ -282,7 +289,7 @@ export const LeadsPage: React.FC = () => {
 
               {/* Actions */}
               <div className="flex space-x-2 mt-4">
-                {lead.status !== 'won' ? (
+                {lead.status !== 'won' && lead.status !== 'converted' ? (
                   <Button 
                     size="sm" 
                     variant="outline"

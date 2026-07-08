@@ -1,7 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from authentication.models import Company, CompanyServiceUser
-from .models import Employee
+from .models import Employee, _generate_configured_number
 
 
 class EmployeeWorkflowStatus(models.Model):
@@ -160,6 +160,7 @@ class EmployeeProfileCompletion(models.Model):
 class InductionTraining(models.Model):
     """Induction training modules and completion tracking"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='induction_modules')
+    training_number = models.CharField(max_length=50, blank=True, db_index=True)
     title = models.CharField(max_length=200)
     description = models.TextField()
     content = models.TextField(blank=True)
@@ -185,6 +186,24 @@ class InductionTraining(models.Model):
     
     def __str__(self):
         return f"{self.company.name} - {self.title}"
+
+    def save(self, *args, **kwargs):
+        if not self.training_number:
+            try:
+                self.training_number = _generate_configured_number(self.company, 'training')
+            except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
+                last_training = InductionTraining.objects.filter(
+                    company=self.company,
+                    training_number__startswith='TRN-'
+                ).order_by('-id').first()
+                if last_training:
+                    last_number = int(last_training.training_number.split('-')[-1])
+                    self.training_number = f"TRN-{last_number + 1:06d}"
+                else:
+                    self.training_number = "TRN-000001"
+        super().save(*args, **kwargs)
 
 
 class EmployeeInductionProgress(models.Model):

@@ -26,6 +26,7 @@ from .security_views import (
 from .reporting_views import (
     ReportTemplateViewSet, DashboardViewSet as ReportingDashboardViewSet, BusinessIntelligenceViewSet
 )
+from .quote_views import QuoteTemplateViewSet, QuoteViewSet
 
 router = DefaultRouter()
 # Core CRM - New ViewSets with centralized tenant enforcement
@@ -54,6 +55,8 @@ router.register(r'pipeline-stages', PipelineStageViewSet)
 router.register(r'deals', DealViewSet)
 router.register(r'deal-stage-history', DealStageHistoryViewSet)
 router.register(r'sales-quotas', SalesQuotaViewSet)
+router.register(r'quote-templates', QuoteTemplateViewSet, basename='quote-templates')
+router.register(r'quotes', QuoteViewSet, basename='quotes')
 
 # Phase 2: Customer Relationship Analytics
 router.register(r'customer-interactions', CustomerInteractionViewSet)

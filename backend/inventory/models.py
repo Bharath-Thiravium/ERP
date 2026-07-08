@@ -9,11 +9,42 @@ import json
 from .security_validators import InventorySecurityValidator
 
 
+def _generate_configured_number(company, document_type):
+    if getattr(company, 'use_document_numbering', False):
+        from authentication.models import Service
+        from company_dashboard.document_numbering_models import DocumentNumberingConfig
+        from django.utils import timezone
+
+        service = Service.objects.get(service_type='inventory')
+        today = timezone.now().date()
+        if today.month >= 4:
+            financial_year = f"{today.year}-{str(today.year + 1)[-2:]}"
+        else:
+            financial_year = f"{today.year - 1}-{str(today.year)[-2:]}"
+
+        config = DocumentNumberingConfig.objects.filter(
+            company=company,
+            service=service,
+            document_type=document_type,
+            financial_year=financial_year,
+            is_active=True,
+        ).first()
+        if not config:
+            raise ValueError(
+                f"Document numbering is not configured for Inventory {document_type}. "
+                "Set it up in Company > Document Numbering before creating records."
+            )
+        return config.get_next_number()
+
+    from authentication.utils import generate_auto_code
+    return generate_auto_code(company.id, document_type)
+
+
 class Category(models.Model):
     """AI-enhanced product categories"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='inventory_categories')
     name = models.CharField(max_length=100)
-    code = models.CharField(max_length=20, unique=True)
+    code = models.CharField(max_length=50, db_index=True)
     description = models.TextField(blank=True)
     parent_category = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subcategories')
     
@@ -57,9 +88,10 @@ class Category(models.Model):
         
         if not self.code:
             try:
-                from authentication.utils import generate_auto_code
-                self.code = generate_auto_code(self.company.id, 'category')
+                self.code = _generate_configured_number(self.company, 'category')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_category = Category.objects.filter(
                     company=self.company,
@@ -85,7 +117,7 @@ class Supplier(models.Model):
     """Intelligent supplier management"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='suppliers')
     name = models.CharField(max_length=200)
-    supplier_code = models.CharField(max_length=20, unique=True)
+    supplier_code = models.CharField(max_length=50, db_index=True)
     
     # Contact Information
     contact_person = models.CharField(max_length=100, blank=True)
@@ -155,9 +187,10 @@ class Supplier(models.Model):
         
         if not self.supplier_code:
             try:
-                from authentication.utils import generate_auto_code
-                self.supplier_code = generate_auto_code(self.company.id, 'supplier')
+                self.supplier_code = _generate_configured_number(self.company, 'supplier')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_supplier = Supplier.objects.filter(
                     company=self.company,
@@ -183,7 +216,7 @@ class Warehouse(models.Model):
     """Multi-location warehouse management"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='warehouses')
     name = models.CharField(max_length=100)
-    code = models.CharField(max_length=20, unique=True)
+    code = models.CharField(max_length=50, db_index=True)
     
     # Location Details
     address = models.TextField()
@@ -238,9 +271,10 @@ class Warehouse(models.Model):
         
         if not self.code:
             try:
-                from authentication.utils import generate_auto_code
-                self.code = generate_auto_code(self.company.id, 'warehouse')
+                self.code = _generate_configured_number(self.company, 'warehouse')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_warehouse = Warehouse.objects.filter(
                     company=self.company,
@@ -306,8 +340,8 @@ class Product(models.Model):
         related_name='inventory_products',
     )
     name = models.CharField(max_length=200)
-    product_code = models.CharField(max_length=50, unique=True)
-    sku = models.CharField(max_length=50, unique=True, help_text="Stock Keeping Unit")
+    product_code = models.CharField(max_length=50, db_index=True)
+    sku = models.CharField(max_length=50, db_index=True, help_text="Stock Keeping Unit")
     
     # Product Details
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='products')
@@ -366,7 +400,7 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ['company', 'product_code']
+        unique_together = [('company', 'product_code'), ('company', 'sku')]
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['product_code']),
@@ -430,9 +464,10 @@ class Product(models.Model):
         
         if not self.product_code:
             try:
-                from authentication.utils import generate_auto_code
-                self.product_code = generate_auto_code(self.company.id, 'product')
+                self.product_code = _generate_configured_number(self.company, 'product')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_product = Product.objects.filter(
                     company=self.company,
@@ -510,7 +545,7 @@ class ProductBundle(models.Model):
     """Product bundles and kits"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='product_bundles')
     bundle_name = models.CharField(max_length=200)
-    bundle_code = models.CharField(max_length=50, unique=True)
+    bundle_code = models.CharField(max_length=50, db_index=True)
     description = models.TextField(blank=True)
     
     # Pricing
@@ -535,9 +570,10 @@ class ProductBundle(models.Model):
     def save(self, *args, **kwargs):
         if not self.bundle_code:
             try:
-                from authentication.utils import generate_auto_code
-                self.bundle_code = generate_auto_code(self.company.id, 'bundle')
+                self.bundle_code = _generate_configured_number(self.company, 'bundle')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 last_bundle = ProductBundle.objects.filter(
                     company=self.company,
                     bundle_code__startswith='BUN-'
@@ -783,7 +819,7 @@ class InventoryAudit(models.Model):
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='inventory_audits')
     audit_name = models.CharField(max_length=100)
-    audit_number = models.CharField(max_length=50, unique=True)
+    audit_number = models.CharField(max_length=50, db_index=True)
     
     # Audit Scope
     warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, related_name='audits')
@@ -809,6 +845,7 @@ class InventoryAudit(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        unique_together = ['company', 'audit_number']
         ordering = ['-created_at']
 
     def __str__(self):
@@ -827,9 +864,10 @@ class InventoryAudit(models.Model):
         
         if not self.audit_number:
             try:
-                from authentication.utils import generate_auto_code
-                self.audit_number = generate_auto_code(self.company.id, 'audit')
+                self.audit_number = _generate_configured_number(self.company, 'audit')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_audit = InventoryAudit.objects.filter(
                     company=self.company,
@@ -869,7 +907,7 @@ class CycleCount(models.Model):
     
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='cycle_counts')
     count_name = models.CharField(max_length=100)
-    count_number = models.CharField(max_length=50, unique=True)
+    count_number = models.CharField(max_length=50, db_index=True)
     warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, related_name='cycle_counts')
     
     # Scheduling
@@ -894,6 +932,7 @@ class CycleCount(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
+        unique_together = ['company', 'count_number']
         ordering = ['-created_at']
     
     def __str__(self):
@@ -902,9 +941,10 @@ class CycleCount(models.Model):
     def save(self, *args, **kwargs):
         if not self.count_number:
             try:
-                from authentication.utils import generate_auto_code
-                self.count_number = generate_auto_code(self.company.id, 'cycle_count')
+                self.count_number = _generate_configured_number(self.company, 'cycle_count')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 last_count = CycleCount.objects.filter(
                     company=self.company,
                     count_number__startswith='CC-'
@@ -1011,7 +1051,7 @@ class PurchaseOrder(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='inventory_purchase_orders')
-    po_number = models.CharField(max_length=50, unique=True)
+    po_number = models.CharField(max_length=50, db_index=True)
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='purchase_orders')
     warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, related_name='purchase_orders')
     
@@ -1039,6 +1079,7 @@ class PurchaseOrder(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        unique_together = ['company', 'po_number']
         ordering = ['-created_at']
 
     def __str__(self):
@@ -1064,9 +1105,10 @@ class PurchaseOrder(models.Model):
         
         if not self.po_number:
             try:
-                from authentication.utils import generate_auto_code
-                self.po_number = generate_auto_code(self.company.id, 'inventory_purchase_order')
+                self.po_number = _generate_configured_number(self.company, 'purchase_order')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_po = PurchaseOrder.objects.filter(
                     company=self.company,

@@ -34,11 +34,31 @@ class CRMBaseViewSet(viewsets.ModelViewSet):
         su = self._get_service_user()
         return su.created_by if su else None
 
+    def get_session_key(self):
+        if self.request.method in ['POST', 'PUT', 'PATCH']:
+            return self.request.data.get('session_key') or self.request.query_params.get('session_key')
+        return self.request.query_params.get('session_key')
+
+    def _model_has_field(self, model_class, field_name):
+        return any(field.name == field_name for field in model_class._meta.get_fields())
+
     def get_queryset(self):
         su = self._get_service_user()
         if not su:
             return self.queryset.none()
-        return self.queryset.filter(company=su.company)
+        company_lookup = getattr(self, 'company_lookup', None)
+        if company_lookup:
+            return self.queryset.filter(**{company_lookup: su.company})
+
+        model_class = self.queryset.model
+        if self._model_has_field(model_class, 'company'):
+            return self.queryset.filter(company=su.company)
+
+        logger.warning(
+            "No company filter configured for CRM viewset %s",
+            self.__class__.__name__,
+        )
+        return self.queryset.none()
 
     def list(self, request, *args, **kwargs):
         if not self._get_service_user():
@@ -70,14 +90,17 @@ class CRMBaseViewSet(viewsets.ModelViewSet):
             if not django_user:
                 return Response({'error': 'No valid user found for created_by field'}, status=status.HTTP_400_BAD_REQUEST)
 
-            data['company'] = su.company.id
             model_class = self.get_serializer().Meta.model
+            save_kwargs = {}
 
-            if hasattr(model_class, 'created_by'):
+            if self._model_has_field(model_class, 'company'):
+                data['company'] = su.company.id
+            if self._model_has_field(model_class, 'created_by'):
                 data['created_by'] = django_user.id
-            if hasattr(model_class, 'assigned_to') and not data.get('assigned_to'):
+                save_kwargs['created_by'] = django_user
+            if self._model_has_field(model_class, 'assigned_to') and not data.get('assigned_to'):
                 data['assigned_to'] = django_user.id
-            if hasattr(model_class, 'owner'):
+            if self._model_has_field(model_class, 'owner'):
                 if not data.get('owner') or data['owner'] == 'auto':
                     data['owner'] = django_user.id
                 else:
@@ -89,7 +112,7 @@ class CRMBaseViewSet(viewsets.ModelViewSet):
 
             serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
-            instance = serializer.save(created_by=django_user)
+            instance = serializer.save(**save_kwargs)
             return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error(f"CRM Create Error: {e}", exc_info=True)
@@ -186,7 +209,7 @@ class LeadViewSet(CRMBaseViewSet):
         if not su:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
         lead = self.get_object()
-        if lead.status == 'won':
+        if lead.converted_opportunity_id or lead.status in ['converted', 'won']:
             return Response({'error': 'Lead already converted'}, status=status.HTTP_400_BAD_REQUEST)
         default_user = self._get_django_user()
         if not default_user:
@@ -232,15 +255,21 @@ class LeadViewSet(CRMBaseViewSet):
                 return Response({'error': f'Opportunity creation failed: {opp_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
             opportunity = opp_serializer.save(created_by=default_user, owner_id=owner_id)
 
-            lead.status = 'won'
-            lead.save()
+            lead.status = 'converted'
+            lead.converted_contact = contact
+            lead.converted_account = account
+            lead.converted_opportunity = opportunity
+            lead.save(update_fields=[
+                'status', 'converted_contact', 'converted_account',
+                'converted_opportunity', 'updated_at'
+            ])
 
         return Response({
             'message': 'Lead converted successfully',
             'opportunity_id': opportunity.opportunity_id,
             'account_id': account.account_id,
             'contact_id': contact.contact_id,
-            'lead_status': 'won'
+            'lead_status': 'converted'
         })
 
     @action(detail=False)

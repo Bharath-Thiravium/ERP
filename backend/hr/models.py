@@ -7,6 +7,36 @@ from decimal import Decimal
 import json
 
 
+def _generate_configured_number(company, document_type):
+    if getattr(company, 'use_document_numbering', False):
+        from authentication.models import Service
+        from company_dashboard.document_numbering_models import DocumentNumberingConfig
+
+        service = Service.objects.get(service_type='hr')
+        today = timezone.now().date()
+        if today.month >= 4:
+            financial_year = f"{today.year}-{str(today.year + 1)[-2:]}"
+        else:
+            financial_year = f"{today.year - 1}-{str(today.year)[-2:]}"
+
+        config = DocumentNumberingConfig.objects.filter(
+            company=company,
+            service=service,
+            document_type=document_type,
+            financial_year=financial_year,
+            is_active=True,
+        ).first()
+        if not config:
+            raise ValueError(
+                f"Document numbering is not configured for HR {document_type}. "
+                "Set it up in Company > Document Numbering before creating records."
+            )
+        return config.get_next_number()
+
+    from authentication.utils import generate_auto_code
+    return generate_auto_code(company.id, document_type)
+
+
 class FlexibleJSONField(models.JSONField):
     """JSONField that accepts strings and converts them to lists"""
     
@@ -25,7 +55,7 @@ class Department(models.Model):
     """Department model for organizing employees"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='departments')
     name = models.CharField(max_length=100)
-    code = models.CharField(max_length=30)  # Removed unique=True, increased length for prefix
+    code = models.CharField(max_length=50)  # Company-scoped generated code
     description = models.TextField(blank=True)
     manager = models.ForeignKey('Employee', on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_departments')
     is_active = models.BooleanField(default=True)
@@ -48,9 +78,10 @@ class Department(models.Model):
         if not self.code:
             # Auto-generate code with company prefix
             try:
-                from authentication.utils import generate_auto_code
-                self.code = generate_auto_code(self.company.id, 'department')
+                self.code = _generate_configured_number(self.company, 'department')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback if auto-code fails
                 last_dept = Department.objects.filter(
                     company=self.company,
@@ -68,7 +99,7 @@ class Designation(models.Model):
     """Job designation/position model"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='designations')
     title = models.CharField(max_length=100)
-    code = models.CharField(max_length=30)  # Removed unique=True, increased length for prefix
+    code = models.CharField(max_length=50)  # Company-scoped generated code
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='designations')
     level = models.CharField(max_length=20, choices=[
         ('entry', 'Entry Level'),
@@ -103,9 +134,10 @@ class Designation(models.Model):
         if not self.code:
             # Auto-generate code with company prefix
             try:
-                from authentication.utils import generate_auto_code
-                self.code = generate_auto_code(self.company.id, 'designation')
+                self.code = _generate_configured_number(self.company, 'designation')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback if auto-code fails
                 last_desig = Designation.objects.filter(
                     company=self.company,
@@ -145,7 +177,7 @@ class Employee(models.Model):
 
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='employees')
-    employee_id = models.CharField(max_length=20, unique=True)
+    employee_id = models.CharField(max_length=50, db_index=True)
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
     email = models.EmailField(validators=[EmailValidator()], unique=True)
@@ -282,9 +314,10 @@ class Employee(models.Model):
         if not self.employee_id:
             # Auto-generate employee ID using company prefix
             try:
-                from authentication.utils import generate_auto_code
-                self.employee_id = generate_auto_code(self.company.id, 'employee')
+                self.employee_id = _generate_configured_number(self.company, 'employee')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_employee = Employee.objects.filter(
                     company=self.company,
@@ -347,6 +380,7 @@ class JobPosting(models.Model):
 class JobApplication(models.Model):
     """AI-enhanced job applications with automated screening"""
     job_posting = models.ForeignKey(JobPosting, on_delete=models.CASCADE, related_name='applications')
+    application_number = models.CharField(max_length=50, blank=True, db_index=True)
     
     # Candidate Information
     first_name = models.CharField(max_length=50)
@@ -433,6 +467,25 @@ class JobApplication(models.Model):
     def full_name(self):
         return escape(f"{self.first_name} {self.last_name}")
 
+    def save(self, *args, **kwargs):
+        if not self.application_number:
+            company = self.job_posting.company
+            try:
+                self.application_number = _generate_configured_number(company, 'recruitment')
+            except Exception:
+                if getattr(company, 'use_document_numbering', False):
+                    raise
+                last_application = JobApplication.objects.filter(
+                    job_posting__company=company,
+                    application_number__startswith='REC-'
+                ).order_by('-id').first()
+                if last_application:
+                    last_number = int(last_application.application_number.split('-')[-1])
+                    self.application_number = f"REC-{last_number + 1:06d}"
+                else:
+                    self.application_number = "REC-000001"
+        super().save(*args, **kwargs)
+
 
 class AttendanceSystem(models.Model):
     """Attendance system configuration for companies"""
@@ -487,6 +540,7 @@ class Attendance(models.Model):
     ]
     
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='attendance_records')
+    attendance_number = models.CharField(max_length=50, blank=True, db_index=True)
     date = models.DateField()
     
     # Check-in/out times
@@ -549,6 +603,25 @@ class Attendance(models.Model):
 
     def __str__(self):
         return escape(f"{self.employee.full_name} - {self.date}")
+
+    def save(self, *args, **kwargs):
+        if not self.attendance_number:
+            company = self.employee.company
+            try:
+                self.attendance_number = _generate_configured_number(company, 'attendance')
+            except Exception:
+                if getattr(company, 'use_document_numbering', False):
+                    raise
+                last_attendance = Attendance.objects.filter(
+                    employee__company=company,
+                    attendance_number__startswith='ATT-'
+                ).order_by('-id').first()
+                if last_attendance:
+                    last_number = int(last_attendance.attendance_number.split('-')[-1])
+                    self.attendance_number = f"ATT-{last_number + 1:06d}"
+                else:
+                    self.attendance_number = "ATT-000001"
+        super().save(*args, **kwargs)
     
     def calculate_hours(self):
         """Calculate total working hours with proper timezone handling"""
@@ -598,6 +671,7 @@ class Attendance(models.Model):
 class PerformanceReview(models.Model):
     """AI-enhanced performance reviews"""
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='performance_reviews')
+    review_number = models.CharField(max_length=50, blank=True, db_index=True)
     reviewer = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='conducted_reviews')
     review_period_start = models.DateField()
     review_period_end = models.DateField()
@@ -632,6 +706,25 @@ class PerformanceReview(models.Model):
 
     def __str__(self):
         return escape(f"{self.employee.full_name} - {self.review_period_start} to {self.review_period_end}")
+
+    def save(self, *args, **kwargs):
+        if not self.review_number:
+            company = self.employee.company
+            try:
+                self.review_number = _generate_configured_number(company, 'performance_review')
+            except Exception:
+                if getattr(company, 'use_document_numbering', False):
+                    raise
+                last_review = PerformanceReview.objects.filter(
+                    employee__company=company,
+                    review_number__startswith='PR-'
+                ).order_by('-id').first()
+                if last_review:
+                    last_number = int(last_review.review_number.split('-')[-1])
+                    self.review_number = f"PR-{last_number + 1:06d}"
+                else:
+                    self.review_number = "PR-000001"
+        super().save(*args, **kwargs)
 
 
 class AttendanceDevice(models.Model):
@@ -736,6 +829,7 @@ class PayrollSettings(models.Model):
 class PayrollCycle(models.Model):
     """Enhanced payroll processing cycles"""
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='payroll_cycles')
+    payroll_number = models.CharField(max_length=50, blank=True, db_index=True)
     name = models.CharField(max_length=100)
     period_type = models.CharField(max_length=20, choices=[
         ('monthly', 'Monthly'),
@@ -781,6 +875,24 @@ class PayrollCycle(models.Model):
 
     def __str__(self):
         return escape(f"{self.name} - {self.company.name}")
+
+    def save(self, *args, **kwargs):
+        if not self.payroll_number:
+            try:
+                self.payroll_number = _generate_configured_number(self.company, 'payroll')
+            except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
+                last_cycle = PayrollCycle.objects.filter(
+                    company=self.company,
+                    payroll_number__startswith='PAY-'
+                ).order_by('-id').first()
+                if last_cycle:
+                    last_number = int(last_cycle.payroll_number.split('-')[-1])
+                    self.payroll_number = f"PAY-{last_number + 1:06d}"
+                else:
+                    self.payroll_number = "PAY-000001"
+        super().save(*args, **kwargs)
 
 
 class Payslip(models.Model):

@@ -4,6 +4,7 @@ Quote generation views for CRM
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework import serializers
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -26,8 +27,61 @@ try:
 except ImportError:
     PDF_AVAILABLE = False
 
+
+class QuoteItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuoteItem
+        fields = [
+            'id', 'name', 'description', 'quantity', 'unit_price',
+            'total_price', 'product_code', 'line_number'
+        ]
+        read_only_fields = ['id', 'total_price']
+
+
+class QuoteTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuoteTemplate
+        fields = [
+            'id', 'name', 'description', 'header_content', 'footer_content',
+            'terms_conditions', 'primary_color', 'secondary_color', 'logo_url',
+            'is_default', 'is_active', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class QuoteSerializer(serializers.ModelSerializer):
+    account_name = serializers.CharField(source='account.name', read_only=True)
+    contact_name = serializers.SerializerMethodField()
+    opportunity_name = serializers.CharField(source='opportunity.name', read_only=True)
+    items = QuoteItemSerializer(source='quote_items', many=True, read_only=True)
+
+    class Meta:
+        model = Quote
+        fields = [
+            'id', 'quote_number', 'account', 'account_name', 'contact',
+            'contact_name', 'opportunity', 'opportunity_name', 'template',
+            'title', 'description', 'status', 'quote_date', 'valid_until',
+            'sent_date', 'viewed_date', 'accepted_date', 'subtotal',
+            'tax_rate', 'tax_amount', 'discount_percentage', 'discount_amount',
+            'total_amount', 'notes', 'terms_conditions', 'view_count',
+            'public_id', 'created_at', 'updated_at', 'items'
+        ]
+        read_only_fields = [
+            'id', 'quote_number', 'status', 'quote_date', 'sent_date',
+            'viewed_date', 'accepted_date', 'subtotal', 'tax_amount',
+            'discount_amount', 'total_amount', 'view_count', 'public_id',
+            'created_at', 'updated_at'
+        ]
+
+    def get_contact_name(self, obj):
+        if not obj.contact:
+            return ''
+        return f"{obj.contact.first_name} {obj.contact.last_name}".strip()
+
 class QuoteTemplateViewSet(CRMBaseViewSet):
     """Quote template management"""
+    queryset = QuoteTemplate.objects.all()
+    serializer_class = QuoteTemplateSerializer
     
     def get_queryset(self):
         session_key = self.get_session_key()
@@ -98,6 +152,8 @@ class QuoteTemplateViewSet(CRMBaseViewSet):
 
 class QuoteViewSet(CRMBaseViewSet):
     """Quote management"""
+    queryset = Quote.objects.all()
+    serializer_class = QuoteSerializer
     
     def get_queryset(self):
         session_key = self.get_session_key()

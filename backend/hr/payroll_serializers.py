@@ -28,13 +28,13 @@ class PayrollCycleSerializer(serializers.ModelSerializer):
     class Meta:
         model = PayrollCycle
         fields = [
-            'id', 'name', 'period_type', 'start_date', 'end_date', 'pay_date',
+            'id', 'payroll_number', 'name', 'period_type', 'start_date', 'end_date', 'pay_date',
             'status', 'total_employees', 'total_gross', 'total_deductions', 'total_net',
             'calculated_by', 'calculated_by_name', 'approved_by', 'approved_by_name',
             'processed_by', 'processed_by_name', 'calculated_at', 'approved_at',
             'processed_at', 'total_payslips', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'company', 'total_payslips', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'payroll_number', 'company', 'total_payslips', 'created_at', 'updated_at']
     
     def get_total_payslips(self, obj):
         return obj.payslips.count()

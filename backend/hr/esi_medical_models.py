@@ -1,6 +1,6 @@
 from django.db import models
 from django.core.validators import MinValueValidator
-from .models import Employee
+from .models import Employee, _generate_configured_number
 
 
 class ESIMedicalBenefit(models.Model):
@@ -29,7 +29,7 @@ class ESIMedicalBenefit(models.Model):
     claim_amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     approved_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
-    claim_number = models.CharField(max_length=50, unique=True)
+    claim_number = models.CharField(max_length=50, blank=True, db_index=True)
     status = models.CharField(max_length=20, choices=CLAIM_STATUS, default='draft')
     
     documents = models.JSONField(default=list, blank=True)
@@ -45,3 +45,22 @@ class ESIMedicalBenefit(models.Model):
     
     def __str__(self):
         return f"{self.employee.full_name} - {self.claim_number} - ₹{self.claim_amount}"
+
+    def save(self, *args, **kwargs):
+        if not self.claim_number:
+            company = self.employee.company
+            try:
+                self.claim_number = _generate_configured_number(company, 'expense_claim')
+            except Exception:
+                if getattr(company, 'use_document_numbering', False):
+                    raise
+                last_claim = ESIMedicalBenefit.objects.filter(
+                    employee__company=company,
+                    claim_number__startswith='EXP-'
+                ).order_by('-id').first()
+                if last_claim:
+                    last_number = int(last_claim.claim_number.split('-')[-1])
+                    self.claim_number = f"EXP-{last_number + 1:06d}"
+                else:
+                    self.claim_number = "EXP-000001"
+        super().save(*args, **kwargs)

@@ -3,6 +3,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from authentication.models import Company
 from django.utils import timezone
+from .models import _generate_configured_number
 
 
 class EmailTemplate(models.Model):
@@ -55,7 +56,7 @@ class MarketingCampaign(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='marketing_campaigns')
-    campaign_id = models.CharField(max_length=50, unique=True)
+    campaign_id = models.CharField(max_length=50, db_index=True)
     name = models.CharField(max_length=200)
     campaign_type = models.CharField(max_length=20, choices=CAMPAIGN_TYPE_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
@@ -82,10 +83,22 @@ class MarketingCampaign(models.Model):
     total_bounced = models.IntegerField(default=0)
 
     class Meta:
+        unique_together = ['company', 'campaign_id']
         ordering = ['-created_at']
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.campaign_id:
+            try:
+                self.campaign_id = _generate_configured_number(self.company, 'marketing_campaign')
+            except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
+                campaign_count = MarketingCampaign.objects.filter(company=self.company).count() + 1
+                self.campaign_id = f"{self.company.company_prefix}CAMP{campaign_count:04d}"
+        super().save(*args, **kwargs)
 
     @property
     def open_rate(self):

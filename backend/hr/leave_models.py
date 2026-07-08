@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator
 from authentication.models import Company, CompanyServiceUser
-from .models import Employee
+from .models import Employee, _generate_configured_number
 
 
 class LeaveType(models.Model):
@@ -67,6 +67,7 @@ class LeaveApplication(models.Model):
     ]
     
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_applications')
+    application_number = models.CharField(max_length=50, blank=True, db_index=True)
     leave_type = models.ForeignKey(LeaveType, on_delete=models.CASCADE, related_name='applications')
     from_date = models.DateField()
     to_date = models.DateField()
@@ -86,6 +87,25 @@ class LeaveApplication(models.Model):
     
     def __str__(self):
         return f"{self.employee.full_name} - {self.leave_type.name} - {self.from_date}"
+
+    def save(self, *args, **kwargs):
+        if not self.application_number:
+            company = self.employee.company
+            try:
+                self.application_number = _generate_configured_number(company, 'leave_request')
+            except Exception:
+                if getattr(company, 'use_document_numbering', False):
+                    raise
+                last_application = LeaveApplication.objects.filter(
+                    employee__company=company,
+                    application_number__startswith='LR-'
+                ).order_by('-id').first()
+                if last_application:
+                    last_number = int(last_application.application_number.split('-')[-1])
+                    self.application_number = f"LR-{last_number + 1:06d}"
+                else:
+                    self.application_number = "LR-000001"
+        super().save(*args, **kwargs)
 
 
 class Holiday(models.Model):

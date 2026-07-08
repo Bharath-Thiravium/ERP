@@ -36,6 +36,8 @@ class DocumentNumberingConfig(models.Model):
         ('supplier', 'Supplier'),
         ('warehouse', 'Warehouse'),
         ('category', 'Category'),
+        ('bundle', 'Product Bundle'),
+        ('cycle_count', 'Cycle Count'),
         ('stock_entry', 'Stock Entry'),
         ('stock_transfer', 'Stock Transfer'),
         ('stock_adjustment', 'Stock Adjustment'),
@@ -50,7 +52,11 @@ class DocumentNumberingConfig(models.Model):
         ('account', 'Account'),
         ('opportunity', 'Opportunity'),
         ('campaign', 'Campaign'),
+        ('marketing_campaign', 'Marketing Campaign'),
         ('activity', 'Activity'),
+        ('deal', 'Deal'),
+        ('interaction', 'Interaction'),
+        ('crm_quote', 'CRM Quote'),
         ('support_ticket', 'Support Ticket'),
         ('follow_up', 'Follow Up'),
         ('meeting', 'Meeting'),
@@ -227,7 +233,7 @@ class DocumentNumberingConfig(models.Model):
         """
         from django.db import connection
 
-        table_field_map = {
+        finance_table_field_map = {
             'quotation': ('finance_quotations', 'quotation_number'),
             'purchase_order': ('finance_purchase_orders', 'internal_po_number'),
             'proforma_invoice': ('finance_proforma_invoices', 'proforma_number'),
@@ -240,11 +246,77 @@ class DocumentNumberingConfig(models.Model):
             'vendor': ('finance_vendors', 'vendor_code'),
             'product': ('finance_products', 'product_code'),
         }
+        inventory_table_field_map = {
+            'category': ('inventory_category', 'code'),
+            'supplier': ('inventory_supplier', 'supplier_code'),
+            'warehouse': ('inventory_warehouse', 'code'),
+            'product': ('inventory_product', 'product_code'),
+            'bundle': ('inventory_productbundle', 'bundle_code'),
+            'audit': ('inventory_inventoryaudit', 'audit_number'),
+            'cycle_count': ('inventory_cyclecount', 'count_number'),
+            'purchase_order': ('inventory_purchaseorder', 'po_number'),
+        }
+        crm_table_field_map = {
+            'lead': ('crm_lead', 'lead_id'),
+            'contact': ('crm_contact', 'contact_id'),
+            'account': ('crm_account', 'account_id'),
+            'opportunity': ('crm_opportunity', 'opportunity_id'),
+            'campaign': ('crm_campaign', 'campaign_id'),
+            'marketing_campaign': ('crm_marketingcampaign', 'campaign_id'),
+            'activity': ('crm_activity', 'activity_id'),
+            'deal': ('crm_deal', 'deal_id'),
+            'interaction': ('crm_customerinteraction', 'interaction_id'),
+            'crm_quote': ('crm_quote', 'quote_number'),
+            'support_ticket': ('crm_ticket', 'ticket_id'),
+        }
+        hr_table_field_map = {
+            'employee': ('hr_employee', 'employee_id'),
+            'department': ('hr_department', 'code'),
+            'designation': ('hr_designation', 'code'),
+            'payroll': ('hr_payrollcycle', 'payroll_number'),
+            'training': ('hr_inductiontraining', 'training_number'),
+            'attendance': (
+                'hr_attendance',
+                'attendance_number',
+                'employee_id IN (SELECT id FROM hr_employee WHERE company_id = %s)',
+            ),
+            'leave_request': (
+                'hr_leaveapplication',
+                'application_number',
+                'employee_id IN (SELECT id FROM hr_employee WHERE company_id = %s)',
+            ),
+            'recruitment': (
+                'hr_jobapplication',
+                'application_number',
+                'job_posting_id IN (SELECT id FROM hr_jobposting WHERE company_id = %s)',
+            ),
+            'performance_review': (
+                'hr_performancereview',
+                'review_number',
+                'employee_id IN (SELECT id FROM hr_employee WHERE company_id = %s)',
+            ),
+            'expense_claim': (
+                'hr_esimedicalbenefit',
+                'claim_number',
+                'employee_id IN (SELECT id FROM hr_employee WHERE company_id = %s)',
+            ),
+        }
+
+        if getattr(self.service, 'service_type', None) == 'inventory':
+            table_field_map = inventory_table_field_map
+        elif getattr(self.service, 'service_type', None) == 'crm':
+            table_field_map = crm_table_field_map
+        elif getattr(self.service, 'service_type', None) == 'hr':
+            table_field_map = hr_table_field_map
+        else:
+            table_field_map = finance_table_field_map
 
         if self.document_type not in table_field_map:
             return 0
 
-        table, field = table_field_map[self.document_type]
+        mapping = table_field_map[self.document_type]
+        table, field = mapping[0], mapping[1]
+        where_clause = mapping[2] if len(mapping) > 2 else 'company_id = %s'
         sep = self.separator or '-'
 
         # Build year strings to match against
@@ -260,7 +332,7 @@ class DocumentNumberingConfig(models.Model):
             with transaction.atomic():
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        f"SELECT {field} FROM {table} WHERE company_id = %s",
+                        f"SELECT {field} FROM {table} WHERE {where_clause}",
                         [self.company_id]
                     )
                     max_seq = 0
@@ -458,13 +530,13 @@ class ServiceDocumentTypes(models.Model):
             'expense_claim'
         ],
         'inventory': [
-            'supplier', 'warehouse', 'category', 'stock_entry', 'stock_transfer',
-            'stock_adjustment', 'purchase_receipt', 'delivery_note',
-            'material_request', 'quality_inspection'
+            'product', 'supplier', 'warehouse', 'category', 'purchase_order',
+            'audit', 'cycle_count', 'bundle', 'stock_entry', 'stock_adjustment'
         ],
         'crm': [
             'lead', 'contact', 'account', 'opportunity', 'campaign',
-            'activity', 'support_ticket', 'follow_up', 'meeting', 'call_log'
+            'marketing_campaign', 'activity', 'deal', 'interaction',
+            'crm_quote', 'support_ticket'
         ]
     }
     
@@ -515,6 +587,8 @@ class ServiceDocumentTypes(models.Model):
             'expense_claim': 'EXP',
             
             # Inventory
+            'bundle': 'BUN',
+            'cycle_count': 'CC',
             'supplier': 'SUP',
             'warehouse': 'WH',
             'category': 'CAT',
@@ -532,7 +606,11 @@ class ServiceDocumentTypes(models.Model):
             'account': 'ACC',
             'opportunity': 'OPP',
             'campaign': 'CAMP',
+            'marketing_campaign': 'MCAMP',
             'activity': 'ACT',
+            'deal': 'DEAL',
+            'interaction': 'INT',
+            'crm_quote': 'QUO',
             'support_ticket': 'TKT',
             'follow_up': 'FU',
             'meeting': 'MTG',

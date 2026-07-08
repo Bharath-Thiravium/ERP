@@ -33,13 +33,6 @@ class MarketingCampaignSerializer(serializers.ModelSerializer):
     def validate_email_template(self, value):
         return validate_same_company(value, self.context, 'Email template')
 
-    def create(self, validated_data):
-        company = validated_data['company']
-        # Generate campaign ID
-        campaign_count = MarketingCampaign.objects.filter(company=company).count() + 1
-        validated_data['campaign_id'] = f"{company.company_prefix}CAMP{campaign_count:04d}"
-        return super().create(validated_data)
-
 
 class EmailSendSerializer(serializers.ModelSerializer):
     campaign_name = serializers.CharField(source='campaign.name', read_only=True)

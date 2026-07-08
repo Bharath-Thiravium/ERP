@@ -6,6 +6,36 @@ from decimal import Decimal
 import json
 
 
+def _generate_configured_number(company, document_type):
+    if getattr(company, 'use_document_numbering', False):
+        from authentication.models import Service
+        from company_dashboard.document_numbering_models import DocumentNumberingConfig
+
+        service = Service.objects.get(service_type='crm')
+        today = timezone.now().date()
+        if today.month >= 4:
+            financial_year = f"{today.year}-{str(today.year + 1)[-2:]}"
+        else:
+            financial_year = f"{today.year - 1}-{str(today.year)[-2:]}"
+
+        config = DocumentNumberingConfig.objects.filter(
+            company=company,
+            service=service,
+            document_type=document_type,
+            financial_year=financial_year,
+            is_active=True,
+        ).first()
+        if not config:
+            raise ValueError(
+                f"Document numbering is not configured for CRM {document_type}. "
+                "Set it up in Company > Document Numbering before creating records."
+            )
+        return config.get_next_number()
+
+    from authentication.utils import generate_auto_code
+    return generate_auto_code(company.id, document_type)
+
+
 class Lead(models.Model):
     STATUS_CHOICES = [
         ('new', 'New'),
@@ -13,6 +43,7 @@ class Lead(models.Model):
         ('qualified', 'Qualified'),
         ('proposal', 'Proposal Sent'),
         ('negotiation', 'Negotiation'),
+        ('converted', 'Converted'),
         ('won', 'Won'),
         ('lost', 'Lost'),
     ]
@@ -88,9 +119,10 @@ class Lead(models.Model):
         # Auto-generate lead_id if not provided
         if not self.lead_id:
             try:
-                from authentication.utils import generate_auto_code
-                self.lead_id = generate_auto_code(self.company.id, 'lead')
+                self.lead_id = _generate_configured_number(self.company, 'lead')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_lead = Lead.objects.filter(
                     company=self.company,
@@ -160,9 +192,10 @@ class Contact(models.Model):
         # Auto-generate contact_id if not provided
         if not self.contact_id:
             try:
-                from authentication.utils import generate_auto_code
-                self.contact_id = generate_auto_code(self.company.id, 'contact')
+                self.contact_id = _generate_configured_number(self.company, 'contact')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_contact = Contact.objects.filter(
                     company=self.company,
@@ -246,9 +279,10 @@ class Account(models.Model):
         # Auto-generate account_id if not provided
         if not self.account_id:
             try:
-                from authentication.utils import generate_auto_code
-                self.account_id = generate_auto_code(self.company.id, 'account')
+                self.account_id = _generate_configured_number(self.company, 'account')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_account = Account.objects.filter(
                     company=self.company,
@@ -322,9 +356,10 @@ class Opportunity(models.Model):
         # Auto-generate opportunity_id if not provided
         if not self.opportunity_id:
             try:
-                from authentication.utils import generate_auto_code
-                self.opportunity_id = generate_auto_code(self.company.id, 'opportunity')
+                self.opportunity_id = _generate_configured_number(self.company, 'opportunity')
             except Exception as e:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback to old system if auto-code fails
                 last_opportunity = Opportunity.objects.filter(
                     company=self.company,
@@ -400,6 +435,39 @@ class Activity(models.Model):
     def __str__(self):
         return f"{self.subject} - {self.get_activity_type_display()}"
 
+    def save(self, *args, **kwargs):
+        generated_activity_id = False
+        if not self.activity_id:
+            self.activity_id = self._generate_unique_activity_id()
+            generated_activity_id = True
+        try:
+            super().save(*args, **kwargs)
+        except Exception as exc:
+            if not generated_activity_id or 'activity_id' not in str(exc):
+                raise
+            self.activity_id = self._generate_unique_activity_id()
+            super().save(*args, **kwargs)
+
+    def _generate_unique_activity_id(self):
+        for _ in range(10):
+            try:
+                candidate = _generate_configured_number(self.company, 'activity')
+            except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
+                last_activity = Activity.objects.filter(
+                    company=self.company,
+                    activity_id__startswith='ACT-'
+                ).order_by('-id').first()
+                if last_activity:
+                    last_number = int(last_activity.activity_id.split('-')[-1])
+                    candidate = f"ACT-{last_number + 1:06d}"
+                else:
+                    candidate = "ACT-000001"
+            if not Activity.objects.filter(company=self.company, activity_id=candidate).exists():
+                return candidate
+        raise ValueError('Could not generate a unique activity number. Check CRM activity numbering settings.')
+
 
 class Campaign(models.Model):
     CAMPAIGN_TYPE_CHOICES = [
@@ -454,6 +522,24 @@ class Campaign(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.campaign_id:
+            try:
+                self.campaign_id = _generate_configured_number(self.company, 'campaign')
+            except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
+                last_campaign = Campaign.objects.filter(
+                    company=self.company,
+                    campaign_id__startswith='CAMP-'
+                ).order_by('-id').first()
+                if last_campaign:
+                    last_number = int(last_campaign.campaign_id.split('-')[-1])
+                    self.campaign_id = f"CAMP-{last_number + 1:06d}"
+                else:
+                    self.campaign_id = "CAMP-000001"
+        super().save(*args, **kwargs)
 
 
 class CampaignMember(models.Model):
@@ -584,7 +670,7 @@ class Ticket(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='tickets')
-    ticket_id = models.CharField(max_length=50, unique=True)
+    ticket_id = models.CharField(max_length=50, db_index=True)
     
     # Basic Information
     subject = models.CharField(max_length=200)
@@ -616,6 +702,7 @@ class Ticket(models.Model):
     satisfaction_comment = models.TextField(blank=True)
 
     class Meta:
+        unique_together = ['company', 'ticket_id']
         ordering = ['-created_at']
 
     def __str__(self):
@@ -770,7 +857,7 @@ class Deal(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='deals')
-    deal_id = models.CharField(max_length=50, unique=True)
+    deal_id = models.CharField(max_length=50, db_index=True)
     name = models.CharField(max_length=200)
     
     # Relationships
@@ -802,6 +889,7 @@ class Deal(models.Model):
     tags = models.JSONField(default=list)
 
     class Meta:
+        unique_together = ['company', 'deal_id']
         ordering = ['-created_at']
 
     def __str__(self):
@@ -809,8 +897,17 @@ class Deal(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.deal_id:
-            import uuid
-            self.deal_id = f"DEAL-{uuid.uuid4().hex[:8].upper()}"
+            try:
+                self.deal_id = _generate_configured_number(self.company, 'deal')
+            except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
+                last_deal = Deal.objects.filter(company=self.company, deal_id__startswith='DEAL-').order_by('-id').first()
+                if last_deal:
+                    last_number = int(last_deal.deal_id.split('-')[-1])
+                    self.deal_id = f"DEAL-{last_number + 1:06d}"
+                else:
+                    self.deal_id = "DEAL-000001"
         super().save(*args, **kwargs)
 
     @property
@@ -892,7 +989,7 @@ class CustomerInteraction(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='customer_interactions')
-    interaction_id = models.CharField(max_length=50, unique=True)
+    interaction_id = models.CharField(max_length=50, db_index=True)
     
     # Relationships
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, null=True, blank=True, related_name='interactions')
@@ -917,10 +1014,29 @@ class CustomerInteraction(models.Model):
     metadata = models.JSONField(default=dict)  # Store additional data like email opens, clicks, etc.
 
     class Meta:
+        unique_together = ['company', 'interaction_id']
         ordering = ['-interaction_date']
 
     def __str__(self):
         return f"{self.contact} - {self.get_interaction_type_display()}"
+
+    def save(self, *args, **kwargs):
+        if not self.interaction_id:
+            try:
+                self.interaction_id = _generate_configured_number(self.company, 'interaction')
+            except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
+                last_interaction = CustomerInteraction.objects.filter(
+                    company=self.company,
+                    interaction_id__startswith='INT-'
+                ).order_by('-id').first()
+                if last_interaction:
+                    last_number = int(last_interaction.interaction_id.split('-')[-1])
+                    self.interaction_id = f"INT-{last_number + 1:06d}"
+                else:
+                    self.interaction_id = "INT-000001"
+        super().save(*args, **kwargs)
 
 
 class CustomerHealthScore(models.Model):
@@ -1201,3 +1317,8 @@ class EmailActivity(models.Model):
     
     def __str__(self):
         return f"{self.get_activity_type_display()} - {self.email_address}"
+
+
+# Register quote models with the CRM app. They live in a separate module to keep
+# the quote feature isolated, but Django migrations only see models imported here.
+from .quote_models import QuoteTemplate, Quote, QuoteItem, QuoteActivity, QuoteSignature  # noqa: E402,F401

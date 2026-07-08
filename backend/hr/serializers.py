@@ -212,7 +212,7 @@ class JobApplicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = JobApplication
         fields = [
-            'id', 'job_posting', 'job_title', 'first_name', 'last_name', 'full_name',
+            'id', 'application_number', 'job_posting', 'job_title', 'first_name', 'last_name', 'full_name',
             'email', 'phone', 'current_position', 'current_company', 'total_experience',
             'relevant_experience', 'current_salary', 'expected_salary', 'notice_period',
             'current_location', 'willing_to_relocate', 'linkedin_profile', 'portfolio_url',
@@ -220,7 +220,7 @@ class JobApplicationSerializer(serializers.ModelSerializer):
             'application_source', 'share_id', 'ai_score', 'skill_match_percentage', 'ai_screening_notes', 'status', 
             'interview_date', 'interview_notes', 'interviewer', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'full_name', 'ai_score', 'skill_match_percentage', 'ai_screening_notes', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'application_number', 'full_name', 'ai_score', 'skill_match_percentage', 'ai_screening_notes', 'created_at', 'updated_at']
 
 
 class PerformanceReviewSerializer(serializers.ModelSerializer):
@@ -231,14 +231,14 @@ class PerformanceReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = PerformanceReview
         fields = [
-            'id', 'employee', 'employee_name', 'reviewer', 'reviewer_name',
+            'id', 'review_number', 'employee', 'employee_name', 'reviewer', 'reviewer_name',
             'review_period_start', 'review_period_end', 'goals_achievement',
             'quality_score', 'productivity_score', 'collaboration_score',
             'overall_rating', 'ai_performance_prediction', 'improvement_suggestions',
             'strengths', 'areas_for_improvement', 'goals_for_next_period',
             'status', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'review_number', 'created_at', 'updated_at']
 
     def _get_context_company(self):
         request = self.context.get('request')

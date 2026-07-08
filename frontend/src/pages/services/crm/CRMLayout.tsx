@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {
   ArrowLeft, Users, Target, Building, Phone, Calendar, Megaphone, Settings,
   LogOut, Sun, Moon, Shield, ChevronRight,
-  BarChart3, Brain, Headphones, TrendingUp, Mail, FileText,
+  BarChart3, Brain, Headphones, TrendingUp, Mail, FileText, FileSignature,
   Plug, Bell, Menu, X
 } from 'lucide-react'
 import { useThemeStore } from '../../../store/themeStore'
@@ -102,6 +102,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, currentPage = 'overview
         { id: 'leads', label: 'Leads', icon: Users, color: 'text-orange-600' },
         { id: 'opportunities', label: 'Opportunities', icon: Target, color: 'text-green-600' },
         { id: 'pipeline', label: 'Sales Pipeline', icon: TrendingUp, color: 'text-purple-600' },
+        { id: 'quotes', label: 'Quotes', icon: FileSignature, color: 'text-blue-600' },
         { id: 'lead-scoring', label: 'AI Lead Scoring', icon: Brain, color: 'text-indigo-600' }
       ]
     },

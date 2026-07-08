@@ -20,7 +20,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
         fields = [
-            'id', 'employee', 'employee_name', 'employee_id', 'department_name', 'date',
+            'id', 'attendance_number', 'employee', 'employee_name', 'employee_id', 'department_name', 'date',
             'check_in_time', 'check_out_time', 'check_in_time_display', 'check_out_time_display',
             'check_in_method', 'check_out_method', 'check_in_location', 'check_out_location', 
             'check_in_latitude', 'check_in_longitude', 'check_out_latitude', 'check_out_longitude', 
@@ -29,7 +29,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
             'is_valid_checkin_location', 'is_valid_checkout_location', 'is_valid_face_match', 
             'notes', 'approved_by', 'is_late', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'employee_name', 'employee_id', 'department_name', 'is_late', 
+        read_only_fields = ['id', 'attendance_number', 'employee_name', 'employee_id', 'department_name', 'is_late', 
                            'check_in_time_display', 'check_out_time_display', 'created_at', 'updated_at']
     
     def get_is_late(self, obj):

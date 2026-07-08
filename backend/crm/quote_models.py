@@ -5,7 +5,7 @@ from django.db import models
 from django.utils import timezone
 from decimal import Decimal
 from authentication.models import Company, CompanyServiceUser
-from .models import Account, Contact, Opportunity
+from .models import Account, Contact, Opportunity, _generate_configured_number
 import uuid
 
 class QuoteTemplate(models.Model):
@@ -51,7 +51,7 @@ class Quote(models.Model):
     ]
     
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='quotes')
-    quote_number = models.CharField(max_length=50, unique=True)
+    quote_number = models.CharField(max_length=50, db_index=True)
     
     # Relationships
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='quotes')
@@ -102,9 +102,10 @@ class Quote(models.Model):
         if not self.quote_number:
             # Auto-generate quote number
             try:
-                from authentication.utils import generate_auto_code
-                self.quote_number = generate_auto_code(self.company.id, 'quote')
+                self.quote_number = _generate_configured_number(self.company, 'crm_quote')
             except Exception:
+                if getattr(self.company, 'use_document_numbering', False):
+                    raise
                 # Fallback
                 last_quote = Quote.objects.filter(
                     company=self.company,

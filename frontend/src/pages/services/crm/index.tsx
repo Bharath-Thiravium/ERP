@@ -15,6 +15,7 @@ const CampaignsPage = React.lazy(() => import('./pages/CampaignsPage').then(m =>
 const CustomerSupport = React.lazy(() => import('./pages/CustomerSupport'))
 const LeadScoringDashboard = React.lazy(() => import('./pages/LeadScoringDashboard'))
 const SalesPipeline = React.lazy(() => import('./pages/SalesPipeline').then(m => ({ default: m.SalesPipeline })))
+const QuotesPage = React.lazy(() => import('./pages/QuotesPage').then(m => ({ default: m.QuotesPage })))
 const CustomerAnalytics = React.lazy(() => import('./pages/CustomerAnalytics').then(m => ({ default: m.CustomerAnalytics })))
 const MarketingAutomation = React.lazy(() => import('./pages/MarketingAutomation').then(m => ({ default: m.MarketingAutomation })))
 const AdvancedReporting = React.lazy(() => import('./pages/AdvancedReporting').then(m => ({ default: m.AdvancedReporting })))
@@ -81,6 +82,17 @@ const CRMRouter: React.FC = () => {
         } 
       />
       
+      <Route 
+        path="/quotes" 
+        element={
+          <CRMLayout currentPage="quotes">
+            <Suspense fallback={<PageLoader />}>
+              <QuotesPage />
+            </Suspense>
+          </CRMLayout>
+        } 
+      />
+
       <Route 
         path="/lead-scoring" 
         element={

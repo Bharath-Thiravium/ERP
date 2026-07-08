@@ -313,16 +313,8 @@ class TicketSerializer(serializers.ModelSerializer):
         return validate_same_company(value, self.context, 'SLA')
 
     def create(self, validated_data):
-        from authentication.utils import generate_auto_code
-        company = validated_data['company']
-        try:
-            validated_data['ticket_id'] = generate_auto_code(company.id, 'ticket')
-        except Exception:
-            from django.db import transaction
-            with transaction.atomic():
-                last = Ticket.objects.select_for_update().filter(company=company).order_by('-id').first()
-                n = int(last.ticket_id.split('TKT')[-1]) + 1 if last and 'TKT' in last.ticket_id else 1
-                validated_data['ticket_id'] = f"{company.company_prefix}TKT{n:04d}"
+        from .models import _generate_configured_number
+        validated_data['ticket_id'] = _generate_configured_number(validated_data['company'], 'support_ticket')
         return super().create(validated_data)
 
 
@@ -403,16 +395,8 @@ class DealSerializer(serializers.ModelSerializer):
         return validate_same_company(value, self.context, 'Opportunity')
 
     def create(self, validated_data):
-        from authentication.utils import generate_auto_code
-        company = validated_data['company']
-        try:
-            validated_data['deal_id'] = generate_auto_code(company.id, 'deal')
-        except Exception:
-            from django.db import transaction
-            with transaction.atomic():
-                last = Deal.objects.select_for_update().filter(company=company).order_by('-id').first()
-                n = int(last.deal_id.split('DEAL')[-1]) + 1 if last and 'DEAL' in last.deal_id else 1
-                validated_data['deal_id'] = f"{company.company_prefix}DEAL{n:04d}"
+        from .models import _generate_configured_number
+        validated_data['deal_id'] = _generate_configured_number(validated_data['company'], 'deal')
         return super().create(validated_data)
 
 
@@ -468,16 +452,8 @@ class CustomerInteractionSerializer(serializers.ModelSerializer):
         return validate_same_company(value, self.context, 'Deal')
 
     def create(self, validated_data):
-        from authentication.utils import generate_auto_code
-        company = validated_data['company']
-        try:
-            validated_data['interaction_id'] = generate_auto_code(company.id, 'interaction')
-        except Exception:
-            from django.db import transaction
-            with transaction.atomic():
-                last = CustomerInteraction.objects.select_for_update().filter(company=company).order_by('-id').first()
-                n = int(last.interaction_id.split('INT')[-1]) + 1 if last and 'INT' in last.interaction_id else 1
-                validated_data['interaction_id'] = f"{company.company_prefix}INT{n:04d}"
+        from .models import _generate_configured_number
+        validated_data['interaction_id'] = _generate_configured_number(validated_data['company'], 'interaction')
         return super().create(validated_data)
 
 
@@ -553,5 +529,3 @@ class OpportunitiesByStageSerializer(serializers.Serializer):
     stage = serializers.CharField()
     count = serializers.IntegerField()
     total_value = serializers.DecimalField(max_digits=15, decimal_places=2)
-
-

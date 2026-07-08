@@ -15,6 +15,10 @@ interface Activity {
   status: string
   due_date: string
   assigned_to_name?: string
+  lead_name?: string
+  contact_name?: string
+  account_name?: string
+  opportunity_name?: string
   created_at: string
 }
 
@@ -191,6 +195,13 @@ export const ActivitiesPage: React.FC = () => {
                   {new Date(activity.due_date).toLocaleDateString()}
                 </span>
               </div>
+              {(activity.lead_name || activity.contact_name || activity.account_name || activity.opportunity_name) && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  {[activity.lead_name, activity.contact_name, activity.account_name, activity.opportunity_name]
+                    .filter(Boolean)
+                    .join(' / ')}
+                </div>
+              )}
             </div>
 
             <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">

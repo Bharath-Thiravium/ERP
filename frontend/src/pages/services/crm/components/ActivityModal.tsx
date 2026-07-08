@@ -17,6 +17,8 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
   const [loading, setLoading] = useState(false)
   const [leads, setLeads] = useState([])
   const [contacts, setContacts] = useState([])
+  const [accounts, setAccounts] = useState([])
+  const [opportunities, setOpportunities] = useState([])
   const [formData, setFormData] = useState({
     subject: '',
     activity_type: 'call',
@@ -56,13 +58,17 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
 
   const fetchRelatedData = async () => {
     try {
-      const [leadsRes, contactsRes] = await Promise.all([
+      const [leadsRes, contactsRes, accountsRes, opportunitiesRes] = await Promise.all([
         crmApi.getLeads(sessionKey!),
-        crmApi.getContacts(sessionKey!)
+        crmApi.getContacts(sessionKey!),
+        crmApi.getAccounts(sessionKey!),
+        crmApi.getOpportunities(sessionKey!)
       ])
       
       setLeads(leadsRes.data.results || leadsRes.data)
       setContacts(contactsRes.data.results || contactsRes.data)
+      setAccounts(accountsRes.data.results || accountsRes.data)
+      setOpportunities(opportunitiesRes.data.results || opportunitiesRes.data)
       
       // Set current user as default assigned_to
       if (!activity && leads.length > 0) {
@@ -134,7 +140,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
       onSuccess()
       onClose()
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to save activity')
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to save activity')
     } finally {
       setLoading(false)
     }
@@ -238,6 +244,40 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, o
                 {contacts.map((contact: any) => (
                   <option key={contact.id} value={contact.id}>
                     {contact.first_name} {contact.last_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Account
+              </label>
+              <select
+                value={formData.account}
+                onChange={(e) => setFormData(prev => ({ ...prev, account: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                <option value="">Select Account</option>
+                {accounts.map((account: any) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Opportunity
+              </label>
+              <select
+                value={formData.opportunity}
+                onChange={(e) => setFormData(prev => ({ ...prev, opportunity: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                <option value="">Select Opportunity</option>
+                {opportunities.map((opportunity: any) => (
+                  <option key={opportunity.id} value={opportunity.id}>
+                    {opportunity.name}
                   </option>
                 ))}
               </select>

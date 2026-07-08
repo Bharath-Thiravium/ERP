@@ -564,6 +564,7 @@ export const CustomerAnalytics: React.FC<CustomerAnalyticsProps> = ({ sessionKey
           isOpen={showSegmentDetailModal}
           onClose={() => setShowSegmentDetailModal(false)}
           segment={selectedSegment}
+          sessionKey={sessionKey}
         />
       )}
     </div>

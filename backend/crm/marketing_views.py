@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import permissions
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction
 from django.db.models import Q, Count, Sum, Avg, F
 from django.utils import timezone
 from datetime import datetime, timedelta
@@ -73,9 +74,62 @@ class MarketingCampaignViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['post'])
     def launch(self, request, pk=None):
         campaign = self.get_object()
-        campaign.status = 'running'
-        campaign.save()
-        return Response({'message': 'Campaign launched successfully'})
+        if not campaign.email_template_id:
+            return Response(
+                {'error': 'Select an email template before launching this campaign run'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if not campaign.crm_campaign_id:
+            return Response(
+                {'error': 'Select a CRM campaign with audience before launching'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        members = campaign.crm_campaign.members.select_related('lead', 'contact')
+        email_addresses = []
+        for member in members:
+            email = None
+            if member.lead_id and member.lead and member.lead.email:
+                email = member.lead.email
+            elif member.contact_id and member.contact and member.contact.email:
+                email = member.contact.email
+            if email:
+                email_addresses.append(email.lower())
+
+        unique_emails = sorted(set(email_addresses))
+        if not unique_emails:
+            return Response(
+                {'error': 'Selected campaign has no audience email addresses'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        with transaction.atomic():
+            created_count = 0
+            for email in unique_emails:
+                _, created = EmailSend.objects.get_or_create(
+                    campaign=campaign,
+                    email_address=email,
+                    defaults={
+                        'status': 'sent',
+                        'sent_at': timezone.now(),
+                        'delivered_at': timezone.now(),
+                    }
+                )
+                if created:
+                    created_count += 1
+
+            campaign.status = 'running'
+            campaign.total_sent = campaign.email_sends.exclude(status='queued').count()
+            campaign.total_delivered = campaign.email_sends.filter(
+                status__in=['sent', 'delivered', 'opened', 'clicked']
+            ).count()
+            campaign.save(update_fields=['status', 'total_sent', 'total_delivered', 'updated_at'])
+
+        return Response({
+            'message': 'Campaign email run launched successfully',
+            'emails_created': created_count,
+            'total_recipients': len(unique_emails)
+        })
 
     @action(detail=True, methods=['post'])
     def pause(self, request, pk=None):

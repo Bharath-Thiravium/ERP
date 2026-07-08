@@ -8,6 +8,7 @@ from rest_framework import serializers
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.html import escape
 from datetime import timedelta
 import io
 import base64
@@ -16,7 +17,13 @@ from .views import CRMBaseViewSet
 from .security_utils import CRMSecurityValidator
 from .error_handlers import safe_execute
 
-# PDF generation (using reportlab)
+# PDF generation
+try:
+    import weasyprint
+    WEASYPRINT_AVAILABLE = True
+except ImportError:
+    WEASYPRINT_AVAILABLE = False
+
 try:
     from reportlab.lib.pagesizes import letter, A4
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -26,6 +33,26 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
+
+
+def _money(value):
+    return f"Rs. {float(value or 0):,.2f}"
+
+
+def _safe(value):
+    return escape(str(value or ''))
+
+
+def _company_logo_file_uri(company):
+    try:
+        if company and company.logo and company.logo.name:
+            path = company.logo.path
+            import os
+            if os.path.exists(path):
+                return f'file://{path}'
+    except Exception:
+        return ''
+    return ''
 
 
 class QuoteItemSerializer(serializers.ModelSerializer):
@@ -279,13 +306,28 @@ class QuoteViewSet(CRMBaseViewSet):
     @action(detail=True, methods=['get'])
     def generate_pdf(self, request, pk=None):
         """Generate PDF version of quote"""
-        if not PDF_AVAILABLE:
+        if not WEASYPRINT_AVAILABLE and not PDF_AVAILABLE:
             return Response({'error': 'PDF generation not available'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         
         return safe_execute(self._generate_pdf, request, pk)
     
     def _generate_pdf(self, request, pk):
         quote = self.get_object()
+        if WEASYPRINT_AVAILABLE:
+            try:
+                pdf_data = self._generate_modern_quote_pdf(quote, request)
+                if pdf_data:
+                    response = HttpResponse(pdf_data, content_type='application/pdf')
+                    response['Content-Disposition'] = f'attachment; filename="quote_{quote.quote_number}.pdf"'
+                    QuoteActivity.objects.create(
+                        quote=quote,
+                        activity_type='downloaded',
+                        description='Modern PDF generated and downloaded',
+                        ip_address=request.META.get('REMOTE_ADDR')
+                    )
+                    return response
+            except Exception as exc:
+                print(f"Error generating CRM quote PDF with WeasyPrint: {exc}")
         
         # Create PDF buffer
         buffer = io.BytesIO()
@@ -410,6 +452,414 @@ class QuoteViewSet(CRMBaseViewSet):
         )
         
         return response
+
+    def _generate_modern_quote_pdf(self, quote, request):
+        company = quote.company
+        logo_uri = _company_logo_file_uri(company)
+        contact_name = ''
+        if quote.contact:
+            contact_name = f"{quote.contact.first_name} {quote.contact.last_name}".strip()
+
+        company_address = _safe(company.address).replace('\n', '<br>')
+        account_address = getattr(quote.account, 'billing_address', '') or getattr(quote.account, 'shipping_address', '')
+        account_address = _safe(account_address).replace('\n', '<br>')
+
+        rows = []
+        for index, item in enumerate(quote.quote_items.all(), start=1):
+            rows.append(f"""
+              <tr>
+                <td class="muted center">{index}</td>
+                <td>
+                  <div class="item-name">{_safe(item.name)}</div>
+                  <div class="item-desc">{_safe(item.description)}</div>
+                </td>
+                <td class="center">{item.quantity}</td>
+                <td class="right">{_money(item.unit_price)}</td>
+                <td class="right strong">{_money(item.total_price)}</td>
+              </tr>
+            """)
+
+        if not rows:
+            rows.append("""
+              <tr>
+                <td colspan="5" class="empty">No line items added.</td>
+              </tr>
+            """)
+
+        discount_row = ''
+        if quote.discount_amount and quote.discount_amount > 0:
+            discount_row = f"""
+              <div class="total-row">
+                <span>Discount</span>
+                <strong>-{_money(quote.discount_amount)}</strong>
+              </div>
+            """
+
+        tax_row = ''
+        if quote.tax_amount and quote.tax_amount > 0:
+            tax_row = f"""
+              <div class="total-row">
+                <span>Tax ({quote.tax_rate}%)</span>
+                <strong>{_money(quote.tax_amount)}</strong>
+              </div>
+            """
+
+        bank_details = ''
+        if company.bank_name or company.bank_account_number or company.bank_ifsc_code:
+            bank_details = f"""
+              <div class="panel">
+                <div class="section-title">Payment Details</div>
+                <div class="kv"><span>Bank</span><strong>{_safe(company.bank_name)}</strong></div>
+                <div class="kv"><span>Account Name</span><strong>{_safe(company.bank_account_holder or company.name)}</strong></div>
+                <div class="kv"><span>Account No</span><strong>{_safe(company.bank_account_number)}</strong></div>
+                <div class="kv"><span>IFSC</span><strong>{_safe(company.bank_ifsc_code)}</strong></div>
+                <div class="kv"><span>Branch</span><strong>{_safe(company.bank_branch)}</strong></div>
+              </div>
+            """
+
+        logo_block = (
+            f'<img class="logo-img" src="{logo_uri}" alt="{_safe(company.name)} logo" />'
+            if logo_uri else
+            f'<div class="logo-fallback">{_safe((company.name or "C")[:1]).upper()}</div>'
+        )
+
+        html = f"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page {{
+      size: A4;
+      margin: 18mm 16mm;
+      @bottom-center {{
+        content: "Quote {_safe(quote.quote_number)} - Page " counter(page) " of " counter(pages);
+        color: #94a3b8;
+        font-size: 9px;
+      }}
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      color: #0f172a;
+      font-family: Inter, Arial, sans-serif;
+      font-size: 12px;
+      line-height: 1.45;
+      background: #fff;
+    }}
+    .hero {{
+      border-radius: 18px;
+      padding: 22px 24px;
+      color: #fff;
+      background: linear-gradient(135deg, #f97316 0%, #dc2626 100%);
+      position: relative;
+      overflow: hidden;
+    }}
+    .hero:after {{
+      content: "";
+      position: absolute;
+      right: -55px;
+      top: -65px;
+      width: 190px;
+      height: 190px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.16);
+    }}
+    .header-grid {{
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      gap: 24px;
+      position: relative;
+      z-index: 1;
+    }}
+    .brand {{
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }}
+    .logo-box {{
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: 0 14px 35px rgba(15,23,42,.22);
+    }}
+    .logo-img {{
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      padding: 7px;
+    }}
+    .logo-fallback {{
+      color: #ea580c;
+      font-size: 30px;
+      font-weight: 800;
+    }}
+    .company-name {{
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }}
+    .company-meta {{
+      margin-top: 5px;
+      color: rgba(255,255,255,.88);
+      font-size: 11px;
+    }}
+    .quote-title {{
+      text-align: right;
+    }}
+    .quote-title h1 {{
+      margin: 0;
+      font-size: 30px;
+      line-height: 1;
+      letter-spacing: 0;
+    }}
+    .quote-no {{
+      display: inline-block;
+      margin-top: 10px;
+      border-radius: 999px;
+      padding: 6px 11px;
+      background: rgba(255,255,255,.18);
+      font-weight: 700;
+    }}
+    .summary {{
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 16px 0 18px;
+    }}
+    .metric {{
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 12px;
+      background: #f8fafc;
+    }}
+    .metric span {{
+      display: block;
+      color: #64748b;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }}
+    .metric strong {{
+      display: block;
+      margin-top: 4px;
+      font-size: 13px;
+      color: #0f172a;
+    }}
+    .two-col {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 18px;
+    }}
+    .panel {{
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 14px;
+      background: #fff;
+      page-break-inside: avoid;
+    }}
+    .section-title {{
+      margin-bottom: 10px;
+      color: #ea580c;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }}
+    .big-name {{
+      font-size: 16px;
+      font-weight: 800;
+      margin-bottom: 5px;
+    }}
+    .muted {{ color: #64748b; }}
+    .items {{
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      overflow: hidden;
+      border-radius: 14px;
+    }}
+    .items thead tr {{
+      background: #111827;
+      color: #fff;
+    }}
+    .items th {{
+      padding: 11px 10px;
+      text-align: left;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }}
+    .items td {{
+      border-bottom: 1px solid #e5e7eb;
+      padding: 11px 10px;
+      vertical-align: top;
+    }}
+    .items tbody tr:nth-child(even) {{ background: #f8fafc; }}
+    .center {{ text-align: center; }}
+    .right {{ text-align: right; }}
+    .strong {{ font-weight: 800; }}
+    .item-name {{ font-weight: 800; }}
+    .item-desc {{ margin-top: 3px; color: #64748b; font-size: 10px; }}
+    .empty {{ text-align: center; color: #64748b; padding: 22px; }}
+    .totals-wrap {{
+      display: grid;
+      grid-template-columns: 1fr 260px;
+      gap: 18px;
+      margin-top: 18px;
+      align-items: start;
+    }}
+    .total-card {{
+      border-radius: 16px;
+      padding: 15px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }}
+    .total-row {{
+      display: flex;
+      justify-content: space-between;
+      padding: 7px 0;
+      color: #334155;
+      border-bottom: 1px solid #e2e8f0;
+    }}
+    .grand-total {{
+      margin-top: 10px;
+      border-radius: 14px;
+      padding: 13px 14px;
+      background: linear-gradient(135deg, #f97316, #dc2626);
+      color: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }}
+    .grand-total span {{ font-size: 11px; opacity: .9; text-transform: uppercase; letter-spacing: .06em; }}
+    .grand-total strong {{ font-size: 20px; }}
+    .kv {{
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 4px 0;
+    }}
+    .kv span {{ color: #64748b; }}
+    .kv strong {{ color: #0f172a; text-align: right; }}
+    .terms {{
+      margin-top: 18px;
+      color: #475569;
+      font-size: 11px;
+    }}
+    .footer-note {{
+      margin-top: 24px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 12px;
+      text-align: center;
+      color: #64748b;
+      font-size: 10px;
+    }}
+  </style>
+</head>
+<body>
+  <section class="hero">
+    <div class="header-grid">
+      <div class="brand">
+        <div class="logo-box">{logo_block}</div>
+        <div>
+          <h2 class="company-name">{_safe(company.name)}</h2>
+          <div class="company-meta">
+            {_safe(company.email)}{(' | ' + _safe(company.phone)) if company.phone else ''}<br>
+            {_safe(company.website) if company.website else ''}
+          </div>
+        </div>
+      </div>
+      <div class="quote-title">
+        <h1>QUOTE</h1>
+        <div class="quote-no">{_safe(quote.quote_number)}</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="summary">
+    <div class="metric"><span>Quote Date</span><strong>{quote.quote_date.strftime('%d %b %Y')}</strong></div>
+    <div class="metric"><span>Valid Until</span><strong>{quote.valid_until.strftime('%d %b %Y')}</strong></div>
+    <div class="metric"><span>Status</span><strong>{_safe(quote.get_status_display())}</strong></div>
+    <div class="metric"><span>Total</span><strong>{_money(quote.total_amount)}</strong></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="section-title">From</div>
+      <div class="big-name">{_safe(company.name)}</div>
+      <div class="muted">
+        {company_address}<br>
+        {_safe(company.email)}<br>
+        {_safe(company.phone)}
+        {('<br>GSTIN: ' + _safe(company.gst_number)) if company.gst_number else ''}
+        {('<br>PAN: ' + _safe(company.pan_number)) if company.pan_number else ''}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-title">Bill To</div>
+      <div class="big-name">{_safe(quote.account.name)}</div>
+      <div class="muted">
+        {account_address}<br>
+        {('Contact: ' + _safe(contact_name) + '<br>') if contact_name else ''}
+        {_safe(getattr(quote.account, 'email', '') or '')}<br>
+        {_safe(getattr(quote.account, 'phone', '') or '')}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section-title">{_safe(quote.title)}</div>
+    <div class="muted">{_safe(quote.description)}</div>
+    <table class="items">
+      <thead>
+        <tr>
+          <th style="width: 42px;" class="center">#</th>
+          <th>Item</th>
+          <th style="width: 72px;" class="center">Qty</th>
+          <th style="width: 110px;" class="right">Unit Price</th>
+          <th style="width: 120px;" class="right">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {''.join(rows)}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="totals-wrap">
+    <div>
+      {bank_details}
+    </div>
+    <div class="total-card">
+      <div class="total-row"><span>Subtotal</span><strong>{_money(quote.subtotal)}</strong></div>
+      {discount_row}
+      {tax_row}
+      <div class="grand-total"><span>Grand Total</span><strong>{_money(quote.total_amount)}</strong></div>
+    </div>
+  </div>
+
+  {f'<div class="panel terms"><div class="section-title">Terms & Conditions</div>{_safe(quote.terms_conditions)}</div>' if quote.terms_conditions else ''}
+
+  <div class="footer-note">
+    Thank you for your business. This quote was generated by {_safe(company.name)}.
+  </div>
+</body>
+</html>
+        """
+
+        pdf_buffer = io.BytesIO()
+        html_doc = weasyprint.HTML(string=html, base_url=request.build_absolute_uri('/'), encoding='utf-8')
+        html_doc.write_pdf(pdf_buffer)
+        pdf_buffer.seek(0)
+        return pdf_buffer.getvalue()
     
     @action(detail=True, methods=['post'])
     def accept_quote(self, request, pk=None):

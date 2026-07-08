@@ -578,12 +578,13 @@ class CampaignViewSet(CompanyScopedModelViewSet):
             for lead_id in lead_ids:
                 try:
                     lead = Lead.objects.get(id=lead_id, company=campaign.company)
-                    CampaignMember.objects.get_or_create(
+                    _, created = CampaignMember.objects.get_or_create(
                         campaign=campaign,
                         lead=lead,
                         defaults={'sent_date': timezone.now()}
                     )
-                    added_count += 1
+                    if created:
+                        added_count += 1
                 except Lead.DoesNotExist:
                     continue
 
@@ -591,12 +592,13 @@ class CampaignViewSet(CompanyScopedModelViewSet):
             for contact_id in contact_ids:
                 try:
                     contact = Contact.objects.get(id=contact_id, company=campaign.company)
-                    CampaignMember.objects.get_or_create(
+                    _, created = CampaignMember.objects.get_or_create(
                         campaign=campaign,
                         contact=contact,
                         defaults={'sent_date': timezone.now()}
                     )
-                    added_count += 1
+                    if created:
+                        added_count += 1
                 except Contact.DoesNotExist:
                     continue
 

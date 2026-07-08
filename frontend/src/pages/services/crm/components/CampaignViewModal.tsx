@@ -75,6 +75,17 @@ export const CampaignViewModal: React.FC<CampaignViewModalProps> = ({
                   </p>
                 </div>
               </div>
+
+              <div className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-sm font-medium">Source Campaign</p>
+                  <p className="text-sm text-gray-600">
+                    {campaign.crm_campaign_name || 'Not linked'}
+                    {campaign.audience_count ? ` (${campaign.audience_count} audience)` : ''}
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-4">

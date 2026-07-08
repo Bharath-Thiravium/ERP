@@ -36,8 +36,14 @@ const defaultForm = {
   valid_until: '',
   description: '',
   item_name: '',
+  item_description: '',
+  product_code: '',
   quantity: '1',
-  unit_price: ''
+  unit_price: '',
+  tax_rate: '18',
+  discount_percentage: '0',
+  notes: '',
+  terms_conditions: ''
 }
 
 export const QuotesPage: React.FC = () => {
@@ -53,6 +59,22 @@ export const QuotesPage: React.FC = () => {
   const totalValue = useMemo(() => {
     return quotes.reduce((sum, quote) => sum + Number(quote.total_amount || 0), 0)
   }, [quotes])
+
+  const formTotals = useMemo(() => {
+    const quantity = Number(form.quantity || 0)
+    const unitPrice = Number(form.unit_price || 0)
+    const subtotal = quantity * unitPrice
+    const discountPercentage = Number(form.discount_percentage || 0)
+    const discountAmount = subtotal * (discountPercentage / 100)
+    const taxableAmount = Math.max(0, subtotal - discountAmount)
+    const gstAmount = taxableAmount * (Number(form.tax_rate || 0) / 100)
+    return {
+      subtotal,
+      discountAmount,
+      gstAmount,
+      total: taxableAmount + gstAmount
+    }
+  }, [form.quantity, form.unit_price, form.discount_percentage, form.tax_rate])
 
   const fetchData = async () => {
     if (!sessionKey) return
@@ -90,9 +112,15 @@ export const QuotesPage: React.FC = () => {
         title: form.title,
         valid_until: form.valid_until,
         description: form.description,
+        tax_rate: Number(form.tax_rate || 0),
+        discount_percentage: Number(form.discount_percentage || 0),
+        notes: form.notes,
+        terms_conditions: form.terms_conditions,
         items: [
           {
             name: form.item_name,
+            description: form.item_description,
+            product_code: form.product_code,
             quantity: Number(form.quantity || 1),
             unit_price: Number(form.unit_price || 0)
           }
@@ -321,6 +349,24 @@ export const QuotesPage: React.FC = () => {
                 />
               </label>
               <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Product / HSN Code</span>
+                <input
+                  value={form.product_code}
+                  onChange={(event) => setForm({ ...form, product_code: event.target.value })}
+                  placeholder="Optional"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                />
+              </label>
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Item Description</span>
+                <textarea
+                  value={form.item_description}
+                  onChange={(event) => setForm({ ...form, item_description: event.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  rows={2}
+                />
+              </label>
+              <label className="space-y-1">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Quantity</span>
                 <input
                   required
@@ -344,6 +390,31 @@ export const QuotesPage: React.FC = () => {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                 />
               </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">GST Rate (%)</span>
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.tax_rate}
+                  onChange={(event) => setForm({ ...form, tax_rate: event.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Discount (%)</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.discount_percentage}
+                  onChange={(event) => setForm({ ...form, discount_percentage: event.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                />
+              </label>
               <label className="space-y-1 md:col-span-2">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Description</span>
                 <textarea
@@ -353,6 +424,46 @@ export const QuotesPage: React.FC = () => {
                   rows={3}
                 />
               </label>
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Terms & Conditions</span>
+                <textarea
+                  value={form.terms_conditions}
+                  onChange={(event) => setForm({ ...form, terms_conditions: event.target.value })}
+                  placeholder="Payment terms, validity, delivery notes..."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  rows={3}
+                />
+              </label>
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Internal Notes</span>
+                <textarea
+                  value={form.notes}
+                  onChange={(event) => setForm({ ...form, notes: event.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  rows={2}
+                />
+              </label>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-orange-100 bg-orange-50 p-4 text-sm dark:border-orange-900/50 dark:bg-orange-950/20">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">Subtotal</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">₹{formTotals.subtotal.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">Discount</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">₹{formTotals.discountAmount.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">GST</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">₹{formTotals.gstAmount.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">Grand Total</p>
+                  <p className="font-bold text-orange-600">₹{formTotals.total.toLocaleString()}</p>
+                </div>
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end gap-3">

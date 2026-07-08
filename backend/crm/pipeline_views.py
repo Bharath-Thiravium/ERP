@@ -78,14 +78,24 @@ class DealViewSet(CRMBaseViewSet):
         stages = PipelineStage.objects.filter(company=company, is_active=True).order_by('order')
         
         for stage in stages:
-            deals = Deal.objects.filter(company=company, current_stage=stage, status='open')
+            deals = Deal.objects.filter(
+                company=company,
+                current_stage=stage,
+                status='open'
+            ).select_related(
+                'account',
+                'contact',
+                'owner',
+                'current_stage',
+                'opportunity',
+            ).order_by('expected_close_date', '-value')
             stage_data = {
                 'stage': PipelineStageSerializer(stage).data,
                 'deals_count': deals.count(),
                 'total_value': deals.aggregate(Sum('value'))['value__sum'] or 0,
                 'weighted_value': sum(deal.weighted_value for deal in deals),
                 'avg_days_in_stage': 0,  # Calculate separately since it's a property
-                'deals': DealSerializer(deals[:5], many=True).data  # Top 5 deals
+                'deals': DealSerializer(deals, many=True).data
             }
             pipeline_data.append(stage_data)
         

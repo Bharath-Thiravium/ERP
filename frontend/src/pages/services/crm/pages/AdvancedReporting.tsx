@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { BarChart3, FileText, TrendingUp, AlertTriangle, Eye, Plus, Calendar, Brain, Target } from 'lucide-react'
+import { BarChart3, FileText, TrendingUp, AlertTriangle, Eye, Plus, Calendar, Brain, Target, X } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   PieChart, Pie, Cell,
   LineChart, Line,
   AreaChart, Area,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   FunnelChart, Funnel, LabelList,
   ResponsiveContainer
 } from 'recharts'
@@ -23,7 +22,7 @@ const normalizeChartData = (data: any): any[] => {
   if (Array.isArray(data?.data)) {
     return data.data.map((d: any) => {
       const key = Object.keys(d).find(k => !['count','total_value','weighted_value'].includes(k)) || 'name'
-      return { name: String(d[key] ?? ''), value: Number(d.count ?? d.total_value ?? 0) }
+      return { name: String(d[key] ?? ''), value: Number(d.total_value ?? d.weighted_value ?? d.value ?? d.count ?? 0) }
     })
   }
   // pipeline_forecast stage data
@@ -40,12 +39,13 @@ const ReportChart: React.FC<{ data: any; chartType: string }> = ({ data, chartTy
 
   if (chartType === 'pie') {
     return (
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={340}>
         <PieChart>
-          <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110} label={({ name, value }) => `${name}: ${value}`}>
+          <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={72} outerRadius={118} paddingAngle={3}>
             {chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
           </Pie>
-          <Tooltip /><Legend />
+          <Tooltip formatter={(value: any) => Number(value).toLocaleString()} />
+          <Legend />
         </PieChart>
       </ResponsiveContainer>
     )
@@ -53,11 +53,11 @@ const ReportChart: React.FC<{ data: any; chartType: string }> = ({ data, chartTy
 
   if (chartType === 'line') {
     return (
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={340}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis dataKey="name" /><YAxis /><Tooltip /><Legend />
-          <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} dot={{ fill: '#f97316' }} />
+          <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={3} dot={{ r: 4, fill: '#f97316' }} activeDot={{ r: 7 }} />
         </LineChart>
       </ResponsiveContainer>
     )
@@ -65,26 +65,18 @@ const ReportChart: React.FC<{ data: any; chartType: string }> = ({ data, chartTy
 
   if (chartType === 'area') {
     return (
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={340}>
         <AreaChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" />
+          <defs>
+            <linearGradient id="reportArea" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#f97316" stopOpacity={0.45}/>
+              <stop offset="95%" stopColor="#f97316" stopOpacity={0.05}/>
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis dataKey="name" /><YAxis /><Tooltip /><Legend />
-          <Area type="monotone" dataKey="value" stroke="#f97316" fill="#fed7aa" strokeWidth={2} />
+          <Area type="monotone" dataKey="value" stroke="#f97316" fill="url(#reportArea)" strokeWidth={3} />
         </AreaChart>
-      </ResponsiveContainer>
-    )
-  }
-
-  if (chartType === 'radar') {
-    return (
-      <ResponsiveContainer width="100%" height={300}>
-        <RadarChart data={chartData}>
-          <PolarGrid />
-          <PolarAngleAxis dataKey="name" />
-          <PolarRadiusAxis />
-          <Radar dataKey="value" stroke="#f97316" fill="#f97316" fillOpacity={0.4} />
-          <Tooltip /><Legend />
-        </RadarChart>
       </ResponsiveContainer>
     )
   }
@@ -92,9 +84,9 @@ const ReportChart: React.FC<{ data: any; chartType: string }> = ({ data, chartTy
   if (chartType === 'funnel') {
     const funnelData = chartData.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))
     return (
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={340}>
         <FunnelChart>
-          <Tooltip />
+          <Tooltip formatter={(value: any) => Number(value).toLocaleString()} />
           <Funnel dataKey="value" data={funnelData} isAnimationActive>
             <LabelList position="right" fill="#374151" stroke="none" dataKey="name" />
           </Funnel>
@@ -103,55 +95,65 @@ const ReportChart: React.FC<{ data: any; chartType: string }> = ({ data, chartTy
     )
   }
 
-  if (chartType === 'metric') {
-    return (
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {chartData.map((d, i) => (
-          <div key={i} className="text-center p-4 rounded-lg border-2" style={{ borderColor: COLORS[i % COLORS.length] }}>
-            <p className="text-xs text-gray-500 capitalize mb-1">{d.name}</p>
-            <p className="text-2xl font-bold" style={{ color: COLORS[i % COLORS.length] }}>{d.value}</p>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  if (chartType === 'table') {
-    return (
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-orange-50">
-              {Object.keys(chartData[0] || {}).map(k => (
-                <th key={k} className="px-4 py-2 text-left font-medium text-gray-700 border border-gray-200 capitalize">{k}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {chartData.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                {Object.values(row).map((v: any, j) => (
-                  <td key={j} className="px-4 py-2 border border-gray-200">{String(v)}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )
-  }
-
   // default: bar
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <ResponsiveContainer width="100%" height={340}>
       <BarChart data={chartData}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="name" /><YAxis /><Tooltip /><Legend />
-        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+        <XAxis dataKey="name" /><YAxis /><Tooltip formatter={(value: any) => Number(value).toLocaleString()} /><Legend />
+        <Bar dataKey="value" radius={[9, 9, 0, 0]} barSize={38}>
           {chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+  )
+}
+
+const ReportResultModal: React.FC<{
+  isOpen: boolean
+  onClose: () => void
+  report: any
+  reportData: any
+}> = ({ isOpen, onClose, report, reportData }) => {
+  if (!isOpen || !reportData) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+      <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900">
+        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">{report?.name || 'Report Results'}</h2>
+            <p className="text-sm text-gray-500">{report?.report_type_display || report?.report_type} | {report?.chart_type_display || report?.chart_type}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="max-h-[calc(92vh-76px)] overflow-y-auto p-6 space-y-6">
+          {reportData.summary && (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              {Object.entries(reportData.summary).map(([key, value]) => (
+                <div key={key} className="rounded-xl border border-orange-100 bg-orange-50 p-4 dark:border-orange-900/40 dark:bg-orange-950/20">
+                  <p className="mb-1 text-xs capitalize text-gray-500">{key.replace(/_/g, ' ')}</p>
+                  <p className="text-2xl font-bold text-orange-600">
+                    {typeof value === 'number'
+                      ? key.includes('revenue') || key.includes('pipeline') || key.includes('deal_size')
+                        ? `₹${value.toLocaleString()}`
+                        : value % 1 !== 0 ? value.toFixed(1) : value
+                      : String(value)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+            <ReportChart data={reportData} chartType={report?.chart_type || 'bar'} />
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -164,6 +166,7 @@ export const AdvancedReporting: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('reports')
   const [showReportModal, setShowReportModal] = useState(false)
+  const [showReportResultModal, setShowReportResultModal] = useState(false)
   const [selectedReport, setSelectedReport] = useState<any>(null)
 
   useEffect(() => {
@@ -195,6 +198,7 @@ export const AdvancedReporting: React.FC = () => {
       setSelectedReport(report)
       const response = await crmApi.generateReport(sessionKey!, report.id)
       setReportData(response.data)
+      setShowReportResultModal(true)
       toast.success('Report generated successfully!')
     } catch (error) {
       console.error('Error generating report:', error)
@@ -270,6 +274,7 @@ export const AdvancedReporting: React.FC = () => {
       if (selectedReport?.id === reportId) {
         setReportData(null)
         setSelectedReport(null)
+        setShowReportResultModal(false)
       }
       loadData()
     } catch (error) {
@@ -495,51 +500,8 @@ export const AdvancedReporting: React.FC = () => {
                 ))}
               </div>
 
-              {/* Report Preview */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Report Preview</h3>
-                {reportData ? (
-                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-                    <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Report Results</h3>
-                    </div>
-                    <div className="p-6 space-y-6">
-                      {/* Summary Cards */}
-                      {reportData.summary && (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          {Object.entries(reportData.summary).map(([key, value]) => (
-                            <div key={key} className="text-center p-3 bg-orange-50 rounded-lg border border-orange-100">
-                              <p className="text-xs text-gray-500 capitalize mb-1">{key.replace(/_/g, ' ')}</p>
-                              <p className="text-xl font-bold text-orange-600">
-                                {typeof value === 'number' && key.includes('revenue')
-                                  ? `₹${(value as number).toLocaleString()}`
-                                  : typeof value === 'number'
-                                  ? (value as number) % 1 !== 0 ? (value as number).toFixed(1) : value
-                                  : String(value)}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Chart */}
-                      <div>
-                        <h4 className="font-medium text-gray-700 mb-3">Chart View</h4>
-                        <ReportChart
-                          data={reportData}
-                          chartType={selectedReport?.chart_type || reports.find(r => r.id === selectedReport?.id)?.chart_type || 'bar'}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-                    <div className="p-8 text-center">
-                      <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-600">Select a report template to generate and preview results</p>
-                    </div>
-                  </div>
-                )}
+              <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800">
+                Click Generate on any report template to open the modern report viewer.
               </div>
             </div>
           </div>
@@ -690,6 +652,12 @@ export const AdvancedReporting: React.FC = () => {
         onClose={handleCloseReportModal}
         onSuccess={handleModalSuccess}
         report={selectedReport}
+      />
+      <ReportResultModal
+        isOpen={showReportResultModal}
+        onClose={() => setShowReportResultModal(false)}
+        report={selectedReport}
+        reportData={reportData}
       />
     </div>
   )

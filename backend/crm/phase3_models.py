@@ -3,7 +3,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from authentication.models import Company
 from django.utils import timezone
-from .models import _generate_configured_number
+from .models import Campaign, _generate_configured_number
 
 
 class EmailTemplate(models.Model):
@@ -57,6 +57,13 @@ class MarketingCampaign(models.Model):
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='marketing_campaigns')
     campaign_id = models.CharField(max_length=50, db_index=True)
+    crm_campaign = models.ForeignKey(
+        Campaign,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='email_runs'
+    )
     name = models.CharField(max_length=200)
     campaign_type = models.CharField(max_length=20, choices=CAMPAIGN_TYPE_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
@@ -210,12 +217,11 @@ class ReportTemplate(models.Model):
     ]
     
     CHART_TYPE_CHOICES = [
-        ('bar', 'Bar Chart'),
-        ('line', 'Line Chart'),
-        ('pie', 'Pie Chart'),
-        ('table', 'Table'),
-        ('metric', 'Metric Card'),
-        ('funnel', 'Funnel Chart'),
+        ('bar', 'Modern Bar'),
+        ('line', 'Trend Line'),
+        ('area', 'Area Trend'),
+        ('pie', 'Donut Share'),
+        ('funnel', 'Sales Funnel'),
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='report_templates')

@@ -219,6 +219,8 @@ class CampaignSerializer(serializers.ModelSerializer):
     campaign_type_display = serializers.CharField(source='get_campaign_type_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     members_count = serializers.IntegerField(source='members.count', read_only=True)
+    lead_members_count = serializers.SerializerMethodField()
+    contact_members_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Campaign
@@ -229,15 +231,29 @@ class CampaignSerializer(serializers.ModelSerializer):
         # The campaign_id will be auto-generated in the model's save method
         return super().create(validated_data)
 
+    def get_lead_members_count(self, obj):
+        return obj.members.filter(lead__isnull=False).count()
+
+    def get_contact_members_count(self, obj):
+        return obj.members.filter(contact__isnull=False).count()
+
 
 class CampaignMemberSerializer(serializers.ModelSerializer):
     campaign_name = serializers.CharField(source='campaign.name', read_only=True)
-    lead_name = serializers.CharField(source='lead.__str__', read_only=True)
-    contact_name = serializers.CharField(source='contact.__str__', read_only=True)
+    lead_name = serializers.SerializerMethodField()
+    contact_name = serializers.SerializerMethodField()
+    lead_email = serializers.EmailField(source='lead.email', read_only=True)
+    contact_email = serializers.EmailField(source='contact.email', read_only=True)
 
     class Meta:
         model = CampaignMember
         fields = '__all__'
+
+    def get_lead_name(self, obj):
+        return str(obj.lead) if obj.lead else None
+
+    def get_contact_name(self, obj):
+        return str(obj.contact) if obj.contact else None
 
     def validate_campaign(self, value):
         return validate_same_company(value, self.context, 'Campaign')

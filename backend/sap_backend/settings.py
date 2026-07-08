@@ -30,7 +30,7 @@ def config_bool(key, default=False):
     """
     Parse boolean-like settings while tolerating legacy environment values.
     """
-    value = os.environ.get(key)
+    value = config(key, default=None)
     if value is None:
         return default
     if isinstance(value, bool):

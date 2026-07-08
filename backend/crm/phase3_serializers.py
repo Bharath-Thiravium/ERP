@@ -22,6 +22,9 @@ class MarketingCampaignSerializer(serializers.ModelSerializer):
     campaign_type_display = serializers.CharField(source='get_campaign_type_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     email_template_name = serializers.CharField(source='email_template.name', read_only=True)
+    crm_campaign_name = serializers.CharField(source='crm_campaign.name', read_only=True)
+    crm_campaign_code = serializers.CharField(source='crm_campaign.campaign_id', read_only=True)
+    audience_count = serializers.SerializerMethodField()
     open_rate = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     click_rate = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
 
@@ -32,6 +35,14 @@ class MarketingCampaignSerializer(serializers.ModelSerializer):
 
     def validate_email_template(self, value):
         return validate_same_company(value, self.context, 'Email template')
+
+    def validate_crm_campaign(self, value):
+        return validate_same_company(value, self.context, 'Campaign')
+
+    def get_audience_count(self, obj):
+        if not obj.crm_campaign_id:
+            return 0
+        return obj.crm_campaign.members.count()
 
 
 class EmailSendSerializer(serializers.ModelSerializer):

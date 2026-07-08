@@ -6,11 +6,24 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Count, Sum, Avg, F
 from django.utils import timezone
 from datetime import datetime, timedelta
+from decimal import Decimal
 from .phase3_models import ReportTemplate, Dashboard, BusinessIntelligence
 from .models import Lead, Deal, Account
 from .phase3_serializers import ReportTemplateSerializer, DashboardSerializer, BusinessIntelligenceSerializer
 from .views import CRMBaseViewSet
 import json
+
+
+def _json_safe(value):
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    return value
 
 
 class ReportTemplateViewSet(CRMBaseViewSet):
@@ -72,14 +85,14 @@ class ReportTemplateViewSet(CRMBaseViewSet):
             count=Count('id')
         ).order_by('month')
         
-        return {
+        return _json_safe({
             'data': list(monthly_data),
             'summary': {
                 'total_revenue': deals.aggregate(Sum('value'))['value__sum'] or 0,
                 'total_deals': deals.count(),
                 'avg_deal_size': deals.aggregate(Avg('value'))['value__avg'] or 0
             }
-        }
+        })
 
     def _generate_lead_analysis(self, company):
         leads = Lead.objects.filter(company=company)
@@ -105,14 +118,14 @@ class ReportTemplateViewSet(CRMBaseViewSet):
             count=Count('id')
         )
         
-        return {
+        return _json_safe({
             'data': list(stage_data),
             'summary': {
                 'total_pipeline': deals.aggregate(Sum('value'))['value__sum'] or 0,
                 'weighted_pipeline': sum(deal.weighted_value for deal in deals),
                 'total_deals': deals.count()
             }
-        }
+        })
 
     @action(detail=True)
     def download(self, request, pk=None):
@@ -227,7 +240,7 @@ class BusinessIntelligenceViewSet(CRMBaseViewSet):
                     title='High Value Deals Trending Up',
                     description=f'Average deal value in the last 30 days is ${avg_deal_value:,.2f}, indicating strong market performance.',
                     priority='high',
-                    data={'avg_deal_value': avg_deal_value, 'deal_count': recent_deals.count()},
+                    data=_json_safe({'avg_deal_value': avg_deal_value, 'deal_count': recent_deals.count()}),
                     recommended_actions=['Focus on high-value prospects', 'Analyze successful deal patterns']
                 )
                 insights_generated += 1

@@ -41,12 +41,11 @@ export const ReportTemplateModal: React.FC<ReportTemplateModalProps> = ({
   ]
 
   const chartTypes = [
-    { value: 'bar', label: 'Bar Chart' },
-    { value: 'line', label: 'Line Chart' },
-    { value: 'pie', label: 'Pie Chart' },
-    { value: 'table', label: 'Table' },
-    { value: 'metric', label: 'Metric Card' },
-    { value: 'funnel', label: 'Funnel Chart' }
+    { value: 'bar', label: 'Modern Bar' },
+    { value: 'line', label: 'Trend Line' },
+    { value: 'area', label: 'Area Trend' },
+    { value: 'pie', label: 'Donut Share' },
+    { value: 'funnel', label: 'Sales Funnel' }
   ]
 
   React.useEffect(() => {

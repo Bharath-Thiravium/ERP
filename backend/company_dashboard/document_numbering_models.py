@@ -80,8 +80,8 @@ class DocumentNumberingConfig(models.Model):
     
     # Numbering settings
     prefix = models.CharField(max_length=20, help_text="Prefix without year (e.g., QT, PO, INV)")
-    starting_number = models.IntegerField(default=1)
-    current_counter = models.IntegerField(default=0)
+    starting_number = models.BigIntegerField(default=1)
+    current_counter = models.BigIntegerField(default=0)
     number_padding = models.IntegerField(default=3, help_text="Number of digits for padding (e.g., 3 for 001)")
     
     # Enhanced Pattern Configuration
@@ -150,7 +150,16 @@ class DocumentNumberingConfig(models.Model):
             # Scan existing documents to find the highest sequence number used,
             # so deletions never cause reuse or out-of-order numbers.
             highest_existing = config._get_highest_existing_sequence()
-            next_counter = max(config.current_counter + 1, highest_existing + 1, config.starting_number)
+            counter_base = config.current_counter
+
+            # Older parsing logic could mistake year+sequence text as the
+            # counter and push an IntegerField to its limit. If that happened,
+            # heal from the actual highest existing document sequence before
+            # generating the next number.
+            if counter_base >= 2_000_000_000 and highest_existing < 2_000_000_000:
+                counter_base = max(highest_existing, config.starting_number - 1)
+
+            next_counter = max(counter_base + 1, highest_existing + 1, config.starting_number)
             
             config.current_counter = next_counter
             config.save(update_fields=['current_counter'])
@@ -350,12 +359,20 @@ class DocumentNumberingConfig(models.Model):
                             )
                             if not year_match:
                                 continue
-                        parts = normalized.split(sep)
-                        # The sequence number is always the last numeric part
-                        for part in reversed(parts):
-                            if part.isdigit():
-                                max_seq = max(max_seq, int(part.lstrip('0') or '0'))
+                        # Prefer the configured padded suffix. Patterns often put
+                        # year and number in the same segment (for example
+                        # OPP2026-270001), so parsing the whole last numeric part
+                        # would incorrectly read 270001 instead of 1.
+                        digit_suffix = ''
+                        for char in reversed(normalized):
+                            if char.isdigit():
+                                digit_suffix = char + digit_suffix
+                            elif digit_suffix:
                                 break
+
+                        if digit_suffix:
+                            sequence_text = digit_suffix[-self.number_padding:] if self.number_padding else digit_suffix
+                            max_seq = max(max_seq, int(sequence_text.lstrip('0') or '0'))
                     return max_seq
         except Exception:
             return 0

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Megaphone, Calendar, IndianRupee, Edit, Trash2 } from 'lucide-react'
+import { Plus, Search, Megaphone, Calendar, IndianRupee, Edit, Trash2, Eye, UserPlus, Users, Target } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import { crmApi } from '../utils/api'
 import { CampaignModal } from '../components/CampaignModal'
+import { CampaignAudienceModal } from '../components/CampaignAudienceModal'
+import { CampaignDetailsModal } from '../components/CampaignDetailsModal'
 import toast from 'react-hot-toast'
 
 interface Campaign {
@@ -12,11 +14,20 @@ interface Campaign {
   campaign_id: string
   name: string
   campaign_type: string
+  campaign_type_display?: string
   status: string
+  status_display?: string
   start_date: string
   end_date: string
   budget?: number
+  target_audience?: string
   leads_generated: number
+  opportunities_created?: number
+  revenue_generated?: number
+  members_count?: number
+  lead_members_count?: number
+  contact_members_count?: number
+  description?: string
   created_at: string
 }
 
@@ -26,6 +37,8 @@ export const CampaignsPage: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showAudienceModal, setShowAudienceModal] = useState(false)
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
 
   const fetchCampaigns = async () => {
@@ -70,6 +83,16 @@ export const CampaignsPage: React.FC = () => {
   const handleEditCampaign = (campaign: Campaign) => {
     setSelectedCampaign(campaign)
     setShowModal(true)
+  }
+
+  const handleViewCampaign = (campaign: Campaign) => {
+    setSelectedCampaign(campaign)
+    setShowDetailsModal(true)
+  }
+
+  const handleAddAudience = (campaign: Campaign) => {
+    setSelectedCampaign(campaign)
+    setShowAudienceModal(true)
   }
 
   const handleDeleteCampaign = async (id: number) => {
@@ -143,7 +166,7 @@ export const CampaignsPage: React.FC = () => {
                   <h3 className="font-semibold text-gray-900 dark:text-white">
                     {campaign.name}
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{campaign.campaign_type}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{campaign.campaign_type_display || campaign.campaign_type}</p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -151,6 +174,24 @@ export const CampaignsPage: React.FC = () => {
                   {campaign.status}
                 </span>
                 <div className="flex space-x-1">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 w-8 p-0"
+                    onClick={() => handleViewCampaign(campaign)}
+                    title="View campaign"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 w-8 p-0 text-orange-600"
+                    onClick={() => handleAddAudience(campaign)}
+                    title="Add audience"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                  </Button>
                   <Button 
                     variant="ghost" 
                     size="sm" 
@@ -188,10 +229,31 @@ export const CampaignsPage: React.FC = () => {
               )}
             </div>
 
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="rounded-lg bg-orange-50 p-3 dark:bg-orange-950/20">
+                <div className="flex items-center gap-1 text-xs text-orange-700 dark:text-orange-300">
+                  <Users className="h-3.5 w-3.5" />
+                  Audience
+                </div>
+                <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{campaign.members_count || 0}</p>
+              </div>
+              <div className="rounded-lg bg-green-50 p-3 dark:bg-green-950/20">
+                <div className="flex items-center gap-1 text-xs text-green-700 dark:text-green-300">
+                  <Target className="h-3.5 w-3.5" />
+                  Leads
+                </div>
+                <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{campaign.leads_generated || 0}</p>
+              </div>
+              <div className="rounded-lg bg-blue-50 p-3 dark:bg-blue-950/20">
+                <div className="text-xs text-blue-700 dark:text-blue-300">Opps</div>
+                <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{campaign.opportunities_created || 0}</p>
+              </div>
+            </div>
+
             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-green-600 font-medium">
-                  {campaign.leads_generated} leads generated
+                  {campaign.members_count || 0} audience / {campaign.leads_generated || 0} generated
                 </span>
                 <span className="text-xs text-gray-500">
                   {new Date(campaign.created_at).toLocaleDateString()}
@@ -219,6 +281,25 @@ export const CampaignsPage: React.FC = () => {
           setSelectedCampaign(null)
         }}
         onSuccess={fetchCampaigns}
+        campaign={selectedCampaign}
+      />
+
+      <CampaignAudienceModal
+        isOpen={showAudienceModal}
+        onClose={() => {
+          setShowAudienceModal(false)
+          setSelectedCampaign(null)
+        }}
+        onSuccess={fetchCampaigns}
+        campaign={selectedCampaign}
+      />
+
+      <CampaignDetailsModal
+        isOpen={showDetailsModal}
+        onClose={() => {
+          setShowDetailsModal(false)
+          setSelectedCampaign(null)
+        }}
         campaign={selectedCampaign}
       />
     </div>

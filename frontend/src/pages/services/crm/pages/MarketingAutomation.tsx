@@ -221,7 +221,7 @@ export const MarketingAutomation: React.FC = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Marketing Automation</h1>
-          <p className="text-gray-600">Manage email campaigns and automation workflows</p>
+          <p className="text-gray-600">Run email campaigns from Campaigns menu audiences</p>
         </div>
         <div className="flex gap-2">
           <button 
@@ -236,7 +236,7 @@ export const MarketingAutomation: React.FC = () => {
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
           >
             <Plus className="h-4 w-4 mr-2" />
-            New Campaign
+            Create Email Run
           </button>
           <button 
             onClick={() => setShowWorkflowModal(true)}
@@ -253,7 +253,7 @@ export const MarketingAutomation: React.FC = () => {
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Active Campaigns</p>
+              <p className="text-sm text-gray-600">Active Email Runs</p>
               <p className="text-2xl font-bold">{campaigns.filter(c => c.status === 'running').length}</p>
             </div>
             <Mail className="h-8 w-8 text-blue-500" />
@@ -305,7 +305,7 @@ export const MarketingAutomation: React.FC = () => {
                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            Email Campaigns
+            Email Runs
           </button>
           <button 
             onClick={() => setActiveTab('templates')}
@@ -346,18 +346,26 @@ export const MarketingAutomation: React.FC = () => {
                 <div key={campaign.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow flex flex-col">
                   <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-start justify-between mb-2">
-                      <h3 className="text-base font-semibold text-gray-900 dark:text-white truncate pr-2">{campaign.name}</h3>
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-white truncate pr-2">
+                        {campaign.crm_campaign_name || campaign.name}
+                      </h3>
                       <span className={`inline-flex items-center px-2 py-1 text-xs rounded-full ${getStatusColor(campaign.status)} text-white whitespace-nowrap`}>
                         {campaign.status}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600 truncate">{campaign.campaign_type_display || 'Email Campaign'}</p>
+                    <p className="text-sm text-gray-600 truncate">
+                      {campaign.email_template_name ? `${campaign.email_template_name} template` : (campaign.campaign_type_display || 'Email Run')}
+                    </p>
                   </div>
                   <div className="p-4 flex-1 space-y-3">
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span>Sent</span>
                         <span className="font-medium">{campaign.total_sent || 0}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>Audience</span>
+                        <span className="font-medium">{campaign.audience_count || 0}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span>Open Rate</span>
@@ -449,7 +457,7 @@ export const MarketingAutomation: React.FC = () => {
                     </div>
 
                     <div className="text-xs text-gray-500 pt-2 border-t border-gray-100">
-                      Created: {new Date(campaign.created_at).toLocaleDateString()}
+                      {campaign.crm_campaign_code ? `Campaign: ${campaign.crm_campaign_code}` : `Created: ${new Date(campaign.created_at).toLocaleDateString()}`}
                     </div>
                   </div>
                 </div>
@@ -587,11 +595,11 @@ export const MarketingAutomation: React.FC = () => {
                 <div className="p-6 space-y-4">
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm">Total Campaigns</span>
+                      <span className="text-sm">Total Email Runs</span>
                       <span className="font-medium">{campaigns.length}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-sm">Active Campaigns</span>
+                      <span className="text-sm">Active Email Runs</span>
                       <span className="font-medium">{campaigns.filter(c => c.status === 'running').length}</span>
                     </div>
                     <div className="flex justify-between items-center">

@@ -26,6 +26,7 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ sessionKey }) => {
   const [statusFilter, setStatusFilter] = useState('all')
   const [ownerFilter] = useState('all')
   const [realMetrics, setRealMetrics] = useState<any>(null)
+  const [expandedStages, setExpandedStages] = useState<number[]>([])
 
   useEffect(() => {
     loadPipelineData()
@@ -46,7 +47,8 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ sessionKey }) => {
       
       // Calculate real performance metrics
       const totalDeals = pipelineRes.data.reduce((sum: number, stage: any) => sum + stage.deals_count, 0)
-      const pipelineCoverage = totalPipelineValue > 0 ? (totalPipelineValue / 1000000 * 3.2).toFixed(1) : '0.0'
+      const currentPipelineValue = pipelineRes.data.reduce((sum: number, stage: any) => sum + Number(stage.total_value || 0), 0)
+      const pipelineCoverage = currentPipelineValue > 0 ? (currentPipelineValue / 1000000 * 3.2).toFixed(1) : '0.0'
       const forecastAccuracy = velocityRes.data.win_rate || 78
       
       setRealMetrics({
@@ -93,6 +95,14 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ sessionKey }) => {
       const matchesOwner = ownerFilter === 'all' || deal.owner?.toString() === ownerFilter
       return matchesSearch && matchesStatus && matchesOwner
     })
+  }
+
+  const toggleStageExpansion = (stageId: number) => {
+    setExpandedStages((current) =>
+      current.includes(stageId)
+        ? current.filter((id) => id !== stageId)
+        : [...current, stageId]
+    )
   }
 
   if (loading) {
@@ -270,8 +280,15 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ sessionKey }) => {
                     </div>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {getFilteredDeals(stageData.deals).map((deal) => {
+                    {(() => {
+                      const filteredDeals = getFilteredDeals(stageData.deals)
+                      const isExpanded = expandedStages.includes(stageData.stage.id)
+                      const visibleDeals = isExpanded ? filteredDeals : filteredDeals.slice(0, 5)
+                      const hiddenDealsCount = filteredDeals.length - visibleDeals.length
+
+                      return (
+                    <div className={`space-y-2 ${isExpanded ? 'max-h-[32rem]' : 'max-h-96'} overflow-y-auto`}>
+                      {visibleDeals.length > 0 ? visibleDeals.map((deal) => {
                         const currentStageIndex = pipelineData.findIndex(s => s.stage.id === stageData.stage.id)
                         const canMoveBackward = currentStageIndex > 0
                         const canMoveForward = currentStageIndex < pipelineData.length - 1
@@ -334,8 +351,31 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ sessionKey }) => {
                             </div>
                           </div>
                         )
-                      })}
+                      }) : (
+                        <div className="rounded-lg border border-dashed border-gray-200 p-3 text-center text-xs text-gray-500">
+                          No deals in this stage
+                        </div>
+                      )}
+
+                      {filteredDeals.length > 5 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-xs"
+                          onClick={() => toggleStageExpansion(stageData.stage.id)}
+                        >
+                          {isExpanded ? 'Show first 5' : `Show all ${filteredDeals.length} deals`}
+                        </Button>
+                      )}
+
+                      {hiddenDealsCount > 0 && (
+                        <p className="text-center text-xs text-gray-500">
+                          {hiddenDealsCount} more hidden
+                        </p>
+                      )}
                     </div>
+                      )
+                    })()}
                   </CardContent>
                 </Card>
               ))}

@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Button } from '../../../../components/ui/Button'
 import { Input } from '../../../../components/ui/Input'
 import { crmApi } from '../utils/api'
-import { CustomerSegment } from '../types'
+import { Account, CustomerSegment } from '../types'
 import { Modal } from '../../../../components/ui/Modal'
 
 interface SegmentModalProps {
@@ -19,16 +19,52 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({ isOpen, onClose, onS
     description: segment?.description || '',
     color: segment?.color || '#3B82F6'
   })
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [selectedAccountIds, setSelectedAccountIds] = useState<number[]>([])
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    setFormData({
+      name: segment?.name || '',
+      description: segment?.description || '',
+      color: segment?.color || '#3B82F6'
+    })
+    setSelectedAccountIds([])
+    loadAccounts()
+  }, [isOpen, segment])
+
+  const loadAccounts = async () => {
+    try {
+      const response = await crmApi.getAccounts(sessionKey)
+      setAccounts(response.data.results || response.data)
+    } catch (error) {
+      console.error('Error loading accounts:', error)
+    }
+  }
+
+  const toggleAccount = (accountId: number) => {
+    setSelectedAccountIds((prev) =>
+      prev.includes(accountId)
+        ? prev.filter((id) => id !== accountId)
+        : [...prev, accountId]
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     try {
+      let segmentId = segment?.id
       if (segment) {
         await crmApi.updateCustomerSegment(sessionKey, segment.id, formData)
       } else {
-        await crmApi.createCustomerSegment(sessionKey, formData)
+        const response = await crmApi.createCustomerSegment(sessionKey, formData)
+        segmentId = response.data.id
+      }
+      if (segmentId && selectedAccountIds.length > 0) {
+        await crmApi.addAccountsToSegment(sessionKey, segmentId, selectedAccountIds)
       }
       onSave()
       onClose()
@@ -91,6 +127,38 @@ export const SegmentModal: React.FC<SegmentModalProps> = ({ isOpen, onClose, onS
                   onClick={() => setFormData(prev => ({ ...prev, color }))}
                 />
               ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Accounts</label>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {selectedAccountIds.length} selected
+              </span>
+            </div>
+            <div className="max-h-40 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700">
+              {accounts.length > 0 ? (
+                accounts.map((account) => (
+                  <label
+                    key={account.id}
+                    className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedAccountIds.includes(account.id)}
+                      onChange={() => toggleAccount(account.id)}
+                      className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{account.name}</p>
+                      <p className="text-xs capitalize text-gray-500 dark:text-gray-400">{account.account_type}</p>
+                    </div>
+                  </label>
+                ))
+              ) : (
+                <p className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">No accounts available.</p>
+              )}
             </div>
           </div>
 

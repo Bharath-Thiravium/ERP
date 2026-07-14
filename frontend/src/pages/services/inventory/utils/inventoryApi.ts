@@ -327,6 +327,13 @@ export const inventoryApi = {
     return response.data;
   },
 
+  downloadPurchaseOrderPdf: async (id: number) => {
+    const response = await apiClient.get(`/api/inventory/purchase-orders/${id}/download-pdf/`, {
+      responseType: 'blob'
+    });
+    return response.data;
+  },
+
   // Inventory Audits
   getInventoryAudits: async (params?: any) => {
     const response = await apiClient.get('/api/inventory/audits/', params);

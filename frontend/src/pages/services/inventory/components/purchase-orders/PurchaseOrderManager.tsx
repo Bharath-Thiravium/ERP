@@ -205,56 +205,22 @@ const PurchaseOrderManager: React.FC = () => {
     }
   };
 
-  const handleDownloadOrder = (order: PurchaseOrder) => {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Purchase Order - ${order.po_number}</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 40px; color: #333; }
-              h1 { color: #4f46e5; border-bottom: 2px solid #4f46e5; padding-bottom: 10px; }
-              .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
-              .label { font-weight: bold; color: #666; font-size: 12px; text-transform: uppercase; }
-              .value { font-size: 14px; margin-top: 4px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              th { background: #4f46e5; color: white; padding: 10px; text-align: left; }
-              td { padding: 10px; border-bottom: 1px solid #eee; }
-              .total { text-align: right; font-size: 18px; font-weight: bold; margin-top: 20px; color: #4f46e5; }
-              .status { display: inline-block; padding: 4px 12px; border-radius: 20px; background: #e0e7ff; color: #4f46e5; font-weight: bold; }
-            </style>
-          </head>
-          <body>
-            <h1>Purchase Order</h1>
-            <div class="grid">
-              <div><div class="label">PO Number</div><div class="value">${order.po_number}</div></div>
-              <div><div class="label">Status</div><div class="value"><span class="status">${order.status.toUpperCase()}</span></div></div>
-              <div><div class="label">Supplier</div><div class="value">${order.supplier_name}</div></div>
-              <div><div class="label">Warehouse</div><div class="value">${order.warehouse_name || '-'}</div></div>
-              <div><div class="label">Order Date</div><div class="value">${new Date(order.order_date).toLocaleDateString()}</div></div>
-              <div><div class="label">Expected Delivery</div><div class="value">${order.expected_delivery_date ? new Date(order.expected_delivery_date).toLocaleDateString() : 'Not set'}</div></div>
-            </div>
-            ${(order as any).notes ? `<div><div class="label">Notes</div><div class="value">${(order as any).notes}</div></div>` : ''}
-            <table>
-              <thead><tr><th>Product</th><th>Quantity</th><th>Unit Price</th><th>Total</th></tr></thead>
-              <tbody>
-                ${order.items?.map((item: any) => `
-                  <tr>
-                    <td>${item.product_name}</td>
-                    <td>${item.quantity_ordered}</td>
-                    <td>₹${Number(item.unit_price).toLocaleString()}</td>
-                    <td>₹${Number(item.total_price).toLocaleString()}</td>
-                  </tr>
-                `).join('') || ''}
-              </tbody>
-            </table>
-            <div class="total">Total Amount: ₹${Number(order.total_amount).toLocaleString()}</div>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.print();
+  const handleDownloadOrder = async (order: PurchaseOrder) => {
+    try {
+      const data = await inventoryApi.downloadPurchaseOrderPdf(order.id);
+      const blob = data instanceof Blob ? data : new Blob([data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `PurchaseOrder_${order.po_number}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Purchase order PDF downloaded');
+    } catch (error) {
+      console.error('Failed to download purchase order PDF:', error);
+      toast.error('Failed to download purchase order PDF');
     }
   };
 

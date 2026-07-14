@@ -387,13 +387,30 @@ const ProductList: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
-      const deleteReason = window.prompt('Enter delete reason for admin approval:');
-      if (!deleteReason?.trim()) return;
       try {
-        await inventoryApi.deleteProduct(id, { delete_reason: deleteReason.trim() });
-        toast.success('Delete request sent for admin approval.');
+        const response = await inventoryApi.deleteProduct(id);
+        toast.success(response?.message || 'Product deleted successfully.');
         loadProducts();
-      } catch (error) {
+      } catch (error: any) {
+        const reasonRequired = error.response?.status === 400
+          && String(error.response?.data?.error || '').toLowerCase().includes('delete reason')
+
+        if (reasonRequired) {
+          const deleteReason = window.prompt('This product is shared with another service. Enter delete reason for admin approval:');
+          if (!deleteReason?.trim()) return;
+
+          try {
+            const response = await inventoryApi.deleteProduct(id, { delete_reason: deleteReason.trim() });
+            toast.success(response?.message || 'Delete request sent for admin approval.');
+            loadProducts();
+            return;
+          } catch (approvalError) {
+            console.error('Failed to request product delete approval:', approvalError);
+            toast.error('Failed to request delete approval');
+            return;
+          }
+        }
+
         console.error('Failed to delete product:', error);
         toast.error('Failed to delete product');
       }
@@ -446,10 +463,22 @@ const ProductList: React.FC = () => {
     try {
       setModalLoading(true);
       const productIds = products.map(p => p.id);
+      const adjustmentValue = parseFloat(bulkPriceData.adjustment_value);
+
+      if (productIds.length === 0) {
+        toast.error('No products available to update');
+        return;
+      }
+
+      if (!Number.isFinite(adjustmentValue)) {
+        toast.error('Enter a valid adjustment value');
+        return;
+      }
+
       await inventoryApi.bulkUpdateProducts(productIds, {
-
-
-
+        price_type: bulkPriceData.price_type,
+        adjustment_type: bulkPriceData.adjustment_type,
+        adjustment_value: adjustmentValue
       });
       toast.success('Prices updated successfully!');
       setShowBulkPriceModal(false);

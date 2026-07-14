@@ -2,10 +2,13 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from django.http import HttpResponse
 from django.db.models import Q, Count, Sum, Avg
 from django.db import transaction
 from django.utils import timezone
+from django.utils.html import escape
 from decimal import Decimal
+import io
 import logging
 
 from common.viewsets import CompanyScopedModelViewSet
@@ -19,6 +22,36 @@ from .serializers import (
     StockLevelSerializer, StockMovementSerializer, StockAlertSerializer,
     InventoryAuditSerializer
 )
+
+try:
+    import weasyprint
+    WEASYPRINT_AVAILABLE = True
+except ImportError:
+    WEASYPRINT_AVAILABLE = False
+
+
+def _safe(value):
+    return escape(str(value or ''))
+
+
+def _money(value):
+    return f"Rs. {float(value or 0):,.2f}"
+
+
+def _date(value):
+    return value.strftime('%d %b %Y') if value else '-'
+
+
+def _company_logo_file_uri(company):
+    try:
+        if company and company.logo and company.logo.name:
+            import os
+            path = company.logo.path
+            if os.path.exists(path):
+                return f'file://{path}'
+    except Exception:
+        return ''
+    return ''
 
 
 class CategoryViewSet(CompanyScopedModelViewSet):
@@ -186,6 +219,55 @@ class ProductViewSet(CompanyScopedModelViewSet):
             'success': True,
             'barcode': barcode,
             'message': 'Barcode generated successfully'
+        })
+
+    @action(detail=False, methods=['post'], url_path='bulk-update')
+    def bulk_update(self, request):
+        """Bulk update product prices for the current company."""
+        product_ids = request.data.get('product_ids') or []
+        updates = request.data.get('updates') or {}
+
+        if not product_ids:
+            return Response({'error': 'Select at least one product.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        price_type = updates.get('price_type')
+        adjustment_type = updates.get('adjustment_type')
+        adjustment_value = updates.get('adjustment_value')
+        allowed_price_fields = {'cost_price', 'selling_price', 'mrp'}
+        allowed_adjustments = {'percentage', 'fixed'}
+
+        if price_type not in allowed_price_fields:
+            return Response({'error': 'Invalid price field.'}, status=status.HTTP_400_BAD_REQUEST)
+        if adjustment_type not in allowed_adjustments:
+            return Response({'error': 'Invalid adjustment type.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            adjustment_value = Decimal(str(adjustment_value))
+        except Exception:
+            return Response({'error': 'Adjustment value must be a valid number.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        products = self.get_queryset().filter(id__in=product_ids)
+        updated_count = 0
+
+        with transaction.atomic():
+            for product in products.select_for_update():
+                current_value = Decimal(getattr(product, price_type) or 0)
+                if adjustment_type == 'percentage':
+                    new_value = current_value + (current_value * adjustment_value / Decimal('100'))
+                else:
+                    new_value = current_value + adjustment_value
+
+                if new_value < 0:
+                    raise ValidationError(f'{product.name} price cannot become negative.')
+
+                setattr(product, price_type, new_value.quantize(Decimal('0.01')))
+                product.save(update_fields=[price_type, 'updated_at'])
+                updated_count += 1
+
+        return Response({
+            'success': True,
+            'message': f'{updated_count} products updated successfully.',
+            'updated_count': updated_count
         })
 
     @action(detail=True, methods=['post'])
@@ -532,6 +614,448 @@ class PurchaseOrderViewSet(CompanyScopedModelViewSet):
             purchase_order.save()
 
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='download-pdf')
+    def download_pdf(self, request, pk=None):
+        """Generate a modern WeasyPrint purchase order PDF."""
+        if not WEASYPRINT_AVAILABLE:
+            return Response(
+                {'error': 'PDF engine is not installed. Please install WeasyPrint.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        purchase_order = self.get_object()
+        pdf_content = self._generate_purchase_order_pdf(purchase_order, request)
+        filename = f"PurchaseOrder_{purchase_order.po_number}.pdf"
+        response = HttpResponse(pdf_content, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Content-Length'] = len(pdf_content)
+        return response
+
+    def _generate_purchase_order_pdf(self, purchase_order, request):
+        company = purchase_order.company
+        supplier = purchase_order.supplier
+        warehouse = purchase_order.warehouse
+        logo_uri = _company_logo_file_uri(company)
+
+        company_address = _safe(getattr(company, 'address', '')).replace('\n', '<br>')
+        supplier_address = _safe(getattr(supplier, 'address', '')).replace('\n', '<br>')
+        warehouse_address = '<br>'.join(filter(None, [
+            _safe(getattr(warehouse, 'address', '')),
+            _safe(getattr(warehouse, 'city', '')),
+            _safe(getattr(warehouse, 'state', '')),
+            _safe(getattr(warehouse, 'pincode', '')),
+        ]))
+
+        rows = []
+        for index, item in enumerate(purchase_order.items.select_related('product').all(), start=1):
+            product = item.product
+            product_code = getattr(product, 'product_code', '') or getattr(product, 'sku', '')
+            rows.append(f"""
+              <tr>
+                <td class="center muted">{index}</td>
+                <td>
+                  <div class="item-name">{_safe(product.name)}</div>
+                  <div class="item-desc">{_safe(product_code)}</div>
+                </td>
+                <td class="center">{item.quantity_ordered:g}</td>
+                <td class="right">{_money(item.unit_price)}</td>
+                <td class="right strong">{_money(item.total_price)}</td>
+              </tr>
+            """)
+
+        if not rows:
+            rows.append('<tr><td colspan="5" class="empty">No line items added.</td></tr>')
+
+        logo_block = (
+            f'<img class="logo-img" src="{logo_uri}" alt="{_safe(company.name)} logo" />'
+            if logo_uri else
+            f'<div class="logo-fallback">{_safe((company.name or "C")[:1]).upper()}</div>'
+        )
+
+        status_label = purchase_order.get_status_display()
+        notes_block = ''
+        if purchase_order.notes:
+            notes_block = f"""
+              <div class="panel notes">
+                <div class="section-title">Notes</div>
+                <div>{_safe(purchase_order.notes).replace(chr(10), '<br>')}</div>
+              </div>
+            """
+
+        terms_block = ''
+        if purchase_order.terms_conditions:
+            terms_block = f"""
+              <div class="panel terms">
+                <div class="section-title">Terms & Conditions</div>
+                <div>{_safe(purchase_order.terms_conditions).replace(chr(10), '<br>')}</div>
+              </div>
+            """
+
+        html = f"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page {{
+      size: A4;
+      margin: 16mm 15mm;
+      @bottom-center {{
+        content: "Purchase Order {_safe(purchase_order.po_number)} - Page " counter(page) " of " counter(pages);
+        color: #94a3b8;
+        font-size: 9px;
+      }}
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      color: #0f172a;
+      font-family: Inter, Arial, sans-serif;
+      font-size: 12px;
+      line-height: 1.45;
+      background: #fff;
+    }}
+    .hero {{
+      border-radius: 18px;
+      padding: 22px 24px;
+      color: #fff;
+      background: linear-gradient(135deg, #2563eb 0%, #0f766e 100%);
+      position: relative;
+      overflow: hidden;
+    }}
+    .hero:after {{
+      content: "";
+      position: absolute;
+      right: -52px;
+      top: -64px;
+      width: 190px;
+      height: 190px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.16);
+    }}
+    .header-grid {{
+      display: grid;
+      grid-template-columns: 1fr 225px;
+      gap: 24px;
+      position: relative;
+      z-index: 1;
+    }}
+    .brand {{
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }}
+    .logo-box {{
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: 0 14px 35px rgba(15,23,42,.22);
+    }}
+    .logo-img {{
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      padding: 7px;
+    }}
+    .logo-fallback {{
+      color: #2563eb;
+      font-size: 30px;
+      font-weight: 800;
+    }}
+    .company-name {{
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }}
+    .company-meta {{
+      margin-top: 5px;
+      color: rgba(255,255,255,.88);
+      font-size: 11px;
+    }}
+    .po-title {{
+      text-align: right;
+    }}
+    .po-title h1 {{
+      margin: 0;
+      font-size: 28px;
+      line-height: 1;
+      letter-spacing: 0;
+    }}
+    .po-no {{
+      display: inline-block;
+      margin-top: 10px;
+      border-radius: 999px;
+      padding: 6px 11px;
+      background: rgba(255,255,255,.18);
+      font-weight: 700;
+    }}
+    .summary {{
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 16px 0 18px;
+    }}
+    .metric {{
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 12px;
+      background: #f8fafc;
+    }}
+    .metric span {{
+      display: block;
+      color: #64748b;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }}
+    .metric strong {{
+      display: block;
+      margin-top: 4px;
+      color: #0f172a;
+      font-size: 13px;
+    }}
+    .two-col {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 18px;
+    }}
+    .panel {{
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 14px;
+      background: #fff;
+      page-break-inside: avoid;
+    }}
+    .section-title {{
+      margin-bottom: 10px;
+      color: #2563eb;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }}
+    .big-name {{
+      margin-bottom: 5px;
+      font-size: 16px;
+      font-weight: 800;
+    }}
+    .muted {{ color: #64748b; }}
+    .items {{
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      overflow: hidden;
+      border-radius: 14px;
+    }}
+    .items thead tr {{
+      background: #111827;
+      color: #fff;
+    }}
+    .items th {{
+      padding: 11px 10px;
+      text-align: left;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }}
+    .items td {{
+      border-bottom: 1px solid #e5e7eb;
+      padding: 11px 10px;
+      vertical-align: top;
+    }}
+    .items tbody tr:nth-child(even) {{ background: #f8fafc; }}
+    .center {{ text-align: center; }}
+    .right {{ text-align: right; }}
+    .strong {{ font-weight: 800; }}
+    .item-name {{ font-weight: 800; }}
+    .item-desc {{ margin-top: 3px; color: #64748b; font-size: 10px; }}
+    .empty {{ padding: 22px; text-align: center; color: #64748b; }}
+    .totals-wrap {{
+      display: grid;
+      grid-template-columns: 1fr 270px;
+      gap: 18px;
+      margin-top: 18px;
+      align-items: start;
+    }}
+    .total-card {{
+      border-radius: 16px;
+      padding: 15px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }}
+    .total-row {{
+      display: flex;
+      justify-content: space-between;
+      padding: 7px 0;
+      color: #334155;
+      border-bottom: 1px solid #e2e8f0;
+    }}
+    .grand-total {{
+      margin-top: 10px;
+      border-radius: 14px;
+      padding: 13px 14px;
+      color: #fff;
+      background: linear-gradient(135deg, #2563eb, #0f766e);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }}
+    .grand-total span {{ font-size: 11px; opacity: .9; text-transform: uppercase; letter-spacing: .06em; }}
+    .grand-total strong {{ font-size: 20px; }}
+    .signature-grid {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 22px;
+    }}
+    .signature-line {{
+      height: 54px;
+      border-bottom: 1px solid #cbd5e1;
+      margin-bottom: 7px;
+    }}
+    .footer-note {{
+      margin-top: 20px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 12px;
+      text-align: center;
+      color: #64748b;
+      font-size: 10px;
+    }}
+  </style>
+</head>
+<body>
+  <section class="hero">
+    <div class="header-grid">
+      <div class="brand">
+        <div class="logo-box">{logo_block}</div>
+        <div>
+          <h2 class="company-name">{_safe(company.name)}</h2>
+          <div class="company-meta">
+            {_safe(getattr(company, 'email', ''))}{(' | ' + _safe(getattr(company, 'phone', ''))) if getattr(company, 'phone', '') else ''}<br>
+            {_safe(getattr(company, 'website', '')) if getattr(company, 'website', '') else ''}
+          </div>
+        </div>
+      </div>
+      <div class="po-title">
+        <h1>PURCHASE<br>ORDER</h1>
+        <div class="po-no">{_safe(purchase_order.po_number)}</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="summary">
+    <div class="metric"><span>Order Date</span><strong>{_date(purchase_order.order_date)}</strong></div>
+    <div class="metric"><span>Expected Delivery</span><strong>{_date(purchase_order.expected_delivery_date)}</strong></div>
+    <div class="metric"><span>Status</span><strong>{_safe(status_label)}</strong></div>
+    <div class="metric"><span>Total</span><strong>{_money(purchase_order.total_amount)}</strong></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="section-title">From</div>
+      <div class="big-name">{_safe(company.name)}</div>
+      <div class="muted">
+        {company_address}<br>
+        {_safe(getattr(company, 'email', ''))}<br>
+        {_safe(getattr(company, 'phone', ''))}
+        {('<br>GSTIN: ' + _safe(getattr(company, 'gst_number', ''))) if getattr(company, 'gst_number', '') else ''}
+        {('<br>PAN: ' + _safe(getattr(company, 'pan_number', ''))) if getattr(company, 'pan_number', '') else ''}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-title">Supplier</div>
+      <div class="big-name">{_safe(supplier.name)}</div>
+      <div class="muted">
+        {_safe(getattr(supplier, 'supplier_code', ''))}<br>
+        {('Contact: ' + _safe(getattr(supplier, 'contact_person', '')) + '<br>') if getattr(supplier, 'contact_person', '') else ''}
+        {_safe(getattr(supplier, 'email', ''))}<br>
+        {_safe(getattr(supplier, 'phone', ''))}<br>
+        {supplier_address}
+        {('<br>GSTIN: ' + _safe(getattr(supplier, 'gst_number', ''))) if getattr(supplier, 'gst_number', '') else ''}
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="section-title">Ship To Warehouse</div>
+      <div class="big-name">{_safe(warehouse.name)}</div>
+      <div class="muted">
+        {_safe(getattr(warehouse, 'code', ''))}<br>
+        {warehouse_address}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-title">Prepared By</div>
+      <div class="big-name">{_safe(getattr(purchase_order.created_by, 'full_name', '') or getattr(purchase_order.created_by, 'username', ''))}</div>
+      <div class="muted">
+        Created: {_date(purchase_order.created_at.date() if purchase_order.created_at else None)}<br>
+        Approved By: {_safe(getattr(purchase_order.approved_by, 'full_name', '') if purchase_order.approved_by else '-')}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section-title">Order Items</div>
+    <table class="items">
+      <thead>
+        <tr>
+          <th style="width: 42px;" class="center">#</th>
+          <th>Product</th>
+          <th style="width: 82px;" class="center">Qty</th>
+          <th style="width: 120px;" class="right">Unit Price</th>
+          <th style="width: 130px;" class="right">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {''.join(rows)}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="totals-wrap">
+    <div>
+      {notes_block}
+      {terms_block}
+    </div>
+    <div class="total-card">
+      <div class="total-row"><span>Subtotal</span><strong>{_money(purchase_order.subtotal)}</strong></div>
+      <div class="total-row"><span>Tax</span><strong>{_money(purchase_order.tax_amount)}</strong></div>
+      <div class="grand-total"><span>Grand Total</span><strong>{_money(purchase_order.total_amount)}</strong></div>
+    </div>
+  </div>
+
+  <div class="signature-grid">
+    <div>
+      <div class="signature-line"></div>
+      <div class="muted">Supplier Signature</div>
+    </div>
+    <div>
+      <div class="signature-line"></div>
+      <div class="muted">Authorized Signature</div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    This purchase order was generated by {_safe(company.name)}.
+  </div>
+</body>
+</html>
+        """
+
+        pdf_buffer = io.BytesIO()
+        html_doc = weasyprint.HTML(string=html, base_url=request.build_absolute_uri('/'), encoding='utf-8')
+        html_doc.write_pdf(pdf_buffer)
+        pdf_buffer.seek(0)
+        return pdf_buffer.getvalue()
 
 
 class InventoryAuditViewSet(CompanyScopedModelViewSet):

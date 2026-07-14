@@ -35,7 +35,7 @@ export const ProductBundleManager: React.FC = () => {
     try {
       setLoading(true);
       const response = await inventoryApi.getProductBundles();
-      setBundles(response.results || []);
+      setBundles(response.results || response || []);
     } catch (error: any) {
       toast.error('Failed to load product bundles');
     } finally {
@@ -46,9 +46,12 @@ export const ProductBundleManager: React.FC = () => {
   const loadProducts = async () => {
     try {
       const response = await inventoryApi.getProducts();
-      setProducts(response.results || []);
+      const productList = response.results || response || [];
+      setProducts(productList);
+      return productList;
     } catch (error: any) {
       console.error('Failed to load products:', error);
+      return [];
     }
   };
 
@@ -101,6 +104,21 @@ export const ProductBundleManager: React.FC = () => {
 
   const handleEditBundle = async (bundle: ProductBundle) => {
     setSelectedBundle(bundle);
+    const productList = await loadProducts();
+    const bundleProducts = (bundle.bundle_items || []).map((item: any) => {
+      const product = productList.find((p: Product) => p.id === item.product);
+      return {
+        product: product || {
+          id: item.product,
+          name: item.product_name,
+          product_code: '',
+          cost_price: 0,
+          selling_price: item.effective_price || 0
+        },
+        quantity: Number(item.quantity) || 1,
+        unit_price_override: item.unit_price_override || null
+      };
+    });
     setFormData({
       bundle_name: bundle.bundle_name,
       description: bundle.description || '',
@@ -108,7 +126,7 @@ export const ProductBundleManager: React.FC = () => {
       discount_percentage: bundle.discount_percentage || 0,
       bundle_items: bundle.bundle_items || []
     });
-    await loadProducts();
+    setSelectedProducts(bundleProducts);
     setShowEditModal(true);
   };
 
@@ -128,6 +146,16 @@ export const ProductBundleManager: React.FC = () => {
     if (!selectedBundle) return;
     
     try {
+      if (!formData.bundle_name.trim()) {
+        toast.error('Bundle name is required');
+        return;
+      }
+
+      if (selectedProducts.length === 0) {
+        toast.error('Please add at least one product to the bundle');
+        return;
+      }
+
       const bundleData = {
         ...formData,
         bundle_items: selectedProducts.map(p => ({
@@ -167,9 +195,25 @@ export const ProductBundleManager: React.FC = () => {
 
   const updateProductQuantity = (productId: number, quantity: number) => {
     setSelectedProducts(selectedProducts.map(p => 
-      p.product.id === productId ? { ...p, quantity } : p
+      p.product.id === productId ? { ...p, quantity: Math.max(1, quantity) } : p
     ));
   };
+
+  const updateProductOverride = (productId: number, value: string) => {
+    const parsed = value === '' ? null : parseFloat(value);
+    setSelectedProducts(selectedProducts.map(p =>
+      p.product.id === productId ? { ...p, unit_price_override: Number.isFinite(parsed) ? parsed : null } : p
+    ));
+  };
+
+  const selectedCost = selectedProducts.reduce((sum, item) => {
+    return sum + (Number(item.product.cost_price || 0) * Number(item.quantity || 0));
+  }, 0);
+
+  const selectedSellingValue = selectedProducts.reduce((sum, item) => {
+    const price = item.unit_price_override ?? item.product.selling_price ?? 0;
+    return sum + (Number(price) * Number(item.quantity || 0));
+  }, 0);
 
   const columns = [
     {
@@ -238,7 +282,10 @@ export const ProductBundleManager: React.FC = () => {
         </div>
         <Button 
           className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            resetForm();
+            setShowCreateModal(true);
+          }}
         >
           <Plus className="w-4 h-4 mr-2" />
           Create Bundle
@@ -343,6 +390,27 @@ export const ProductBundleManager: React.FC = () => {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Discount %
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={formData.discount_percentage}
+                onChange={(e) => setFormData({...formData, discount_percentage: parseFloat(e.target.value) || 0})}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="0"
+              />
+            </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+              Items selling value: ₹{selectedSellingValue.toLocaleString()}<br />
+              Items cost: ₹{selectedCost.toLocaleString()}
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Description
@@ -394,12 +462,22 @@ export const ProductBundleManager: React.FC = () => {
                       <div className="text-sm text-gray-500 dark:text-gray-400">{item.product.product_code}</div>
                     </div>
                     <div className="flex items-center space-x-2">
+                      <div className="text-right text-xs text-gray-500 dark:text-gray-400">
+                        Qty
+                      </div>
                       <input
                         type="number"
                         value={item.quantity}
-                        onChange={(e) => updateProductQuantity(item.product.id, parseInt(e.target.value) || 1)}
+                        onChange={(e) => updateProductQuantity(item.product.id, parseFloat(e.target.value) || 1)}
                         className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-center bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                         min="1"
+                      />
+                      <input
+                        type="number"
+                        value={item.unit_price_override ?? ''}
+                        onChange={(e) => updateProductOverride(item.product.id, e.target.value)}
+                        className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        placeholder="Override ₹"
                       />
                       <Button
                         size="sm"
@@ -474,6 +552,21 @@ export const ProductBundleManager: React.FC = () => {
                   {selectedBundle.description && (
                     <div className="text-gray-900 dark:text-white"><strong>Description:</strong> {selectedBundle.description}</div>
                   )}
+                  {selectedBundle.bundle_items?.length > 0 && (
+                    <div>
+                      <strong className="text-gray-900 dark:text-white">Bundle Items</strong>
+                      <div className="mt-2 space-y-2">
+                        {selectedBundle.bundle_items.map((item: any) => (
+                          <div key={item.id || item.product} className="flex items-center justify-between rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-700">
+                            <span className="text-gray-900 dark:text-white">{item.product_name}</span>
+                            <span className="text-gray-600 dark:text-gray-300">
+                              Qty {item.quantity} • ₹{Number(item.line_total || 0).toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             </div>
@@ -543,6 +636,87 @@ export const ProductBundleManager: React.FC = () => {
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                       rows={3}
                     />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Discount %
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={formData.discount_percentage}
+                        onChange={(e) => setFormData({...formData, discount_percentage: parseFloat(e.target.value) || 0})}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    </div>
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+                      Items selling value: ₹{selectedSellingValue.toLocaleString()}<br />
+                      Items cost: ₹{selectedCost.toLocaleString()}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Bundle Items ({selectedProducts.length})
+                    </label>
+                    <div className="space-y-2">
+                      {selectedProducts.map(item => (
+                        <div key={item.product.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900 dark:text-white">{item.product.name}</div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400">{item.product.product_code}</div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => updateProductQuantity(item.product.id, parseFloat(e.target.value) || 1)}
+                              className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-center bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                              min="1"
+                            />
+                            <input
+                              type="number"
+                              value={item.unit_price_override ?? ''}
+                              onChange={(e) => updateProductOverride(item.product.id, e.target.value)}
+                              className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                              placeholder="Override ₹"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => removeProductFromBundle(item.product.id)}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Add More Products
+                    </label>
+                    <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 max-h-48 overflow-y-auto bg-white dark:bg-gray-700">
+                      {products
+                        .filter(product => !selectedProducts.find(item => item.product.id === product.id))
+                        .slice(0, 10)
+                        .map(product => (
+                          <div key={product.id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-600 last:border-b-0">
+                            <div>
+                              <div className="font-medium text-gray-900 dark:text-white">{product.name}</div>
+                              <div className="text-sm text-gray-500 dark:text-gray-400">{product.product_code}</div>
+                            </div>
+                            <Button size="sm" onClick={() => addProductToBundle(product)}>
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                    </div>
                   </div>
 
                   <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">

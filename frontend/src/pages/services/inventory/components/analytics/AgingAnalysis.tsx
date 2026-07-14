@@ -7,6 +7,15 @@ import { inventoryApi } from '../../utils/inventoryApi';
 import type { AgingAnalysisItem } from '../../types/inventoryTypes';
 import toast from 'react-hot-toast';
 
+const AGING_BUCKETS = [
+  'Fresh (0-30 days)',
+  'Good (31-60 days)',
+  'Aging (61-90 days)',
+  'Slow Moving (91-180 days)',
+  'Very Slow (181-365 days)',
+  'Dead Stock (365+ days)'
+];
+
 export const AgingAnalysis: React.FC = () => {
   const [agingData, setAgingData] = useState<AgingAnalysisItem[]>([]);
   const [agingSummary, setAgingSummary] = useState<any>({});
@@ -23,8 +32,8 @@ export const AgingAnalysis: React.FC = () => {
       const params = selectedWarehouse ? { warehouse: selectedWarehouse } : {};
       const response = await inventoryApi.getAgingAnalysisReport(params);
       
-      setAgingData(response.aging_data);
-      setAgingSummary(response.aging_summary);
+      setAgingData(response.aging_data || []);
+      setAgingSummary(response.aging_summary || {});
     } catch (error: any) {
       toast.error('Failed to load aging analysis');
     } finally {
@@ -110,7 +119,7 @@ export const AgingAnalysis: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Inventory Aging Analysis</h2>
-          <p className="text-gray-600 dark:text-gray-400">Analyze inventory age and identify slow-moving stock</p>
+          <p className="text-gray-600 dark:text-gray-400">Track stock age from last inbound movement and identify slow-moving or dead stock</p>
         </div>
         <Button onClick={loadAgingAnalysis} disabled={loading}>
           <BarChart3 className="w-4 h-4 mr-2" />
@@ -120,7 +129,9 @@ export const AgingAnalysis: React.FC = () => {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {Object.entries(agingSummary).map(([category, data]: [string, any]) => (
+        {AGING_BUCKETS.map((category) => {
+          const data = agingSummary[category] || { count: 0, value: 0 };
+          return (
           <Card key={category} className="p-4">
             <div className="text-center">
               <div className={`inline-flex px-2 py-1 rounded-full text-xs font-medium mb-2 ${getAgingColor(category)}`}>
@@ -130,20 +141,35 @@ export const AgingAnalysis: React.FC = () => {
               <div className="text-sm text-gray-500">₹{(data.value / 1000).toFixed(0)}K</div>
             </div>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Aging Chart Placeholder */}
       <Card className="p-6">
         <div className="flex items-center space-x-2 mb-4">
           <Calendar className="w-5 h-5 text-blue-600" />
           <h3 className="text-lg font-semibold">Aging Distribution</h3>
         </div>
-        <div className="h-64 bg-gray-50 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-          <div className="text-center">
-            <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-            <p className="text-gray-500">Aging chart visualization would go here</p>
-          </div>
+        <div className="space-y-4">
+          {AGING_BUCKETS.map((category) => {
+            const data = agingSummary[category] || { count: 0, value: 0 };
+            const maxCount = Math.max(...AGING_BUCKETS.map(bucket => agingSummary[bucket]?.count || 0), 1);
+            const width = Math.max((data.count / maxCount) * 100, data.count ? 8 : 0);
+            return (
+              <div key={category}>
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="font-medium text-gray-700 dark:text-gray-300">{category}</span>
+                  <span className="text-gray-500">{data.count} items · ₹{Number(data.value || 0).toLocaleString()}</span>
+                </div>
+                <div className="h-3 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-purple-600 transition-all"
+                    style={{ width: `${width}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Card>
 

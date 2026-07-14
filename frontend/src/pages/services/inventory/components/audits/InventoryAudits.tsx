@@ -36,11 +36,15 @@ import toast from 'react-hot-toast';
 
 interface InventoryAudit {
   id: number;
+  audit_number?: string;
   audit_code: string;
   audit_name: string;
+  warehouse: number;
   warehouse_name: string;
   status: 'planned' | 'in_progress' | 'completed' | 'cancelled';
   audit_date: string;
+  total_products_audited?: number;
+  discrepancies_found?: number;
   total_items: number;
   discrepancies: number;
   accuracy_percentage: number;
@@ -70,9 +74,7 @@ const InventoryAudits: React.FC = () => {
   const [formData, setFormData] = useState({
     audit_name: '',
     warehouse: '',
-    audit_date: '',
-    audit_type: 'full',
-    notes: ''
+    audit_date: ''
   });
 
   useEffect(() => {
@@ -124,11 +126,15 @@ const InventoryAudits: React.FC = () => {
     e.preventDefault();
     setModalLoading(true);
     try {
+      if (!formData.warehouse) {
+        toast.error('Please select a warehouse');
+        setModalLoading(false);
+        return;
+      }
       const auditData = {
         audit_name: formData.audit_name,
         warehouse: parseInt(formData.warehouse),
-        audit_date: formData.audit_date || new Date().toISOString().split('T')[0],
-        notes: formData.notes
+        audit_date: formData.audit_date || new Date().toISOString().split('T')[0]
       };
 
       await inventoryApi.createInventoryAudit(auditData);
@@ -148,9 +154,7 @@ const InventoryAudits: React.FC = () => {
     setFormData({
       audit_name: '',
       warehouse: '',
-      audit_date: new Date().toISOString().split('T')[0],
-      audit_type: 'full',
-      notes: ''
+      audit_date: new Date().toISOString().split('T')[0]
     });
   };
 
@@ -163,10 +167,8 @@ const InventoryAudits: React.FC = () => {
     setSelectedAudit(audit);
     setFormData({
       audit_name: audit.audit_name,
-      warehouse: audit.warehouse_name,
-      audit_date: audit.audit_date,
-      audit_type: 'full',
-      notes: ''
+      warehouse: String(audit.warehouse),
+      audit_date: audit.audit_date
     });
     await loadWarehouses();
     setShowEditModal(true);
@@ -184,28 +186,47 @@ const InventoryAudits: React.FC = () => {
     }
   };
 
-  const handleDownloadAudit = (audit: InventoryAudit) => {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head><title>Inventory Audit - ${audit.audit_code}</title></head>
-          <body>
-            <h1>Inventory Audit Report</h1>
-            <p><strong>Audit Code:</strong> ${audit.audit_code}</p>
-            <p><strong>Audit Name:</strong> ${audit.audit_name}</p>
-            <p><strong>Warehouse:</strong> ${audit.warehouse_name}</p>
-            <p><strong>Status:</strong> ${audit.status.toUpperCase()}</p>
-            <p><strong>Audit Date:</strong> ${new Date(audit.audit_date).toLocaleDateString()}</p>
-            <p><strong>Total Items:</strong> ${audit.total_items}</p>
-            <p><strong>Discrepancies:</strong> ${audit.discrepancies}</p>
-            <p><strong>Accuracy:</strong> ${audit.accuracy_percentage}%</p>
-            <p><strong>Conducted by:</strong> ${audit.conducted_by}</p>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.print();
+  const handleDownloadAudit = async (audit: InventoryAudit) => {
+    try {
+      const data = await inventoryApi.downloadInventoryAuditPdf(audit.id);
+      const blob = data instanceof Blob ? data : new Blob([data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `InventoryAudit_${audit.audit_code || audit.audit_number || audit.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Inventory audit PDF downloaded');
+    } catch (error) {
+      console.error('Failed to download inventory audit PDF:', error);
+      toast.error('Failed to download inventory audit PDF');
+    }
+  };
+
+  const handleStatusChange = async (
+    audit: InventoryAudit,
+    status: InventoryAudit['status']
+  ) => {
+    const statusLabel = status.replace('_', ' ');
+    if (status === 'completed' && !confirm('Complete this audit? After completion, edit will be disabled.')) {
+      return;
+    }
+    if (status === 'cancelled' && !confirm('Cancel this audit?')) {
+      return;
+    }
+
+    try {
+      await inventoryApi.updateInventoryAudit(audit.id, { status });
+      toast.success(`Audit marked as ${statusLabel}`);
+      if (selectedAudit?.id === audit.id) {
+        setSelectedAudit({ ...selectedAudit, status });
+      }
+      loadAudits();
+    } catch (error) {
+      console.error('Failed to update audit status:', error);
+      toast.error('Failed to update audit status');
     }
   };
 
@@ -215,11 +236,15 @@ const InventoryAudits: React.FC = () => {
     
     setModalLoading(true);
     try {
+      if (!formData.warehouse) {
+        toast.error('Please select a warehouse');
+        setModalLoading(false);
+        return;
+      }
       const auditData = {
         audit_name: formData.audit_name,
         warehouse: parseInt(formData.warehouse),
-        audit_date: formData.audit_date || new Date().toISOString().split('T')[0],
-        notes: formData.notes
+        audit_date: formData.audit_date || new Date().toISOString().split('T')[0]
       };
 
       await inventoryApi.updateInventoryAudit(selectedAudit.id, auditData);
@@ -291,7 +316,7 @@ const InventoryAudits: React.FC = () => {
           </Button>
           <Button onClick={handleCreateAudit}>
             <Plus className="w-4 h-4 mr-2" />
-            Start Audit
+            New Audit
           </Button>
         </div>
       </motion.div>
@@ -433,6 +458,23 @@ const InventoryAudits: React.FC = () => {
                 </div>
                 
                 <div className="flex items-center space-x-2">
+                  {audit.status === 'planned' && (
+                    <Button variant="outline" size="sm" onClick={() => handleStatusChange(audit, 'in_progress')}>
+                      <Clock className="w-4 h-4 mr-1" />
+                      Start Count
+                    </Button>
+                  )}
+                  {audit.status === 'in_progress' && (
+                    <Button variant="outline" size="sm" onClick={() => handleStatusChange(audit, 'completed')}>
+                      <CheckCircle className="w-4 h-4 mr-1" />
+                      Complete
+                    </Button>
+                  )}
+                  {audit.status !== 'completed' && audit.status !== 'cancelled' && (
+                    <Button variant="outline" size="sm" onClick={() => handleStatusChange(audit, 'cancelled')}>
+                      Cancel
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={() => handleViewAudit(audit)}>
                     <Eye className="w-4 h-4" />
                   </Button>
@@ -479,8 +521,8 @@ const InventoryAudits: React.FC = () => {
                       <ClipboardCheck className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">Start New Audit</h2>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Create a new inventory audit</p>
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create Planned Audit</h2>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Create scope first, then start counting from the card</p>
                     </div>
                   </div>
                   <button
@@ -512,6 +554,7 @@ const InventoryAudits: React.FC = () => {
                           value={formData.warehouse}
                           onChange={(e) => setFormData(prev => ({ ...prev, warehouse: e.target.value }))}
                           className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          required
                         >
                           <option value="">Select Warehouse</option>
                           {Array.isArray(warehouses) && warehouses.map((warehouse: any) => (
@@ -534,28 +577,8 @@ const InventoryAudits: React.FC = () => {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Audit Type</label>
-                      <select
-                        value={formData.audit_type}
-                        onChange={(e) => setFormData(prev => ({ ...prev, audit_type: e.target.value }))}
-                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                      >
-                        <option value="full">Full Audit</option>
-                        <option value="cycle">Cycle Count</option>
-                        <option value="spot">Spot Check</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes</label>
-                      <textarea
-                        value={formData.notes}
-                        onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                        rows={3}
-                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        placeholder="Additional notes or instructions"
-                      />
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+                      This audit will be created as Planned. Use Start Count to move it to In Progress, then Complete when verification is done.
                     </div>
                   </div>
 
@@ -581,7 +604,7 @@ const InventoryAudits: React.FC = () => {
                       ) : (
                         <>
                           <Save className="h-4 w-4 mr-2" />
-                          Start Audit
+                          Create Audit
                         </>
                       )}
                     </Button>
@@ -631,6 +654,29 @@ const InventoryAudits: React.FC = () => {
                     <div><strong>Accuracy:</strong> {selectedAudit.accuracy_percentage}%</div>
                   </div>
                   <div><strong>Conducted by:</strong> {selectedAudit.conducted_by}</div>
+                  <div className="flex flex-wrap gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
+                    {selectedAudit.status === 'planned' && (
+                      <Button variant="outline" size="sm" onClick={() => handleStatusChange(selectedAudit, 'in_progress')}>
+                        <Clock className="w-4 h-4 mr-1" />
+                        Start Count
+                      </Button>
+                    )}
+                    {selectedAudit.status === 'in_progress' && (
+                      <Button variant="outline" size="sm" onClick={() => handleStatusChange(selectedAudit, 'completed')}>
+                        <CheckCircle className="w-4 h-4 mr-1" />
+                        Complete Audit
+                      </Button>
+                    )}
+                    {selectedAudit.status !== 'completed' && selectedAudit.status !== 'cancelled' && (
+                      <Button variant="outline" size="sm" onClick={() => handleStatusChange(selectedAudit, 'cancelled')}>
+                        Cancel Audit
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => handleDownloadAudit(selectedAudit)}>
+                      <Download className="w-4 h-4 mr-1" />
+                      Download PDF
+                    </Button>
+                  </div>
                 </div>
               </motion.div>
             </div>
@@ -684,6 +730,7 @@ const InventoryAudits: React.FC = () => {
                           value={formData.warehouse}
                           onChange={(e) => setFormData(prev => ({ ...prev, warehouse: e.target.value }))}
                           className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          required
                         >
                           <option value="">Select Warehouse</option>
                           {Array.isArray(warehouses) && warehouses.map((warehouse: any) => (
@@ -705,15 +752,8 @@ const InventoryAudits: React.FC = () => {
                         />
                       </div>
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes</label>
-                      <textarea
-                        value={formData.notes}
-                        onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                        rows={3}
-                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                      />
+                    <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
+                      Editing changes the audit scope details only. Use the card actions to start, complete, or cancel the audit.
                     </div>
                   </div>
 

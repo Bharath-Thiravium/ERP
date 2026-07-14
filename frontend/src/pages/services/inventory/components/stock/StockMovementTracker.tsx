@@ -223,6 +223,7 @@ const StockMovementTracker: React.FC = () => {
 
   useEffect(() => {
     loadMovementsWithParams('', '', '', '7'); // Initial load
+    loadDropdownData();
   }, []);
 
   useEffect(() => {
@@ -279,22 +280,45 @@ const StockMovementTracker: React.FC = () => {
     e.preventDefault();
     setModalLoading(true);
     try {
-      const movementData = {
-        ...formData,
+      const movementData: any = {
         product: parseInt(formData.product),
         warehouse: parseInt(formData.warehouse),
+        movement_type: formData.movement_type,
         quantity: parseFloat(formData.quantity),
-        unit_cost: parseFloat(formData.unit_cost)
+        unit_cost: formData.movement_type === 'adjustment' ? 0 : parseFloat(formData.unit_cost || '0')
       };
+
+      if (formData.reference_number.trim()) movementData.reference_number = formData.reference_number.trim();
+      if (formData.notes.trim()) movementData.notes = formData.notes.trim();
+      if (formData.movement_type === 'transfer' && formData.destination_warehouse) {
+        movementData.destination_warehouse = parseInt(formData.destination_warehouse);
+      }
+      if (['purchase', 'in', 'return', 'production'].includes(formData.movement_type)) {
+        if (formData.batch_number.trim()) movementData.batch_number = formData.batch_number.trim();
+        if (formData.expiry_date) movementData.expiry_date = formData.expiry_date;
+      }
+      if (formData.movement_type === 'adjustment' && formData.adjustment_reason) {
+        movementData.adjustment_reason = formData.adjustment_reason;
+      }
+      if (formData.movement_type === 'damage' && formData.damage_reason) {
+        movementData.damage_reason = formData.damage_reason;
+      }
       
-      await inventoryApi.createStockMovement(movementData as any);
+      await inventoryApi.createStockMovement(movementData);
       toast.success('Stock movement recorded successfully!');
       setShowCreateModal(false);
       resetForm();
       loadMovements();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create movement:', error);
-      toast.error('Failed to record stock movement');
+      const details = error.response?.data;
+      const message =
+        details?.detail ||
+        details?.error ||
+        details?.quantity?.[0] ||
+        details?.destination_warehouse?.[0] ||
+        (typeof details === 'string' ? details : 'Failed to record stock movement');
+      toast.error(message);
     } finally {
       setModalLoading(false);
     }
@@ -331,7 +355,7 @@ const StockMovementTracker: React.FC = () => {
       .reduce((sum, m) => sum + m.quantity, 0);
     
     const totalOut = movements
-      .filter(m => ['out', 'sale', 'damage'].includes(m.movement_type))
+      .filter(m => ['out', 'sale', 'damage', 'transfer'].includes(m.movement_type))
       .reduce((sum, m) => sum + m.quantity, 0);
     
     const totalValue = movements.reduce((sum, m) => sum + (m.quantity * m.unit_cost), 0);
@@ -502,6 +526,7 @@ const StockMovementTracker: React.FC = () => {
             <option value="sale">Sale</option>
             <option value="return">Return</option>
             <option value="damage">Damage/Loss</option>
+            <option value="production">Production</option>
           </select>
           
           <select
@@ -510,7 +535,11 @@ const StockMovementTracker: React.FC = () => {
             className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           >
             <option value="">All Warehouses</option>
-            {/* Warehouses will be loaded dynamically */}
+            {warehouses.map((warehouse: any) => (
+              <option key={warehouse.id} value={warehouse.id}>
+                {warehouse.name}
+              </option>
+            ))}
           </select>
           
           <select

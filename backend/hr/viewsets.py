@@ -284,10 +284,11 @@ class JobApplicationViewSet(CompanyScopedModelViewSet):
     """Job Application management with centralized tenant enforcement"""
     queryset = JobApplication.objects.all()
     serializer_class = JobApplicationSerializer
-    company_field_name = "job_posting__company"  # Override for nested company field
 
     def get_queryset(self):
-        queryset = super().get_queryset().select_related('job_posting')
+        queryset = JobApplication.objects.filter(
+            job_posting__company=self.get_company()
+        ).select_related('job_posting')
         
         # Search functionality
         search = self.request.query_params.get('search', '')

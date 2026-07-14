@@ -228,13 +228,13 @@ export const inventoryApi = {
 
   // Aging Analysis
   getAgingAnalysisReport: async (params?: any) => {
-    const response = await apiClient.get('/api/inventory/reports/aging-analysis/', params);
+    const response = await apiClient.get('/api/inventory/reports/aging-analysis/', { params });
     return response.data;
   },
 
   // Dead Stock Report
   getDeadStockReport: async (days: number = 365) => {
-    const response = await apiClient.get('/api/inventory/reports/dead-stock/', { days });
+    const response = await apiClient.get('/api/inventory/reports/dead-stock/', { params: { days } });
     return response.data;
   },
 
@@ -266,7 +266,7 @@ export const inventoryApi = {
 
   // Cycle Counts
   getCycleCounts: async (params?: any) => {
-    const response = await apiClient.get('/api/inventory/cycle-counts/', params);
+    const response = await apiClient.get('/api/inventory/cycle-counts/', { params });
     return response.data;
   },
 
@@ -351,12 +351,19 @@ export const inventoryApi = {
   },
 
   updateInventoryAudit: async (id: number, data: any) => {
-    const response = await apiClient.put(`/api/inventory/audits/${id}/`, data);
+    const response = await apiClient.patch(`/api/inventory/audits/${id}/`, data);
     return response.data;
   },
 
   deleteInventoryAudit: async (id: number) => {
     const response = await apiClient.delete(`/api/inventory/audits/${id}/`);
+    return response.data;
+  },
+
+  downloadInventoryAuditPdf: async (id: number) => {
+    const response = await apiClient.get(`/api/inventory/audits/${id}/download-pdf/`, {
+      responseType: 'blob'
+    });
     return response.data;
   },
 

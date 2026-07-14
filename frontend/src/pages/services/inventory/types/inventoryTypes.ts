@@ -257,7 +257,7 @@ export interface CycleCount {
   last_count_date?: string;
   abc_classes: string[];
   categories: number[];
-  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'scheduled' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
   items_counted: number;
   discrepancies_found: number;
   accuracy_percentage: number;

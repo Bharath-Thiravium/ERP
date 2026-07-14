@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Plus, Play, Pause, CheckCircle, Calendar, X } from 'lucide-react';
+import { RefreshCw, Plus, Play, Pause, CheckCircle, Calendar, X, Eye } from 'lucide-react';
 import { Card } from '../../../../../components/ui/Card';
 import { Button } from '../../../../../components/ui/Button';
 import { DataTable } from '../../../../../components/ui/DataTable';
 import { inventoryApi } from '../../utils/inventoryApi';
-import type { CycleCount, Category, Warehouse } from '../../types/inventoryTypes';
+import type { CycleCount, CycleCountItem, Category, Warehouse } from '../../types/inventoryTypes';
 import toast from 'react-hot-toast';
 
 export const CycleCountManager: React.FC = () => {
   const [cycleCounts, setCycleCounts] = useState<CycleCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedCount, setSelectedCount] = useState<CycleCount | null>(null);
+  const [draftItems, setDraftItems] = useState<CycleCountItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [formData, setFormData] = useState({
@@ -98,6 +100,47 @@ export const CycleCountManager: React.FC = () => {
       loadCycleCounts();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to pause cycle count');
+    }
+  };
+
+  const handleViewCount = async (countId: number) => {
+    try {
+      const count = await inventoryApi.getCycleCount(countId);
+      setSelectedCount(count);
+      setDraftItems(count.count_items || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load cycle count details');
+    }
+  };
+
+  const updateDraftItem = (itemId: number, updates: Partial<CycleCountItem>) => {
+    setDraftItems(items => items.map(item => item.id === itemId ? { ...item, ...updates } : item));
+  };
+
+  const handleSaveCountItems = async (status?: CycleCount['status']) => {
+    if (!selectedCount) return;
+    try {
+      if (status === 'completed' && draftItems.some(item => !item.is_counted)) {
+        toast.error('Please enter counted quantity for all items before completing');
+        return;
+      }
+      const payload: any = {
+        count_items: draftItems.filter(item => item.is_counted).map(item => ({
+          id: item.id,
+          counted_quantity: item.counted_quantity,
+          notes: item.notes || ''
+        }))
+      };
+      if (status) {
+        payload.status = status;
+      }
+      const updated = await inventoryApi.updateCycleCount(selectedCount.id, payload);
+      setSelectedCount(updated);
+      setDraftItems(updated.count_items || []);
+      toast.success(status === 'completed' ? 'Cycle count completed' : 'Cycle count saved');
+      loadCycleCounts();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to save cycle count');
     }
   };
 
@@ -219,7 +262,7 @@ export const CycleCountManager: React.FC = () => {
               Pause
             </Button>
           )}
-          {false && (
+          {count.status === 'paused' && (
             <Button 
               size="sm" 
               onClick={() => handleStartCycleCount(count.id)}
@@ -229,12 +272,10 @@ export const CycleCountManager: React.FC = () => {
               Resume
             </Button>
           )}
-          {count.status === 'completed' && (
-            <Button size="sm" variant="outline">
-              <CheckCircle className="w-4 h-4 mr-1" />
-              View
-            </Button>
-          )}
+          <Button size="sm" variant="outline" onClick={() => handleViewCount(count.id)}>
+            <Eye className="w-4 h-4 mr-1" />
+            View
+          </Button>
         </div>
       )
     }
@@ -454,7 +495,7 @@ export const CycleCountManager: React.FC = () => {
                         Categories (Optional)
                       </label>
                       <div className="max-h-32 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-700">
-                        {categories.slice(0, 10).map(category => (
+                        {categories.map(category => (
                           <label key={category.id} className="flex items-center py-1 text-gray-900 dark:text-white">
                             <input
                               type="checkbox"
@@ -487,6 +528,127 @@ export const CycleCountManager: React.FC = () => {
                       </Button>
                     </div>
                   </div>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedCount && (
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-screen items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
+                onClick={() => setSelectedCount(null)}
+              />
+
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative w-full max-w-5xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden"
+              >
+                <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{selectedCount.count_name}</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {selectedCount.count_number} · {selectedCount.warehouse_name} · {selectedCount.status.replace('_', ' ')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedCount(null)}
+                    className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+
+                <div className="p-6 overflow-y-auto max-h-[calc(90vh-160px)] space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <Card className="p-4">
+                      <p className="text-xs text-gray-500">Items</p>
+                      <p className="text-2xl font-bold">{draftItems.length}</p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-xs text-gray-500">Counted</p>
+                      <p className="text-2xl font-bold text-blue-600">{draftItems.filter(item => item.is_counted).length}</p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-xs text-gray-500">Discrepancies</p>
+                      <p className="text-2xl font-bold text-orange-600">
+                        {draftItems.filter(item => item.is_counted && Number(item.counted_quantity || 0) - Number(item.expected_quantity || 0) !== 0).length}
+                      </p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-xs text-gray-500">Accuracy</p>
+                      <p className="text-2xl font-bold text-green-600">{Number(selectedCount.accuracy_percentage || 0).toFixed(1)}%</p>
+                    </Card>
+                  </div>
+
+                  <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                      <thead className="bg-gray-50 dark:bg-gray-700">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Expected</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Counted</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Variance</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                        {draftItems.map(item => {
+                          const variance = Number(item.counted_quantity || 0) - Number(item.expected_quantity || 0);
+                          return (
+                            <tr key={item.id}>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{item.product_name}</td>
+                              <td className="px-4 py-3 text-sm text-right">{Number(item.expected_quantity).toLocaleString()}</td>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="number"
+                                  value={item.is_counted ? item.counted_quantity : ''}
+                                  disabled={selectedCount.status === 'completed'}
+                                  onChange={(e) => updateDraftItem(item.id, { counted_quantity: Number(e.target.value), is_counted: e.target.value !== '' })}
+                                  className="w-28 px-3 py-2 text-right border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:bg-gray-100"
+                                />
+                              </td>
+                              <td className={`px-4 py-3 text-sm text-right font-semibold ${!item.is_counted || variance === 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                                {item.is_counted ? variance.toLocaleString() : '-'}
+                              </td>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="text"
+                                  value={item.notes || ''}
+                                  disabled={selectedCount.status === 'completed'}
+                                  onChange={(e) => updateDraftItem(item.id, { notes: e.target.value })}
+                                  placeholder="Optional note"
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:bg-gray-100"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+                  <Button variant="outline" onClick={() => setSelectedCount(null)}>Close</Button>
+                  {selectedCount.status !== 'completed' && (
+                    <>
+                      <Button variant="outline" onClick={() => handleSaveCountItems()}>Save Count</Button>
+                      <Button className="bg-green-600 hover:bg-green-700" onClick={() => handleSaveCountItems('completed')}>
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Complete Count
+                      </Button>
+                    </>
+                  )}
                 </div>
               </motion.div>
             </div>

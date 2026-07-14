@@ -14,7 +14,7 @@ import logging
 from common.viewsets import CompanyScopedModelViewSet
 from .models import (
     Category, Supplier, Warehouse, Product, StockLevel, StockMovement, 
-    StockAlert, InventoryAudit, PurchaseOrder, PurchaseOrderItem
+    StockAlert, InventoryAudit, InventoryAuditItem, PurchaseOrder, PurchaseOrderItem
 )
 from .serializers import (
     CategorySerializer, SupplierSerializer, WarehouseSerializer,
@@ -315,10 +315,11 @@ class StockMovementViewSet(CompanyScopedModelViewSet):
     """Stock Movement management with centralized tenant enforcement"""
     queryset = StockMovement.objects.all()
     serializer_class = StockMovementSerializer
-    company_field_name = "product__company"  # Override for nested company field
 
     def get_queryset(self):
-        queryset = super().get_queryset().select_related('product', 'warehouse', 'created_by')
+        queryset = StockMovement.objects.filter(
+            product__company=self.get_company()
+        ).select_related('product', 'warehouse', 'created_by')
         
         # Filtering
         product_id = self.request.query_params.get('product')
@@ -421,24 +422,8 @@ class StockMovementViewSet(CompanyScopedModelViewSet):
             warehouse = serializer.validated_data['warehouse']
             current_stock = product.current_stock
             
-            # Check for low stock alert
-            if current_stock <= product.min_stock_level and current_stock > 0:
-                StockAlert.objects.get_or_create(
-                    company=self.get_company(),
-                    product=product,
-                    warehouse=warehouse,
-                    alert_type='low_stock',
-                    is_resolved=False,
-                    defaults={
-                        'priority': 'high' if current_stock <= product.reorder_point else 'medium',
-                        'message': f'Stock level ({current_stock}) is below minimum threshold ({product.min_stock_level})',
-                        'current_stock': current_stock,
-                        'suggested_action': f'Reorder {product.reorder_quantity} units immediately'
-                    }
-                )
-            
-            # Check for out of stock alert
-            elif current_stock <= 0:
+            # Check for out of stock alert first; zero stock is also below min stock.
+            if current_stock <= 0:
                 StockAlert.objects.get_or_create(
                     company=self.get_company(),
                     product=product,
@@ -450,6 +435,22 @@ class StockMovementViewSet(CompanyScopedModelViewSet):
                         'message': f'Product is completely out of stock',
                         'current_stock': current_stock,
                         'suggested_action': f'Emergency reorder of {product.reorder_quantity} units required'
+                    }
+                )
+            
+            # Check for low stock alert
+            elif current_stock <= product.min_stock_level:
+                StockAlert.objects.get_or_create(
+                    company=self.get_company(),
+                    product=product,
+                    warehouse=warehouse,
+                    alert_type='low_stock',
+                    is_resolved=False,
+                    defaults={
+                        'priority': 'high' if current_stock <= product.reorder_point else 'medium',
+                        'message': f'Stock level ({current_stock}) is below minimum threshold ({product.min_stock_level})',
+                        'current_stock': current_stock,
+                        'suggested_action': f'Reorder {product.reorder_quantity} units immediately'
                     }
                 )
             
@@ -1066,7 +1067,15 @@ class InventoryAuditViewSet(CompanyScopedModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset().select_related(
             'warehouse', 'supervisor', 'created_by'
-        ).prefetch_related('categories', 'products', 'audit_items')
+        ).prefetch_related('categories', 'products', 'audit_items__product')
+
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(audit_name__icontains=search) |
+                Q(audit_number__icontains=search) |
+                Q(warehouse__name__icontains=search)
+            )
         
         status_filter = self.request.query_params.get('status')
         if status_filter:
@@ -1077,6 +1086,410 @@ class InventoryAuditViewSet(CompanyScopedModelViewSet):
             queryset = queryset.filter(warehouse_id=warehouse_id)
             
         return queryset.order_by('-created_at')
+
+    def create(self, request, *args, **kwargs):
+        """Create an audit and seed audit item rows from current warehouse stock."""
+        with transaction.atomic():
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            audit = serializer.instance
+            self._seed_audit_items(audit)
+            response_serializer = self.get_serializer(audit)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        audit = serializer.instance
+        self._seed_audit_items(audit)
+
+    def _get_audit_scope_products(self, audit):
+        company = self.get_company()
+        selected_products = audit.products.filter(company=company, is_active=True)
+        if selected_products.exists():
+            return selected_products
+
+        products = Product.objects.filter(company=company, is_active=True)
+        category_ids = audit.categories.values_list('id', flat=True)
+        if category_ids:
+            products = products.filter(category_id__in=category_ids)
+        return products.order_by('name')
+
+    def _seed_audit_items(self, audit):
+        if audit.audit_items.exists():
+            self._recalculate_audit_totals(audit)
+            return
+
+        stock_by_product = {
+            stock.product_id: stock
+            for stock in StockLevel.objects.filter(
+                warehouse=audit.warehouse,
+                product__company=audit.company
+            ).select_related('product')
+        }
+
+        items = []
+        for product in self._get_audit_scope_products(audit):
+            stock = stock_by_product.get(product.id)
+            expected_quantity = stock.quantity_available if stock else Decimal('0')
+            items.append(InventoryAuditItem(
+                audit=audit,
+                product=product,
+                expected_quantity=expected_quantity,
+                actual_quantity=expected_quantity,
+                unit_cost=product.cost_price or Decimal('0')
+            ))
+
+        if items:
+            InventoryAuditItem.objects.bulk_create(items)
+
+        self._recalculate_audit_totals(audit)
+
+    def _recalculate_audit_totals(self, audit):
+        items = audit.audit_items.all()
+        total_products = items.count()
+        discrepancies = items.exclude(difference=0).count()
+        total_value_difference = sum((item.value_difference for item in items), Decimal('0'))
+        completed_at = audit.completed_at
+        if audit.status == 'completed' and not completed_at:
+            completed_at = timezone.now()
+        elif audit.status != 'completed':
+            completed_at = None
+
+        InventoryAudit.objects.filter(id=audit.id).update(
+            total_products_audited=total_products,
+            discrepancies_found=discrepancies,
+            total_value_difference=total_value_difference,
+            completed_at=completed_at
+        )
+        audit.total_products_audited = total_products
+        audit.discrepancies_found = discrepancies
+        audit.total_value_difference = total_value_difference
+        audit.completed_at = completed_at
+
+    @action(detail=True, methods=['get'], url_path='download-pdf')
+    def download_pdf(self, request, pk=None):
+        """Generate a modern WeasyPrint inventory audit report."""
+        if not WEASYPRINT_AVAILABLE:
+            return Response(
+                {'error': 'PDF engine is not installed. Please install WeasyPrint.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        audit = self.get_object()
+        self._seed_audit_items(audit)
+        audit = self.get_queryset().get(pk=audit.pk)
+        pdf_content = self._generate_inventory_audit_pdf(audit, request)
+        filename = f"InventoryAudit_{audit.audit_number}.pdf"
+        response = HttpResponse(pdf_content, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Content-Length'] = len(pdf_content)
+        return response
+
+    def _generate_inventory_audit_pdf(self, audit, request):
+        company = audit.company
+        warehouse = audit.warehouse
+        logo_uri = _company_logo_file_uri(company)
+        accuracy = 0
+        if audit.total_products_audited:
+            accuracy = max(0, 100 - ((audit.discrepancies_found / audit.total_products_audited) * 100))
+
+        company_address = _safe(getattr(company, 'address', '')).replace('\n', '<br>')
+        warehouse_address = '<br>'.join(filter(None, [
+            _safe(getattr(warehouse, 'address', '')),
+            _safe(getattr(warehouse, 'city', '')),
+            _safe(getattr(warehouse, 'state', '')),
+            _safe(getattr(warehouse, 'pincode', '')),
+        ]))
+        supervisor = audit.supervisor.full_name if audit.supervisor else ''
+        conducted_by = supervisor or (audit.created_by.full_name or audit.created_by.username if audit.created_by else 'Not assigned')
+
+        rows = []
+        for index, item in enumerate(audit.audit_items.select_related('product').all(), start=1):
+            diff_class = 'ok' if item.difference == 0 else 'variance'
+            rows.append(f"""
+              <tr>
+                <td class="center muted">{index}</td>
+                <td>
+                  <div class="item-name">{_safe(item.product.name)}</div>
+                  <div class="item-desc">{_safe(item.product.product_code or item.product.sku)}</div>
+                </td>
+                <td class="center">{item.expected_quantity:g}</td>
+                <td class="center">{item.actual_quantity:g}</td>
+                <td class="center {diff_class}">{item.difference:g}</td>
+                <td class="right">{_money(item.unit_cost)}</td>
+                <td class="right strong">{_money(item.value_difference)}</td>
+                <td>{_safe(item.reason_for_difference or item.notes or '-')}</td>
+              </tr>
+            """)
+
+        if not rows:
+            rows.append('<tr><td colspan="8" class="empty">No audit item rows available.</td></tr>')
+
+        logo_block = (
+            f'<img class="logo-img" src="{logo_uri}" alt="{_safe(company.name)} logo" />'
+            if logo_uri else
+            f'<div class="logo-fallback">{_safe((company.name or "C")[:1]).upper()}</div>'
+        )
+
+        html = f"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page {{
+      size: A4 landscape;
+      margin: 14mm;
+      @bottom-center {{
+        content: "Inventory Audit {_safe(audit.audit_number)} - Page " counter(page) " of " counter(pages);
+        color: #94a3b8;
+        font-size: 9px;
+      }}
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      color: #0f172a;
+      font-family: Inter, Arial, sans-serif;
+      font-size: 11px;
+      line-height: 1.42;
+      background: #fff;
+    }}
+    .hero {{
+      border-radius: 18px;
+      padding: 20px 22px;
+      color: #fff;
+      background: linear-gradient(135deg, #16a34a 0%, #2563eb 100%);
+      position: relative;
+      overflow: hidden;
+    }}
+    .hero:after {{
+      content: "";
+      position: absolute;
+      right: -55px;
+      top: -65px;
+      width: 190px;
+      height: 190px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.16);
+    }}
+    .header-grid {{
+      display: grid;
+      grid-template-columns: 1fr 260px;
+      gap: 24px;
+      position: relative;
+      z-index: 1;
+    }}
+    .brand {{ display: flex; gap: 14px; align-items: center; }}
+    .logo-box {{
+      width: 62px;
+      height: 62px;
+      border-radius: 16px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: 0 14px 35px rgba(15,23,42,.22);
+    }}
+    .logo-img {{ width: 100%; height: 100%; object-fit: contain; padding: 7px; }}
+    .logo-fallback {{ color: #16a34a; font-size: 30px; font-weight: 800; }}
+    .company-name {{ margin: 0; font-size: 23px; font-weight: 800; letter-spacing: 0; }}
+    .company-meta {{ margin-top: 5px; color: rgba(255,255,255,.88); font-size: 10px; }}
+    .report-title {{ text-align: right; }}
+    .report-title h1 {{ margin: 0; font-size: 28px; line-height: 1; letter-spacing: 0; }}
+    .report-no {{
+      display: inline-block;
+      margin-top: 10px;
+      border-radius: 999px;
+      padding: 6px 11px;
+      background: rgba(255,255,255,.18);
+      font-weight: 700;
+    }}
+    .summary {{
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin: 14px 0 16px;
+    }}
+    .metric {{
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 11px;
+      background: #f8fafc;
+    }}
+    .metric span {{
+      display: block;
+      color: #64748b;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }}
+    .metric strong {{
+      display: block;
+      margin-top: 4px;
+      color: #0f172a;
+      font-size: 13px;
+    }}
+    .two-col {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }}
+    .panel {{
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 13px;
+      background: #fff;
+      page-break-inside: avoid;
+    }}
+    .section-title {{
+      margin-bottom: 9px;
+      color: #16a34a;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }}
+    .big-name {{ margin-bottom: 5px; font-size: 15px; font-weight: 800; }}
+    .muted {{ color: #64748b; }}
+    .items {{
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 5px;
+      overflow: hidden;
+      border-radius: 14px;
+    }}
+    .items thead tr {{ background: #111827; color: #fff; }}
+    .items th {{
+      padding: 9px 8px;
+      text-align: left;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }}
+    .items td {{
+      border-bottom: 1px solid #e5e7eb;
+      padding: 9px 8px;
+      vertical-align: top;
+    }}
+    .items tbody tr:nth-child(even) {{ background: #f8fafc; }}
+    .center {{ text-align: center; }}
+    .right {{ text-align: right; }}
+    .strong {{ font-weight: 800; }}
+    .item-name {{ font-weight: 800; }}
+    .item-desc {{ margin-top: 3px; color: #64748b; font-size: 9px; }}
+    .empty {{ padding: 20px; text-align: center; color: #64748b; }}
+    .ok {{ color: #16a34a; font-weight: 800; }}
+    .variance {{ color: #dc2626; font-weight: 800; }}
+    .signature-grid {{
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 18px;
+      margin-top: 20px;
+    }}
+    .signature-line {{
+      height: 45px;
+      border-bottom: 1px solid #cbd5e1;
+      margin-bottom: 7px;
+    }}
+    .footer-note {{
+      margin-top: 16px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 10px;
+      text-align: center;
+      color: #64748b;
+      font-size: 9px;
+    }}
+  </style>
+</head>
+<body>
+  <section class="hero">
+    <div class="header-grid">
+      <div class="brand">
+        <div class="logo-box">{logo_block}</div>
+        <div>
+          <h2 class="company-name">{_safe(company.name)}</h2>
+          <div class="company-meta">
+            {_safe(getattr(company, 'email', ''))}{(' | ' + _safe(getattr(company, 'phone', ''))) if getattr(company, 'phone', '') else ''}<br>
+            {company_address}
+          </div>
+        </div>
+      </div>
+      <div class="report-title">
+        <h1>INVENTORY<br>AUDIT</h1>
+        <div class="report-no">{_safe(audit.audit_number)}</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="summary">
+    <div class="metric"><span>Audit Date</span><strong>{_date(audit.audit_date)}</strong></div>
+    <div class="metric"><span>Status</span><strong>{_safe(audit.get_status_display())}</strong></div>
+    <div class="metric"><span>Items</span><strong>{audit.total_products_audited}</strong></div>
+    <div class="metric"><span>Discrepancies</span><strong>{audit.discrepancies_found}</strong></div>
+    <div class="metric"><span>Accuracy</span><strong>{accuracy:.2f}%</strong></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="section-title">Audit Scope</div>
+      <div class="big-name">{_safe(audit.audit_name)}</div>
+      <div class="muted">
+        Warehouse: {_safe(warehouse.name)} ({_safe(warehouse.code)})<br>
+        {warehouse_address}<br>
+        Conducted By: {_safe(conducted_by)}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-title">Value Impact</div>
+      <div class="big-name">{_money(audit.total_value_difference)}</div>
+      <div class="muted">
+        Positive value means physical stock is higher than system stock.<br>
+        Negative value means shortage or missing stock.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section-title">Audit Item Details</div>
+    <table class="items">
+      <thead>
+        <tr>
+          <th style="width: 36px;" class="center">#</th>
+          <th>Product</th>
+          <th style="width: 80px;" class="center">System Qty</th>
+          <th style="width: 80px;" class="center">Counted Qty</th>
+          <th style="width: 70px;" class="center">Variance</th>
+          <th style="width: 90px;" class="right">Unit Cost</th>
+          <th style="width: 105px;" class="right">Value Diff</th>
+          <th style="width: 170px;">Reason / Notes</th>
+        </tr>
+      </thead>
+      <tbody>{''.join(rows)}</tbody>
+    </table>
+  </div>
+
+  <div class="signature-grid">
+    <div><div class="signature-line"></div><div class="muted">Auditor</div></div>
+    <div><div class="signature-line"></div><div class="muted">Warehouse Incharge</div></div>
+    <div><div class="signature-line"></div><div class="muted">Authorized Approval</div></div>
+  </div>
+
+  <div class="footer-note">
+    This inventory audit report was generated by {_safe(company.name)}.
+  </div>
+</body>
+</html>
+        """
+
+        pdf_buffer = io.BytesIO()
+        html_doc = weasyprint.HTML(string=html, base_url=request.build_absolute_uri('/'), encoding='utf-8')
+        html_doc.write_pdf(pdf_buffer)
+        pdf_buffer.seek(0)
+        return pdf_buffer.getvalue()
 
     @action(detail=False, methods=['get'])
     def dashboard(self, request):

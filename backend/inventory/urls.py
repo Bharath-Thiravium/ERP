@@ -23,6 +23,7 @@ urlpatterns = [
     
     # Cycle Counts
     path('cycle-counts/', views.CycleCountListCreateView.as_view(), name='cycle-count-list-create'),
+    path('cycle-counts/<int:pk>/', views.CycleCountDetailView.as_view(), name='cycle-count-detail'),
     path('cycle-counts/<int:count_id>/start/', views.start_cycle_count, name='start-cycle-count'),
     path('cycle-counts/<int:count_id>/pause/', views.pause_cycle_count, name='pause-cycle-count'),
     

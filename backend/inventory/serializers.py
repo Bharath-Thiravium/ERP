@@ -320,6 +320,37 @@ class StockMovementSerializer(serializers.ModelSerializer):
     def validate_destination_warehouse(self, value):
         return validate_same_company(value, self.context, 'Destination warehouse')
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        movement_type = attrs.get('movement_type')
+        quantity = attrs.get('quantity')
+        destination_warehouse = attrs.get('destination_warehouse')
+        warehouse = attrs.get('warehouse')
+
+        if quantity is None:
+            raise serializers.ValidationError({'quantity': 'Quantity is required.'})
+
+        if movement_type == 'adjustment':
+            if quantity == 0:
+                raise serializers.ValidationError({'quantity': 'Adjustment quantity cannot be zero.'})
+        elif quantity <= 0:
+            raise serializers.ValidationError({'quantity': 'Quantity must be greater than zero for this movement type.'})
+
+        if movement_type == 'transfer':
+            if destination_warehouse is None:
+                raise serializers.ValidationError({'destination_warehouse': 'Destination warehouse is required for transfers.'})
+            if warehouse and destination_warehouse.id == warehouse.id:
+                raise serializers.ValidationError({'destination_warehouse': 'Destination warehouse must be different from source warehouse.'})
+        elif destination_warehouse is not None:
+            attrs['destination_warehouse'] = None
+
+        if movement_type != 'adjustment':
+            attrs['adjustment_reason'] = ''
+        if movement_type != 'damage':
+            attrs['damage_reason'] = ''
+
+        return attrs
+
 
 class StockAlertSerializer(serializers.ModelSerializer):
     """Stock alert serializer"""
@@ -367,20 +398,41 @@ class InventoryAuditItemSerializer(serializers.ModelSerializer):
 
 class InventoryAuditSerializer(serializers.ModelSerializer):
     """Inventory audit serializer"""
+    audit_code = serializers.CharField(source='audit_number', read_only=True)
     warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
     supervisor_name = serializers.CharField(source='supervisor.full_name', read_only=True)
     audit_items = InventoryAuditItemSerializer(many=True, read_only=True)
+    total_items = serializers.IntegerField(source='total_products_audited', read_only=True)
+    discrepancies = serializers.IntegerField(source='discrepancies_found', read_only=True)
+    accuracy_percentage = serializers.SerializerMethodField()
+    conducted_by = serializers.SerializerMethodField()
     
     class Meta:
         model = InventoryAudit
         fields = [
-            'id', 'audit_name', 'audit_number', 'warehouse', 'warehouse_name',
+            'id', 'audit_name', 'audit_number', 'audit_code', 'warehouse', 'warehouse_name',
             'categories', 'products', 'audit_date', 'status',
             'total_products_audited', 'discrepancies_found', 'total_value_difference',
+            'total_items', 'discrepancies', 'accuracy_percentage', 'conducted_by',
             'audit_team', 'supervisor', 'supervisor_name', 'audit_items',
             'created_at', 'completed_at'
         ]
         read_only_fields = ['audit_number', 'created_at', 'completed_at']
+
+    def get_accuracy_percentage(self, obj):
+        total = obj.total_products_audited or obj.audit_items.count()
+        if not total:
+            return 0
+        discrepancies = obj.discrepancies_found
+        accuracy = max(0, 100 - ((discrepancies / total) * 100))
+        return round(accuracy, 2)
+
+    def get_conducted_by(self, obj):
+        if obj.supervisor:
+            return obj.supervisor.full_name
+        if obj.created_by:
+            return obj.created_by.full_name or obj.created_by.username
+        return 'Not assigned'
 
     def validate_warehouse(self, value):
         return validate_same_company(value, self.context, 'Warehouse')

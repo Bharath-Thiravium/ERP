@@ -5,6 +5,8 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 import re
 import os
+from datetime import timedelta
+from dateutil.relativedelta import relativedelta
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
@@ -1507,6 +1509,42 @@ class ProductBundleDetailView(RetrieveUpdateDestroyAPIView):
             session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
         return session_key
 
+    def update(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            company = session.service_user.company
+            partial = kwargs.pop('partial', False)
+
+            with transaction.atomic():
+                bundle = self.get_object()
+                serializer = self.get_serializer(bundle, data=request.data, partial=partial)
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+
+                if 'bundle_items' in request.data:
+                    bundle.bundle_items.all().delete()
+                    for item_data in request.data.get('bundle_items', []):
+                        try:
+                            product = Product.objects.get(id=item_data['product'], company=company)
+                        except Product.DoesNotExist:
+                            raise DRFValidationError(f"Product {item_data.get('product')} not found or access denied.")
+                        ProductBundleItem.objects.create(
+                            bundle=bundle,
+                            product=product,
+                            quantity=item_data.get('quantity') or 1,
+                            unit_price_override=item_data.get('unit_price_override')
+                        )
+
+                refreshed = ProductBundle.objects.prefetch_related('bundle_items__product').get(pk=bundle.pk)
+                return Response(self.get_serializer(refreshed).data)
+
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
 
 class ProductBundleListCreateView(ListCreateAPIView):
     """List and create product bundles"""
@@ -1570,7 +1608,8 @@ class ProductBundleListCreateView(ListCreateAPIView):
                         unit_price_override=item_data.get('unit_price_override')
                     )
 
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
+                refreshed = ProductBundle.objects.prefetch_related('bundle_items__product').get(pk=bundle.pk)
+                return Response(self.get_serializer(refreshed).data, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -1624,7 +1663,10 @@ class CycleCountListCreateView(ListCreateAPIView):
                     created_by=service_user
                 )
                 
-                # Auto-generate count items based on criteria
+                # Auto-generate count items from the selected product scope.
+                # Warehouse stock is used for expected quantity when available;
+                # products without a stock row still appear with expected 0 so
+                # the physical count can record newly found stock.
                 products = Product.objects.filter(
                     company=service_user.company,
                     is_active=True
@@ -1641,17 +1683,114 @@ class CycleCountListCreateView(ListCreateAPIView):
                     products = products.filter(abc_classification__in=abc_classes)
                 
                 # Create count items
-                for product in products[:50]:  # Limit to 50 items for demo
+                stock_by_product = {
+                    stock.product_id: stock.quantity_available
+                    for stock in StockLevel.objects.filter(
+                        warehouse=cycle_count.warehouse,
+                        product__in=products
+                    )
+                }
+                for product in products:
                     CycleCountItem.objects.create(
                         cycle_count=cycle_count,
                         product=product,
-                        expected_quantity=product.current_stock
+                        expected_quantity=stock_by_product.get(product.id, Decimal('0'))
                     )
                 
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
+                refreshed = CycleCount.objects.select_related('warehouse').prefetch_related('count_items__product').get(pk=cycle_count.pk)
+                return Response(self.get_serializer(refreshed).data, status=status.HTTP_201_CREATED)
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+def _advance_cycle_count_date(cycle_count):
+    """Move next count date based on the configured frequency."""
+    if cycle_count.frequency == 'daily':
+        return cycle_count.next_count_date + timedelta(days=1)
+    if cycle_count.frequency == 'weekly':
+        return cycle_count.next_count_date + timedelta(weeks=1)
+    if cycle_count.frequency == 'quarterly':
+        return cycle_count.next_count_date + relativedelta(months=3)
+    return cycle_count.next_count_date + relativedelta(months=1)
+
+
+def _recalculate_cycle_count(cycle_count):
+    items = cycle_count.count_items.all()
+    counted_items = items.filter(is_counted=True).count()
+    discrepancies = items.filter(is_counted=True).exclude(variance=0).count()
+    accuracy = Decimal('0.00')
+    if counted_items:
+        accuracy = Decimal(counted_items - discrepancies) * Decimal('100') / Decimal(counted_items)
+
+    cycle_count.items_counted = counted_items
+    cycle_count.discrepancies_found = discrepancies
+    cycle_count.accuracy_percentage = accuracy.quantize(Decimal('0.01'))
+    if cycle_count.status == 'completed':
+        cycle_count.completed_at = cycle_count.completed_at or timezone.now()
+        cycle_count.last_count_date = timezone.localdate()
+        cycle_count.next_count_date = _advance_cycle_count_date(cycle_count)
+    cycle_count.save(update_fields=[
+        'items_counted', 'discrepancies_found', 'accuracy_percentage',
+        'completed_at', 'last_count_date', 'next_count_date', 'status'
+    ])
+
+
+class CycleCountDetailView(RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, complete, and delete a cycle count."""
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
+
+    def get_serializer_class(self):
+        from .serializers import CycleCountSerializer
+        return CycleCountSerializer
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            session_key = self.request.data.get('session_key') if hasattr(self.request, 'data') else None
+        return session_key
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return CycleCount.objects.none()
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return CycleCount.objects.filter(company=session.service_user.company).select_related('warehouse').prefetch_related('count_items__product')
+        except ServiceUserSession.DoesNotExist:
+            return CycleCount.objects.none()
+
+    def update(self, request, *args, **kwargs):
+        with transaction.atomic():
+            cycle_count = self.get_object()
+            serializer = self.get_serializer(cycle_count, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            cycle_count = serializer.save()
+
+            items_data = request.data.get('count_items', [])
+            for item_data in items_data:
+                item_id = item_data.get('id')
+                if not item_id:
+                    continue
+                try:
+                    item = cycle_count.count_items.get(id=item_id)
+                except CycleCountItem.DoesNotExist:
+                    raise DRFValidationError(f"Cycle count item {item_id} not found.")
+
+                if 'counted_quantity' in item_data:
+                    item.counted_quantity = item_data.get('counted_quantity') or 0
+                    item.is_counted = True
+                    item.counted_at = timezone.now()
+                if 'notes' in item_data:
+                    item.notes = item_data.get('notes') or ''
+                item.save()
+
+            _recalculate_cycle_count(cycle_count)
+            refreshed = self.get_queryset().get(pk=cycle_count.pk)
+            return Response(self.get_serializer(refreshed).data)
 
 
 @api_view(['POST'])

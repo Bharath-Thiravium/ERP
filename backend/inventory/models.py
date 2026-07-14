@@ -596,7 +596,7 @@ class ProductBundle(models.Model):
     @property
     def profit_margin(self):
         """Calculate profit margin"""
-        if self.total_cost > 0:
+        if self.total_cost > 0 and self.bundle_price > 0:
             return ((self.bundle_price - self.total_cost) / self.bundle_price) * 100
         return 0
 
@@ -901,6 +901,7 @@ class CycleCount(models.Model):
     STATUS_CHOICES = [
         ('scheduled', 'Scheduled'),
         ('in_progress', 'In Progress'),
+        ('paused', 'Paused'),
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled')
     ]

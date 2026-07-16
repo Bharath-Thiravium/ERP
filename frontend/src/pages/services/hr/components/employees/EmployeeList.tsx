@@ -115,6 +115,17 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
     }
   }
 
+  const getImageUrl = (url?: string | null) => {
+    if (!url || url.includes('svg')) return null
+    if (url.startsWith('http') || url.startsWith('data:')) return url
+    const apiBaseUrl = (import.meta.env.VITE_API_URL as string | undefined) || ''
+    if (apiBaseUrl) return `${apiBaseUrl.replace(/\/$/, '')}${url.startsWith('/') ? url : `/${url}`}`
+    if (url.startsWith('/media/') && typeof window !== 'undefined' && /localhost|127\.0\.0\.1/.test(window.location.hostname)) {
+      return `${window.location.protocol}//${window.location.hostname}:8005${url}`
+    }
+    return url
+  }
+
   return (
     <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
       <CardHeader>
@@ -169,8 +180,30 @@ const EmployeeList: React.FC<EmployeeListProps> = ({
               <div key={employee.id} className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-xl p-6 border border-gray-200/50 dark:border-gray-700/50 hover:shadow-md transition-all duration-200">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium">
-                      {employee.first_name.charAt(0)}{employee.last_name.charAt(0)}
+                    <div className="group relative h-12 w-12 shrink-0">
+                      {getImageUrl(employee.profile_picture) ? (
+                        <img
+                          src={getImageUrl(employee.profile_picture) as string}
+                          alt={employee.full_name}
+                          className="h-12 w-12 rounded-full object-cover ring-2 ring-white dark:ring-gray-800"
+                        />
+                      ) : (
+                        <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium">
+                          {employee.first_name.charAt(0)}{employee.last_name.charAt(0)}
+                        </div>
+                      )}
+                      {getImageUrl(employee.profile_picture) && (
+                        <div className="pointer-events-none absolute left-0 top-14 z-50 hidden rounded-xl border border-gray-200 bg-white p-2 shadow-2xl group-hover:block dark:border-gray-700 dark:bg-gray-900">
+                          <img
+                            src={getImageUrl(employee.profile_picture) as string}
+                            alt={employee.full_name}
+                            className="h-40 w-40 rounded-lg object-cover"
+                          />
+                          <p className="mt-2 max-w-40 truncate text-center text-xs font-medium text-gray-700 dark:text-gray-200">
+                            {employee.full_name}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900 dark:text-white">{employee.full_name}</h3>

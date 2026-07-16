@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,24 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  Image,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
 import { RootState } from '../../store';
 import { logout } from '../../store/slices/authSlice';
 import ApiService from '../../services/ApiService';
 
 const ProfileScreen = () => {
   const dispatch = useDispatch();
-  const navigation = useNavigation();
   const { employee, company } = useSelector((state: RootState) => state.auth);
+  const profileImage = employee?.profile_picture;
+  const [settings, setSettings] = useState<any>(null);
+
+  useEffect(() => {
+    ApiService.getAttendanceSystemSettings()
+      .then(response => setSettings(response.data))
+      .catch(() => setSettings(null));
+  }, []);
 
   const handleLogout = () => {
     Alert.alert(
@@ -39,11 +46,15 @@ const ProfileScreen = () => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {employee?.first_name?.charAt(0)}{employee?.last_name?.charAt(0)}
-          </Text>
-        </View>
+        {profileImage ? (
+          <Image source={{ uri: profileImage }} style={styles.avatarImage} />
+        ) : (
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {employee?.first_name?.charAt(0)}{employee?.last_name?.charAt(0)}
+            </Text>
+          </View>
+        )}
         <Text style={styles.name}>{employee?.first_name} {employee?.last_name}</Text>
         <Text style={styles.employeeId}>{employee?.employee_id}</Text>
       </View>
@@ -77,23 +88,29 @@ const ProfileScreen = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Mobile Features</Text>
+        <Text style={styles.sectionTitle}>Attendance Access</Text>
         <View style={styles.featureRow}>
-          <Text style={styles.featureLabel}>📍 GPS Tracking</Text>
+          <Text style={styles.featureLabel}>System</Text>
           <View style={styles.featureStatus}>
-            <Text style={styles.featureStatusText}>Enabled</Text>
+            <Text style={styles.featureStatusText}>
+              {settings?.system_type === 'mobile_app' ? 'Mobile App' : settings?.system_type === 'biometric' ? 'Biometric' : 'Manual'}
+            </Text>
           </View>
         </View>
         <View style={styles.featureRow}>
-          <Text style={styles.featureLabel}>📷 Face Recognition</Text>
+          <Text style={styles.featureLabel}>GPS Radius</Text>
           <View style={styles.featureStatus}>
-            <Text style={styles.featureStatusText}>Enabled</Text>
+            <Text style={styles.featureStatusText}>
+              {settings?.enable_geo_fencing ? `${settings.geo_fence_radius}m` : 'Off'}
+            </Text>
           </View>
         </View>
         <View style={styles.featureRow}>
-          <Text style={styles.featureLabel}>🔒 Secure Login</Text>
+          <Text style={styles.featureLabel}>Face Photo</Text>
           <View style={styles.featureStatus}>
-            <Text style={styles.featureStatusText}>Active</Text>
+            <Text style={styles.featureStatusText}>
+              {settings?.require_face_for_checkin || settings?.require_face_for_checkout ? 'Required' : 'Not Required'}
+            </Text>
           </View>
         </View>
       </View>
@@ -113,13 +130,15 @@ const ProfileScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#eef4ff',
   },
   header: {
     alignItems: 'center',
     padding: 32,
-    backgroundColor: '#fff',
+    backgroundColor: '#111827',
     marginBottom: 16,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
   },
   avatar: {
     width: 80,
@@ -130,6 +149,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
   },
+  avatarImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    marginBottom: 16,
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
   avatarText: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -138,18 +165,18 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#1a1a1a',
+    color: '#fff',
     marginBottom: 4,
   },
   employeeId: {
     fontSize: 16,
-    color: '#6b7280',
+    color: '#cbd5e1',
   },
   section: {
     backgroundColor: '#fff',
     margin: 16,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

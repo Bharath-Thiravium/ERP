@@ -45,6 +45,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      '/media': {
+        target: 'http://localhost:8005',
+        changeOrigin: true,
+        secure: false,
+      },
       '/ws': {
         target: 'ws://localhost:8005',
         ws: true,

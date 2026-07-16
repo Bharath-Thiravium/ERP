@@ -52,6 +52,7 @@ const PayslipList: React.FC<PayslipListProps> = ({ cycleId }) => {
       if (cycleId) params.cycle_id = cycleId
       if (filters.status) params.status = filters.status
       if (filters.search) params.search = filters.search
+      if (filters.department) params.department = filters.department
 
       const response = await api.get('/api/hr/payslips/', {
         headers: { Authorization: `Bearer ${sessionKey}` },
@@ -101,6 +102,9 @@ const PayslipList: React.FC<PayslipListProps> = ({ cycleId }) => {
     try {
       const params: any = { session_key: sessionKey, export: 'csv' }
       if (cycleId) params.cycle_id = cycleId
+      if (filters.status) params.status = filters.status
+      if (filters.search) params.search = filters.search
+      if (filters.department) params.department = filters.department
 
       const response = await api.get('/api/hr/payslips/', {
         headers: { Authorization: `Bearer ${sessionKey}` },

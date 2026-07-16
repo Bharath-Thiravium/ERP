@@ -11,7 +11,6 @@ import {
   Platform,
 } from 'react-native';
 import { useDispatch } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loginStart, loginSuccess, loginFailure } from '../../store/slices/authSlice';
 import ApiService from '../../services/ApiService';
@@ -19,13 +18,13 @@ import ApiService from '../../services/ApiService';
 const LoginScreen = () => {
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
+  const [companyCode, setCompanyCode] = useState('');
   const [loading, setLoading] = useState(false);
   
   const dispatch = useDispatch();
-  const navigation = useNavigation();
 
   const handleLogin = async () => {
-    if (!employeeId || !password) {
+    if (!employeeId.trim() || !password) {
       Alert.alert('Error', 'Please enter Employee ID and Password');
       return;
     }
@@ -35,13 +34,14 @@ const LoginScreen = () => {
 
     try {
       // Attempt login
-      console.log('🔍 Attempting login...');
+      console.log('Attempting login...');
       const response = await ApiService.employeeLogin({
-        employee_id: employeeId,
+        employee_id: employeeId.trim(),
         password: password,
+        company_code: companyCode.trim() || undefined,
       });
 
-      console.log('✅ Login response received:', response.data);
+      console.log('Login response received:', response.data);
 
       // Store data locally
       await AsyncStorage.setItem('sessionKey', response.data.session_key);
@@ -54,14 +54,13 @@ const LoginScreen = () => {
         sessionKey: response.data.session_key,
       }));
 
-      navigation.navigate('Main' as never);
     } catch (error: any) {
-      console.error('❌ Login error:', error);
+      console.log('Login error:', error?.message || error);
       
       let errorMessage = 'Login failed';
       
       if (error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error')) {
-        errorMessage = 'Network connection failed. Please check your internet connection and server IP address.';
+        errorMessage = 'Cannot reach HR server. Start backend on port 8005 and run: adb reverse tcp:8005 tcp:8005';
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
       } else if (error.response?.status === 401) {
@@ -84,12 +83,27 @@ const LoginScreen = () => {
     >
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>Employee Attendance</Text>
-          <Text style={styles.subtitle}>SAP System - Modern Enterprise</Text>
+          <View style={styles.logoBadge}>
+            <Text style={styles.logoText}>HR</Text>
+          </View>
+          <Text style={styles.title}>Employee Portal</Text>
+          <Text style={styles.subtitle}>Attendance, leave, and salary access</Text>
         </View>
         
         <View style={styles.form}>
           <Text style={styles.formTitle}>Login to Your Account</Text>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Company Code (Optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter company code if needed"
+              value={companyCode}
+              onChangeText={setCompanyCode}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+          </View>
           
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Employee ID</Text>
@@ -130,8 +144,8 @@ const LoginScreen = () => {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Secure attendance tracking</Text>
-          <Text style={styles.footerSubtext}>with GPS and Face Recognition</Text>
+          <Text style={styles.footerText}>Secure employee self-service</Text>
+          <Text style={styles.footerSubtext}>GPS and face verified attendance</Text>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -141,7 +155,7 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#eef4ff',
   },
   content: {
     flex: 1,
@@ -152,20 +166,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
+  logoBadge: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    shadowColor: '#2563eb',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  logoText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '800',
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#1a1a1a',
+    color: '#111827',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: '#64748b',
   },
   form: {
     backgroundColor: '#fff',
     padding: 24,
-    borderRadius: 16,
+    borderRadius: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -191,14 +224,14 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: '#d1d5db',
-    borderRadius: 8,
+    borderRadius: 14,
     padding: 16,
     fontSize: 16,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f8fafc',
   },
   loginButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 8,
+    backgroundColor: '#4f46e5',
+    borderRadius: 14,
     padding: 16,
     alignItems: 'center',
     marginTop: 8,

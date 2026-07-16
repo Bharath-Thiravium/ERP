@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BASE_URL = 'https://sap.athenas.co.in/api'; // Production API URL
+const BASE_URL = 'http://127.0.0.1:8005/api'; // USB adb reverse local testing API URL
 
 class ApiService {
   private api;
@@ -21,8 +21,8 @@ class ApiService {
   private setupInterceptors() {
     this.api.interceptors.request.use(
       async (config) => {
-        console.log('🔍 API Request:', config.method?.toUpperCase(), config.url);
-        console.log('🔍 Request data:', config.data);
+        console.log('API Request:', config.method?.toUpperCase(), config.url);
+        console.log('Request data:', config.data);
         
         const sessionKey = await AsyncStorage.getItem('sessionKey');
         
@@ -33,19 +33,19 @@ class ApiService {
         return config;
       },
       (error) => {
-        console.error('🚨 Request Error:', error);
+        console.log('Request Error:', error?.message || error);
         return Promise.reject(error);
       }
     );
 
     this.api.interceptors.response.use(
       (response) => {
-        console.log('✅ API Response:', response.status, response.config.url);
+        console.log('API Response:', response.status, response.config.url);
         return response;
       },
       (error) => {
-        console.error('🚨 API Error:', error.response?.status, error.response?.data || error.message);
-        console.error('🚨 Error config:', error.config?.url);
+        console.log('API Error:', error.response?.status, error.response?.data || error.message);
+        console.log('Error config:', error.config?.url);
         
         // Don't auto-logout on 401 for logout endpoint itself
         if (error.response?.status === 401 && !error.config?.url?.includes('/logout/')) {
@@ -62,7 +62,7 @@ class ApiService {
       const response = await this.api.get('/hr/public/jobs/');
       return response;
     } catch (error) {
-      console.error('🚨 Connection test failed:', error);
+      console.log('Connection test failed:', error);
       throw error;
     }
   }
@@ -71,25 +71,26 @@ class ApiService {
   async employeeLogin(credentials: {
     employee_id: string;
     password: string;
+    company_code?: string;
     device_id?: string;
   }) {
     try {
-      console.log('🔍 Attempting employee login for:', credentials.employee_id);
+      console.log('Attempting employee login for:', credentials.employee_id);
       const response = await this.api.post('/hr/employee-login/', {
         ...credentials,
         device_id: credentials.device_id || 'mobile-app'
       });
-      console.log('✅ Login successful:', response.data);
+      console.log('Login successful:', response.data);
       return response;
-    } catch (error) {
-      console.error('❌ Login failed:', error.response?.data || error.message);
+    } catch (error: any) {
+      console.log('Login failed:', error.response?.data || error.message);
       throw error;
     }
   }
 
   // Mark attendance with face and location
   async markAttendance(attendanceData: FormData) {
-    return await this.api.post('/hr/attendance/mobile/', attendanceData, {
+    return await this.api.post('/hr/mobile/attendance/mark/', attendanceData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -97,19 +98,18 @@ class ApiService {
   }
 
   // Get employee's attendance history
-  async getAttendanceHistory(employeeId: string) {
-    return await this.api.get(`/hr/attendance/?employee_id=${employeeId}`);
+  async getAttendanceHistory() {
+    return await this.api.get('/hr/mobile/attendance/history/');
   }
 
   // Get today's attendance record
-  async getTodayAttendance(employeeId: string) {
-    const today = new Date().toISOString().split('T')[0];
-    return await this.api.get(`/hr/attendance/records/?employee_id=${employeeId}&date=${today}`);
+  async getTodayAttendance() {
+    return await this.api.get('/hr/mobile/attendance/today/');
   }
 
   // Get employee profile
   async getEmployeeProfile() {
-    return await this.api.get('/hr/employee/profile/');
+    return await this.api.get('/hr/mobile/me/');
   }
 
   // Get attendance dashboard stats
@@ -119,12 +119,37 @@ class ApiService {
 
   // Get company attendance system settings
   async getAttendanceSystemSettings() {
-    return await this.api.get('/hr/attendance/system/');
+    return await this.api.get('/hr/mobile/attendance/settings/');
+  }
+
+  async getLeaveTypes() {
+    return await this.api.get('/hr/mobile/leave/types/');
+  }
+
+  async getLeaveBalances() {
+    return await this.api.get('/hr/mobile/leave/balances/');
+  }
+
+  async getLeaveApplications() {
+    return await this.api.get('/hr/mobile/leave/applications/');
+  }
+
+  async getMobilePayslips() {
+    return await this.api.get('/hr/mobile/payslips/');
+  }
+
+  async submitLeaveApplication(data: {
+    leave_type: number;
+    from_date: string;
+    to_date: string;
+    reason: string;
+  }) {
+    return await this.api.post('/hr/mobile/leave/applications/', data);
   }
 
   // Validate location against geo-fence
   async validateLocation(latitude: number, longitude: number) {
-    return await this.api.post('/hr/attendance/validate-location/', {
+    return await this.api.post('/hr/mobile/attendance/validate-location/', {
       latitude,
       longitude
     });
@@ -143,10 +168,10 @@ class ApiService {
   // Validate token
   async validateToken() {
     try {
-      const response = await this.api.get('/auth/validate-token/');
+      const response = await this.getEmployeeProfile();
       return response;
     } catch (error) {
-      console.error('🚨 Token validation failed:', error);
+      console.log('Token validation failed:', error instanceof Error ? error.message : error);
       throw error;
     }
   }

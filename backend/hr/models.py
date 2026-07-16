@@ -180,7 +180,7 @@ class Employee(models.Model):
     employee_id = models.CharField(max_length=50, db_index=True)
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
-    email = models.EmailField(validators=[EmailValidator()], unique=True)
+    email = models.EmailField(validators=[EmailValidator()])
     phone = models.CharField(max_length=15, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=10, choices=[
@@ -294,6 +294,9 @@ class Employee(models.Model):
 
     class Meta:
         unique_together = ['company', 'employee_id']
+        constraints = [
+            models.UniqueConstraint(fields=['company', 'email'], name='unique_employee_email_per_company')
+        ]
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['employee_id']),
@@ -329,6 +332,30 @@ class Employee(models.Model):
                 else:
                     self.employee_id = "EMP-000001"
         super().save(*args, **kwargs)
+
+
+class EmployeeMobileSession(models.Model):
+    """Authenticated mobile app session for an employee self-service login."""
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='mobile_sessions')
+    session_key = models.CharField(max_length=128, unique=True, db_index=True)
+    device_id = models.CharField(max_length=255, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['employee', 'is_active']),
+            models.Index(fields=['session_key', 'is_active']),
+        ]
+
+    def __str__(self):
+        return escape(f"{self.employee.employee_id} mobile session")
 
 
 class JobPosting(models.Model):
@@ -529,6 +556,48 @@ class AttendanceSystem(models.Model):
         return escape(f"{self.company.name} - {self.get_system_type_display()}")
 
 
+class AttendancePolicy(models.Model):
+    """Company-wide attendance rules used by leave and payroll calculations."""
+    company = models.OneToOneField(Company, on_delete=models.CASCADE, related_name='attendance_policy')
+
+    weekly_off_days = models.JSONField(default=list, blank=True, help_text="Python weekdays: Monday=0, Sunday=6")
+    full_day_min_hours = models.DecimalField(max_digits=4, decimal_places=2, default=8.00)
+    half_day_min_hours = models.DecimalField(max_digits=4, decimal_places=2, default=4.00)
+    overtime_after_hours = models.DecimalField(max_digits=4, decimal_places=2, default=8.00)
+
+    paid_holiday_payable = models.BooleanField(default=True)
+    paid_leave_payable = models.BooleanField(default=True)
+    unpaid_leave_deductible = models.BooleanField(default=True)
+    exclude_weekoffs_from_leave = models.BooleanField(default=True)
+    exclude_holidays_from_leave = models.BooleanField(default=True)
+    lock_attendance_after_payroll = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return escape(f"{self.company.name} - Attendance Policy")
+
+
+class AttendanceDayOverride(models.Model):
+    """Company calendar override for one-off working days or special off days."""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='attendance_day_overrides')
+    date = models.DateField()
+    is_working_day = models.BooleanField(default=True)
+    title = models.CharField(max_length=120, blank=True)
+    reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['company', 'date']
+        ordering = ['date']
+
+    def __str__(self):
+        status = 'Working Day' if self.is_working_day else 'Non-working Day'
+        return escape(f"{self.company.name} - {self.date} - {status}")
+
+
 class Attendance(models.Model):
     """Enhanced attendance tracking with multiple methods"""
     ATTENDANCE_METHODS = [
@@ -605,6 +674,21 @@ class Attendance(models.Model):
         return escape(f"{self.employee.full_name} - {self.date}")
 
     def save(self, *args, **kwargs):
+        policy = AttendancePolicy.objects.filter(company=self.employee.company).first()
+        if policy and policy.lock_attendance_after_payroll:
+            locked_cycle = PayrollCycle.objects.filter(
+                company=self.employee.company,
+                start_date__lte=self.date,
+                end_date__gte=self.date,
+                status__in=['approved', 'processing', 'completed'],
+            ).first()
+            if locked_cycle:
+                from django.core.exceptions import ValidationError
+                raise ValidationError(
+                    f"Attendance for {self.date} is locked because payroll cycle "
+                    f"{locked_cycle.name} is {locked_cycle.status}."
+                )
+
         if not self.attendance_number:
             company = self.employee.company
             try:
@@ -844,6 +928,7 @@ class PayrollCycle(models.Model):
     status = models.CharField(max_length=20, choices=[
         ('draft', 'Draft'),
         ('calculating', 'Calculating'),
+        ('calculated', 'Calculated'),
         ('review', 'Under Review'),
         ('approved', 'Approved'),
         ('processing', 'Processing Payment'),
@@ -907,9 +992,9 @@ class Payslip(models.Model):
     emp_designation = models.CharField(max_length=100, blank=True, default='')
     
     # Attendance Data
-    working_days = models.IntegerField(default=0)
-    present_days = models.IntegerField(default=0)
-    absent_days = models.IntegerField(default=0)
+    working_days = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    present_days = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    absent_days = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     overtime_hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     
     # Earnings

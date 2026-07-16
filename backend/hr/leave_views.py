@@ -11,10 +11,13 @@ from django.db import transaction
 from authentication.models import ServiceUserSession
 from authentication.authentication import ServiceUserSessionAuthentication
 from authentication.permissions import IsServiceUserAuthenticated
+from .mobile_auth import EmployeeMobileAuthentication, IsEmployeeMobileAuthenticated
 from .leave_models import LeaveType, LeaveBalance, LeaveApplication, Holiday
 from .models import Employee
+from .attendance_calendar import calculate_leave_days
 from .security_utils import SecurityValidator, secure_session_check, validate_year_param, validate_month_param, sanitize_filename
 from rest_framework import serializers
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 
 
 class LeaveTypeSerializer(serializers.ModelSerializer):
@@ -65,6 +68,14 @@ class LeaveApplicationSerializer(serializers.ModelSerializer):
         if company is not None and value.company_id != company.id:
             raise serializers.ValidationError('Approver not found or access denied.')
         return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        from_date = attrs.get('from_date', getattr(self.instance, 'from_date', None))
+        to_date = attrs.get('to_date', getattr(self.instance, 'to_date', None))
+        if from_date and to_date and to_date < from_date:
+            raise serializers.ValidationError({'to_date': 'To date cannot be before from date.'})
+        return attrs
 
 
 class HolidaySerializer(serializers.ModelSerializer):
@@ -340,7 +351,15 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
                         leave_type=leave_app.leave_type,
                         year=year
                     )
-                    balance.used += Decimal(str(leave_app.total_days))
+                    recalculated_days = calculate_leave_days(
+                        company,
+                        leave_app.from_date,
+                        leave_app.to_date,
+                    )
+                    if recalculated_days != leave_app.total_days:
+                        leave_app.total_days = recalculated_days
+                        leave_app.save(update_fields=['total_days', 'updated_at'])
+                    balance.used += Decimal(str(recalculated_days))
                     balance.calculate_balance()
                     updated_count += 1
                 except LeaveBalance.DoesNotExist:
@@ -396,11 +415,29 @@ class LeaveApplicationViewSet(viewsets.ModelViewSet):
                 return Response({'message': 'Leave already approved'})
 
             with transaction.atomic():
+                if application.status in ['rejected', 'cancelled']:
+                    return Response({'error': f'Cannot approve {application.status} leave'}, status=status.HTTP_400_BAD_REQUEST)
+
+                days = Decimal(str(application.total_days))
+                if days <= 0:
+                    return Response({'error': 'No payable leave days in selected date range'}, status=status.HTTP_400_BAD_REQUEST)
+
+                if application.leave_type.is_paid:
+                    existing_balance = LeaveBalance.objects.select_for_update().filter(
+                        employee=application.employee,
+                        leave_type=application.leave_type,
+                        year=application.from_date.year,
+                    ).first()
+                    available = existing_balance.closing_balance if existing_balance else application.leave_type.days_per_year
+                    if Decimal(str(available)) < days:
+                        return Response({
+                            'error': f'Insufficient leave balance. Available {available}, requested {days}.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
                 application.status = 'approved'
                 application.approved_date = timezone.now()
                 application.save()
 
-                days = Decimal(str(application.total_days))
                 balance, created = LeaveBalance.objects.select_for_update().get_or_create(
                     employee=application.employee,
                     leave_type=application.leave_type,
@@ -632,12 +669,23 @@ class LeaveApplicationViewSet(viewsets.ModelViewSet):
 
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            serializer = self.get_serializer(data=request.data)
+            data = request.data.copy()
+            employee_id = data.get('employee')
+            from_date_value = data.get('from_date')
+            to_date_value = data.get('to_date')
+            if employee_id and from_date_value and to_date_value:
+                employee = Employee.objects.get(id=employee_id, company=session.service_user.company)
+                from_dt = datetime.strptime(from_date_value, '%Y-%m-%d').date() if isinstance(from_date_value, str) else from_date_value
+                to_dt = datetime.strptime(to_date_value, '%Y-%m-%d').date() if isinstance(to_date_value, str) else to_date_value
+                data['total_days'] = calculate_leave_days(employee.company, from_dt, to_dt)
+            serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except Employee.DoesNotExist:
+            return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class HolidayViewSet(viewsets.ModelViewSet):
@@ -688,6 +736,71 @@ class HolidayViewSet(viewsets.ModelViewSet):
             return Response({'results': serializer.data})
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['GET'])
+@authentication_classes([EmployeeMobileAuthentication])
+@permission_classes([IsEmployeeMobileAuthenticated])
+def mobile_leave_types(request):
+    leave_types = LeaveType.objects.filter(company=request.employee.company, is_active=True).order_by('name')
+    return Response({'results': LeaveTypeSerializer(leave_types, many=True).data})
+
+
+@api_view(['GET'])
+@authentication_classes([EmployeeMobileAuthentication])
+@permission_classes([IsEmployeeMobileAuthenticated])
+def mobile_leave_balances(request):
+    year = request.query_params.get('year') or timezone.now().year
+    balances = LeaveBalance.objects.filter(
+        employee=request.employee,
+        year=year,
+    ).select_related('leave_type').order_by('leave_type__name')
+    return Response({'results': LeaveBalanceSerializer(balances, many=True).data})
+
+
+@api_view(['GET', 'POST'])
+@authentication_classes([EmployeeMobileAuthentication])
+@permission_classes([IsEmployeeMobileAuthenticated])
+def mobile_leave_applications(request):
+    employee = request.employee
+
+    if request.method == 'GET':
+        applications = LeaveApplication.objects.filter(employee=employee).select_related('leave_type').order_by('-created_at')
+        return Response({'results': LeaveApplicationSerializer(applications, many=True, context={'request': request}).data})
+
+    leave_type_id = request.data.get('leave_type')
+    from_date_value = request.data.get('from_date')
+    to_date_value = request.data.get('to_date')
+    reason = request.data.get('reason', '').strip()
+    if not all([leave_type_id, from_date_value, to_date_value, reason]):
+        return Response({'error': 'Leave type, dates, and reason are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        leave_type = LeaveType.objects.get(id=leave_type_id, company=employee.company, is_active=True)
+        from_dt = datetime.strptime(from_date_value, '%Y-%m-%d').date()
+        to_dt = datetime.strptime(to_date_value, '%Y-%m-%d').date()
+        if to_dt < from_dt:
+            return Response({'error': 'To date cannot be before from date'}, status=status.HTTP_400_BAD_REQUEST)
+
+        total_days = calculate_leave_days(employee.company, from_dt, to_dt)
+        if total_days <= 0:
+            return Response({'error': 'Selected dates do not include any working leave days'}, status=status.HTTP_400_BAD_REQUEST)
+
+        application = LeaveApplication.objects.create(
+            employee=employee,
+            leave_type=leave_type,
+            from_date=from_dt,
+            to_date=to_dt,
+            total_days=total_days,
+            reason=reason,
+            status='pending',
+        )
+        return Response({
+            'message': 'Leave request submitted for HR approval',
+            'application': LeaveApplicationSerializer(application, context={'request': request}).data,
+        }, status=status.HTTP_201_CREATED)
+    except LeaveType.DoesNotExist:
+        return Response({'error': 'Leave type not found'}, status=status.HTTP_404_NOT_FOUND)
     
     def create(self, request, *args, **kwargs):
         session_key = self.get_session_key()

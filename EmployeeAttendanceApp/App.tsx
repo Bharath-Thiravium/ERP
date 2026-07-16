@@ -8,17 +8,33 @@ import { store, RootState } from './src/store';
 import { loginSuccess, logout } from './src/store/slices/authSlice';
 import ApiService from './src/services/ApiService';
 import LoginScreen from './src/screens/auth/LoginScreen';
+import HomeScreen from './src/screens/home/HomeScreen';
 import AttendanceScreen from './src/screens/attendance/AttendanceScreen';
+import LeaveScreen from './src/screens/leave/LeaveScreen';
+import PayslipScreen from './src/screens/payslip/PayslipScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const TabIcon = ({ name, focused }: { name: string; focused: boolean }) => (
-  <Text style={{ fontSize: 24, opacity: focused ? 1 : 0.6 }}>
-    {name === 'Attendance' ? '🕐' : name === 'Profile' ? '👤' : '📊'}
-  </Text>
+  <View
+    style={{
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: focused ? '#4f46e5' : '#eef2ff',
+      borderWidth: 1,
+      borderColor: focused ? '#4f46e5' : '#dbeafe',
+    }}
+  >
+    <Text style={{ color: focused ? '#fff' : '#475569', fontSize: 13, fontWeight: '900' }}>
+      {name === 'Home' ? 'H' : name === 'Attendance' ? 'A' : name === 'Leave' ? 'L' : name === 'Payslip' ? 'S' : 'P'}
+    </Text>
+  </View>
 );
 
 const MainTabs = () => (
@@ -29,10 +45,30 @@ const MainTabs = () => (
       ),
       tabBarActiveTintColor: '#3b82f6',
       tabBarInactiveTintColor: '#6b7280',
+      tabBarLabelStyle: {
+        fontSize: 12,
+        fontWeight: '800',
+        marginTop: 4,
+      },
+      tabBarStyle: {
+        height: 74,
+        paddingTop: 8,
+        paddingBottom: 10,
+        backgroundColor: '#ffffff',
+        borderTopWidth: 0,
+        elevation: 18,
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 16,
+      },
       headerShown: false,
     })}
   >
+    <Tab.Screen name="Home" component={HomeScreen} />
     <Tab.Screen name="Attendance" component={AttendanceScreen} />
+    <Tab.Screen name="Leave" component={LeaveScreen} />
+    <Tab.Screen name="Payslip" component={PayslipScreen} />
     <Tab.Screen name="Profile" component={ProfileScreen} />
   </Tab.Navigator>
 );

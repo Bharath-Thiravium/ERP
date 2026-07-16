@@ -67,6 +67,8 @@ if ENVIRONMENT == 'production' and SECRET_KEY == _SECRET_KEY_DEFAULT:
 DEBUG = config_bool('DEBUG', default=False)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+if not IS_PRODUCTION:
+    ALLOWED_HOSTS += ['0.0.0.0', '192.168.29.48']
 
 # Security Settings
 SECURE_BROWSER_XSS_FILTER = True

@@ -15,11 +15,70 @@ import io
 from authentication.models import ServiceUserSession
 from authentication.authentication import ServiceUserSessionAuthentication
 from authentication.permissions import IsServiceUserAuthenticated
-from .models import AttendanceSystem, Attendance, AttendanceDevice, AttendanceLog, Employee
+from .mobile_auth import EmployeeMobileAuthentication, IsEmployeeMobileAuthenticated
+from .models import AttendanceSystem, AttendancePolicy, AttendanceDayOverride, Attendance, AttendanceDevice, AttendanceLog, Employee
 from .attendance_serializers import (
-    AttendanceSystemSerializer, AttendanceSerializer, AttendanceDeviceSerializer,
-    MobileAttendanceSerializer, FaceRecognitionSerializer
+    AttendanceSystemSerializer, AttendancePolicySerializer, AttendanceDayOverrideSerializer,
+    AttendanceSerializer, AttendanceDeviceSerializer, MobileAttendanceSerializer, FaceRecognitionSerializer
 )
+from .attendance_calendar import get_day_status, is_company_working_day
+
+
+def _get_company_attendance_system(company):
+    system, _ = AttendanceSystem.objects.get_or_create(company=company)
+    expected = {
+        'manual': {
+            'enable_manual_entry': True,
+            'enable_mobile_app': False,
+            'enable_biometric': False,
+            'enable_geo_fencing': False,
+            'require_face_for_checkin': False,
+            'require_face_for_checkout': False,
+        },
+        'mobile_app': {
+            'enable_manual_entry': False,
+            'enable_mobile_app': True,
+            'enable_biometric': False,
+        },
+        'biometric': {
+            'enable_manual_entry': False,
+            'enable_mobile_app': False,
+            'enable_biometric': True,
+            'enable_geo_fencing': False,
+            'require_face_for_checkin': False,
+            'require_face_for_checkout': False,
+        },
+    }
+    if system.system_type in ['face_recognition', 'hybrid']:
+        system.system_type = 'biometric' if system.system_type == 'face_recognition' else 'manual'
+
+    normalized = expected.get(system.system_type, expected['manual'])
+    dirty_fields = []
+    for field, value in normalized.items():
+        if getattr(system, field) != value:
+            setattr(system, field, value)
+            dirty_fields.append(field)
+    if dirty_fields:
+        system.save(update_fields=['system_type', *dirty_fields, 'updated_at'])
+    return system
+
+
+def _serialize_mobile_attendance_settings(system):
+    return {
+        'system_type': system.system_type,
+        'enable_mobile_app': system.enable_mobile_app,
+        'enable_geo_fencing': system.enable_geo_fencing,
+        'geo_fence_radius': system.geo_fence_radius,
+        'office_latitude': system.office_latitude,
+        'office_longitude': system.office_longitude,
+        'work_start_time': system.work_start_time,
+        'work_end_time': system.work_end_time,
+        'grace_period_minutes': system.grace_period_minutes,
+        'enable_face_recognition': system.enable_face_recognition,
+        'require_face_for_checkin': system.require_face_for_checkin,
+        'require_face_for_checkout': system.require_face_for_checkout,
+        'face_match_threshold': system.face_match_threshold,
+    }
 
 
 class AttendanceSystemViewSet(viewsets.ModelViewSet):
@@ -34,7 +93,7 @@ class AttendanceSystemViewSet(viewsets.ModelViewSet):
 
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
-            return AttendanceSystem.objects.filter(company=session.service_user.company)
+            return AttendanceSystem.objects.filter(company=session.service_user.company).order_by('id')
         except ServiceUserSession.DoesNotExist:
             return AttendanceSystem.objects.none()
 
@@ -78,6 +137,134 @@ class AttendanceSystemViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
             return Response({'error': f'Server error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AttendancePolicyViewSet(viewsets.ModelViewSet):
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
+    serializer_class = AttendancePolicySerializer
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['POST', 'PUT', 'PATCH']:
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return AttendancePolicy.objects.none()
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return AttendancePolicy.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return AttendancePolicy.objects.none()
+
+    def list(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            policy, _ = AttendancePolicy.objects.get_or_create(
+                company=session.service_user.company,
+                defaults={'weekly_off_days': [6]}
+            )
+            return Response({'results': [self.get_serializer(policy).data]})
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            data = request.data.copy()
+            data.pop('session_key', None)
+            policy, _ = AttendancePolicy.objects.get_or_create(
+                company=session.service_user.company,
+                defaults={'weekly_off_days': [6]}
+            )
+            serializer = self.get_serializer(policy, data=data, partial=True)
+            if not serializer.is_valid():
+                return Response({'error': 'Validation failed', 'details': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            serializer.save()
+            return Response(serializer.data)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class AttendanceDayOverrideViewSet(viewsets.ModelViewSet):
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
+    serializer_class = AttendanceDayOverrideSerializer
+
+    def get_session_key(self):
+        session_key = self.request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not session_key:
+            session_key = self.request.query_params.get('session_key')
+        if not session_key and self.request.method in ['POST', 'PUT', 'PATCH']:
+            session_key = self.request.data.get('session_key')
+        return session_key
+
+    def get_queryset(self):
+        session_key = self.get_session_key()
+        if not session_key:
+            return AttendanceDayOverride.objects.none()
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            return AttendanceDayOverride.objects.filter(company=session.service_user.company)
+        except ServiceUserSession.DoesNotExist:
+            return AttendanceDayOverride.objects.none()
+
+    def list(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            queryset = self.get_queryset()
+            year = request.query_params.get('year')
+            month = request.query_params.get('month')
+            if year:
+                queryset = queryset.filter(date__year=int(year))
+            if month:
+                queryset = queryset.filter(date__month=int(month))
+            return Response({'results': self.get_serializer(queryset, many=True).data})
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid year or month'}, status=status.HTTP_400_BAD_REQUEST)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            data = request.data.copy()
+            data.pop('session_key', None)
+            override_date = data.get('date')
+            if not override_date:
+                return Response({'error': 'Date is required'}, status=status.HTTP_400_BAD_REQUEST)
+            is_working_day = data.get('is_working_day', True)
+            if isinstance(is_working_day, str):
+                is_working_day = is_working_day.lower() in {'1', 'true', 'yes', 'on'}
+            override, _ = AttendanceDayOverride.objects.update_or_create(
+                company=session.service_user.company,
+                date=override_date,
+                defaults={
+                    'is_working_day': bool(is_working_day),
+                    'title': data.get('title', ''),
+                    'reason': data.get('reason', ''),
+                }
+            )
+            return Response(self.get_serializer(override).data)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
@@ -190,19 +377,37 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             attendance_date = request.data.get('date')
             check_in_time = request.data.get('check_in_time')
             check_out_time = request.data.get('check_out_time')
+            attendance_status = request.data.get('status', 'present')
+            notes = request.data.get('notes', '')
+
+            valid_statuses = {'present', 'absent', 'late', 'half_day', 'leave', 'holiday'}
+            if attendance_status not in valid_statuses:
+                return Response({'error': 'Invalid attendance status'}, status=status.HTTP_400_BAD_REQUEST)
             
-            if not all([employee_id, attendance_date, check_in_time, check_out_time]):
-                return Response({'error': 'Employee ID, date, check-in time, and check-out time are required'}, status=status.HTTP_400_BAD_REQUEST)
+            if not employee_id or not attendance_date:
+                return Response({'error': 'Employee and date are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+            timed_statuses = {'present', 'late', 'half_day'}
+            if attendance_status in timed_statuses and not all([check_in_time, check_out_time]):
+                return Response({'error': 'Check-in time and check-out time are required for this status'}, status=status.HTTP_400_BAD_REQUEST)
             
             employee = Employee.objects.get(id=employee_id, company=session.service_user.company)
+            from datetime import date as date_cls
+            target_date = date_cls.fromisoformat(attendance_date) if isinstance(attendance_date, str) else attendance_date
+            day_status = get_day_status(employee.company, target_date)
+            if not day_status['is_working_day']:
+                return Response({
+                    'error': f"Cannot mark attendance on {day_status['label']}. Mark this date as a working day in Leave Calendar if office is open.",
+                    'day_status': day_status['source'],
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             # Check if employee has approved leave for this date
             from .leave_models import LeaveApplication
             approved_leave = LeaveApplication.objects.filter(
                 employee=employee,
                 status='approved',
-                from_date__lte=attendance_date,
-                to_date__gte=attendance_date
+                from_date__lte=target_date,
+                to_date__gte=target_date
             ).first()
             
             if approved_leave:
@@ -215,51 +420,68 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                         'reason': approved_leave.reason
                     }
                 }, status=status.HTTP_400_BAD_REQUEST)
+
+            if attendance_status == 'leave' and not approved_leave:
+                return Response({'error': 'No approved leave found for this employee on this date'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if attendance_status == 'holiday':
+                from .leave_models import Holiday
+                holiday_exists = Holiday.objects.filter(
+                    company=session.service_user.company,
+                    date=target_date
+                ).exists()
+                if not holiday_exists and day_status['source'] != 'weekly_off':
+                    return Response({'error': 'No holiday or weekly off configured for this date'}, status=status.HTTP_400_BAD_REQUEST)
             
             # Check if attendance already exists for this date
             existing_attendance = Attendance.objects.filter(
                 employee=employee,
-                date=attendance_date
+                date=target_date
             ).first()
             
             if existing_attendance:
+                serializer = self.get_serializer(existing_attendance)
                 return Response({
-                    'error': 'Attendance already marked for this employee on this date',
-                    'existing_attendance': {
-                        'date': existing_attendance.date,
-                        'check_in_time': existing_attendance.check_in_time,
-                        'check_out_time': existing_attendance.check_out_time,
-                        'status': existing_attendance.status
-                    }
-                }, status=status.HTTP_400_BAD_REQUEST)
+                    'message': 'Attendance already marked for this employee on this date',
+                    'already_exists': True,
+                    'attendance': serializer.data
+                }, status=status.HTTP_200_OK)
             
-            # Parse time strings properly with timezone awareness
-            from datetime import datetime
-            from django.utils import timezone as tz
-            
-            # Parse the datetime strings and ensure they're timezone-aware
-            check_in_dt = datetime.fromisoformat(check_in_time.replace('Z', '+00:00'))
-            check_out_dt = datetime.fromisoformat(check_out_time.replace('Z', '+00:00'))
-            
-            # Convert to local timezone if needed
-            if check_in_dt.tzinfo is None:
-                check_in_dt = tz.make_aware(check_in_dt)
-            if check_out_dt.tzinfo is None:
-                check_out_dt = tz.make_aware(check_out_dt)
+            check_in_dt = None
+            check_out_dt = None
+            if check_in_time and check_out_time:
+                # Parse time strings properly with timezone awareness
+                from datetime import datetime
+                from django.utils import timezone as tz
+
+                # Parse the datetime strings and ensure they're timezone-aware
+                check_in_dt = datetime.fromisoformat(check_in_time.replace('Z', '+00:00'))
+                check_out_dt = datetime.fromisoformat(check_out_time.replace('Z', '+00:00'))
+
+                # Convert to local timezone if needed
+                if check_in_dt.tzinfo is None:
+                    check_in_dt = tz.make_aware(check_in_dt)
+                if check_out_dt.tzinfo is None:
+                    check_out_dt = tz.make_aware(check_out_dt)
+
+                if check_out_dt <= check_in_dt:
+                    return Response({'error': 'Check-out time must be after check-in time'}, status=status.HTTP_400_BAD_REQUEST)
             
             # Create new attendance record
             attendance = Attendance.objects.create(
                 employee=employee,
-                date=attendance_date,
+                date=target_date,
                 check_in_time=check_in_dt,
                 check_out_time=check_out_dt,
-                check_in_method='manual',
-                check_out_method='manual',
-                status='present'
+                check_in_method='manual' if check_in_dt else None,
+                check_out_method='manual' if check_out_dt else None,
+                status=attendance_status,
+                notes=notes
             )
             
             # Calculate working hours
-            attendance.calculate_hours()
+            if check_in_dt and check_out_dt:
+                attendance.calculate_hours()
             attendance.save()
             
             serializer = self.get_serializer(attendance)
@@ -276,6 +498,205 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             return Response({'error': f'Invalid time format: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({'error': f'Failed to mark attendance: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@authentication_classes([EmployeeMobileAuthentication])
+@permission_classes([IsEmployeeMobileAuthenticated])
+def mobile_employee_profile(request):
+    employee = request.employee
+    return Response({
+        'employee': {
+            'id': employee.id,
+            'employee_id': employee.employee_id,
+            'first_name': employee.first_name,
+            'last_name': employee.last_name,
+            'full_name': employee.full_name,
+            'email': employee.email,
+            'phone': employee.phone,
+            'department': employee.department.name,
+            'designation': employee.designation.title,
+            'profile_picture': request.build_absolute_uri(employee.profile_picture.url) if employee.profile_picture else None,
+            'date_of_joining': employee.date_of_joining,
+            'work_mode': employee.work_mode,
+        },
+        'company': {
+            'id': employee.company.id,
+            'name': employee.company.name,
+            'company_code': employee.company.company_prefix,
+            'logo': request.build_absolute_uri(employee.company.logo.url) if employee.company.logo else None,
+        }
+    })
+
+
+@api_view(['GET'])
+@authentication_classes([EmployeeMobileAuthentication])
+@permission_classes([IsEmployeeMobileAuthenticated])
+def mobile_attendance_settings(request):
+    system = _get_company_attendance_system(request.employee.company)
+    return Response(_serialize_mobile_attendance_settings(system))
+
+
+@api_view(['GET'])
+@authentication_classes([EmployeeMobileAuthentication])
+@permission_classes([IsEmployeeMobileAuthenticated])
+def mobile_today_attendance(request):
+    attendance = Attendance.objects.filter(employee=request.employee, date=date.today()).first()
+    return Response({
+        'attendance': AttendanceSerializer(attendance, context={'request': request}).data if attendance else None
+    })
+
+
+@api_view(['GET'])
+@authentication_classes([EmployeeMobileAuthentication])
+@permission_classes([IsEmployeeMobileAuthenticated])
+def mobile_attendance_history(request):
+    days = int(request.query_params.get('days', 30))
+    days = min(max(days, 1), 90)
+    start_date = date.today() - timedelta(days=days)
+    records = Attendance.objects.filter(
+        employee=request.employee,
+        date__gte=start_date,
+        date__lte=date.today()
+    ).order_by('-date')
+    return Response({'results': AttendanceSerializer(records, many=True, context={'request': request}).data})
+
+
+@api_view(['POST'])
+@authentication_classes([EmployeeMobileAuthentication])
+@permission_classes([IsEmployeeMobileAuthenticated])
+def mobile_validate_location(request):
+    employee = request.employee
+    latitude = request.data.get('latitude')
+    longitude = request.data.get('longitude')
+    if not latitude or not longitude:
+        return Response({'error': 'Latitude and longitude are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    system = _get_company_attendance_system(employee.company)
+    if not system.enable_geo_fencing:
+        return Response({'isValid': True, 'distance': 0, 'message': 'Geo-fence disabled - location accepted'})
+
+    is_valid = validate_employee_location(latitude, longitude, system)
+    distance = 0
+    if system.office_latitude and system.office_longitude:
+        from math import radians, cos, sin, asin, sqrt
+        lat1, lon1 = radians(float(latitude)), radians(float(longitude))
+        lat2, lon2 = radians(float(system.office_latitude)), radians(float(system.office_longitude))
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+        distance = int(6371000 * (2 * asin(sqrt(a))))
+
+    return Response({
+        'isValid': is_valid,
+        'distance': distance,
+        'allowedRadius': system.geo_fence_radius,
+        'message': f'You are {distance}m from office' + (' (within allowed range)' if is_valid else ' (outside allowed range)')
+    })
+
+
+@api_view(['POST'])
+@authentication_classes([EmployeeMobileAuthentication])
+@permission_classes([IsEmployeeMobileAuthenticated])
+def mobile_mark_attendance(request):
+    employee = request.employee
+    data = request.data.copy()
+    data['employee_id'] = employee.employee_id
+    serializer = MobileAttendanceSerializer(data=data)
+    if not serializer.is_valid():
+        return Response({'error': 'Validation failed', 'details': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    validated = serializer.validated_data
+    system = _get_company_attendance_system(employee.company)
+    if not system.enable_mobile_app:
+        return Response({'error': 'Mobile attendance is disabled by HR'}, status=status.HTTP_403_FORBIDDEN)
+
+    today = date.today()
+    day_status = get_day_status(employee.company, today)
+    if not day_status['is_working_day']:
+        return Response({
+            'error': f"Attendance is closed today: {day_status['label']}",
+            'day_status': day_status['source'],
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    from .leave_models import LeaveApplication
+    approved_leave = LeaveApplication.objects.filter(
+        employee=employee,
+        status='approved',
+        from_date__lte=today,
+        to_date__gte=today
+    ).first()
+    if approved_leave:
+        return Response({
+            'error': f'Cannot mark attendance - You have approved {approved_leave.leave_type.name} today',
+            'leave_details': {
+                'leave_type': approved_leave.leave_type.name,
+                'from_date': approved_leave.from_date,
+                'to_date': approved_leave.to_date
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    action = validated['action']
+    requires_face = (
+        (action == 'checkin' and system.require_face_for_checkin) or
+        (action == 'checkout' and system.require_face_for_checkout)
+    )
+    if requires_face and 'face_image' not in request.FILES:
+        return Response({'error': 'Face photo is required by HR attendance settings'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if system.enable_geo_fencing and not validate_employee_location(validated.get('latitude'), validated.get('longitude'), system):
+        return Response({'error': 'You are outside the allowed office geo-fence'}, status=status.HTTP_400_BAD_REQUEST)
+
+    attendance, _ = Attendance.objects.get_or_create(
+        employee=employee,
+        date=today,
+        defaults={'status': 'present'}
+    )
+    current_time = timezone.now()
+
+    if action == 'checkin':
+        if attendance.check_in_time:
+            return Response({'error': 'Already checked in today'}, status=status.HTTP_400_BAD_REQUEST)
+        attendance.check_in_time = current_time
+        attendance.check_in_method = 'mobile_app'
+        attendance.check_in_latitude = validated.get('latitude')
+        attendance.check_in_longitude = validated.get('longitude')
+        attendance.check_in_location = validated.get('location_name', '')
+        attendance.is_valid_checkin_location = True
+        if 'face_image' in request.FILES:
+            attendance.check_in_face_image = request.FILES['face_image']
+            face_result = validate_face_recognition(employee, request.FILES['face_image']) if employee.face_photo else {'is_valid': True, 'score': 1.0}
+            if not face_result['is_valid']:
+                return Response({'error': 'Face recognition failed', 'message': face_result['message']}, status=status.HTTP_400_BAD_REQUEST)
+            attendance.is_valid_face_match = True
+            attendance.face_match_score = face_result['score']
+        if attendance.is_late():
+            attendance.status = 'late'
+    else:
+        if not attendance.check_in_time:
+            return Response({'error': 'Must check in first'}, status=status.HTTP_400_BAD_REQUEST)
+        if attendance.check_out_time:
+            return Response({'error': 'Already checked out today'}, status=status.HTTP_400_BAD_REQUEST)
+        attendance.check_out_time = current_time
+        attendance.check_out_method = 'mobile_app'
+        attendance.check_out_latitude = validated.get('latitude')
+        attendance.check_out_longitude = validated.get('longitude')
+        attendance.check_out_location = validated.get('location_name', '')
+        attendance.is_valid_checkout_location = True
+        if 'face_image' in request.FILES:
+            attendance.check_out_face_image = request.FILES['face_image']
+            face_result = validate_face_recognition(employee, request.FILES['face_image']) if employee.face_photo else {'is_valid': True, 'score': 1.0}
+            if not face_result['is_valid']:
+                return Response({'error': 'Face recognition failed', 'message': face_result['message']}, status=status.HTTP_400_BAD_REQUEST)
+            attendance.is_valid_face_match = True
+            attendance.face_match_score = face_result['score']
+        attendance.calculate_hours()
+
+    attendance.save()
+    return Response({
+        'message': f'Successfully {action}',
+        'attendance': AttendanceSerializer(attendance, context={'request': request}).data
+    })
 
 
 @api_view(['POST'])
@@ -295,6 +716,12 @@ def mobile_attendance(request):
     try:
         employee = Employee.objects.get(employee_id=data['employee_id'], company=request.service_user.company)
         today = date.today()
+        day_status = get_day_status(employee.company, today)
+        if not day_status['is_working_day']:
+            return Response({
+                'error': f"Attendance is closed today: {day_status['label']}",
+                'day_status': day_status['source'],
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Check if employee has approved leave for today
         from .leave_models import LeaveApplication

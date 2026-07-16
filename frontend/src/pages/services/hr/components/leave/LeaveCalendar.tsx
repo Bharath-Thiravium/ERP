@@ -22,11 +22,25 @@ interface Holiday {
   holiday_type: string
 }
 
+interface AttendancePolicy {
+  weekly_off_days: number[]
+}
+
+interface DayOverride {
+  id: number
+  date: string
+  is_working_day: boolean
+  title: string
+  reason: string
+}
+
 const LeaveCalendar: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [leaves, setLeaves] = useState<LeaveApplication[]>([])
   const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [policy, setPolicy] = useState<AttendancePolicy>({ weekly_off_days: [6] })
+  const [dayOverrides, setDayOverrides] = useState<DayOverride[]>([])
   const [loading, setLoading] = useState(false)
   const [showHolidayModal, setShowHolidayModal] = useState(false)
   const [newHoliday, setNewHoliday] = useState({
@@ -39,6 +53,8 @@ const LeaveCalendar: React.FC = () => {
   useEffect(() => {
     fetchLeaves()
     fetchHolidays()
+    fetchAttendancePolicy()
+    fetchDayOverrides()
   }, [sessionKey, currentDate])
 
   const fetchLeaves = async () => {
@@ -86,6 +102,39 @@ const LeaveCalendar: React.FC = () => {
     }
   }
 
+  const fetchAttendancePolicy = async () => {
+    if (!sessionKey) return
+    try {
+      const response = await api.get('/api/hr/attendance/policy/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      const loadedPolicy = response.data.results?.[0]
+      if (loadedPolicy) {
+        setPolicy({ weekly_off_days: loadedPolicy.weekly_off_days || [] })
+      }
+    } catch (error: any) {
+      console.error('Error fetching attendance policy:', error)
+    }
+  }
+
+  const fetchDayOverrides = async () => {
+    if (!sessionKey) return
+    try {
+      const response = await api.get('/api/hr/attendance/day-overrides/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: {
+          session_key: sessionKey,
+          year: currentDate.getFullYear(),
+          month: currentDate.getMonth() + 1,
+        }
+      })
+      setDayOverrides(response.data.results || [])
+    } catch (error: any) {
+      console.error('Error fetching day overrides:', error)
+    }
+  }
+
   const handleAddHoliday = async () => {
     if (!sessionKey || !newHoliday.name || !newHoliday.date) {
       toast.error('Please fill all required fields')
@@ -123,6 +172,53 @@ const LeaveCalendar: React.FC = () => {
   const getHoliday = (day: number) => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     return holidays.find(holiday => holiday.date === dateStr)
+  }
+
+  const getDateStr = (day: number) => {
+    return `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  }
+
+  const getDayOverride = (day: number) => {
+    return dayOverrides.find(override => override.date === getDateStr(day))
+  }
+
+  const isWeeklyOff = (day: number) => {
+    const jsDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), day).getDay()
+    const pythonWeekday = (jsDay + 6) % 7
+    return policy.weekly_off_days.includes(pythonWeekday)
+  }
+
+  const handleMakeWorkingDay = async (day: number) => {
+    if (!sessionKey) return
+    try {
+      await api.post('/api/hr/attendance/day-overrides/', {
+        session_key: sessionKey,
+        date: getDateStr(day),
+        is_working_day: true,
+        title: 'Working Day',
+        reason: 'Company working day override',
+      }, {
+        headers: { Authorization: `Bearer ${sessionKey}` }
+      })
+      toast.success('Marked as working day')
+      fetchDayOverrides()
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to mark working day')
+    }
+  }
+
+  const handleClearOverride = async (override: DayOverride) => {
+    if (!sessionKey) return
+    try {
+      await api.delete(`/api/hr/attendance-day-overrides/${override.id}/`, {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      toast.success('Day override cleared')
+      fetchDayOverrides()
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to clear override')
+    }
   }
 
   const getLeavesForDay = (day: number) => {
@@ -201,6 +297,9 @@ const LeaveCalendar: React.FC = () => {
               {Array.from({ length: daysInMonth }, (_, i) => {
                 const day = i + 1
                 const holiday = getHoliday(day)
+                const weeklyOff = isWeeklyOff(day)
+                const override = getDayOverride(day)
+                const isWorkingOverride = override?.is_working_day
                 const dayLeaves = getLeavesForDay(day)
                 const isToday = new Date().toDateString() === new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toDateString()
                 
@@ -209,7 +308,7 @@ const LeaveCalendar: React.FC = () => {
                     key={day}
                     className={`p-2 h-24 border border-gray-200 relative ${
                       isToday ? 'bg-blue-50 border-blue-300' : ''
-                    } ${holiday ? 'bg-red-50' : ''} ${dayLeaves.length > 0 ? 'bg-yellow-50' : ''}`}
+                    } ${holiday ? 'bg-red-50' : ''} ${weeklyOff ? 'bg-gray-50' : ''} ${isWorkingOverride ? 'bg-green-50' : ''} ${dayLeaves.length > 0 ? 'bg-yellow-50' : ''}`}
                   >
                     <div className={`text-sm font-medium ${isToday ? 'text-blue-600' : ''}`}>
                       {day}
@@ -218,6 +317,18 @@ const LeaveCalendar: React.FC = () => {
                     {holiday && (
                       <div className="text-xs text-red-600 font-medium truncate mt-1">
                         {holiday.name}
+                      </div>
+                    )}
+
+                    {weeklyOff && !isWorkingOverride && (
+                      <div className="text-xs text-gray-600 font-medium truncate mt-1">
+                        Weekly Off
+                      </div>
+                    )}
+
+                    {isWorkingOverride && (
+                      <div className="text-xs text-green-700 font-medium truncate mt-1">
+                        Working Day
                       </div>
                     )}
                     
@@ -235,6 +346,20 @@ const LeaveCalendar: React.FC = () => {
                       <div className="text-xs text-gray-500 mt-1">
                         +{dayLeaves.length - 2} more
                       </div>
+                    )}
+
+                    {(weeklyOff || holiday || override) && (
+                      <button
+                        type="button"
+                        onClick={() => override ? handleClearOverride(override) : handleMakeWorkingDay(day)}
+                        className={`absolute bottom-1 right-1 rounded px-1.5 py-0.5 text-[10px] ${
+                          override
+                            ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            : 'bg-green-100 text-green-700 hover:bg-green-200'
+                        }`}
+                      >
+                        {override ? 'Clear' : 'Work'}
+                      </button>
                     )}
                   </div>
                 )
@@ -266,6 +391,22 @@ const LeaveCalendar: React.FC = () => {
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 bg-blue-200 rounded"></div>
               <span className="text-sm">Today</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gray-200 rounded"></div>
+              <span className="text-sm">Weekly Off</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-green-200 rounded"></div>
+              <span className="text-sm">Working Override</span>
             </div>
           </CardContent>
         </Card>

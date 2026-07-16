@@ -21,7 +21,7 @@ class CameraService {
     return new Promise((resolve, reject) => {
       const options = {
         mediaType: 'photo' as MediaType,
-        quality: 0.9, // Higher quality for face recognition
+        quality: 0.9 as const, // Higher quality for face recognition
         includeBase64: false,
         maxWidth: 1024, // Better resolution for face detection
         maxHeight: 1024,
@@ -55,7 +55,7 @@ class CameraService {
     return new Promise((resolve, reject) => {
       const options = {
         mediaType: 'photo' as MediaType,
-        quality: 0.8,
+        quality: 0.8 as const,
         includeBase64: false,
         maxWidth: 800,
         maxHeight: 800,

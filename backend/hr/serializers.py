@@ -72,8 +72,8 @@ class EmployeeListSerializer(serializers.ModelSerializer):
 class EmployeeDetailSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     designation_title = serializers.CharField(source='designation.title', read_only=True)
-    profile_picture = serializers.SerializerMethodField()
-    face_photo = serializers.SerializerMethodField()
+    profile_picture = serializers.ImageField(required=False, allow_null=True)
+    face_photo = serializers.ImageField(required=False, allow_null=True)
     
     class Meta:
         model = Employee
@@ -95,21 +95,21 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'employee_id', 'full_name', 'created_at', 'updated_at']
     
-    def get_profile_picture(self, obj):
-        if obj.profile_picture:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.profile_picture.url)
-            return obj.profile_picture.url
-        return None
-    
-    def get_face_photo(self, obj):
-        if obj.face_photo:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.face_photo.url)
-            return obj.face_photo.url
-        return None
+    def _get_context_company(self):
+        request = self.context.get('request')
+        service_user = getattr(request, 'service_user', None) if request else None
+        return service_user.company if service_user else None
+
+    def validate_email(self, value):
+        company = self._get_context_company()
+        queryset = Employee.objects.filter(email__iexact=value)
+        if company is not None:
+            queryset = queryset.filter(company=company)
+        if self.instance is not None:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("Employee with this email already exists.")
+        return value
     
     def validate_skills(self, value):
         if isinstance(value, str):
@@ -149,7 +149,13 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
         return service_user.company if service_user else None
 
     def validate_email(self, value):
-        if Employee.objects.filter(email=value).exists():
+        company = self._get_context_company()
+        queryset = Employee.objects.filter(email__iexact=value)
+        if company is not None:
+            queryset = queryset.filter(company=company)
+        if self.instance is not None:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
             raise serializers.ValidationError("Employee with this email already exists.")
         return value
 

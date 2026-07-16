@@ -23,7 +23,7 @@ const SystemStatus: React.FC = () => {
             <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
               HR System Status
             </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">Complete enterprise HR management system</p>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">Operational view of enabled HR workflows</p>
           </div>
           <div className="p-3 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl">
             <Activity className="h-8 w-8 text-white" />
@@ -57,8 +57,8 @@ const SystemStatus: React.FC = () => {
         <div className="flex items-center space-x-4">
           <CheckCircle className="h-12 w-12" />
           <div>
-            <h2 className="text-2xl font-bold">🎉 HR System 100% Complete!</h2>
-            <p className="text-green-100 mt-2">All modules implemented and ready for production use.</p>
+            <h2 className="text-2xl font-bold">HR System Ready for Workflow Testing</h2>
+            <p className="text-green-100 mt-2">Use this page as a quick checklist while validating each HR menu.</p>
           </div>
         </div>
       </div>

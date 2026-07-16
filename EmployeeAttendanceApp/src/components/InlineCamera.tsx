@@ -23,7 +23,8 @@ const InlineCamera: React.FC<InlineCameraProps> = ({ visible, onClose, onCapture
   const [isCapturing, setIsCapturing] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const devices = useCameraDevices();
-  const device = devices.front || devices.back;
+  const device = devices.find((cameraDevice) => cameraDevice.position === 'front')
+    || devices.find((cameraDevice) => cameraDevice.position === 'back');
 
   useEffect(() => {
     if (visible) {
@@ -39,7 +40,7 @@ const InlineCamera: React.FC<InlineCameraProps> = ({ visible, onClose, onCapture
         Alert.alert('Camera Permission', 'Camera permission is required to take photos');
       }
     } catch (error) {
-      console.error('Camera permission error:', error);
+      console.log('Camera permission error:', error instanceof Error ? error.message : error);
       Alert.alert('Error', 'Failed to request camera permission');
     }
   };
@@ -48,10 +49,7 @@ const InlineCamera: React.FC<InlineCameraProps> = ({ visible, onClose, onCapture
     if (camera && !isCapturing && device) {
       setIsCapturing(true);
       try {
-        const photo = await camera.takePhoto({
-          quality: 80,
-          skipMetadata: true,
-        });
+        const photo = await camera.takePhoto();
         onCapture(`file://${photo.path}`);
         onClose();
       } catch (error) {

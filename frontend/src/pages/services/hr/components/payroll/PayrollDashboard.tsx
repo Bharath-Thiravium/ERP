@@ -32,6 +32,7 @@ const PayrollDashboard: React.FC<PayrollDashboardProps> = ({ onCreateCycle, onVi
   const { sessionKey } = useServiceUserStore()
   const [dashboardData, setDashboardData] = useState<PayrollDashboardData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [processingCycleId, setProcessingCycleId] = useState<number | null>(null)
 
   useEffect(() => {
     fetchDashboardData()
@@ -57,7 +58,8 @@ const PayrollDashboard: React.FC<PayrollDashboardProps> = ({ onCreateCycle, onVi
 
   const calculatePayroll = async (cycleId: number) => {
     if (!sessionKey) return
-    
+
+    setProcessingCycleId(cycleId)
     try {
       await api.post(`/api/hr/payroll/${cycleId}/calculate_payroll/`, {
         session_key: sessionKey
@@ -70,7 +72,106 @@ const PayrollDashboard: React.FC<PayrollDashboardProps> = ({ onCreateCycle, onVi
     } catch (error: any) {
       console.error('Error calculating payroll:', error)
       toast.error(error.response?.data?.error || 'Failed to calculate payroll')
+    } finally {
+      setProcessingCycleId(null)
     }
+  }
+
+  const approvePayroll = async (cycleId: number) => {
+    if (!sessionKey) return
+
+    setProcessingCycleId(cycleId)
+    try {
+      await api.post(`/api/hr/payroll/${cycleId}/approve_payroll/`, {
+        session_key: sessionKey
+      }, {
+        headers: { Authorization: `Bearer ${sessionKey}` }
+      })
+
+      toast.success('Payroll approved successfully!')
+      fetchDashboardData()
+    } catch (error: any) {
+      console.error('Error approving payroll:', error)
+      toast.error(error.response?.data?.error || 'Failed to approve payroll')
+    } finally {
+      setProcessingCycleId(null)
+    }
+  }
+
+  const processPayments = async (cycleId: number) => {
+    if (!sessionKey) return
+
+    const confirmed = window.confirm('Process payments for this payroll cycle? Payslips will be marked as paid.')
+    if (!confirmed) return
+
+    setProcessingCycleId(cycleId)
+    try {
+      await api.post(`/api/hr/payroll/${cycleId}/process_payments/`, {
+        session_key: sessionKey
+      }, {
+        headers: { Authorization: `Bearer ${sessionKey}` }
+      })
+
+      toast.success('Payments processed successfully!')
+      fetchDashboardData()
+    } catch (error: any) {
+      console.error('Error processing payroll payments:', error)
+      toast.error(error.response?.data?.error || 'Failed to process payments')
+    } finally {
+      setProcessingCycleId(null)
+    }
+  }
+
+  const renderCycleActions = (cycle: any) => {
+    const busy = processingCycleId === cycle.id
+
+    return (
+      <div className="flex flex-wrap gap-2">
+        {cycle.status === 'draft' && (
+          <Button
+            onClick={() => calculatePayroll(cycle.id)}
+            className="bg-gradient-to-r from-green-500 to-emerald-600"
+            size="sm"
+            disabled={busy}
+          >
+            {busy ? 'Calculating...' : 'Calculate Payroll'}
+          </Button>
+        )}
+        {cycle.status === 'calculated' && (
+          <Button
+            onClick={() => approvePayroll(cycle.id)}
+            className="bg-gradient-to-r from-blue-500 to-indigo-600"
+            size="sm"
+            disabled={busy}
+          >
+            {busy ? 'Approving...' : 'Approve Payroll'}
+          </Button>
+        )}
+        {cycle.status === 'approved' && (
+          <Button
+            onClick={() => processPayments(cycle.id)}
+            className="bg-gradient-to-r from-purple-500 to-violet-600"
+            size="sm"
+            disabled={busy}
+          >
+            {busy ? 'Processing...' : 'Process Payment'}
+          </Button>
+        )}
+        <Button
+          onClick={() => onViewCycle(cycle)}
+          variant="outline"
+          size="sm"
+        >
+          View Details
+        </Button>
+        <Button
+          onClick={() => onViewPayslips(cycle.id)}
+          size="sm"
+        >
+          View Payslips
+        </Button>
+      </div>
+    )
   }
 
   const getStatusColor = (status: string) => {
@@ -208,30 +309,7 @@ const PayrollDashboard: React.FC<PayrollDashboardProps> = ({ onCreateCycle, onVi
                       </p>
                     </div>
                   </div>
-                  <div className="flex space-x-2">
-                    {dashboardData.current_cycle.status === 'draft' && (
-                      <Button 
-                        onClick={() => calculatePayroll(dashboardData.current_cycle.id)}
-                        className="bg-gradient-to-r from-green-500 to-emerald-600"
-                        size="sm"
-                      >
-                        Calculate Payroll
-                      </Button>
-                    )}
-                    <Button 
-                      onClick={() => onViewCycle(dashboardData.current_cycle)}
-                      variant="outline" 
-                      size="sm"
-                    >
-                      View Details
-                    </Button>
-                    <Button 
-                      onClick={() => onViewPayslips(dashboardData.current_cycle.id)}
-                      size="sm"
-                    >
-                      View Payslips
-                    </Button>
-                  </div>
+                  {renderCycleActions(dashboardData.current_cycle)}
                 </div>
               ) : (
                 <div className="text-center py-8">
@@ -325,6 +403,7 @@ const PayrollDashboard: React.FC<PayrollDashboardProps> = ({ onCreateCycle, onVi
                     <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(cycle.status)}`}>
                       {cycle.status}
                     </span>
+                    {renderCycleActions(cycle)}
                   </div>
                 </div>
               ))}

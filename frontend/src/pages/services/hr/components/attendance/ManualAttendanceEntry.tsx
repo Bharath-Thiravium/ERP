@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { Plus, Clock, User, Save } from 'lucide-react'
+import React, { useRef, useState, useEffect } from 'react'
+import { AlertTriangle, Plus, Clock, User, Save } from 'lucide-react'
 import { Button } from '../../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -12,7 +12,13 @@ interface ManualAttendanceEntryProps {
 
 const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess }) => {
   const { sessionKey } = useServiceUserStore()
+  const submitLockRef = useRef(false)
   const [employees, setEmployees] = useState<any[]>([])
+  const [policy, setPolicy] = useState<any>(null)
+  const [holidays, setHolidays] = useState<any[]>([])
+  const [dayOverrides, setDayOverrides] = useState<any[]>([])
+  const [approvedLeaves, setApprovedLeaves] = useState<any[]>([])
+  const [existingAttendance, setExistingAttendance] = useState<any[]>([])
   // const [loading] = useState(false)
   const [saving, setSaving] = useState(false)
   
@@ -27,7 +33,15 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
 
   useEffect(() => {
     fetchEmployees()
+    fetchPolicy()
+    fetchHolidays()
+    fetchApprovedLeaves()
   }, [sessionKey])
+
+  useEffect(() => {
+    fetchDayOverrides()
+    fetchExistingAttendance()
+  }, [sessionKey, formData.date])
 
   const fetchEmployees = async () => {
     if (!sessionKey) return
@@ -47,19 +61,161 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
     }
   }
 
+  const fetchPolicy = async () => {
+    if (!sessionKey) return
+    try {
+      const response = await api.get('/api/hr/attendance/policy/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      setPolicy(response.data)
+    } catch (error) {
+      console.error('Error fetching attendance policy:', error)
+    }
+  }
+
+  const fetchHolidays = async () => {
+    if (!sessionKey) return
+    try {
+      const response = await api.get('/api/hr/holidays/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      setHolidays(response.data.results || response.data || [])
+    } catch (error) {
+      console.error('Error fetching holidays:', error)
+    }
+  }
+
+  const fetchDayOverrides = async () => {
+    if (!sessionKey || !formData.date) return
+    const selectedDate = new Date(`${formData.date}T00:00:00`)
+    try {
+      const response = await api.get('/api/hr/attendance/day-overrides/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: {
+          session_key: sessionKey,
+          year: selectedDate.getFullYear(),
+          month: selectedDate.getMonth() + 1
+        }
+      })
+      setDayOverrides(response.data.results || [])
+    } catch (error) {
+      console.error('Error fetching attendance day overrides:', error)
+    }
+  }
+
+  const fetchApprovedLeaves = async () => {
+    if (!sessionKey) return
+    try {
+      const response = await api.get('/api/hr/leave-applications/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey, status: 'approved' }
+      })
+      const leaves = response.data.results || response.data || []
+      setApprovedLeaves(leaves.filter((leave: any) => leave.status === 'approved'))
+    } catch (error) {
+      console.error('Error fetching approved leaves:', error)
+    }
+  }
+
+  const fetchExistingAttendance = async () => {
+    if (!sessionKey || !formData.date) return
+    try {
+      const response = await api.get('/api/hr/attendance/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: {
+          session_key: sessionKey,
+          start_date: formData.date,
+          end_date: formData.date
+        }
+      })
+      setExistingAttendance(response.data.results || response.data || [])
+    } catch (error) {
+      console.error('Error fetching existing attendance:', error)
+    }
+  }
+
+  const getPythonWeekday = (dateStr: string) => {
+    const jsDay = new Date(`${dateStr}T00:00:00`).getDay()
+    return (jsDay + 6) % 7
+  }
+
+  const getDayOverride = (dateStr: string) => dayOverrides.find((item) => item.date === dateStr)
+  const getHoliday = (dateStr: string) => holidays.find((item) => item.date === dateStr)
+
+  const getCalendarBlock = () => {
+    if (!formData.date) return null
+    const override = getDayOverride(formData.date)
+    const holiday = getHoliday(formData.date)
+    const weeklyOffDays = policy?.weekly_off_days || []
+    const isWeeklyOff = weeklyOffDays.includes(getPythonWeekday(formData.date))
+
+    if (override) {
+      if (override.is_working_day) return null
+      return override.title || 'Special off day'
+    }
+    if (holiday) return holiday.name || 'Company holiday'
+    if (isWeeklyOff) return 'Weekly off'
+    return null
+  }
+
+  const isDateWithinLeave = (leave: any, dateStr: string) => leave.from_date <= dateStr && leave.to_date >= dateStr
+  const isEmployeeOnLeave = (employeeId: string | number) => approvedLeaves.some((leave) => (
+    String(leave.employee) === String(employeeId) && isDateWithinLeave(leave, formData.date)
+  ))
+  const hasExistingAttendance = (employeeId: string | number) => existingAttendance.some((record) => (
+    String(record.employee) === String(employeeId)
+  ))
+  const selectedExistingAttendance = formData.employee_id
+    ? existingAttendance.find((record) => String(record.employee) === String(formData.employee_id))
+    : null
+
+  const availableEmployees = employees.filter((emp) => !isEmployeeOnLeave(emp.id) && !hasExistingAttendance(emp.id))
+  const blockedLeave = formData.employee_id
+    ? approvedLeaves.find((leave) => String(leave.employee) === String(formData.employee_id) && isDateWithinLeave(leave, formData.date))
+    : null
+  const calendarBlock = getCalendarBlock()
+  const isEntryBlocked = Boolean(calendarBlock || blockedLeave || selectedExistingAttendance)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (submitLockRef.current || saving) {
+      return
+    }
     
     if (!formData.employee_id) {
       toast.error('Please select an employee')
       return
     }
-    
-    if (!formData.check_in_time && formData.status === 'present') {
-      toast.error('Check-in time is required for present status')
+
+    if (calendarBlock) {
+      toast.error(`Attendance cannot be marked on ${calendarBlock}`)
       return
     }
 
+    if (blockedLeave) {
+      toast.error('This employee has approved leave on selected date')
+      return
+    }
+
+    if (selectedExistingAttendance) {
+      toast.error('Attendance already exists for this employee on selected date')
+      return
+    }
+    
+    if (['present', 'late', 'half_day'].includes(formData.status) && (!formData.check_in_time || !formData.check_out_time)) {
+      toast.error('Check-in and check-out time are required for this status')
+      return
+    }
+
+    if (formData.check_in_time && formData.check_out_time && formData.check_out_time <= formData.check_in_time) {
+      toast.error('Check-out time must be after check-in time')
+      return
+    }
+
+    submitLockRef.current = true
     setSaving(true)
     try {
       const payload = {
@@ -69,11 +225,16 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
         session_key: sessionKey
       }
 
-      await api.post('/api/hr/attendance/manual-entry/', payload, {
+      const response = await api.post('/api/hr/attendance/manual-entry/', payload, {
         headers: { Authorization: `Bearer ${sessionKey}` }
       })
       
-      toast.success('Attendance recorded successfully')
+      if (response.data?.already_exists) {
+        toast.success('Attendance already exists for this employee/date')
+      } else {
+        toast.success('Attendance recorded successfully')
+      }
+      await fetchExistingAttendance()
       onSuccess()
       
       // Reset form
@@ -87,8 +248,9 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
       })
     } catch (error: any) {
       console.error('Error saving attendance:', error)
-      toast.error(error.response?.data?.detail || 'Failed to save attendance')
+      toast.error(error.response?.data?.error || error.response?.data?.detail || 'Failed to save attendance')
     } finally {
+      submitLockRef.current = false
       setSaving(false)
     }
   }
@@ -141,16 +303,22 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
                 <select
                   value={formData.employee_id}
                   onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  disabled={Boolean(calendarBlock)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white disabled:bg-gray-100 disabled:text-gray-400"
                   required
                 >
-                  <option value="">Select Employee</option>
-                  {employees.map((emp) => (
+                  <option value="">{calendarBlock ? 'Attendance closed for this date' : 'Select Employee'}</option>
+                  {availableEmployees.map((emp) => (
                     <option key={emp.id} value={emp.id}>
                       {emp.full_name} ({emp.employee_id})
                     </option>
                   ))}
                 </select>
+                {!calendarBlock && employees.length > availableEmployees.length && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    {employees.length - availableEmployees.length} employee(s) hidden because attendance already exists or approved leave exists on this date.
+                  </p>
+                )}
               </div>
 
               {/* Date */}
@@ -194,6 +362,22 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
               </div>
             </div>
 
+            {(calendarBlock || blockedLeave || selectedExistingAttendance) && (
+              <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+                <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold">Attendance entry blocked</p>
+                  <p className="text-sm">
+                    {calendarBlock
+                      ? `${formData.date} is ${calendarBlock}. If office is open, mark this date as Work in Leave Calendar first.`
+                      : blockedLeave
+                        ? `${blockedLeave?.employee_name || 'Selected employee'} has approved ${blockedLeave?.leave_type_name || 'leave'} on this date.`
+                        : `Attendance already marked as ${selectedExistingAttendance?.status || 'recorded'} for this employee on ${formData.date}. Delete or edit the existing record instead of creating duplicate attendance.`}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Status */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -211,6 +395,7 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
                   <button
                     key={status.value}
                     type="button"
+                    disabled={isEntryBlocked}
                     onClick={() => setFormData({ ...formData, status: status.value })}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                       formData.status === status.value
@@ -258,7 +443,7 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
               </Button>
               <Button
                 type="submit"
-                disabled={saving}
+                disabled={saving || isEntryBlocked}
                 className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
               >
                 <Save className="h-4 w-4 mr-2" />
@@ -277,6 +462,7 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Button
+              disabled={isEntryBlocked}
               onClick={() => {
                 setFormData({
                   ...formData,
@@ -293,6 +479,7 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
             </Button>
             
             <Button
+              disabled={isEntryBlocked}
               onClick={() => {
                 setFormData({
                   ...formData,
@@ -309,6 +496,7 @@ const ManualAttendanceEntry: React.FC<ManualAttendanceEntryProps> = ({ onSuccess
             </Button>
             
             <Button
+              disabled={isEntryBlocked}
               onClick={() => {
                 setFormData({
                   ...formData,

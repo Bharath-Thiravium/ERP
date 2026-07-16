@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Clock, Users, Smartphone, Settings, Plus, Calendar, TrendingUp, AlertCircle, CheckCircle, Camera, Fingerprint } from 'lucide-react'
+import { Clock, Users, Smartphone, Settings, Plus, Calendar, TrendingUp, AlertCircle, CheckCircle, Fingerprint } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -8,9 +8,7 @@ import toast from 'react-hot-toast'
 import AttendanceSystemConfig from '../components/attendance/AttendanceSystemConfig'
 import AttendanceRecords from '../components/attendance/AttendanceRecords'
 import ManualAttendanceEntry from '../components/attendance/ManualAttendanceEntry'
-import MobileAttendanceDemo from '../components/attendance/MobileAttendanceDemo'
 import AttendanceTracker from '../components/attendance/AttendanceTracker'
-import FaceRecognitionAttendance from '../components/attendance/FaceRecognitionAttendance'
 import BiometricAttendance from '../components/attendance/BiometricAttendance'
 
 interface AttendanceStats {
@@ -70,7 +68,7 @@ const Attendance: React.FC = () => {
   const getMethodIcon = (method: string) => {
     switch (method) {
       case 'biometric': return <Fingerprint className="h-5 w-5" />
-      case 'face_recognition': return <Camera className="h-5 w-5" />
+      case 'face_recognition': return <Fingerprint className="h-5 w-5" />
       case 'mobile_app': return <Smartphone className="h-5 w-5" />
       case 'manual': return <Clock className="h-5 w-5" />
       default: return <Clock className="h-5 w-5" />
@@ -87,6 +85,29 @@ const Attendance: React.FC = () => {
     }
   }
 
+  const attendanceMode = attendanceSystem?.system_type === 'mobile_app'
+    ? 'mobile_app'
+    : attendanceSystem?.system_type === 'biometric' || attendanceSystem?.system_type === 'face_recognition'
+      ? 'biometric'
+      : 'manual'
+  const canShowManual = attendanceMode === 'manual'
+  const canShowBiometric = attendanceMode === 'biometric'
+
+  const attendanceTabs = [
+    { id: 'overview', label: 'Overview', visible: true },
+    { id: 'records', label: 'Records', visible: true },
+    { id: 'manual', label: 'Manual Entry', visible: canShowManual },
+    { id: 'biometric', label: 'Devices', visible: canShowBiometric },
+    { id: 'tracker', label: 'Live Tracker', visible: true },
+    { id: 'config', label: 'Settings', visible: true },
+  ].filter(tab => tab.visible)
+
+  useEffect(() => {
+    if (!attendanceTabs.some(tab => tab.id === activeView)) {
+      setActiveView('overview')
+    }
+  }, [attendanceSystem, activeView])
+
   const renderOverview = () => (
     <div className="space-y-6">
       {/* Header */}
@@ -97,7 +118,7 @@ const Attendance: React.FC = () => {
               Smart Attendance System
             </h1>
             <p className="text-gray-600 dark:text-gray-400 mt-2">
-              Multi-method attendance tracking with AI-powered insights
+              Configure and track one reliable attendance flow for this company
             </p>
           </div>
           <div className="flex items-center space-x-3">
@@ -108,12 +129,12 @@ const Attendance: React.FC = () => {
               <Settings className="h-4 w-4 mr-2" />
               Configure System
             </Button>
-            <Button 
-              onClick={() => setActiveView('manual')}
+            <Button
+              onClick={() => setActiveView(canShowManual ? 'manual' : canShowBiometric ? 'biometric' : 'records')}
               className="bg-gradient-to-r from-blue-500 to-indigo-600"
             >
-              <Plus className="h-4 w-4 mr-2" />
-              Manual Entry
+              {canShowManual ? <Plus className="h-4 w-4 mr-2" /> : canShowBiometric ? <Fingerprint className="h-4 w-4 mr-2" /> : <Calendar className="h-4 w-4 mr-2" />}
+              {canShowManual ? 'Manual Entry' : canShowBiometric ? 'Manage Devices' : 'View Records'}
             </Button>
           </div>
         </div>
@@ -207,32 +228,32 @@ const Attendance: React.FC = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">System Type</span>
-                  <span className="font-medium capitalize">{attendanceSystem.system_type?.replace('_', ' ')}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Biometric</span>
-                  <span className={`px-2 py-1 rounded-full text-xs ${attendanceSystem.enable_biometric ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                    {attendanceSystem.enable_biometric ? 'Enabled' : 'Disabled'}
+                  <span className="font-medium">
+                    {attendanceMode === 'mobile_app' ? 'Mobile App Location Based' : attendanceMode === 'biometric' ? 'Biometric Device' : 'Manual Entry'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Face Recognition</span>
-                  <span className={`px-2 py-1 rounded-full text-xs ${attendanceSystem.enable_face_recognition ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                    {attendanceSystem.enable_face_recognition ? 'Enabled' : 'Disabled'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Mobile App</span>
-                  <span className={`px-2 py-1 rounded-full text-xs ${attendanceSystem.enable_mobile_app ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                    {attendanceSystem.enable_mobile_app ? 'Enabled' : 'Disabled'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Geo-fencing</span>
-                  <span className={`px-2 py-1 rounded-full text-xs ${attendanceSystem.enable_geo_fencing ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                    {attendanceSystem.enable_geo_fencing ? 'Enabled' : 'Disabled'}
-                  </span>
-                </div>
+                {attendanceMode === 'mobile_app' && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Location Radius</span>
+                      <span className={`px-2 py-1 rounded-full text-xs ${attendanceSystem.enable_geo_fencing ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                        {attendanceSystem.enable_geo_fencing ? `${attendanceSystem.geo_fence_radius}m` : 'Not enforced'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Face Photo</span>
+                      <span className={`px-2 py-1 rounded-full text-xs ${attendanceSystem.require_face_for_checkin ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                        {attendanceSystem.require_face_for_checkin ? 'Required' : 'Optional'}
+                      </span>
+                    </div>
+                  </>
+                )}
+                {attendanceMode === 'biometric' && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Device Attendance</span>
+                    <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">Enabled</span>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-8">
@@ -261,22 +282,36 @@ const Attendance: React.FC = () => {
                 <Calendar className="h-6 w-6" />
                 <span>View Records</span>
               </Button>
-              <Button 
-                onClick={() => setActiveView('manual')}
-                variant="outline" 
-                className="h-20 flex-col space-y-2"
-              >
-                <Plus className="h-6 w-6" />
-                <span>Manual Entry</span>
-              </Button>
-              <Button 
-                onClick={() => setActiveView('mobile')}
-                variant="outline" 
-                className="h-20 flex-col space-y-2"
-              >
-                <Smartphone className="h-6 w-6" />
-                <span>Mobile Demo</span>
-              </Button>
+              {canShowManual && (
+                <Button
+                  onClick={() => setActiveView('manual')}
+                  variant="outline"
+                  className="h-20 flex-col space-y-2"
+                >
+                  <Plus className="h-6 w-6" />
+                  <span>Manual Entry</span>
+                </Button>
+              )}
+              {attendanceSystem?.enable_mobile_app && (
+                <Button
+                  onClick={() => setActiveView('records')}
+                  variant="outline"
+                  className="h-20 flex-col space-y-2"
+                >
+                  <Smartphone className="h-6 w-6" />
+                  <span>Mobile Records</span>
+                </Button>
+              )}
+              {canShowBiometric && (
+                <Button
+                  onClick={() => setActiveView('biometric')}
+                  variant="outline"
+                  className="h-20 flex-col space-y-2"
+                >
+                  <Fingerprint className="h-6 w-6" />
+                  <span>Devices</span>
+                </Button>
+              )}
               <Button 
                 onClick={() => setActiveView('config')}
                 variant="outline" 
@@ -296,86 +331,19 @@ const Attendance: React.FC = () => {
     <div className="space-y-6">
       {/* Navigation Tabs */}
       <div className="flex space-x-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg w-fit">
-        <button
-          onClick={() => setActiveView('overview')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'overview'
-              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-          }`}
-        >
-          Overview
-        </button>
-        <button
-          onClick={() => setActiveView('records')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'records'
-              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-          }`}
-        >
-          Records
-        </button>
-        <button
-          onClick={() => setActiveView('manual')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'manual'
-              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-          }`}
-        >
-          Manual Entry
-        </button>
-        <button
-          onClick={() => setActiveView('mobile')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'mobile'
-              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-          }`}
-        >
-          Mobile Demo
-        </button>
-        <button
-          onClick={() => setActiveView('biometric')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'biometric'
-              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-          }`}
-        >
-          Biometric
-        </button>
-        <button
-          onClick={() => setActiveView('face')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'face'
-              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-          }`}
-        >
-          Face Recognition
-        </button>
-        <button
-          onClick={() => setActiveView('tracker')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'tracker'
-              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-          }`}
-        >
-          Live Tracker
-        </button>
-        <button
-          onClick={() => setActiveView('config')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'config'
-              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-          }`}
-        >
-          System Config
-        </button>
+        {attendanceTabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveView(tab.id)}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeView === tab.id
+                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Content */}
@@ -388,9 +356,7 @@ const Attendance: React.FC = () => {
           {activeView === 'overview' && renderOverview()}
           {activeView === 'records' && <AttendanceRecords />}
           {activeView === 'manual' && <ManualAttendanceEntry onSuccess={fetchAttendanceData} />}
-          {activeView === 'mobile' && <MobileAttendanceDemo />}
           {activeView === 'biometric' && <BiometricAttendance />}
-          {activeView === 'face' && <FaceRecognitionAttendance />}
           {activeView === 'tracker' && <AttendanceTracker />}
           {activeView === 'config' && <AttendanceSystemConfig onSuccess={fetchAttendanceData} />}
         </>

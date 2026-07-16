@@ -8,6 +8,7 @@ from authentication.authentication import ServiceUserSessionAuthentication
 from authentication.permissions import IsServiceUserAuthenticated
 from .models import AttendanceDevice, Attendance, Employee
 from .attendance_serializers import AttendanceDeviceSerializer
+from .attendance_calendar import get_day_status
 
 
 class BiometricDeviceViewSet(viewsets.ModelViewSet):
@@ -60,6 +61,13 @@ def biometric_scan(request):
         return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
 
     today = date.today()
+    day_status = get_day_status(employee.company, today)
+    if not day_status['is_working_day']:
+        return Response({
+            'error': f"Attendance is closed today: {day_status['label']}",
+            'day_status': day_status['source'],
+        }, status=status.HTTP_400_BAD_REQUEST)
+
     attendance, created = Attendance.objects.get_or_create(
         employee=employee,
         date=today,

@@ -27,6 +27,59 @@ interface EmployeeFormProps {
   onSave: (employee: Employee) => void
 }
 
+const COMMON_INDIAN_BANKS = [
+  { name: 'State Bank of India', aliases: ['sbi', 'state bank'] },
+  { name: 'HDFC Bank', aliases: ['hdfc'] },
+  { name: 'ICICI Bank', aliases: ['icici'] },
+  { name: 'Axis Bank', aliases: ['axis'] },
+  { name: 'Kotak Mahindra Bank', aliases: ['kotak', 'kmb'] },
+  { name: 'Canara Bank', aliases: ['canara'] },
+  { name: 'Indian Bank', aliases: ['indian bank'] },
+  { name: 'Indian Overseas Bank', aliases: ['iob'] },
+  { name: 'Bank of Baroda', aliases: ['bob', 'baroda'] },
+  { name: 'Punjab National Bank', aliases: ['pnb'] },
+  { name: 'Union Bank of India', aliases: ['union bank'] },
+  { name: 'Bank of India', aliases: ['boi'] },
+  { name: 'Central Bank of India', aliases: ['central bank'] },
+  { name: 'IDFC FIRST Bank', aliases: ['idfc'] },
+  { name: 'IndusInd Bank', aliases: ['indusind'] },
+  { name: 'Federal Bank', aliases: ['federal'] },
+  { name: 'YES Bank', aliases: ['yes'] },
+  { name: 'RBL Bank', aliases: ['rbl'] },
+  { name: 'Tamilnad Mercantile Bank', aliases: ['tmb'] },
+  { name: 'Karur Vysya Bank', aliases: ['kvb'] }
+]
+
+const INDIA_STATE_DISTRICTS: Record<string, string[]> = {
+  'Andhra Pradesh': ['Anantapur', 'Chittoor', 'East Godavari', 'Guntur', 'Kadapa', 'Krishna', 'Kurnool', 'Nellore', 'Prakasam', 'Visakhapatnam', 'Vizianagaram', 'West Godavari'],
+  'Delhi': ['Central Delhi', 'East Delhi', 'New Delhi', 'North Delhi', 'South Delhi', 'West Delhi'],
+  'Gujarat': ['Ahmedabad', 'Anand', 'Bharuch', 'Gandhinagar', 'Jamnagar', 'Rajkot', 'Surat', 'Vadodara', 'Valsad'],
+  'Karnataka': ['Bengaluru Urban', 'Bengaluru Rural', 'Belagavi', 'Dharwad', 'Hassan', 'Mangaluru', 'Mysuru', 'Shivamogga', 'Tumakuru', 'Udupi'],
+  'Kerala': ['Alappuzha', 'Ernakulam', 'Idukki', 'Kannur', 'Kollam', 'Kottayam', 'Kozhikode', 'Malappuram', 'Palakkad', 'Thiruvananthapuram', 'Thrissur'],
+  'Maharashtra': ['Mumbai', 'Mumbai Suburban', 'Nagpur', 'Nashik', 'Pune', 'Raigad', 'Solapur', 'Thane'],
+  'Puducherry': ['Karaikal', 'Mahe', 'Puducherry', 'Yanam'],
+  'Rajasthan': ['Ajmer', 'Alwar', 'Bikaner', 'Jaipur', 'Jodhpur', 'Kota', 'Udaipur'],
+  'Tamil Nadu': ['Ariyalur', 'Chengalpattu', 'Chennai', 'Coimbatore', 'Cuddalore', 'Dindigul', 'Erode', 'Kanchipuram', 'Karur', 'Madurai', 'Namakkal', 'Ramanathapuram', 'Salem', 'Sivaganga', 'Tenkasi', 'Thanjavur', 'Theni', 'Thoothukudi', 'Tiruchirappalli', 'Tirunelveli', 'Tiruppur', 'Vellore', 'Virudhunagar'],
+  'Telangana': ['Hyderabad', 'Karimnagar', 'Khammam', 'Medchal Malkajgiri', 'Nalgonda', 'Nizamabad', 'Rangareddy', 'Warangal'],
+  'Uttar Pradesh': ['Agra', 'Aligarh', 'Gautam Buddha Nagar', 'Ghaziabad', 'Kanpur Nagar', 'Lucknow', 'Meerut', 'Prayagraj', 'Varanasi'],
+  'West Bengal': ['Darjeeling', 'Howrah', 'Hooghly', 'Kolkata', 'Murshidabad', 'Nadia', 'North 24 Parganas', 'Paschim Bardhaman', 'South 24 Parganas']
+}
+
+const BANK_NAMES = COMMON_INDIAN_BANKS.map(bank => bank.name)
+const STATE_NAMES = Object.keys(INDIA_STATE_DISTRICTS)
+const CITY_DISTRICT_NAMES = Array.from(new Set(Object.values(INDIA_STATE_DISTRICTS).flat())).sort()
+
+const getMediaUrl = (url?: string | null) => {
+  if (!url || url.includes('svg')) return null
+  if (url.startsWith('http') || url.startsWith('data:')) return url
+  const apiBaseUrl = (import.meta.env.VITE_API_URL as string | undefined) || ''
+  if (apiBaseUrl) return `${apiBaseUrl.replace(/\/$/, '')}${url.startsWith('/') ? url : `/${url}`}`
+  if (url.startsWith('/media/') && typeof window !== 'undefined' && /localhost|127\.0\.0\.1/.test(window.location.hostname)) {
+    return `${window.location.protocol}//${window.location.hostname}:8005${url}`
+  }
+  return url
+}
+
 const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }) => {
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
@@ -96,6 +149,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
   const [profilePreview, setProfilePreview] = useState<string | null>(null)
   const [facePreview, setFacePreview] = useState<string | null>(null)
   const [skillsText, setSkillsText] = useState<string>('')
+  const [ifscLookupLoading, setIfscLookupLoading] = useState(false)
+  const [ifscLookupMessage, setIfscLookupMessage] = useState<string | null>(null)
   
   // Update form data and previews when employee changes
   useEffect(() => {
@@ -158,32 +213,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
         local_country: employee.local_country || 'India'
       })
       
-      // Construct URLs only if images exist and are not null/empty
-      let profileUrl = null
-      let faceUrl = null
-      
-      if (employee.profile_picture && 
-          employee.profile_picture !== null && 
-          employee.profile_picture !== '' && 
-          typeof employee.profile_picture === 'string' &&
-          !employee.profile_picture.includes('svg')) {
-        profileUrl = employee.profile_picture.startsWith('http') 
-          ? employee.profile_picture 
-          : `http://localhost:8000${employee.profile_picture}`
-      }
-      
-      if (employee.face_photo && 
-          employee.face_photo !== null && 
-          employee.face_photo !== '' && 
-          typeof employee.face_photo === 'string' &&
-          !employee.face_photo.includes('svg')) {
-        faceUrl = employee.face_photo.startsWith('http') 
-          ? employee.face_photo 
-          : `http://localhost:8000${employee.face_photo}`
-      }
-      
-      setProfilePreview(profileUrl)
-      setFacePreview(faceUrl)
+      setProfilePreview(getMediaUrl(employee.profile_picture))
+      setFacePreview(getMediaUrl(employee.face_photo))
       
       // Set skills text
       setSkillsText(Array.isArray(employee.skills) ? employee.skills.join(', ') : '')
@@ -325,6 +356,9 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     if (!formData.designation) newErrors.designation = 'Designation is required'
     if (!formData.date_of_joining) newErrors.date_of_joining = 'Joining date is required'
     if (!formData.base_salary || formData.base_salary <= 0) newErrors.base_salary = 'Valid salary is required'
+    if (!formData.bank_name?.trim()) newErrors.bank_name = 'Bank name is required'
+    if (!formData.bank_account_number?.trim()) newErrors.bank_account_number = 'Bank account number is required'
+    if (!formData.bank_ifsc_code?.trim()) newErrors.bank_ifsc_code = 'IFSC code is required'
 
     // Email validation
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
@@ -334,6 +368,14 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     // Phone validation
     if (formData.phone && !/^\d{10}$/.test(formData.phone)) {
       newErrors.phone = 'Phone number must be exactly 10 digits'
+    }
+
+    if (formData.date_of_birth && formData.date_of_joining) {
+      const dob = new Date(formData.date_of_birth)
+      const joining = new Date(formData.date_of_joining)
+      if (dob >= joining) {
+        newErrors.date_of_birth = 'Date of birth must be before joining date'
+      }
     }
 
     // Optional field validations
@@ -357,12 +399,24 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
       newErrors.bank_ifsc_code = 'Invalid IFSC code format'
     }
 
+    if (formData.bank_account_number && !/^\d{6,20}$/.test(formData.bank_account_number)) {
+      newErrors.bank_account_number = 'Account number must be 6 to 20 digits'
+    }
+
     if (formData.emergency_contact_phone && !/^\d{10}$/.test(formData.emergency_contact_phone)) {
       newErrors.emergency_contact_phone = 'Emergency contact phone must be 10 digits'
     }
 
     if (formData.pincode && !/^\d{6}$/.test(formData.pincode)) {
       newErrors.pincode = 'PIN code must be 6 digits'
+    }
+
+    if (formData.permanent_pincode && !/^\d{6}$/.test(formData.permanent_pincode)) {
+      newErrors.permanent_pincode = 'Permanent PIN code must be 6 digits'
+    }
+
+    if (formData.local_pincode && !/^\d{6}$/.test(formData.local_pincode)) {
+      newErrors.local_pincode = 'Local PIN code must be 6 digits'
     }
 
     setErrors(newErrors)
@@ -432,6 +486,82 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     setFormData(prev => ({ ...prev, [field]: value }))
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
+    }
+  }
+
+  const resolveBankName = (value: string) => {
+    const cleanValue = value.trim().toLowerCase()
+    if (!cleanValue) return value
+
+    const match = COMMON_INDIAN_BANKS.find(bank => {
+      const bankName = bank.name.toLowerCase()
+      return bankName === cleanValue || bank.aliases.some(alias => alias === cleanValue)
+    })
+
+    return match?.name || value
+  }
+
+  const handleBankNameBlur = () => {
+    const resolvedName = resolveBankName(formData.bank_name || '')
+    if (resolvedName !== formData.bank_name) {
+      handleInputChange('bank_name', resolvedName)
+    }
+  }
+
+  const getDistrictOptions = (stateName?: string) => {
+    if (!stateName) return CITY_DISTRICT_NAMES
+    const cleanState = stateName.trim().toLowerCase()
+    const matchedState = STATE_NAMES.find(state => {
+      const cleanKnownState = state.toLowerCase()
+      return cleanKnownState === cleanState || cleanKnownState.includes(cleanState) || cleanState.includes(cleanKnownState)
+    })
+    return matchedState ? INDIA_STATE_DISTRICTS[matchedState] : CITY_DISTRICT_NAMES
+  }
+
+  const lookupIfscDetails = async (ifscValue = formData.bank_ifsc_code) => {
+    const code = (ifscValue || '').trim().toUpperCase()
+    if (!code) {
+      setIfscLookupMessage(null)
+      return
+    }
+
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(code)) {
+      setIfscLookupMessage('Enter valid 11 character IFSC to fetch bank details')
+      return
+    }
+
+    if (!sessionKey) {
+      setIfscLookupMessage('Login session missing')
+      return
+    }
+
+    setIfscLookupLoading(true)
+    setIfscLookupMessage(null)
+    try {
+      const response = await api.get(`/api/hr/bank/ifsc/${code}/`, {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+
+      const details = response.data || {}
+      setFormData(prev => ({
+        ...prev,
+        bank_ifsc_code: details.ifsc || code,
+        bank_name: details.bank_name || prev.bank_name,
+        bank_branch: details.branch || prev.bank_branch,
+        permanent_city: prev.permanent_city || details.district || details.city || '',
+        permanent_state: prev.permanent_state || details.state || '',
+        local_city: prev.local_city || details.district || details.city || '',
+        local_state: prev.local_state || details.state || ''
+      }))
+      setIfscLookupMessage(`${details.bank_name || 'Bank'} - ${details.branch || code}`)
+      toast.success('IFSC details fetched')
+    } catch (error: any) {
+      const message = error.response?.data?.error || 'IFSC details not found'
+      setIfscLookupMessage(message)
+      toast.error(message)
+    } finally {
+      setIfscLookupLoading(false)
     }
   }
 
@@ -613,6 +743,26 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          <datalist id="hr-bank-list">
+            {BANK_NAMES.map(bank => (
+              <option key={bank} value={bank} />
+            ))}
+          </datalist>
+          <datalist id="hr-state-list">
+            {STATE_NAMES.map(state => (
+              <option key={state} value={state} />
+            ))}
+          </datalist>
+          <datalist id="hr-permanent-district-list">
+            {getDistrictOptions(formData.permanent_state).map(district => (
+              <option key={district} value={district} />
+            ))}
+          </datalist>
+          <datalist id="hr-local-district-list">
+            {getDistrictOptions(formData.local_state).map(district => (
+              <option key={district} value={district} />
+            ))}
+          </datalist>
           {/* Profile Photos */}
           <Card>
             <CardHeader>
@@ -1089,12 +1239,14 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      City
+                      City / District
                     </label>
                     <input
                       type="text"
+                      list="hr-permanent-district-list"
                       value={formData.permanent_city}
                       onChange={(e) => handleInputChange('permanent_city', e.target.value)}
+                      placeholder="Select or type district"
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     />
                   </div>
@@ -1104,8 +1256,10 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                     </label>
                     <input
                       type="text"
+                      list="hr-state-list"
                       value={formData.permanent_state}
                       onChange={(e) => handleInputChange('permanent_state', e.target.value)}
+                      placeholder="Select or type state"
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     />
                   </div>
@@ -1119,8 +1273,11 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                       onChange={(e) => handleInputChange('permanent_pincode', e.target.value.replace(/\D/g, ''))}
                       placeholder="400001"
                       maxLength={6}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${
+                        errors.permanent_pincode ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                      }`}
                     />
+                    {errors.permanent_pincode && <p className="text-red-500 text-xs mt-1">{errors.permanent_pincode}</p>}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1184,12 +1341,14 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      City
+                      City / District
                     </label>
                     <input
                       type="text"
+                      list="hr-local-district-list"
                       value={formData.local_city}
                       onChange={(e) => handleInputChange('local_city', e.target.value)}
+                      placeholder="Select or type district"
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     />
                   </div>
@@ -1199,8 +1358,10 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                     </label>
                     <input
                       type="text"
+                      list="hr-state-list"
                       value={formData.local_state}
                       onChange={(e) => handleInputChange('local_state', e.target.value)}
+                      placeholder="Select or type state"
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     />
                   </div>
@@ -1214,8 +1375,11 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                       onChange={(e) => handleInputChange('local_pincode', e.target.value.replace(/\D/g, ''))}
                       placeholder="400001"
                       maxLength={6}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${
+                        errors.local_pincode ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                      }`}
                     />
+                    {errors.local_pincode && <p className="text-red-500 text-xs mt-1">{errors.local_pincode}</p>}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1351,14 +1515,17 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                 </label>
                 <input
                   type="text"
+                  list="hr-bank-list"
                   value={formData.bank_name}
                   onChange={(e) => handleInputChange('bank_name', e.target.value)}
+                  onBlur={handleBankNameBlur}
                   placeholder="State Bank of India"
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${
                     errors.bank_name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                   }`}
                 />
                 {errors.bank_name && <p className="text-red-500 text-xs mt-1">{errors.bank_name}</p>}
+                <p className="text-xs text-gray-500 mt-1">Example: type "sbi" and move out to auto-fill State Bank of India</p>
               </div>
 
               <div>
@@ -1381,17 +1548,42 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   IFSC Code *
                 </label>
-                <input
-                  type="text"
-                  value={formData.bank_ifsc_code}
-                  onChange={(e) => handleInputChange('bank_ifsc_code', e.target.value.toUpperCase())}
-                  placeholder="SBIN0001234"
-                  maxLength={11}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${
-                    errors.bank_ifsc_code ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-                  }`}
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={formData.bank_ifsc_code}
+                    onChange={(e) => {
+                      const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')
+                      handleInputChange('bank_ifsc_code', value)
+                      setIfscLookupMessage(null)
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value.length === 11) {
+                        lookupIfscDetails(e.target.value)
+                      }
+                    }}
+                    placeholder="SBIN0001234"
+                    maxLength={11}
+                    className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${
+                      errors.bank_ifsc_code ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                    }`}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => lookupIfscDetails()}
+                    disabled={ifscLookupLoading}
+                    className="px-3"
+                  >
+                    {ifscLookupLoading ? 'Checking...' : 'Lookup'}
+                  </Button>
+                </div>
                 {errors.bank_ifsc_code && <p className="text-red-500 text-xs mt-1">{errors.bank_ifsc_code}</p>}
+                {ifscLookupMessage && (
+                  <p className={`text-xs mt-1 ${ifscLookupMessage.includes('not') || ifscLookupMessage.includes('Invalid') || ifscLookupMessage.includes('unavailable') ? 'text-red-500' : 'text-green-600'}`}>
+                    {ifscLookupMessage}
+                  </p>
+                )}
               </div>
 
               <div>

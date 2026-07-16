@@ -54,7 +54,7 @@ const HRDashboard: React.FC = () => {
   // Removed unused isChangingPassword state
 
   // HR Data state
-  const [hrData] = useState({
+  const [hrData, setHrData] = useState({
     totalEmployees: 0,
     activeEmployees: 0,
     newHires: 0,
@@ -117,9 +117,54 @@ const HRDashboard: React.FC = () => {
     if (!sessionKey) return
 
     try {
-      // Real API calls will be implemented here when backend is ready
-      // For now, keep default empty state
-      console.log('HR data fetch - backend APIs not implemented yet')
+      const response = await api.get('/api/hr/dashboard/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+
+      const employeeStats = response.data?.employee_stats || {}
+      const recruitmentStats = response.data?.recruitment_stats || {}
+      const attendanceStats = response.data?.attendance_stats || {}
+      const aiInsights = response.data?.ai_insights || {}
+
+      setHrData({
+        totalEmployees: employeeStats.total_employees || 0,
+        activeEmployees: employeeStats.active_employees || 0,
+        newHires: employeeStats.new_hires || 0,
+        pendingOnboarding: employeeStats.pending_onboarding || 0,
+        completedOnboarding: employeeStats.completed_onboarding || 0,
+        totalDepartments: employeeStats.departments || 0,
+        recentActivity: [
+          {
+            id: 'employees',
+            type: 'hire',
+            description: `${employeeStats.active_employees || 0} active employees`,
+            date: 'Current',
+            status: 'active'
+          },
+          {
+            id: 'recruitment',
+            type: 'activity',
+            description: `${recruitmentStats.pending_applications || 0} pending applications`,
+            date: 'Recruitment',
+            status: 'pending'
+          },
+          {
+            id: 'attendance',
+            type: 'activity',
+            description: `${attendanceStats.weekly_attendance || 0}% weekly attendance`,
+            date: 'Attendance',
+            status: 'tracked'
+          },
+          {
+            id: 'retention',
+            type: 'activity',
+            description: `${aiInsights.high_retention_risk_employees || 0} high retention-risk employees`,
+            date: 'AI insight',
+            status: 'review'
+          }
+        ]
+      })
     } catch (error) {
       console.error('Error fetching HR data:', error)
     }

@@ -1,10 +1,130 @@
 from rest_framework import serializers
-from .models import AttendanceSystem, Attendance, AttendanceDevice, AttendanceLog
+from .models import AttendanceSystem, AttendancePolicy, AttendanceDayOverride, Attendance, AttendanceDevice, AttendanceLog
 
 
 class AttendanceSystemSerializer(serializers.ModelSerializer):
+    VALID_SYSTEM_TYPES = {'manual', 'mobile_app', 'biometric'}
+
     class Meta:
         model = AttendanceSystem
+        fields = '__all__'
+        read_only_fields = ['id', 'company', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        instance = getattr(self, 'instance', None)
+        system_type = attrs.get('system_type') or getattr(instance, 'system_type', 'manual')
+        if system_type == 'face_recognition':
+            system_type = 'biometric'
+        if system_type == 'hybrid':
+            system_type = 'manual'
+        if system_type not in self.VALID_SYSTEM_TYPES:
+            raise serializers.ValidationError({'system_type': 'Choose manual, mobile_app, or biometric.'})
+
+        attrs['system_type'] = system_type
+        attrs['enable_manual_entry'] = system_type == 'manual'
+        attrs['enable_mobile_app'] = system_type == 'mobile_app'
+        attrs['enable_biometric'] = system_type == 'biometric'
+
+        if system_type == 'mobile_app':
+            attrs['enable_geo_fencing'] = True
+
+        if system_type != 'mobile_app':
+            attrs['enable_geo_fencing'] = False
+            attrs['office_latitude'] = None
+            attrs['office_longitude'] = None
+            attrs['require_face_for_checkin'] = False
+            attrs['require_face_for_checkout'] = False
+
+        if system_type != 'biometric':
+            attrs['enable_face_recognition'] = False
+
+        if system_type == 'mobile_app':
+            latitude = attrs.get('office_latitude', getattr(instance, 'office_latitude', None))
+            longitude = attrs.get('office_longitude', getattr(instance, 'office_longitude', None))
+            radius = attrs.get('geo_fence_radius', getattr(instance, 'geo_fence_radius', 0))
+            if latitude is None or longitude is None:
+                raise serializers.ValidationError({
+                    'office_location': 'Office latitude and longitude are required when geo-fencing is enabled.'
+                })
+            if not radius or int(radius) <= 0:
+                raise serializers.ValidationError({'geo_fence_radius': 'Radius must be greater than 0.'})
+
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        system_type = data.get('system_type')
+        if system_type == 'face_recognition':
+            system_type = 'biometric'
+        if system_type not in self.VALID_SYSTEM_TYPES:
+            system_type = 'manual'
+
+        data['system_type'] = system_type
+        data['enable_manual_entry'] = system_type == 'manual'
+        data['enable_mobile_app'] = system_type == 'mobile_app'
+        data['enable_biometric'] = system_type == 'biometric'
+
+        if system_type == 'mobile_app':
+            data['enable_geo_fencing'] = True
+
+        if system_type != 'mobile_app':
+            data['enable_geo_fencing'] = False
+            data['office_latitude'] = None
+            data['office_longitude'] = None
+            data['require_face_for_checkin'] = False
+            data['require_face_for_checkout'] = False
+
+        if system_type != 'biometric':
+            data['enable_face_recognition'] = False
+
+        return data
+
+
+class AttendancePolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AttendancePolicy
+        fields = '__all__'
+        read_only_fields = ['id', 'company', 'created_at', 'updated_at']
+
+    def validate_weekly_off_days(self, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Weekly off days must be a list.')
+        normalized = []
+        for day in value:
+            try:
+                day_number = int(day)
+            except (TypeError, ValueError):
+                raise serializers.ValidationError('Weekly off days must contain numbers from 0 to 6.')
+            if day_number < 0 or day_number > 6:
+                raise serializers.ValidationError('Weekly off days must contain numbers from 0 to 6.')
+            if day_number not in normalized:
+                normalized.append(day_number)
+        return sorted(normalized)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        full_day = attrs.get('full_day_min_hours', getattr(self.instance, 'full_day_min_hours', None))
+        half_day = attrs.get('half_day_min_hours', getattr(self.instance, 'half_day_min_hours', None))
+        overtime_after = attrs.get('overtime_after_hours', getattr(self.instance, 'overtime_after_hours', None))
+
+        if full_day is not None and full_day <= 0:
+            raise serializers.ValidationError({'full_day_min_hours': 'Full day hours must be greater than 0.'})
+        if half_day is not None and half_day <= 0:
+            raise serializers.ValidationError({'half_day_min_hours': 'Half day hours must be greater than 0.'})
+        if full_day is not None and half_day is not None and half_day > full_day:
+            raise serializers.ValidationError({'half_day_min_hours': 'Half day hours cannot be greater than full day hours.'})
+        if overtime_after is not None and overtime_after <= 0:
+            raise serializers.ValidationError({'overtime_after_hours': 'Overtime threshold must be greater than 0.'})
+        return attrs
+
+
+class AttendanceDayOverrideSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AttendanceDayOverride
         fields = '__all__'
         read_only_fields = ['id', 'company', 'created_at', 'updated_at']
 

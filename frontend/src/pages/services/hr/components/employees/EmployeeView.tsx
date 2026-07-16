@@ -46,6 +46,17 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({ employee, onClose }) => {
     return Array.isArray(skills) ? skills : []
   }
 
+  const getImageUrl = (url?: string | null) => {
+    if (!url || url.includes('svg')) return null
+    if (url.startsWith('http') || url.startsWith('data:')) return url
+    const apiBaseUrl = (import.meta.env.VITE_API_URL as string | undefined) || ''
+    if (apiBaseUrl) return `${apiBaseUrl.replace(/\/$/, '')}${url.startsWith('/') ? url : `/${url}`}`
+    if (url.startsWith('/media/') && typeof window !== 'undefined' && /localhost|127\.0\.0\.1/.test(window.location.hostname)) {
+      return `${window.location.protocol}//${window.location.hostname}:8005${url}`
+    }
+    return url
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -62,9 +73,9 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({ employee, onClose }) => {
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6">
             <div className="flex items-start space-x-6">
               <div className="flex-shrink-0">
-                {employee.profile_picture ? (
+                {getImageUrl(employee.profile_picture) ? (
                   <img
-                    src={employee.profile_picture.startsWith('http') ? employee.profile_picture : `http://localhost:8000${employee.profile_picture}`}
+                    src={getImageUrl(employee.profile_picture) as string}
                     alt="Profile"
                     className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
                   />
@@ -96,14 +107,14 @@ const EmployeeView: React.FC<EmployeeViewProps> = ({ employee, onClose }) => {
           </div>
 
           {/* Face Recognition Photo */}
-          {employee.face_photo && (
+          {getImageUrl(employee.face_photo) && (
             <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6">
               <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
                 <Shield className="h-5 w-5 mr-2 text-blue-500" />
                 Face Recognition Photo
               </h4>
               <img
-                src={employee.face_photo.startsWith('http') ? employee.face_photo : `http://localhost:8000${employee.face_photo}`}
+                src={getImageUrl(employee.face_photo) as string}
                 alt="Face Recognition"
                 className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200 dark:border-gray-600"
               />

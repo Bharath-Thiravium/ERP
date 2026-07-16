@@ -38,7 +38,11 @@ const MobileAccessManager: React.FC<MobileAccessManagerProps> = ({ employees: in
       })
 
       if (response.data.success) {
-        toast.success('Mobile access enabled successfully!')
+        const employee = selectedEmployee
+        if (employee) {
+          downloadPasswordFile(employee, password)
+        }
+        toast.success('Mobile access enabled successfully! Credentials downloaded.')
         setSelectedEmployee(null)
         setPassword('')
         
@@ -59,6 +63,36 @@ const MobileAccessManager: React.FC<MobileAccessManagerProps> = ({ employees: in
     } finally {
       setSettingPassword(false)
     }
+  }
+
+  const downloadPasswordFile = (employee: Employee, plainPassword: string) => {
+    const content = `Mobile App Login Credentials:
+----------------------------
+Employee Name: ${employee.first_name} ${employee.last_name}
+Employee ID: ${employee.employee_id}
+Password: ${plainPassword}
+
+Login Steps:
+------------
+1. Open Employee Attendance App
+2. Enter Employee ID
+3. Enter Password
+4. Leave Company Code blank unless HR asks for it
+
+Security Note:
+--------------
+Keep this password secure. If lost, HR must reset it again.
+`
+
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${employee.employee_id}_mobile_credentials.txt`
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
   }
 
   const downloadCredentials = async (employeeId: string) => {
@@ -184,6 +218,14 @@ const MobileAccessManager: React.FC<MobileAccessManagerProps> = ({ employees: in
                         <Download className="h-4 w-4 mr-1" />
                         Download
                       </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setSelectedEmployee(employee)}
+                        className="bg-blue-500 hover:bg-blue-600"
+                      >
+                        <Key className="h-4 w-4 mr-1" />
+                        Reset
+                      </Button>
                     </>
                   ) : (
                     <>
@@ -213,7 +255,7 @@ const MobileAccessManager: React.FC<MobileAccessManagerProps> = ({ employees: in
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <Card className="w-full max-w-md mx-4">
             <CardHeader>
-              <CardTitle>Enable Mobile Access</CardTitle>
+              <CardTitle>{selectedEmployee.mobile_app_enabled ? 'Reset Mobile Password' : 'Enable Mobile Access'}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -244,7 +286,7 @@ const MobileAccessManager: React.FC<MobileAccessManagerProps> = ({ employees: in
                   </Button>
                 </div>
                 <p className="text-xs text-gray-500">
-                  This password will be used by the employee to login to the mobile app.
+                  This password will be used by the employee to login to the mobile app. Keep it safe; it cannot be downloaded later in plain text.
                 </p>
               </div>
 
@@ -265,7 +307,7 @@ const MobileAccessManager: React.FC<MobileAccessManagerProps> = ({ employees: in
                   disabled={!password || settingPassword}
                   className="flex-1 bg-blue-500 hover:bg-blue-600"
                 >
-                  {settingPassword ? 'Setting...' : 'Enable Access'}
+                  {settingPassword ? 'Setting...' : selectedEmployee.mobile_app_enabled ? 'Reset Password' : 'Enable Access'}
                 </Button>
               </div>
             </CardContent>

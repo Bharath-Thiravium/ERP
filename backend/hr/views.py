@@ -1,5 +1,11 @@
+import json
+import re
+import urllib.error
+import urllib.request
+
 from rest_framework import viewsets, status, permissions
 from django.utils._os import safe_join
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
@@ -10,11 +16,58 @@ from django.db import transaction
 from authentication.models import ServiceUserSession
 from authentication.authentication import ServiceUserSessionAuthentication
 from authentication.permissions import IsServiceUserAuthenticated
-from .models import Employee, Department, Designation, JobPosting, JobApplication
+from .models import Employee, Department, Designation, JobPosting, JobApplication, EmployeeMobileSession
 from .serializers import (
     EmployeeListSerializer, EmployeeDetailSerializer, EmployeeCreateSerializer,
     DepartmentSerializer, DesignationSerializer, JobPostingSerializer, JobApplicationSerializer
 )
+
+
+@api_view(['GET'])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
+def lookup_ifsc(request, ifsc_code):
+    """Fetch bank details for a valid Indian IFSC code."""
+    code = (ifsc_code or '').strip().upper()
+    if not re.match(r'^[A-Z]{4}0[A-Z0-9]{6}$', code):
+        return Response(
+            {'error': 'Invalid IFSC code format'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        req = urllib.request.Request(
+            f'https://ifsc.razorpay.com/{code}',
+            headers={'Accept': 'application/json', 'User-Agent': 'SAP-Python-HR/1.0'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return Response(
+                {'error': 'IFSC code not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        return Response(
+            {'error': 'Unable to fetch IFSC details'},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return Response(
+            {'error': 'IFSC lookup service unavailable'},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    return Response({
+        'ifsc': data.get('IFSC') or code,
+        'bank_name': data.get('BANK') or '',
+        'branch': data.get('BRANCH') or '',
+        'address': data.get('ADDRESS') or '',
+        'city': data.get('CITY') or '',
+        'district': data.get('DISTRICT') or '',
+        'state': data.get('STATE') or '',
+        'contact': data.get('CONTACT') or '',
+    })
 
 
 class HRPagination(PageNumberPagination):
@@ -53,6 +106,12 @@ class HRDashboardViewSet(viewsets.ViewSet):
             total_employees = Employee.objects.filter(company=company).count()
             active_employees = Employee.objects.filter(company=company, status='active').count()
             departments_count = Department.objects.filter(company=company, is_active=True).count()
+            today = timezone.now().date()
+            month_start = today.replace(day=1)
+            new_hires = Employee.objects.filter(
+                company=company,
+                date_of_joining__gte=month_start
+            ).count()
             
             # Performance insights
             avg_performance = Employee.objects.filter(
@@ -79,12 +138,18 @@ class HRDashboardViewSet(viewsets.ViewSet):
                 'employee_stats': {
                     'total_employees': total_employees,
                     'active_employees': active_employees,
+                    'new_hires': new_hires,
+                    'pending_onboarding': Employee.objects.filter(company=company, status='inactive').count(),
+                    'completed_onboarding': active_employees,
                     'departments': departments_count,
                     'avg_performance_score': round(float(avg_performance), 2),
                 },
                 'recruitment_stats': {
-                    'active_job_postings': 0,
-                    'pending_applications': 0,
+                    'active_job_postings': JobPosting.objects.filter(company=company, status='active').count(),
+                    'pending_applications': JobApplication.objects.filter(
+                        job_posting__company=company,
+                        status='submitted'
+                    ).count(),
                 },
                 'attendance_stats': {
                     'weekly_attendance': 0,
@@ -463,26 +528,23 @@ class JobPostingDetailView(RetrieveUpdateDestroyAPIView):
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             instance = self.get_object()
             
-            # Ensure the employee belongs to the same company
+            # Ensure the job posting belongs to the same company
             if instance.company != session.service_user.company:
                 return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
             
-            # Store employee info before deletion
-            employee_id = instance.employee_id
-            employee_name = instance.full_name
+            job_title = instance.title
             
-            # Perform hard delete
             instance.delete()
             
             return Response({
                 'success': True,
-                'message': f'Employee {employee_name} ({employee_id}) deleted successfully'
+                'message': f'Job posting {job_title} deleted successfully'
             }, status=status.HTTP_200_OK)
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
             return Response({
-                'error': f'Failed to delete employee: {str(e)}'
+                'error': f'Failed to delete job posting: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -882,14 +944,21 @@ class PublicJobApplicationView(CreateAPIView):
 
 
 # Mobile App Authentication APIs
+def _absolute_media_url(request, file_field):
+    if file_field:
+        return request.build_absolute_uri(file_field.url)
+    return None
+
+
 @api_view(['POST'])
-@authentication_classes([ServiceUserSessionAuthentication])
-@permission_classes([IsServiceUserAuthenticated])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
 def employee_mobile_login(request):
     """Employee login for mobile app"""
-    employee_id = request.data.get('employee_id')
-    password = request.data.get('password')
-    device_id = request.data.get('device_id', '')
+    employee_id = (request.data.get('employee_id') or '').strip()
+    password = request.data.get('password') or ''
+    company_code = (request.data.get('company_code') or '').strip()
+    device_id = (request.data.get('device_id') or '').strip()
     
     if not employee_id or not password:
         return Response(
@@ -898,12 +967,24 @@ def employee_mobile_login(request):
         )
     
     try:
-        employee = Employee.objects.select_related('company', 'department', 'designation').get(
-            employee_id=employee_id,
-            company=request.service_user.company,
+        queryset = Employee.objects.select_related('company', 'department', 'designation').filter(
+            employee_id__iexact=employee_id,
             status='active',
             mobile_app_enabled=True
         )
+        if company_code:
+            queryset = queryset.filter(
+                Q(company__company_prefix__iexact=company_code) |
+                Q(company__name__iexact=company_code)
+            )
+
+        employee_count = queryset.count()
+        if employee_count > 1:
+            return Response(
+                {'error': 'Company code is required for this employee ID'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        employee = queryset.get()
         
         # Verify password with proper hashing
         from django.contrib.auth.hashers import check_password
@@ -917,11 +998,20 @@ def employee_mobile_login(request):
         from django.utils import timezone
         employee.last_mobile_login = timezone.now()
         employee.mobile_device_id = device_id
-        employee.save()
+        employee.save(update_fields=['last_mobile_login', 'mobile_device_id'])
         
-        # Generate secure session key for mobile
         import secrets
+        from datetime import timedelta
         session_key = secrets.token_urlsafe(32)
+        EmployeeMobileSession.objects.create(
+            employee=employee,
+            session_key=session_key,
+            device_id=device_id,
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            expires_at=timezone.now() + timedelta(days=30),
+            last_seen_at=timezone.now(),
+        )
         
         response_data = {
             'success': True,
@@ -935,13 +1025,13 @@ def employee_mobile_login(request):
                 'phone': employee.phone,
                 'department': employee.department.name,
                 'designation': employee.designation.title,
-                'profile_picture': employee.profile_picture.url if employee.profile_picture else None,
+                'profile_picture': _absolute_media_url(request, employee.profile_picture),
             },
             'company': {
                 'id': employee.company.id,
                 'name': employee.company.name,
                 'company_code': employee.company.company_prefix,
-                'logo': employee.company.logo.url if employee.company.logo else None,
+                'logo': _absolute_media_url(request, employee.company.logo),
             }
         }
         
@@ -965,9 +1055,9 @@ def set_mobile_password(request):
     
     if not session_key:
         return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
-    
-    employee_id = request.data.get('employee_id')
-    password = request.data.get('password')
+
+    employee_id = (request.data.get('employee_id') or '').strip()
+    password = request.data.get('password') or ''
     
     if not employee_id or not password:
         return Response(
@@ -978,7 +1068,7 @@ def set_mobile_password(request):
     try:
         session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
         employee = Employee.objects.get(
-            employee_id=employee_id,
+            employee_id__iexact=employee_id,
             company=session.service_user.company
         )
         
@@ -1045,7 +1135,7 @@ Designation: {employee.designation.title}
 Mobile App Login Credentials:
 ----------------------------
 Employee ID: {employee.employee_id}
-Password: {employee.mobile_app_password}
+Password: Use the password set by HR during mobile access enable/reset.
 
 App Download:
 ------------

@@ -41,10 +41,10 @@ const Employees: React.FC = () => {
       const employeesData = response.data.results || []
       setEmployees(employeesData)
       const activeEmployees = employeesData.filter((emp: Employee) => emp.status === 'active')
-      const highPerformers = employees.filter((emp: Employee) => emp.performance_score >= 8)
-      const atRisk = employees.filter((emp: Employee) => emp.retention_risk === 'high')
+      const highPerformers = employeesData.filter((emp: Employee) => Number(emp.performance_score || 0) >= 8)
+      const atRisk = employeesData.filter((emp: Employee) => emp.retention_risk === 'high')
       const avgPerformance = employeesData.length > 0 
-        ? employeesData.reduce((sum: number, emp: Employee) => sum + emp.performance_score, 0) / employeesData.length 
+        ? employeesData.reduce((sum: number, emp: Employee) => sum + Number(emp.performance_score || 0), 0) / employeesData.length
         : 0
       
       setStats({

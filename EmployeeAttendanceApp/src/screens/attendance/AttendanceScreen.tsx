@@ -37,21 +37,42 @@ const AttendanceScreen = () => {
     message: string;
   } | null>(null);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [settings, setSettings] = useState<any>(null);
+  const [historyCount, setHistoryCount] = useState(0);
 
   useEffect(() => {
     loadTodayAttendance();
+    loadSettings();
+    loadHistorySummary();
   }, []);
 
   const loadTodayAttendance = async () => {
     if (!employee) return;
     
     try {
-      const response = await ApiService.getTodayAttendance(employee.employee_id);
-      if (response.data.results && response.data.results.length > 0) {
-        dispatch(setTodayAttendance(response.data.results[0]));
-      }
+      const response = await ApiService.getTodayAttendance();
+      dispatch(setTodayAttendance(response.data.attendance || null));
     } catch (error) {
       console.log('No attendance record for today');
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const response = await ApiService.getAttendanceSystemSettings();
+      setSettings(response.data);
+    } catch (error) {
+      console.log('Attendance settings unavailable');
+    }
+  };
+
+  const loadHistorySummary = async () => {
+    if (!employee) return;
+    try {
+      const response = await ApiService.getAttendanceHistory();
+      setHistoryCount(response.data.results?.length || 0);
+    } catch (error) {
+      setHistoryCount(0);
     }
   };
 
@@ -135,8 +156,21 @@ const AttendanceScreen = () => {
   };
 
   const markAttendance = async (action: 'checkin' | 'checkout') => {
+    if (!settings?.enable_mobile_app || settings?.system_type !== 'mobile_app') {
+      Alert.alert('Attendance Disabled', 'HR has not enabled mobile app attendance for your company');
+      return;
+    }
+
     if (!currentLocation) {
       Alert.alert('Error', 'Please capture location first');
+      return;
+    }
+
+    const faceRequired = action === 'checkin'
+      ? settings?.require_face_for_checkin
+      : settings?.require_face_for_checkout;
+    if (faceRequired && !faceImage) {
+      Alert.alert('Face Required', 'HR settings require a face photo for this action');
       return;
     }
 
@@ -165,6 +199,7 @@ const AttendanceScreen = () => {
       
       dispatch(clearAttendanceData());
       loadTodayAttendance();
+      loadHistorySummary();
       
     } catch (error: any) {
       const errorMessage = error.response?.data?.error || 'Failed to mark attendance';
@@ -175,18 +210,30 @@ const AttendanceScreen = () => {
 
   const canCheckIn = !todayAttendance?.check_in_time;
   const canCheckOut = todayAttendance?.check_in_time && !todayAttendance?.check_out_time;
+  const isMobileAttendanceEnabled = settings?.system_type === 'mobile_app' && settings?.enable_mobile_app;
+  const attendanceModeLabel =
+    settings?.system_type === 'biometric'
+      ? 'Biometric Device'
+      : settings?.system_type === 'mobile_app'
+        ? 'Mobile App Location Based'
+        : 'Manual Entry';
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.welcomeText}>Welcome, {employee?.first_name}!</Text>
-        <Text style={styles.employeeId}>ID: {employee?.employee_id}</Text>
-        <Text style={styles.companyName}>{company?.name}</Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.hero}>
+        <View>
+          <Text style={styles.eyebrow}>{company?.name}</Text>
+          <Text style={styles.welcomeText}>Hi, {employee?.first_name}</Text>
+          <Text style={styles.employeeId}>ID: {employee?.employee_id}</Text>
+        </View>
+        <View style={styles.heroBadge}>
+          <Text style={styles.heroBadgeText}>{todayAttendance?.status || 'Ready'}</Text>
+        </View>
       </View>
 
       {/* Today's Status */}
       <View style={styles.statusCard}>
-        <Text style={styles.statusTitle}>Today's Status</Text>
+        <Text style={styles.statusTitle}>Today</Text>
         {todayAttendance ? (
           <View style={styles.statusInfo}>
             <View style={styles.statusRow}>
@@ -215,80 +262,107 @@ const AttendanceScreen = () => {
             )}
           </View>
         ) : (
-          <Text style={styles.noAttendance}>No attendance record for today</Text>
+          <Text style={styles.noAttendance}>No check-in yet. Capture location to start.</Text>
         )}
       </View>
 
-      {/* Location Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>📍 Location Verification</Text>
-        {currentLocation ? (
-          <View>
-            <View style={styles.locationInfo}>
-              <Text style={styles.locationText}>{currentLocation.address}</Text>
-              <Text style={styles.coordsText}>
-                {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
-              </Text>
-            </View>
-            
-            {/* Geo-fence Status */}
-            {locationStatus && (
-              <View style={[
-                styles.geofenceStatus,
-                locationStatus.isValid ? styles.geofenceValid : styles.geofenceInvalid
-              ]}>
-                <Text style={[
-                  styles.geofenceText,
-                  locationStatus.isValid ? styles.geofenceValidText : styles.geofenceInvalidText
-                ]}>
-                  {locationStatus.isValid ? '✅' : '⚠️'} {locationStatus.message}
-                </Text>
+      <View style={styles.quickGrid}>
+        <View style={styles.quickCard}>
+          <Text style={styles.quickLabel}>Mode</Text>
+          <Text style={styles.quickValue}>{attendanceModeLabel}</Text>
+        </View>
+        <View style={styles.quickCard}>
+          <Text style={styles.quickLabel}>Geo Fence</Text>
+          <Text style={styles.quickValue}>{settings?.enable_geo_fencing ? `${settings.geo_fence_radius}m` : 'Off'}</Text>
+        </View>
+        <View style={styles.quickCard}>
+          <Text style={styles.quickLabel}>History</Text>
+          <Text style={styles.quickValue}>{historyCount} days</Text>
+        </View>
+      </View>
+
+      {!isMobileAttendanceEnabled && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Attendance Punch Disabled</Text>
+          <Text style={styles.noAttendance}>
+            Your company uses {attendanceModeLabel}. You can view attendance history here, but check-in/check-out is handled by HR or the attendance device.
+          </Text>
+        </View>
+      )}
+
+      {isMobileAttendanceEnabled && (
+        <>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Location Verification</Text>
+            {currentLocation ? (
+              <View>
+                <View style={styles.locationInfo}>
+                  <Text style={styles.locationText}>{currentLocation.address}</Text>
+                  <Text style={styles.coordsText}>
+                    {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
+                  </Text>
+                </View>
+                
+                {locationStatus && (
+                  <View style={[
+                    styles.geofenceStatus,
+                    locationStatus.isValid ? styles.geofenceValid : styles.geofenceInvalid
+                  ]}>
+                    <Text style={[
+                      styles.geofenceText,
+                      locationStatus.isValid ? styles.geofenceValidText : styles.geofenceInvalidText
+                    ]}>
+                      {locationStatus.message}
+                    </Text>
+                  </View>
+                )}
+                
+                <TouchableOpacity
+                  style={[styles.refreshButton]}
+                  onPress={getCurrentLocation}
+                  disabled={isGettingLocation}
+                >
+                  {isGettingLocation ? (
+                    <ActivityIndicator size="small" color="#3b82f6" />
+                  ) : (
+                    <Text style={styles.refreshButtonText}>Refresh Location</Text>
+                  )}
+                </TouchableOpacity>
               </View>
-            )}
-            
-            <TouchableOpacity 
-              style={[styles.refreshButton]} 
-              onPress={getCurrentLocation}
-              disabled={isGettingLocation}
-            >
-              {isGettingLocation ? (
-                <ActivityIndicator size="small" color="#3b82f6" />
-              ) : (
-                <Text style={styles.refreshButtonText}>🔄 Refresh Location</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity 
-            style={[styles.button, isGettingLocation && styles.buttonDisabled]} 
-            onPress={getCurrentLocation}
-            disabled={isGettingLocation}
-          >
-            {isGettingLocation ? (
-              <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>📍 Get Current Location</Text>
+              <TouchableOpacity
+                style={[styles.button, isGettingLocation && styles.disabledButton]}
+                onPress={getCurrentLocation}
+                disabled={isGettingLocation}
+              >
+                {isGettingLocation ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Get Current Location</Text>
+                )}
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Face Photo Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>📷 Face Verification</Text>
-        {faceImage ? (
-          <View style={styles.imageContainer}>
-            <Image source={{ uri: faceImage }} style={styles.capturedImage} />
-            <TouchableOpacity style={styles.retakeButton} onPress={capturePhoto}>
-              <Text style={styles.buttonText}>📷 Retake Photo</Text>
-            </TouchableOpacity>
           </View>
-        ) : (
-          <TouchableOpacity style={styles.button} onPress={capturePhoto}>
-            <Text style={styles.buttonText}>📷 Take Face Photo</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+
+          {(settings?.require_face_for_checkin || settings?.require_face_for_checkout) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Face Verification</Text>
+              {faceImage ? (
+                <View style={styles.imageContainer}>
+                  <Image source={{ uri: faceImage }} style={styles.capturedImage} />
+                  <TouchableOpacity style={styles.retakeButton} onPress={capturePhoto}>
+                    <Text style={styles.buttonText}>Retake Photo</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.button} onPress={capturePhoto}>
+                  <Text style={styles.buttonText}>Take Face Photo</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </>
+      )}
 
       {/* Inline Camera Modal */}
       <InlineCamera
@@ -298,6 +372,7 @@ const AttendanceScreen = () => {
       />
 
       {/* Attendance Actions */}
+      {isMobileAttendanceEnabled && (
       <View style={styles.actionsContainer}>
         <TouchableOpacity
           style={[
@@ -306,12 +381,12 @@ const AttendanceScreen = () => {
             (!canCheckIn || !currentLocation || (locationStatus && !locationStatus.isValid)) && styles.disabledButton
           ]}
           onPress={() => markAttendance('checkin')}
-          disabled={loading || !currentLocation || !canCheckIn || (locationStatus && !locationStatus.isValid)}
+          disabled={Boolean(loading || !currentLocation || !canCheckIn || (locationStatus && !locationStatus.isValid))}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.attendanceButtonText}>🟢 Check In</Text>
+            <Text style={styles.attendanceButtonText}>Check In</Text>
           )}
         </TouchableOpacity>
 
@@ -327,10 +402,11 @@ const AttendanceScreen = () => {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.attendanceButtonText}>🔴 Check Out</Text>
+            <Text style={styles.attendanceButtonText}>Check Out</Text>
           )}
         </TouchableOpacity>
       </View>
+      )}
     </ScrollView>
   );
 };
@@ -338,34 +414,53 @@ const AttendanceScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#eef4ff',
   },
-  header: {
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#fff',
-    marginBottom: 16,
+  content: {
+    paddingBottom: 24,
+  },
+  hero: {
+    margin: 16,
+    padding: 22,
+    borderRadius: 24,
+    backgroundColor: '#111827',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  eyebrow: {
+    color: '#93c5fd',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 8,
   },
   welcomeText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#fff',
   },
   employeeId: {
-    fontSize: 16,
-    color: '#6b7280',
+    fontSize: 14,
+    color: '#cbd5e1',
     marginTop: 4,
   },
-  companyName: {
-    fontSize: 14,
-    color: '#3b82f6',
-    marginTop: 4,
+  heroBadge: {
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  heroBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
   },
   statusCard: {
     backgroundColor: '#fff',
     margin: 16,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -403,7 +498,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     margin: 16,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -416,10 +511,33 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     color: '#1a1a1a',
   },
+  quickGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginHorizontal: 16,
+  },
+  quickCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+  },
+  quickLabel: {
+    color: '#64748b',
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  quickValue: {
+    color: '#1e3a8a',
+    fontSize: 17,
+    fontWeight: '800',
+  },
   locationInfo: {
     padding: 16,
     backgroundColor: '#f0f9ff',
-    borderRadius: 8,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#bfdbfe',
   },
@@ -436,7 +554,7 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: '#3b82f6',
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: 'center',
   },
   buttonText: {
@@ -450,14 +568,14 @@ const styles = StyleSheet.create({
   capturedImage: {
     width: 200,
     height: 200,
-    borderRadius: 12,
+    borderRadius: 18,
     marginBottom: 16,
   },
   retakeButton: {
     backgroundColor: '#ef4444',
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 14,
   },
   actionsContainer: {
     flexDirection: 'row',
@@ -468,7 +586,7 @@ const styles = StyleSheet.create({
   attendanceButton: {
     flex: 1,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 18,
     alignItems: 'center',
   },
   checkinButton: {

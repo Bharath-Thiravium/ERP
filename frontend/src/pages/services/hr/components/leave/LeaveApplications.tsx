@@ -29,11 +29,33 @@ interface Employee {
   full_name: string
 }
 
+interface AttendancePolicy {
+  weekly_off_days: number[]
+  exclude_weekoffs_from_leave: boolean
+  exclude_holidays_from_leave: boolean
+}
+
+interface Holiday {
+  date: string
+}
+
+interface DayOverride {
+  date: string
+  is_working_day: boolean
+}
+
 const LeaveApplications: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
   const [applications, setApplications] = useState<LeaveApplication[]>([])
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [policy, setPolicy] = useState<AttendancePolicy>({
+    weekly_off_days: [6],
+    exclude_weekoffs_from_leave: true,
+    exclude_holidays_from_leave: true,
+  })
+  const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [dayOverrides, setDayOverrides] = useState<DayOverride[]>([])
   const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -50,6 +72,7 @@ const LeaveApplications: React.FC = () => {
     fetchApplications()
     fetchLeaveTypes()
     fetchEmployees()
+    fetchCalendarRules()
   }, [sessionKey])
 
   const fetchApplications = async () => {
@@ -91,12 +114,66 @@ const LeaveApplications: React.FC = () => {
     }
   }
 
+  const fetchCalendarRules = async () => {
+    if (!sessionKey) return
+    try {
+      const currentYear = new Date().getFullYear()
+      const [policyResponse, holidayResponse, overrideResponse] = await Promise.all([
+        api.get('/api/hr/attendance/policy/', {
+          headers: { Authorization: `Bearer ${sessionKey}` },
+          params: { session_key: sessionKey }
+        }),
+        api.get('/api/hr/holidays/', {
+          headers: { Authorization: `Bearer ${sessionKey}` },
+          params: { session_key: sessionKey, year: currentYear }
+        }),
+        api.get('/api/hr/attendance/day-overrides/', {
+          headers: { Authorization: `Bearer ${sessionKey}` },
+          params: { session_key: sessionKey, year: currentYear }
+        }),
+      ])
+      const loadedPolicy = policyResponse.data.results?.[0]
+      if (loadedPolicy) {
+        setPolicy({
+          weekly_off_days: loadedPolicy.weekly_off_days || [],
+          exclude_weekoffs_from_leave: Boolean(loadedPolicy.exclude_weekoffs_from_leave),
+          exclude_holidays_from_leave: Boolean(loadedPolicy.exclude_holidays_from_leave),
+        })
+      }
+      setHolidays(holidayResponse.data.results || [])
+      setDayOverrides(overrideResponse.data.results || [])
+    } catch (error) {
+      console.error('Error fetching leave calendar rules:', error)
+    }
+  }
+
   const calculateDays = (fromDate: string, toDate: string) => {
     if (!fromDate || !toDate) return 0
     const from = new Date(fromDate)
     const to = new Date(toDate)
-    const diffTime = Math.abs(to.getTime() - from.getTime())
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+    if (to < from) return 0
+    let count = 0
+    const current = new Date(from)
+    const formatDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    while (current <= to) {
+      const dateStr = formatDate(current)
+      const override = dayOverrides.find(item => item.date === dateStr)
+      const holiday = holidays.find(item => item.date === dateStr)
+      const pythonWeekday = (current.getDay() + 6) % 7
+      const weeklyOff = policy.weekly_off_days.includes(pythonWeekday)
+
+      if (override) {
+        if (override.is_working_day) count += 1
+      } else if (holiday && policy.exclude_holidays_from_leave) {
+        // skip configured holiday
+      } else if (weeklyOff && policy.exclude_weekoffs_from_leave) {
+        // skip weekly off
+      } else {
+        count += 1
+      }
+      current.setDate(current.getDate() + 1)
+    }
+    return count
   }
 
   const handleSubmitApplication = async () => {

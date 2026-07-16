@@ -52,6 +52,7 @@ urlpatterns = [
     path('api/', include('configuration.urls')),
     path('api/crm/', include('crm.urls')),
     path('api/', include('orchestrator.urls')),
+    path('api/ptw/', include('ptw.urls')),
 ]
 
 # API docs and static files only in non-production environments

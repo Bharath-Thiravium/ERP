@@ -128,7 +128,7 @@ table.items tbody td.c{text-align:center;font-family:Arial,sans-serif}
     </div>
   </div>
   <div class="hdr-doc">
-    <div class="doc-type">Proforma</div>
+    <div class="doc-type">Proforma Invoice</div>
     <div class="doc-num">{{ proforma.proforma_number }}</div>
     <div class="doc-date">{{ proforma.proforma_date|date:"d M Y" }}</div>
   </div>
@@ -160,7 +160,7 @@ table.items tbody td.c{text-align:center;font-family:Arial,sans-serif}
 </div>
 
 <div class="meta">
-  <div class="ms"><div class="mslbl">Proforma No.</div><div class="msval">{{ proforma.proforma_number }}</div></div>
+  <div class="ms"><div class="mslbl">Proforma Invoice No.</div><div class="msval">{{ proforma.proforma_number }}</div></div>
   <div class="ms"><div class="mslbl">Date</div><div class="msval">{{ proforma.proforma_date|date:"d/m/Y" }}</div></div>
   <div class="ms"><div class="mslbl">Due Date</div><div class="msval">{{ proforma.due_date|date:"d/m/Y" }}</div></div>
   <div class="ms"><div class="mslbl">GST Type</div><div class="msval">{{ proforma.gst_type|upper }}</div></div>

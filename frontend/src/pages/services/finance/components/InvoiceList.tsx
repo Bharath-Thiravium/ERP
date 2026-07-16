@@ -869,6 +869,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ sessionKey, initialPaymentSta
             setPaymentModalInitialTab('cash');
             fetchInvoices(currentPage);
           }}
+          onRefresh={() => fetchInvoices(currentPage)}
           sessionKey={sessionKey}
         />
       )}

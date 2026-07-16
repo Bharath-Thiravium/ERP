@@ -78,95 +78,80 @@ class LeadViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'])
     def convert_to_opportunity(self, request, pk=None):
         """Convert lead to opportunity"""
-        from django.db import transaction
         lead = self.get_object()
-        
-        if lead.status == 'won':
+
+        if lead.status in ['converted', 'won'] or lead.converted_opportunity_id:
             return Response({'error': 'Lead has already been converted to opportunity'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         default_user = request.service_user.created_by
         if not default_user:
             return Response({'error': 'No valid user found for conversion'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         company = self.get_company()
-        
+        ctx = {'request': request, 'skip_duplicate_check': True}
+
         with transaction.atomic():
-            account_data = {
-                'company': company.id,
-                'name': lead.company_name or f"{lead.first_name} {lead.last_name}",
-                'account_type': 'prospect',
-                'email': lead.email,
-                'created_by': default_user.id
-            }
-            account_serializer = AccountSerializer(data=account_data)
-            if account_serializer.is_valid():
+            # Reuse existing account by name, or create new
+            account_name = lead.company_name or f"{lead.first_name} {lead.last_name}"
+            account = Account.objects.filter(company=company, name__iexact=account_name).first()
+            if not account:
+                account_serializer = AccountSerializer(data={
+                    'company': company.id, 'name': account_name,
+                    'account_type': 'prospect', 'email': lead.email,
+                    'created_by': default_user.id
+                }, context=ctx)
+                if not account_serializer.is_valid():
+                    return Response({'error': f'Failed to create account: {account_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
                 account = account_serializer.save(company=company, created_by=default_user)
-            else:
-                return Response({'error': f'Failed to create account: {account_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            contact_data = {
-                'company': company.id,
-                'first_name': lead.first_name,
-                'last_name': lead.last_name,
-                'email': lead.email,
-                'phone': lead.phone,
-                'job_title': lead.job_title,
-                'created_by': default_user.id
-            }
-            contact_serializer = ContactSerializer(data=contact_data)
-            if contact_serializer.is_valid():
+
+            # Reuse existing contact by email, or create new
+            contact = Contact.objects.filter(company=company, email__iexact=lead.email).first() if lead.email else None
+            if not contact:
+                contact_serializer = ContactSerializer(data={
+                    'company': company.id, 'first_name': lead.first_name,
+                    'last_name': lead.last_name, 'email': lead.email,
+                    'phone': lead.phone, 'job_title': lead.job_title,
+                    'created_by': default_user.id
+                }, context=ctx)
+                if not contact_serializer.is_valid():
+                    return Response({'error': f'Failed to create contact: {contact_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
                 contact = contact_serializer.save(company=company, created_by=default_user)
-            else:
-                return Response({'error': f'Failed to create contact: {contact_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            opportunity_data = {
+
+            owner_id = lead.assigned_to.id if lead.assigned_to else default_user.id
+            opportunity_serializer = OpportunitySerializer(data={
                 'company': company.id,
                 'name': f"{lead.first_name} {lead.last_name} - Opportunity",
-                'account': account.id,
-                'contact': contact.id,
+                'account': account.id, 'contact': contact.id,
                 'amount': lead.estimated_value or 0,
                 'expected_close_date': lead.expected_close_date or timezone.now().date() + timedelta(days=30),
-                'owner': lead.assigned_to.id if lead.assigned_to else default_user.id,
-                'created_by': default_user.id,
+                'owner': owner_id, 'created_by': default_user.id,
                 'description': lead.description
-            }
-            opportunity_serializer = OpportunitySerializer(data=opportunity_data)
-            if opportunity_serializer.is_valid():
-                opportunity = opportunity_serializer.save(
-                    company=company,
-                    created_by=default_user,
-                    owner_id=lead.assigned_to.id if lead.assigned_to else default_user.id
-                )
-            else:
+            }, context=ctx)
+            if not opportunity_serializer.is_valid():
                 return Response({'error': f'Failed to create opportunity: {opportunity_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
-            
+            opportunity = opportunity_serializer.save(company=company, created_by=default_user, owner_id=owner_id)
+
             lead.status = 'converted'
             lead.converted_contact = contact
             lead.converted_account = account
             lead.converted_opportunity = opportunity
             lead.save()
 
-            # Auto-create a Deal in Sales Pipeline linked to the Opportunity
             from .models import PipelineStage, Deal
             first_stage = PipelineStage.objects.filter(company=company, is_active=True).order_by('order').first()
             if not first_stage:
-                # Create default stages if none exist
                 first_stage = PipelineStage.objects.create(
                     company=company, name='Prospecting', order=1, probability=10
                 )
             Deal.objects.create(
                 company=company,
                 name=f"{lead.first_name} {lead.last_name} - {lead.company_name or 'Deal'}",
-                account=account,
-                contact=contact,
-                opportunity=opportunity,
-                current_stage=first_stage,
-                status='open',
+                account=account, contact=contact, opportunity=opportunity,
+                current_stage=first_stage, status='open',
                 value=lead.estimated_value or 0,
                 probability=first_stage.probability,
                 expected_close_date=lead.expected_close_date or (timezone.now().date() + timedelta(days=30)),
-                owner=default_user,
-                created_by=default_user,
+                owner=default_user, created_by=default_user,
             )
 
         return Response({

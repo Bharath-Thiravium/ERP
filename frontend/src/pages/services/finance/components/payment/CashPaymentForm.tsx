@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { Plus, CheckCircle } from 'lucide-react';
+import { Plus, CheckCircle, Trash2 } from 'lucide-react';
 import { PaymentRecord, PAYMENT_METHODS, fmt } from './types';
 
 interface Props {
   invoiceId: number;
   invoiceType: 'tax_invoice' | 'proforma_invoice';
   sessionKey: string;
-  cashOutstanding: number;   // cashMax - cash already paid
+  cashOutstanding: number;
+  cashMax: number;
   tdsApplicable: boolean;
   tdsSection: string;
   tdsRate: number;
-  tdsMax: number;            // subtotal × rate/100 — fixed for the invoice
+  tdsMax: number;
   payments: PaymentRecord[];
   onRecorded: () => void;
 }
@@ -19,7 +20,7 @@ const today = () => new Date().toISOString().split('T')[0];
 
 const CashPaymentForm: React.FC<Props> = ({
   invoiceId, invoiceType, sessionKey,
-  cashOutstanding, tdsApplicable, tdsSection, tdsRate, tdsMax,
+  cashOutstanding, cashMax, tdsApplicable, tdsSection, tdsRate, tdsMax,
   payments, onRecorded,
 }) => {
   const [date, setDate]     = useState(today());
@@ -31,8 +32,22 @@ const CashPaymentForm: React.FC<Props> = ({
 
   const net = parseFloat(amount) || 0;
 
-  const cashHistory = payments.filter(p => parseFloat(p.net_amount_received || '0') > 0);
+  const cashHistory = payments.filter(p => p.status === 'completed' && p.payment_type !== 'tds_only');
   const totalCashPaid = cashHistory.reduce((s, p) => s + parseFloat(p.net_amount_received || '0'), 0);
+
+  const handleDelete = async (paymentId: number) => {
+    if (!window.confirm('Delete this payment entry? Outstanding amount will be updated.')) return;
+    try {
+      const { default: api } = await import('../../../../../lib/api');
+      const { default: toast } = await import('react-hot-toast');
+      await api.delete(`/api/finance/payments/${paymentId}/`, { params: { session_key: sessionKey } });
+      toast.success('Payment deleted');
+      onRecorded();
+    } catch {
+      const { default: toast } = await import('react-hot-toast');
+      toast.error('Failed to delete payment');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,19 +65,18 @@ const CashPaymentForm: React.FC<Props> = ({
       const { default: api } = await import('../../../../../lib/api');
       const { default: toast } = await import('react-hot-toast');
       
-      // Regular payment with or without TDS
-      const tdsProportion = tdsApplicable && tdsRate > 0
-        ? parseFloat((net * tdsRate / (100 - tdsRate)).toFixed(2))
-        : 0;
+      // TDS is fixed on invoice subtotal (tdsMax), not derived from cash entered.
+      // gross = net received + TDS deducted by customer
+      const tdsAmount = tdsApplicable && tdsMax > 0 ? tdsMax : 0;
       const payload = {
         payment_date: date,
         amount: net,
-        gross_payment_amount: tdsApplicable ? net + tdsProportion : net,
+        gross_payment_amount: tdsApplicable ? net + tdsAmount : net,
         net_amount_received: net,
         tds_applicable: tdsApplicable,
         tds_section: tdsApplicable ? tdsSection : '',
         tds_rate: tdsApplicable ? tdsRate : 0,
-        tds_amount: tdsProportion,
+        tds_amount: tdsAmount,
         tds_deposited: false,
         tds_certificate_received: false,
         payment_method: method,
@@ -88,36 +102,59 @@ const CashPaymentForm: React.FC<Props> = ({
   return (
     <div className="space-y-4">
 
-      {/* Cash history */}
-      {cashHistory.length > 0 && (
+      {/* All payments history — cash + TDS unified */}
+      {payments.filter(p => p.status === 'completed').length > 0 && (
         <div>
           <div className="flex justify-between items-center mb-1.5">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-              Cash Received
-            </span>
-            <span className="text-xs font-bold text-green-600">₹{fmt(totalCashPaid)}</span>
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Payment History</span>
+            <span className="text-xs font-bold text-green-600">₹{fmt(totalCashPaid)} received</span>
           </div>
           <div className="space-y-1">
-            {cashHistory.map(p => (
-              <div key={p.id} className="flex justify-between items-center px-3 py-2 bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-800 rounded-lg text-xs">
-                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                  <span className="font-medium">{p.payment_date}</span>
-                  <span className="text-gray-400 capitalize">{p.payment_method?.replace('_', ' ')}</span>
-                  {p.reference_number && <span className="text-gray-400">#{p.reference_number}</span>}
+            {payments.filter(p => p.status === 'completed').map(p => {
+              const isTds = p.payment_type === 'tds_only';
+              return (
+                <div key={p.id} className={`flex justify-between items-center px-3 py-2 border rounded-lg text-xs ${
+                  isTds
+                    ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-800'
+                    : 'bg-green-50 dark:bg-green-900/10 border-green-100 dark:border-green-800'
+                }`}>
+                  <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 flex-wrap">
+                    <span className="font-medium">{p.payment_date}</span>
+                    <span className="text-gray-400 capitalize">{p.payment_method?.replace('_', ' ')}</span>
+                    {p.reference_number && <span className="text-gray-400">#{p.reference_number}</span>}
+                    <span className="text-gray-400">{p.payment_number}</span>
+                    {isTds && (
+                      <span className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-1.5 py-0.5 rounded text-[10px] font-medium">TDS</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`font-semibold ${isTds ? 'text-orange-600' : 'text-green-700 dark:text-green-400'}`}>
+                      ₹{fmt(isTds ? p.tds_amount : p.net_amount_received)}
+                    </span>
+                    <button type="button" onClick={() => handleDelete(p.id)}
+                      className="text-gray-300 hover:text-red-500 transition-colors" title="Delete entry">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <span className="font-semibold text-green-700 dark:text-green-400">₹{fmt(p.net_amount_received)}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Cash outstanding */}
-      <div className="flex items-center justify-between px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg">
-        <span className="text-xs text-gray-600 dark:text-gray-300">Cash Outstanding</span>
-        <span className={`text-sm font-bold ${cashOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>
-          ₹{fmt(cashOutstanding)}
-        </span>
+      {/* Cash summary */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 rounded-lg">
+          <span className="text-xs text-gray-500 dark:text-gray-400">Cash Max</span>
+          <span className="text-sm font-bold text-gray-700 dark:text-gray-200">₹{fmt(cashMax)}</span>
+        </div>
+        <div className="flex items-center justify-between px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg">
+          <span className="text-xs text-gray-600 dark:text-gray-300">Remaining</span>
+          <span className={`text-sm font-bold ${cashOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>
+            ₹{fmt(cashOutstanding)}
+          </span>
+        </div>
       </div>
 
       {/* New cash entry */}

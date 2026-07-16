@@ -129,6 +129,7 @@ INSTALLED_APPS = [
     'company_dashboard',
     'crm',
     'orchestrator',
+    'ptw',
 ]
 
 MIDDLEWARE = [

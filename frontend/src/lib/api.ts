@@ -106,7 +106,6 @@ api.interceptors.request.use(
         'log-activity/',
         'notifications/',
         'domain/',
-        'data-sharing/',
       ]
       const isJwtCompanyDashboard = config.url?.includes('/api/company-dashboard/') &&
         jwtCompanyDashboardPaths.some(p => config.url?.includes(p))
@@ -266,8 +265,7 @@ api.interceptors.response.use(
       const isPreApprovalEndpoint = originalRequest.url?.includes('/api/auth/company/assigned-services/') ||
                                     originalRequest.url?.includes('/api/auth/company/service-users/')
       // Don't show toasts for preview endpoints — component handles the error
-      const isPreviewEndpoint = originalRequest.url?.includes('-template-preview/') ||
-                                originalRequest.url?.includes('/document-numbering/preview-pattern/')
+      const isPreviewEndpoint = originalRequest.url?.includes('-template-preview/')
       
       if (!isAthensEmployeeEndpoint && !isPreApprovalEndpoint && !isPreviewEndpoint) {
         if (errorData?.message) {
@@ -510,6 +508,9 @@ export const apiClient = {
 
   deleteServiceUser: (id: number) =>
     api.delete(`/api/auth/company/service-users/${id}/`),
+
+  resetServiceUserPassword: (id: number) =>
+    api.post(`/api/auth/company/service-users/${id}/`, { action: 'reset_password' }),
 
   // Notifications
   getNotifications: (params?: any) =>
@@ -1163,21 +1164,6 @@ export const apiClient = {
   getCompanyDashboardOverview: () =>
     api.get('/api/company-dashboard/overview/'),
 
-  getCompanyDataSharingPolicy: () =>
-    api.get('/api/company-dashboard/data-sharing/'),
-
-  updateCompanyDataSharingPolicy: (data: any) =>
-    api.patch('/api/company-dashboard/data-sharing/', data),
-
-  getCompanySyncApprovals: (params?: any) =>
-    api.get('/api/company-dashboard/data-sharing/approvals/', { params }),
-
-  approveCompanySyncRequest: (requestId: number, data?: any) =>
-    api.post(`/api/company-dashboard/data-sharing/approvals/${requestId}/approve/`, data || {}),
-
-  rejectCompanySyncRequest: (requestId: number, data?: any) =>
-    api.post(`/api/company-dashboard/data-sharing/approvals/${requestId}/reject/`, data || {}),
-
   getServiceUtilizationStats: () =>
     api.get('/api/company-dashboard/service-utilization/'),
 
@@ -1617,7 +1603,7 @@ export const apiClient = {
     api.post('/api/company-dashboard/quotation-template-settings/', data),
 
   previewQuotationTemplate: (templateName: string) =>
-    api.get(`/api/company-dashboard/quotation-template-preview/${templateName}/`, { responseType: 'text' }),
+    api.get(`/api/company-dashboard/quotation-template-preview/${templateName}/`, { responseType: 'text', params: { _t: Date.now() } }),
 
   // PO Template APIs
   getPOTemplateSettings: () =>
@@ -1627,7 +1613,7 @@ export const apiClient = {
     api.post('/api/company-dashboard/po-template-settings/', data),
 
   previewPOTemplate: (templateName: string) =>
-    api.get(`/api/company-dashboard/po-template-preview/${templateName}/`, { responseType: 'text' }),
+    api.get(`/api/company-dashboard/po-template-preview/${templateName}/`, { responseType: 'text', params: { _t: Date.now() } }),
 
   generatePurchaseOrderPDF: (id: number, params?: any) =>
     api.get(`/api/finance/purchase-orders/${id}/pdf/`, { params }),
@@ -1640,7 +1626,7 @@ export const apiClient = {
     api.post('/api/company-dashboard/proforma-template-settings/', data),
 
   previewProformaTemplate: (templateName: string) =>
-    api.get(`/api/company-dashboard/proforma-template-preview/${templateName}/`, { responseType: 'text' }),
+    api.get(`/api/company-dashboard/proforma-template-preview/${templateName}/`, { responseType: 'text', params: { _t: Date.now() } }),
 
   // Invoice Template APIs
   getInvoiceTemplateSettings: () =>
@@ -1650,7 +1636,7 @@ export const apiClient = {
     api.post('/api/company-dashboard/invoice-template-settings/', data),
 
   previewInvoiceTemplate: (templateName: string) =>
-    api.get(`/api/company-dashboard/invoice-template-preview/${templateName}/`, { responseType: 'text' }),
+    api.get(`/api/company-dashboard/invoice-template-preview/${templateName}/`, { responseType: 'text', params: { _t: Date.now() } }),
 
   // Convenience methods for backward compatibility
   getEmployees: (params?: any) => apiClient.getHREmployees(params),

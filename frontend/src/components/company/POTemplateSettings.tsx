@@ -45,23 +45,23 @@ const POTemplateSettings: React.FC = () => {
         {
           code: 'AS',
           name: 'Clean & Simple Template',
-          description: 'Clean and simple layout with right-aligned company info and professional styling',
-          features: ['Right-aligned company info', 'Large PO title', 'Simple table design', 'Professional footer'],
-          best_for: 'Companies preferring minimalist, clean design'
+          description: 'Minimalist left-aligned header with clean typography. Subtle orange accent borders. Grid-based layout with soft gray backgrounds.',
+          features: ['Left-aligned clean header', 'Grid-based party cards', 'Minimalist design', 'Fast loading', 'Professional appearance'],
+          best_for: 'Quick everyday POs, vendor communications, internal use'
         },
         {
           code: 'BKGE', 
           name: 'Professional Template',
-          description: 'Modern professional template with centered header and structured table design',
-          features: ['Centered PO header', 'Color-coded table headers', 'Structured vendor info', 'Professional totals section'],
-          best_for: 'Businesses requiring modern, structured presentation'
+          description: 'Modern full-width gradient header with accent colors. Centered document title. Pill-shaped meta badges. Premium dark header design.',
+          features: ['Gradient banner header', 'Centered modern layout', 'Pill-shaped badges', 'Bold professional look', 'Two signature sections'],
+          best_for: 'Vendor presentations, executive documents, formal POs'
         },
         {
           code: 'TC',
           name: 'Detailed Terms Template', 
-          description: 'Detailed template with comprehensive terms and conditions section',
-          features: ['Comprehensive company branding', 'Detailed information grid', 'Extensive terms and conditions', 'Professional signature box'],
-          best_for: 'Contractors and service providers with detailed terms'
+          description: 'Premium gold/charcoal header. Per-line GST columns with CGST/SGST/IGST breakdown. HSN/SAC-wise tax summary table. Complete bank details. Legal declaration.',
+          features: ['Premium gold/charcoal header', 'Per-line GST breakdown', 'HSN Tax Summary table', 'Complete bank details (6 fields)', 'Legal declaration clause', '3 signature blocks'],
+          best_for: 'Enterprise vendors, CA-compliant POs, government contracts, audit requirements'
         }
       ]);
     }

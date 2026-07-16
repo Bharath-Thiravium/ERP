@@ -26,6 +26,7 @@ export interface PaymentRecord {
   payment_method: string;
   reference_number: string;
   status: string;
+  payment_type?: string;
 }
 
 export interface TDSDeposit {

@@ -5,317 +5,226 @@
     <meta charset="UTF-8">
     <title>Quotation - {{ quotation.quotation_number }}</title>
     <style>
-        @page {
-            size: A4;
-            margin: 20mm 15mm 20mm 15mm;
-        }
-        
-        body {
-            font-family: Roboto, Arial, sans-serif;
-            font-size: 10pt;
-            line-height: 1.3;
-            margin: 0;
-            padding: 0;
-            color: #333;
-        }
-        
-        /* Classic Template - ERP Style with Strong Borders */
-        .header-table {
-            width: 100%;
-            border-collapse: collapse;
-            border: 2px solid #000;
-            margin-bottom: 15px;
-        }
-        
-        .header-table td {
-            border: 1px solid #000;
-            padding: 8px;
-            vertical-align: top;
-        }
-        
-        .company-logo {
-            width: 80px;
-            text-align: center;
-            font-weight: bold;
-            font-size: 12pt;
-        }
-        
-        .company-details {
-            width: 60%;
-        }
-        
-        .company-name {
-            font-size: 14pt;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        
-        .document-title {
-            width: 25%;
-            text-align: center;
-            background-color: #f0f0f0;
-        }
-        
-        .document-title h1 {
-            margin: 0;
-            font-size: 16pt;
-            font-weight: bold;
-        }
-        
-        .customer-section {
-            width: 100%;
-            border-collapse: collapse;
-            border: 2px solid #000;
-            margin-bottom: 15px;
-        }
-        
-        .customer-section td {
-            border: 1px solid #000;
-            padding: 8px;
-            vertical-align: top;
-        }
-        
-        .section-header {
-            background-color: #e0e0e0;
-            font-weight: bold;
-            text-align: center;
-        }
-        
-        .items-table {
-            width: 100%;
-            border-collapse: collapse;
-            border: 2px solid #000;
-            margin-bottom: 15px;
-        }
-        
-        .items-table th {
-            background-color: #d0d0d0;
-            border: 1px solid #000;
-            padding: 6px 4px;
-            font-size: 9pt;
-            font-weight: bold;
-            text-align: center;
-        }
-        
-        .items-table td {
-            border: 1px solid #000;
-            padding: 6px 4px;
-            font-size: 9pt;
-        }
-        
-        .totals-box {
-            width: 50%;
-            float: right;
-            border: 2px solid #000;
-            border-collapse: collapse;
-        }
-        
-        .totals-box td {
-            border: 1px solid #000;
-            padding: 6px 10px;
-        }
-        
-        .total-label {
-            background-color: #e0e0e0;
-            font-weight: bold;
-            text-align: right;
-        }
-        
-        .total-amount {
-            text-align: right;
-            font-weight: bold;
-        }
-        
-        .grand-total {
-            background-color: #d0d0d0;
-            font-weight: bold;
-            font-size: 11pt;
-        }
-        
-        .terms-section {
-            clear: both;
-            margin-top: 20px;
-            border: 1px solid #000;
-            padding: 10px;
-        }
-        
-        .signature-section {
-            margin-top: 30px;
-            text-align: right;
-        }
-        
-        .amount-words {
-            margin-top: 10px;
-            font-weight: bold;
-            border: 1px solid #000;
-            padding: 8px;
-            background-color: #f8f8f8;
-        }
+        @page { size: A4; margin: 8mm 12mm; }
+        body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 8pt; line-height: 1.3; margin: 0; padding: 0; color: #2c3e50; background: #fff; }
+        .header-section { margin-bottom: 8px; page-break-inside: avoid; }
+        .company-header { display: flex; align-items: flex-start; gap: 12px; padding-bottom: 7px; border-bottom: 2px solid #27ae60; }
+        .company-logo-area { width: 70px; height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #f8f9fa; border-radius: 4px; }
+        .company-logo-area img { max-width: 62px; max-height: 46px; object-fit: contain; }
+        .company-info { flex: 1; }
+        .company-name { font-size: 16px; font-weight: 700; color: #2c3e50; margin-bottom: 2px; letter-spacing: -0.3px; }
+        .company-address { font-size: 7.5pt; color: #5d6d7e; line-height: 1.4; }
+        .doc-info-box { text-align: right; min-width: 160px; }
+        .doc-type { font-size: 20px; font-weight: 300; color: #27ae60; letter-spacing: 3px; text-transform: uppercase; }
+        .doc-number { font-size: 11px; font-weight: 600; color: #2c3e50; margin-top: 3px; }
+        .doc-dates { font-size: 7.5pt; color: #5d6d7e; margin-top: 2px; }
+        .parties-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; page-break-inside: avoid; }
+        .party-card { padding: 6px 10px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid #27ae60; }
+        .party-label { font-size: 6.5pt; font-weight: 600; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+        .party-name { font-size: 11px; font-weight: 600; color: #2c3e50; margin-bottom: 2px; }
+        .party-address { font-size: 7.5pt; color: #5d6d7e; line-height: 1.35; }
+        .party-gst { font-size: 7pt; color: #27ae60; margin-top: 2px; font-weight: 500; }
+        .meta-bar { display: flex; gap: 2px; margin-bottom: 8px; page-break-inside: avoid; }
+        .meta-item { flex: 1; padding: 5px 6px; background: #ecf0f1; text-align: center; border-radius: 3px; }
+        .meta-item:nth-child(even) { background: #d5dbdb; }
+        .meta-label { font-size: 6pt; color: #7f8c8d; text-transform: uppercase; margin-bottom: 1px; }
+        .meta-value { font-size: 8pt; font-weight: 600; color: #2c3e50; }
+        .items-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        .items-table thead th { background: #27ae60; color: white; padding: 5px 5px; font-size: 7pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; text-align: center; }
+        .items-table tbody td { padding: 5px 5px; border-bottom: 1px solid #ecf0f1; font-size: 7.5pt; color: #2c3e50; }
+        .items-table tbody tr:nth-child(even) { background: #f8f9fa; }
+        .item-desc { font-weight: 500; color: #2c3e50; }
+        .item-meta { font-size: 6.5pt; color: #7f8c8d; margin-top: 1px; }
+        .totals-section { display: grid; grid-template-columns: 1fr 240px; gap: 10px; margin-bottom: 8px; page-break-inside: avoid; }
+        .amount-words-box { padding: 7px 10px; background: #eafaf1; border-radius: 4px; border-left: 3px solid #27ae60; }
+        .amount-label { font-size: 6.5pt; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .amount-value { font-size: 9pt; font-weight: 600; color: #2c3e50; font-style: italic; }
+        .totals-table { width: 100%; border-collapse: collapse; }
+        .totals-table td { padding: 4px 8px; border-bottom: 1px solid #ecf0f1; font-size: 7.5pt; }
+        .totals-table tr:last-child td { border-bottom: none; }
+        .totals-table .label-cell { background: #f8f9fa; color: #5d6d7e; text-align: right; }
+        .totals-table .value-cell { text-align: right; font-weight: 500; font-family: 'Courier New', monospace; }
+        .totals-table .grand-total-row td { background: #27ae60; color: white; font-weight: 700; font-size: 9pt; }
+        .terms-box { margin-bottom: 8px; padding: 6px 10px; background: #fef9e7; border-radius: 4px; border-left: 3px solid #f1c40f; page-break-inside: avoid; }
+        .terms-title { font-size: 6.5pt; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .terms-text { font-size: 7.5pt; color: #5d6d7e; line-height: 1.35; }
+        .footer-section { margin-top: 8px; padding-top: 7px; border-top: 1px solid #ecf0f1; display: flex; justify-content: space-between; align-items: flex-end; page-break-inside: avoid; }
+        .signature-area { text-align: right; min-width: 160px; }
+        .signature-line { width: 140px; border-top: 1px solid #2c3e50; margin: 0 0 5px auto; padding-top: 4px; }
+        .signature-label { font-size: 7pt; color: #7f8c8d; text-transform: uppercase; }
+        .footer-text { text-align: center; font-size: 6.5pt; color: #95a5a6; margin-top: 6px; }
+        .footer-company { font-weight: 600; color: #2c3e50; }
     </style>
 </head>
 <body>
-    <!-- Header Section -->
-    <table class="header-table">
-        <tr>
-            <td class="company-logo">
-                {% if company.logo %}
-                    <img src="{{ company.logo.url }}" alt="Logo" style="max-width: 60px; max-height: 60px;">
+    <div class="header-section">
+        <div class="company-header">
+            <div class="company-logo-area">
+                {% if logo_url %}
+                    <img src="{{ logo_url }}" alt="{{ company.name }}">
+                {% elif company.logo %}
+                    <img src="{{ company.logo.url }}" alt="{{ company.name }}">
                 {% else %}
-                    LOGO
+                    <span style="font-size: 9px; color: #95a5a6;">LOGO</span>
                 {% endif %}
-            </td>
-            <td class="company-details">
+            </div>
+            <div class="company-info">
                 <div class="company-name">{{ company.name }}</div>
-                <div>{{ company.address|default:"" }}</div>
-                <div>{{ company.city|default:"" }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}</div>
-                <div>GSTIN: {{ company.gst_number|default:"N/A" }} | PAN: {{ company.pan_number|default:"N/A" }}</div>
-                <div>Phone: {{ company.phone|default:"N/A" }} | Email: {{ company.email|default:"N/A" }}</div>
-            </td>
-            <td class="document-title">
-                <h1>QUOTATION</h1>
-                <div>{{ quotation.quotation_number }}</div>
-                <div>{{ quotation.quotation_date|date:"d/m/Y" }}</div>
-            </td>
-        </tr>
-    </table>
+                <div class="company-address">
+                    {% if company.address %}{{ company.address }}<br>{% endif %}
+                    {% if company.city %}{{ company.city }}{% endif %}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}<br>
+                    GSTIN: {{ company.gst_number|default:"N/A" }} | PAN: {{ company.pan_number|default:"N/A" }}<br>
+                    {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}
+                </div>
+            </div>
+            <div class="doc-info-box">
+                <div class="doc-type">Quotation</div>
+                <div class="doc-number">{{ quotation.quotation_number }}</div>
+                <div class="doc-dates">
+                    <div>Date: {{ quotation.quotation_date|date:"d M Y" }}</div>
+                    <div>Valid Until: {{ quotation.valid_until|date:"d M Y" }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <!-- Customer Section -->
-    <table class="customer-section">
-        <tr>
-            <td class="section-header" style="width: 50%;">BILL TO</td>
-            <td class="section-header" style="width: 50%;">SHIP TO</td>
-        </tr>
-        <tr>
-            <td>
-                <strong>{{ quotation.customer.name }}</strong><br>
-                {{ quotation.customer.billing_address_line1|default:"" }}<br>
-                {% if quotation.customer.billing_address_line2 %}{{ quotation.customer.billing_address_line2 }}<br>{% endif %}
-                {{ quotation.customer.billing_city|default:"" }}, {{ quotation.customer.billing_state|default:"" }} - {{ quotation.customer.billing_pincode|default:"" }}<br>
-                GSTIN: {{ quotation.customer.gstin|default:"N/A" }}<br>
-                State Code: {{ quotation.customer.state_code|default:"N/A" }}
-            </td>
-            <td>
-                {% if quotation.shipping_address %}
-                    <strong>{{ quotation.customer.name }}</strong><br>
-                    {{ quotation.shipping_address.address_line1 }}<br>
-                    {% if quotation.shipping_address.address_line2 %}{{ quotation.shipping_address.address_line2 }}<br>{% endif %}
-                    {{ quotation.shipping_address.city }}, {{ quotation.shipping_address.state }} - {{ quotation.shipping_address.pincode }}
-                {% else %}
-                    Same as Billing Address
-                {% endif %}
-            </td>
-        </tr>
-    </table>
+    <div class="parties-grid">
+        <div class="party-card">
+            <div class="party-label">Quoted To</div>
+            <div class="party-name">{{ customer.name }}</div>
+            <div class="party-address">
+                {{ customer.billing_address_line1|default:"" }}<br>
+                {% if customer.billing_address_line2 %}{{ customer.billing_address_line2 }}<br>{% endif %}
+                {{ customer.billing_city|default:"" }}, {{ customer.billing_state|default:"" }} - {{ customer.billing_pincode|default:"" }}
+            </div>
+            <div class="party-gst">GSTIN: {{ customer.gstin|default:"N/A" }}</div>
+        </div>
+        <div class="party-card">
+            <div class="party-label">Delivery Address</div>
+            {% if quotation.shipping_address %}
+                <div class="party-name">{{ quotation.shipping_address.label|default:customer.name }}</div>
+                <div class="party-address">{{ quotation.shipping_address.full_address }}</div>
+            {% else %}
+                <div class="party-name">{{ customer.name }}</div>
+                <div class="party-address">{{ customer.billing_address_line1|default:"" }}</div>
+            {% endif %}
+        </div>
+    </div>
 
-    <!-- Document Meta -->
-    <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 15px;">
-        <tr>
-            <td style="border: 1px solid #000; padding: 6px; background-color: #e0e0e0; font-weight: bold;">Quotation Number</td>
-            <td style="border: 1px solid #000; padding: 6px;">{{ quotation.quotation_number }}</td>
-            <td style="border: 1px solid #000; padding: 6px; background-color: #e0e0e0; font-weight: bold;">Date</td>
-            <td style="border: 1px solid #000; padding: 6px;">{{ quotation.quotation_date|date:"d/m/Y" }}</td>
-        </tr>
-        <tr>
-            <td style="border: 1px solid #000; padding: 6px; background-color: #e0e0e0; font-weight: bold;">Valid Until</td>
-            <td style="border: 1px solid #000; padding: 6px;">{{ quotation.valid_until|date:"d/m/Y" }}</td>
-            <td style="border: 1px solid #000; padding: 6px; background-color: #e0e0e0; font-weight: bold;">Reference</td>
-            <td style="border: 1px solid #000; padding: 6px;">{{ quotation.reference|default:"N/A" }}</td>
-        </tr>
-    </table>
+    <div class="meta-bar">
+        <div class="meta-item">
+            <div class="meta-label">Quotation #</div>
+            <div class="meta-value">{{ quotation.quotation_number }}</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Date</div>
+            <div class="meta-value">{{ quotation.quotation_date|date:"d/m/Y" }}</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Valid Until</div>
+            <div class="meta-value">{{ quotation.valid_until|date:"d/m/Y" }}</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">GST Type</div>
+            <div class="meta-value">{{ quotation.gst_type|upper }}</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Validity</div>
+            <div class="meta-value">30 Days</div>
+        </div>
+    </div>
 
-    <!-- Items Table -->
     <table class="items-table">
         <thead>
             <tr>
-                <th style="width: 5%;">S.No</th>
-                <th style="width: 35%;">Description</th>
+                <th style="width: 5%;">#</th>
+                <th style="width: 32%;">Description</th>
                 <th style="width: 10%;">HSN/SAC</th>
-                <th style="width: 8%;">Qty</th>
-                <th style="width: 8%;">Unit</th>
-                <th style="width: 12%;">Rate</th>
-                <th style="width: 8%;">Discount</th>
-                <th style="width: 6%;">Tax %</th>
-                <th style="width: 8%;">Amount</th>
+                <th style="width: 7%;">Qty</th>
+                <th style="width: 7%;">Unit</th>
+                <th style="width: 12%;">Rate (₹)</th>
+                <th style="width: 8%;">GST %</th>
+                <th style="width: 10%;">Taxable</th>
+                <th style="width: 9%;">Total (₹)</th>
             </tr>
         </thead>
         <tbody>
             {% for item in quotation.quotation_items.all %}
             <tr>
-                <td style="text-align: center;">{{ forloop.counter }}</td>
+                <td style="text-align: center; color: #95a5a6;">{{ forloop.counter }}</td>
                 <td>
-                    <strong>{{ item.product_name }}</strong>
-                    {% if item.description %}<br><small>{{ item.description }}</small>{% endif %}
+                    <div class="item-desc">{{ item.product_name }}</div>
+                    {% if item.description %}<div class="item-meta">{{ item.description }}</div>{% endif %}
                 </td>
-                <td style="text-align: center;">{{ item.hsn_sac_code|default:"N/A" }}</td>
+                <td style="text-align: center;">{{ item.hsn_sac_code|default:"—" }}</td>
                 <td style="text-align: right;">{{ item.quantity|floatformat:2 }}</td>
-                <td style="text-align: center;">{{ item.unit }}</td>
-                <td style="text-align: right;">₹{{ item.unit_price|floatformat:2 }}</td>
-                <td style="text-align: right;">-</td>
-                <td style="text-align: right;">{{ item.gst_rate|floatformat:0 }}%</td>
-                <td style="text-align: right;">₹{{ item.line_total|floatformat:2 }}</td>
+                <td style="text-align: center;">{{ item.unit|default:"Nos" }}</td>
+                <td style="text-align: right;">{{ item.unit_price|floatformat:2 }}</td>
+                <td style="text-align: center;">{{ item.gst_rate|floatformat:0 }}%</td>
+                <td style="text-align: right;">{{ item.line_total|floatformat:2 }}</td>
+                <td style="text-align: right; font-weight: 600;">{{ item.line_total|floatformat:2 }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <!-- Totals Section -->
-    <table class="totals-box">
-        <tr>
-            <td class="total-label">Subtotal:</td>
-            <td class="total-amount">₹{{ quotation.subtotal|floatformat:2 }}</td>
-        </tr>
-        {% if quotation.discount_amount > 0 %}
-        <tr>
-            <td class="total-label">Discount:</td>
-            <td class="total-amount">-₹{{ quotation.discount_amount|floatformat:2 }}</td>
-        </tr>
-        {% endif %}
-        <tr>
-            <td class="total-label">Taxable Amount:</td>
-            <td class="total-amount">₹{{ quotation.subtotal|floatformat:2 }}</td>
-        </tr>
-        {% if quotation.shipping_charges > 0 %}
-        <tr>
-            <td class="total-label">Freight/Shipping:</td>
-            <td class="total-amount">₹{{ quotation.shipping_charges|floatformat:2 }}</td>
-        </tr>
-        {% endif %}
-        {% if quotation.other_charges > 0 %}
-        <tr>
-            <td class="total-label">Other Charges:</td>
-            <td class="total-amount">₹{{ quotation.other_charges|floatformat:2 }}</td>
-        </tr>
-        {% endif %}
-        {% if quotation.total_tax > 0 %}
-        <tr>
-            <td class="total-label">Tax Amount:</td>
-            <td class="total-amount">₹{{ quotation.total_tax|floatformat:2 }}</td>
-        </tr>
-        {% endif %}
-        <tr class="grand-total">
-            <td class="total-label">Grand Total:</td>
-            <td class="total-amount">₹{{ quotation.total_amount|floatformat:2 }}</td>
-        </tr>
-    </table>
-
-    <!-- Amount in Words -->
-    <div class="amount-words">
-        <strong>Amount in Words:</strong> {{ quotation.total_amount|num_to_words }}
+    <div class="totals-section">
+        <div class="amount-words-box">
+            <div class="amount-label">Amount in Words</div>
+            <div class="amount-value">{{ quotation.total_amount|num_to_words }}</div>
+        </div>
+        <table class="totals-table">
+            <tr>
+                <td class="label-cell">Subtotal</td>
+                <td class="value-cell">{{ quotation.subtotal|floatformat:2 }}</td>
+            </tr>
+            {% if quotation.discount_amount > 0 %}
+            <tr>
+                <td class="label-cell">Discount{% if quotation.discount_percentage > 0 %} ({{ quotation.discount_percentage }}%){% endif %}</td>
+                <td class="value-cell" style="color: #e74c3c;">-{{ quotation.discount_amount|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+            {% if quotation.gst_type == "cgst_sgst" %}
+            <tr>
+                <td class="label-cell">CGST</td>
+                <td class="value-cell">{{ quotation.cgst_amount|floatformat:2 }}</td>
+            </tr>
+            <tr>
+                <td class="label-cell">SGST</td>
+                <td class="value-cell">{{ quotation.sgst_amount|floatformat:2 }}</td>
+            </tr>
+            {% elif quotation.gst_type == "igst" %}
+            <tr>
+                <td class="label-cell">IGST</td>
+                <td class="value-cell">{{ quotation.igst_amount|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+            <tr class="grand-total-row">
+                <td>Grand Total</td>
+                <td class="value-cell">₹{{ quotation.total_amount|floatformat:2 }}</td>
+            </tr>
+        </table>
     </div>
 
-    <!-- Terms and Conditions -->
-    <div class="terms-section">
-        <strong>Scope of Work:</strong><br>
-        {{ quotation.notes|default:"As per customer requirements"|linebreaks }}
-        
-        <br><strong>Delivery Timeline:</strong><br>
-        As per agreed schedule
-        
-        <br><strong>Terms & Conditions:</strong><br>
-        {{ quotation.terms_and_conditions|default:"1. Prices are valid for 30 days from quotation date<br>2. Payment terms as agreed<br>3. All disputes subject to local jurisdiction"|safe }}
+    {% if quotation.terms_and_conditions or quotation.notes %}
+    <div class="terms-box">
+        <div class="terms-title">Terms & Conditions</div>
+        <div class="terms-text">
+            {% if quotation.notes %}{{ quotation.notes }}<br>{% endif %}
+            {{ quotation.terms_and_conditions|default:"This quotation is valid for 30 days. Prices subject to change after validity period." }}
+        </div>
     </div>
+    {% endif %}
 
-    <div style="text-align:center;padding:14px 0 6px;font-size:9px;color:#64748b;border-top:1px solid #e5e7eb;margin-top:16px">This is a computer-generated document. No physical signature is required.</div>
+    <div class="footer-section">
+        <div class="footer-text">
+            <div class="footer-company">{{ company.name }}</div>
+            <div>This is a computer-generated quotation and does not require physical signature.</div>
+        </div>
+        <div class="signature-area">
+            <div class="signature-line"></div>
+            <div class="signature-label">Authorized Signatory</div>
+        </div>
     </div>
 </body>
 </html>

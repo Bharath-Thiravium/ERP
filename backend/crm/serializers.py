@@ -140,7 +140,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Opportunity
         fields = '__all__'
-        read_only_fields = ['opportunity_id', 'created_at', 'updated_at', 'created_by', 'company', 'owner']
+        read_only_fields = ['opportunity_id', 'created_at', 'updated_at', 'created_by', 'company']
 
     def validate_owner(self, value):
         """Accept owner as int or User instance, ignore strings"""

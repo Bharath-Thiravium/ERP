@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
-import { Plus, Users, Copy, Trash2, User, AlertTriangle } from 'lucide-react'
+import { Plus, Users, Copy, Trash2, User, AlertTriangle, KeyRound, Download } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { LoadingSpinner } from '../ui/LoadingSpinner'
 import { Modal } from '../ui/Modal'
+import apiClient from '../../lib/api'
+import toast from 'react-hot-toast'
 
 interface ServiceUserManagementProps {
   serviceUsersData: any[]
@@ -22,6 +24,73 @@ const ServiceUserManagement: React.FC<ServiceUserManagementProps> = ({
 }) => {
   const [deleteConfirm, setDeleteConfirm] = useState<{show: boolean, user: any}>({show: false, user: null})
   const [viewUser, setViewUser] = useState<any>(null)
+  const [resetConfirm, setResetConfirm] = useState<{show: boolean, user: any}>({show: false, user: null})
+  const [resetResult, setResetResult] = useState<{show: boolean, data: any}>({show: false, data: null})
+  const [resetting, setResetting] = useState(false)
+
+  const downloadResetCredentials = (data: any, user: any) => {
+    const text = `
+═══════════════════════════════════════════════════════════════
+                  SERVICE USER CREDENTIALS (RESET)
+═══════════════════════════════════════════════════════════════
+
+Full Name: ${user.full_name}
+Service: ${user.service_name}
+Reset Date: ${new Date().toLocaleString()}
+
+═══════════════════════════════════════════════════════════════
+                        LOGIN DETAILS
+═══════════════════════════════════════════════════════════════
+
+Unique Service ID: ${data.unique_service_id}
+Password: ${data.new_password}
+
+═══════════════════════════════════════════════════════════════
+                      IMPORTANT NOTES
+═══════════════════════════════════════════════════════════════
+
+1. Keep these credentials secure and confidential
+2. User must change password on next login
+3. All previous sessions have been revoked
+4. Password expires in 90 days
+
+═══════════════════════════════════════════════════════════════
+                    ATHENA'S SAP SYSTEM
+═══════════════════════════════════════════════════════════════
+
+System: AthenaSAP Enterprise Management System
+Website: https://athenas.co.in
+
+═══════════════════════════════════════════════════════════════
+`.trim()
+
+    const blob = new Blob([text], { type: 'text/plain' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${user.service_name}_reset_credentials_${data.username}_${new Date().toISOString().split('T')[0]}.txt`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  }
+
+  const handleResetPassword = async () => {
+    if (!resetConfirm.user) return
+    setResetting(true)
+    try {
+      const res = await apiClient.resetServiceUserPassword(resetConfirm.user.id)
+      const user = resetConfirm.user
+      setResetConfirm({show: false, user: null})
+      setResetResult({show: true, data: res.data})
+      downloadResetCredentials(res.data, user)
+      toast.success('Password reset! Credentials downloaded as TXT file.', { duration: 5000 })
+    } catch {
+      toast.error('Failed to reset password.')
+    } finally {
+      setResetting(false)
+    }
+  }
 
   const handleDeleteClick = (user: any) => {
     setDeleteConfirm({show: true, user})
@@ -104,13 +173,23 @@ const ServiceUserManagement: React.FC<ServiceUserManagementProps> = ({
                           </p>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteClick(user)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex space-x-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setResetConfirm({show: true, user})}
+                          title="Reset Password"
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteClick(user)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="space-y-2">
@@ -164,6 +243,81 @@ const ServiceUserManagement: React.FC<ServiceUserManagementProps> = ({
           )}
         </CardContent>
       </Card>
+
+      {/* Reset Password Confirmation Modal */}
+      <Modal
+        isOpen={resetConfirm.show}
+        onClose={() => setResetConfirm({show: false, user: null})}
+        title="Reset Password"
+        size="md"
+      >
+        <div className="flex items-center space-x-3 mb-4">
+          <div className="p-2 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg">
+            <KeyRound className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">A new password will be generated and shown once.</p>
+        </div>
+        <p className="text-gray-700 dark:text-gray-300 mb-6">
+          Reset password for <strong>{resetConfirm.user?.full_name}</strong>? All active sessions will be revoked.
+        </p>
+        <div className="flex justify-end space-x-3">
+          <Button variant="outline" onClick={() => setResetConfirm({show: false, user: null})}>Cancel</Button>
+          <Button
+            onClick={handleResetPassword}
+            disabled={resetting}
+            className="bg-yellow-600 hover:bg-yellow-700 text-white"
+          >
+            {resetting ? 'Resetting...' : 'Reset Password'}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Reset Password Result Modal */}
+      <Modal
+        isOpen={resetResult.show}
+        onClose={() => setResetResult({show: false, data: null})}
+        title="New Credentials"
+        size="md"
+      >
+        {resetResult.data && (
+          <div className="space-y-4">
+            <p className="text-sm text-yellow-600 dark:text-yellow-400 font-medium">Save these credentials now — the password won't be shown again.</p>
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Username</span>
+                <div className="flex items-center space-x-2">
+                  <span className="font-mono text-sm">{resetResult.data.username}</span>
+                  <Button variant="outline" size="sm" onClick={() => onCopyToClipboard(resetResult.data.username)}><Copy className="h-3 w-3" /></Button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Service ID</span>
+                <div className="flex items-center space-x-2">
+                  <span className="font-mono text-sm">{resetResult.data.unique_service_id}</span>
+                  <Button variant="outline" size="sm" onClick={() => onCopyToClipboard(resetResult.data.unique_service_id)}><Copy className="h-3 w-3" /></Button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">New Password</span>
+                <div className="flex items-center space-x-2">
+                  <span className="font-mono text-sm font-bold text-green-600">{resetResult.data.new_password}</span>
+                  <Button variant="outline" size="sm" onClick={() => onCopyToClipboard(resetResult.data.new_password)}><Copy className="h-3 w-3" /></Button>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-between items-center">
+              <Button
+                variant="outline"
+                onClick={() => resetResult.data && downloadResetCredentials(resetResult.data, serviceUsersData.find((u: any) => u.username === resetResult.data.username) || {full_name: resetResult.data.username, service_name: 'Service'})}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download Again
+              </Button>
+              <Button onClick={() => setResetResult({show: false, data: null})} className="bg-blue-600 hover:bg-blue-700 text-white">Done</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Delete Confirmation Modal */}
       <Modal

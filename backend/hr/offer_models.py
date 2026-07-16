@@ -1,6 +1,7 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 from django.utils import timezone
-from .models import JobApplication, Employee
+from .models import JobApplication
 
 class JobOffer(models.Model):
     """Job offer management"""
@@ -42,15 +43,30 @@ class JobOffer(models.Model):
         
     def __str__(self):
         return f"Offer for {self.application.full_name} - {self.status}"
+
+    def clean(self):
+        errors = {}
+        if self.salary_offered is None or self.salary_offered <= 0:
+            errors['salary_offered'] = 'Offered salary must be greater than zero.'
+        if self.joining_date and self.joining_date <= timezone.localdate():
+            errors['joining_date'] = 'Joining date must be in the future.'
+        if self.offer_valid_until and self.offer_valid_until < timezone.localdate():
+            errors['offer_valid_until'] = 'Offer validity date cannot be in the past.'
+        if self.joining_date and self.offer_valid_until and self.offer_valid_until >= self.joining_date:
+            errors['offer_valid_until'] = 'Offer must expire before the joining date.'
+        if errors:
+            raise ValidationError(errors)
     
     def send_offer(self):
-        """Mark offer as sent and send email"""
-        self.status = 'sent'
-        self.sent_at = timezone.now()
-        self.save()
-        
-        # Send email to candidate
-        return self._send_offer_email()
+        """Send first; persist sent state only after confirmed delivery."""
+        sent = self._send_offer_email()
+        if sent:
+            self.status = 'sent'
+            self.sent_at = timezone.now()
+            self.save(update_fields=['status', 'sent_at', 'updated_at'])
+            self.application.status = 'offer_sent'
+            self.application.save(update_fields=['status', 'updated_at'])
+        return sent
     
     def _send_offer_email(self):
         """Send offer email to candidate using company email service"""
@@ -156,8 +172,8 @@ HR Team
         self.save()
         
         # Update application status
-        self.application.status = 'selected'
-        self.application.save()
+        self.application.status = 'offer_accepted'
+        self.application.save(update_fields=['status', 'updated_at'])
     
     def reject_offer(self):
         """Mark offer as rejected"""
@@ -166,8 +182,8 @@ HR Team
         self.save()
         
         # Update application status
-        self.application.status = 'rejected'
-        self.application.save()
+        self.application.status = 'offer_rejected'
+        self.application.save(update_fields=['status', 'updated_at'])
     
     @property
     def is_expired(self):

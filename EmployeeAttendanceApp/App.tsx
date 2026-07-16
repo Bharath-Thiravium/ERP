@@ -13,55 +13,64 @@ import AttendanceScreen from './src/screens/attendance/AttendanceScreen';
 import LeaveScreen from './src/screens/leave/LeaveScreen';
 import PayslipScreen from './src/screens/payslip/PayslipScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
-import { Text, View } from 'react-native';
+import { StatusBar, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
+const tabMeta: Record<string, { short: string; label: string }> = {
+  Home: { short: 'HM', label: 'Home' },
+  Attendance: { short: 'AT', label: 'Attendance' },
+  Leave: { short: 'LV', label: 'Leave' },
+  Payslip: { short: 'PS', label: 'Payslip' },
+  Profile: { short: 'ME', label: 'Profile' },
+};
+
 const TabIcon = ({ name, focused }: { name: string; focused: boolean }) => (
   <View
-    style={{
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: focused ? '#4f46e5' : '#eef2ff',
-      borderWidth: 1,
-      borderColor: focused ? '#4f46e5' : '#dbeafe',
-    }}
+    style={[styles.tabIcon, focused && styles.tabIconActive]}
   >
-    <Text style={{ color: focused ? '#fff' : '#475569', fontSize: 13, fontWeight: '900' }}>
-      {name === 'Home' ? 'H' : name === 'Attendance' ? 'A' : name === 'Leave' ? 'L' : name === 'Payslip' ? 'S' : 'P'}
+    <Text style={[styles.tabIconText, focused && styles.tabIconTextActive]}>
+      {tabMeta[name]?.short || name.slice(0, 2).toUpperCase()}
     </Text>
   </View>
 );
 
 const MainTabs = () => (
   <Tab.Navigator
+    safeAreaInsets={{ top: 0 }}
     screenOptions={({ route }) => ({
+      tabBarPosition: 'top',
       tabBarIcon: ({ focused }) => (
         <TabIcon name={route.name} focused={focused} />
       ),
-      tabBarActiveTintColor: '#3b82f6',
-      tabBarInactiveTintColor: '#6b7280',
+      tabBarLabel: tabMeta[route.name]?.label || route.name,
+      tabBarActiveTintColor: '#4f46e5',
+      tabBarInactiveTintColor: '#64748b',
       tabBarLabelStyle: {
-        fontSize: 12,
+        fontSize: 10,
         fontWeight: '800',
-        marginTop: 4,
+        marginTop: 2,
       },
+      tabBarLabelPosition: 'below-icon',
+      tabBarItemStyle: { minWidth: 0, paddingHorizontal: 0 },
       tabBarStyle: {
-        height: 74,
-        paddingTop: 8,
-        paddingBottom: 10,
+        minHeight: 70,
+        paddingTop: 6,
+        paddingBottom: 6,
         backgroundColor: '#ffffff',
-        borderTopWidth: 0,
-        elevation: 18,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: '#e2e8f0',
+        elevation: 4,
         shadowColor: '#0f172a',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
       },
+      tabBarHideOnKeyboard: true,
+      sceneStyle: { backgroundColor: '#f6f8fc' },
+      lazy: true,
       headerShown: false,
     })}
   >
@@ -109,24 +118,58 @@ const AppNavigator = () => {
   };
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {isAuthenticated ? (
-          <Stack.Screen name="Main" component={MainTabs} />
-        ) : (
-          <Stack.Screen name="Login" component={LoginScreen} />
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          {isAuthenticated ? (
+            <Stack.Screen name="Main" component={MainTabs} />
+          ) : (
+            <Stack.Screen name="Login" component={LoginScreen} />
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaView>
   );
 };
 
 const App = () => {
   return (
-    <Provider store={store}>
-      <AppNavigator />
-    </Provider>
+    <SafeAreaProvider>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <Provider store={store}>
+        <AppNavigator />
+      </Provider>
+    </SafeAreaProvider>
   );
 };
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  tabIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  tabIconActive: {
+    backgroundColor: '#4f46e5',
+    borderColor: '#4f46e5',
+  },
+  tabIconText: {
+    color: '#64748b',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  tabIconTextActive: {
+    color: '#ffffff',
+  },
+});
 
 export default App;

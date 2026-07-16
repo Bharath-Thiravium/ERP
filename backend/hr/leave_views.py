@@ -18,6 +18,8 @@ from .attendance_calendar import calculate_leave_days
 from .security_utils import SecurityValidator, secure_session_check, validate_year_param, validate_month_param, sanitize_filename
 from rest_framework import serializers
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from company_dashboard.models import CompanyNotification
+from company_dashboard.serializers import CompanyNotificationSerializer
 
 
 class LeaveTypeSerializer(serializers.ModelSerializer):
@@ -786,21 +788,67 @@ def mobile_leave_applications(request):
         if total_days <= 0:
             return Response({'error': 'Selected dates do not include any working leave days'}, status=status.HTTP_400_BAD_REQUEST)
 
-        application = LeaveApplication.objects.create(
-            employee=employee,
-            leave_type=leave_type,
-            from_date=from_dt,
-            to_date=to_dt,
-            total_days=total_days,
-            reason=reason,
-            status='pending',
-        )
+        with transaction.atomic():
+            application = LeaveApplication.objects.create(
+                employee=employee,
+                leave_type=leave_type,
+                from_date=from_dt,
+                to_date=to_dt,
+                total_days=total_days,
+                reason=reason,
+                status='pending',
+            )
+            CompanyNotification.objects.create(
+                company=employee.company,
+                type='user_activity',
+                service_type='hr',
+                title=f'Leave request from {employee.full_name}',
+                message=(
+                    f'{leave_type.name}: {from_dt:%d %b %Y} to {to_dt:%d %b %Y} '
+                    f'({total_days} day(s)). Review required.'
+                ),
+                priority='high',
+                metadata={
+                    'navigate_to': 'hr-leave',
+                    'leave_application_id': application.id,
+                    'employee_id': employee.id,
+                    'employee_number': employee.employee_id,
+                },
+            )
         return Response({
             'message': 'Leave request submitted for HR approval',
             'application': LeaveApplicationSerializer(application, context={'request': request}).data,
         }, status=status.HTTP_201_CREATED)
     except LeaveType.DoesNotExist:
         return Response({'error': 'Leave type not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
+def hr_notifications(request):
+    notifications = CompanyNotification.objects.filter(
+        company=request.service_user.company,
+        service_type='hr',
+    )[:30]
+    return Response({'results': CompanyNotificationSerializer(notifications, many=True).data})
+
+
+@api_view(['POST'])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
+def mark_hr_notification_read(request, notification_id):
+    notification = CompanyNotification.objects.filter(
+        id=notification_id,
+        company=request.service_user.company,
+        service_type='hr',
+    ).first()
+    if notification is None:
+        return Response({'error': 'Notification not found'}, status=status.HTTP_404_NOT_FOUND)
+    notification.read = True
+    notification.read_at = timezone.now()
+    notification.save(update_fields=['read', 'read_at'])
+    return Response({'message': 'Notification marked as read'})
     
     def create(self, request, *args, **kwargs):
         session_key = self.get_session_key()

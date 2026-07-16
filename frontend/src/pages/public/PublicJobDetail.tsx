@@ -182,7 +182,14 @@ const PublicJobDetail: React.FC<PublicJobDetailProps> = () => {
       setResume(null)
     } catch (error: any) {
       console.error('Error submitting application:', error)
-      toast.error(error.response?.data?.message || 'Failed to submit application')
+      const errorData = error.response?.data
+      toast.error(
+        errorData?.email?.[0] ||
+        errorData?.phone?.[0] ||
+        errorData?.detail ||
+        errorData?.message ||
+        'Failed to submit application'
+      )
     }
   }
 

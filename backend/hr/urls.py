@@ -88,6 +88,8 @@ urlpatterns = [
     path('mobile/leave/types/', leave_views.mobile_leave_types, name='mobile-leave-types'),
     path('mobile/leave/balances/', leave_views.mobile_leave_balances, name='mobile-leave-balances'),
     path('mobile/leave/applications/', leave_views.mobile_leave_applications, name='mobile-leave-applications'),
+    path('notifications/', leave_views.hr_notifications, name='hr-notifications'),
+    path('notifications/<int:notification_id>/read/', leave_views.mark_hr_notification_read, name='hr-notification-read'),
     path('mobile/payslips/', payroll_views.mobile_payslips, name='mobile-payslips'),
 
     # Frontend-compatible statutory and government aliases
@@ -103,6 +105,15 @@ urlpatterns = [
     path('government/submission-history/', government_views.get_submission_history, name='government-submission-history'),
     path('government/challans/', government_views.get_challans, name='government-challans'),
 
+    # Keep the public API spelling used by the recruitment frontend. DRF's
+    # default action route uses track_share, so this explicit alias prevents
+    # copy/share actions from producing a false 404 after succeeding locally.
+    path(
+        'share-analytics/track-share/',
+        share_analytics_views.ShareAnalyticsViewSet.as_view({'post': 'track_share'}),
+        name='share-analytics-track-share-hyphen',
+    ),
+
     # Router URLs (after explicit paths to avoid pk conflict)
     path('', include(router.urls)),
 
@@ -115,6 +126,7 @@ urlpatterns = [
     path('job-postings/<int:pk>/', views.JobPostingDetailView.as_view(), name='job-posting-detail'),
     path('job-applications/', views.JobApplicationListCreateView.as_view(), name='job-application-list-create'),
     path('job-applications/<int:pk>/', views.JobApplicationDetailView.as_view(), name='job-application-detail'),
+    path('recruitment/analytics/', views.recruitment_analytics, name='recruitment-analytics'),
     path('interviews/', interview_views.InterviewListCreateView.as_view(), name='interview-list-create'),
     path('interviews/<int:pk>/', interview_views.InterviewDetailView.as_view(), name='interview-detail'),
     path('offers/', offer_views.OfferListCreateView.as_view(), name='offer-list-create'),

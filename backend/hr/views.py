@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView, ListAPIView, RetrieveAPIView, CreateAPIView
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Count, Avg
+from django.db.models.functions import TruncMonth
 from django.db import transaction
 from authentication.models import ServiceUserSession
 from authentication.authentication import ServiceUserSessionAuthentication
@@ -469,7 +470,8 @@ class JobPostingListCreateView(ListCreateAPIView):
 
             job_posting = serializer.save(
                 company=service_user.company,
-                created_by=service_user
+                created_by=service_user,
+                posted_date=timezone.now() if serializer.validated_data.get('status') == 'active' else None,
             )
 
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -514,7 +516,11 @@ class JobPostingDetailView(RetrieveUpdateDestroyAPIView):
             instance = self.get_object()
             serializer = self.get_serializer(instance, data=request.data, partial=partial)
             serializer.is_valid(raise_exception=True)
-            self.perform_update(serializer)
+            previous_status = instance.status
+            updated = serializer.save()
+            if updated.status == 'active' and previous_status != 'active' and not updated.posted_date:
+                updated.posted_date = timezone.now()
+                updated.save(update_fields=['posted_date'])
             return Response(serializer.data)
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -533,12 +539,12 @@ class JobPostingDetailView(RetrieveUpdateDestroyAPIView):
                 return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
             
             job_title = instance.title
-            
-            instance.delete()
+            instance.status = 'closed'
+            instance.save(update_fields=['status', 'updated_at'])
             
             return Response({
                 'success': True,
-                'message': f'Job posting {job_title} deleted successfully'
+                'message': f'Job posting {job_title} archived successfully'
             }, status=status.HTTP_200_OK)
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -599,6 +605,105 @@ class JobApplicationListCreateView(ListCreateAPIView):
         if not session_key and self.request.method == 'POST':
             session_key = self.request.data.get('session_key')
         return session_key
+
+    def create(self, request, *args, **kwargs):
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            job = serializer.validated_data['job_posting']
+            if job.company_id != session.service_user.company_id:
+                return Response({'job_posting': ['Job posting not found or access denied.']}, status=status.HTTP_400_BAD_REQUEST)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['GET'])
+@authentication_classes([ServiceUserSessionAuthentication])
+@permission_classes([IsServiceUserAuthenticated])
+def recruitment_analytics(request):
+    """Return complete company-scoped recruitment metrics without list pagination loss."""
+    service_user = getattr(request, 'service_user', None)
+    if not service_user:
+        return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    company = service_user.company
+    applications = JobApplication.objects.filter(job_posting__company=company)
+    active_jobs = JobPosting.objects.filter(company=company, status='active').count()
+    total = applications.count()
+    hired_statuses = ['selected', 'offer_accepted']
+    hired = applications.filter(status__in=hired_statuses)
+
+    completed_durations = [
+        (application.updated_at - application.created_at).total_seconds() / 86400
+        for application in hired.only('created_at', 'updated_at')
+    ]
+    average_time_to_hire = (
+        round(sum(completed_durations) / len(completed_durations), 1)
+        if completed_durations else 0
+    )
+
+    status_counts = {
+        row['status']: row['count']
+        for row in applications.values('status').annotate(count=Count('id')).order_by()
+    }
+    source_analysis = list(
+        applications.values('application_source')
+        .annotate(count=Count('id'))
+        .order_by('-count', 'application_source')
+    )
+    monthly_trends = [
+        {
+            'month': row['month'].strftime('%Y-%m'),
+            'applications': row['applications'],
+        }
+        for row in applications.annotate(month=TruncMonth('created_at'))
+        .values('month')
+        .annotate(applications=Count('id'))
+        .order_by('month')
+    ]
+
+    top_jobs = []
+    jobs = JobPosting.objects.filter(company=company).select_related('department').annotate(
+        applications_count=Count('applications', distinct=True),
+        selected_count=Count(
+            'applications',
+            filter=Q(applications__status__in=hired_statuses),
+            distinct=True,
+        ),
+    ).order_by('-applications_count', '-created_at')[:5]
+    for job in jobs:
+        conversion_rate = (
+            job.selected_count * 100 / job.applications_count
+            if job.applications_count else 0
+        )
+        top_jobs.append({
+            'id': job.id,
+            'title': job.title,
+            'department_name': job.department.name,
+            'applicationsCount': job.applications_count,
+            'selectedCount': job.selected_count,
+            'conversionRate': round(conversion_rate, 1),
+        })
+
+    return Response({
+        'totalApplications': total,
+        'activeJobs': active_jobs,
+        'averageTimeToHire': average_time_to_hire,
+        'conversionRate': round(hired.count() * 100 / total, 1) if total else 0,
+        'applicationsByStatus': status_counts,
+        'sourceAnalysis': [
+            {'source': row['application_source'] or 'direct', 'count': row['count']}
+            for row in source_analysis
+        ],
+        'monthlyTrends': monthly_trends,
+        'topPerformingJobs': top_jobs,
+    })
 
 
 class DepartmentListCreateView(ListCreateAPIView):
@@ -790,14 +895,16 @@ def get_designations(request):
 
 class PublicJobListView(ListAPIView):
     """Public job listings for candidates (no authentication required)"""
-    authentication_classes = [ServiceUserSessionAuthentication]
-    permission_classes = [IsServiceUserAuthenticated]
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
     serializer_class = JobPostingSerializer
     pagination_class = HRPagination
 
     def get_queryset(self):
         queryset = JobPosting.objects.filter(
             status='active'
+        ).filter(
+            Q(application_deadline__isnull=True) | Q(application_deadline__gte=timezone.localdate())
         ).select_related('department', 'designation', 'company')
         
         # Search functionality
@@ -820,12 +927,14 @@ class PublicJobListView(ListAPIView):
 
 class PublicJobDetailView(RetrieveAPIView):
     """Public job detail view for candidates"""
-    authentication_classes = [ServiceUserSessionAuthentication]
-    permission_classes = [IsServiceUserAuthenticated]
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
     serializer_class = JobPostingSerializer
     
     def get_queryset(self):
-        return JobPosting.objects.filter(status='active').select_related(
+        return JobPosting.objects.filter(status='active').filter(
+            Q(application_deadline__isnull=True) | Q(application_deadline__gte=timezone.localdate())
+        ).select_related(
             'department', 'designation', 'company'
         )
 
@@ -871,18 +980,36 @@ class JobApplicationDetailView(RetrieveUpdateDestroyAPIView):
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
+    def destroy(self, request, *args, **kwargs):
+        application = self.get_object()
+        if application.status in {'selected', 'offer_accepted'}:
+            return Response(
+                {'status': ['A selected candidate application cannot be withdrawn.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        application.status = 'withdrawn'
+        application.save(update_fields=['status', 'updated_at'])
+        return Response(
+            {'success': True, 'message': 'Application archived as withdrawn.'},
+            status=status.HTTP_200_OK,
+        )
+
 
 class PublicJobApplicationView(CreateAPIView):
     """Public job application submission"""
-    authentication_classes = [ServiceUserSessionAuthentication]
-    permission_classes = [IsServiceUserAuthenticated]
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
     serializer_class = JobApplicationSerializer
 
     def create(self, request, *args, **kwargs):
         job_id = kwargs.get('job_id')
         
         try:
-            job_posting = JobPosting.objects.get(id=job_id, status='active')
+            job_posting = JobPosting.objects.filter(
+                Q(application_deadline__isnull=True) | Q(application_deadline__gte=timezone.localdate()),
+                id=job_id,
+                status='active',
+            ).get()
         except JobPosting.DoesNotExist:
             return Response(
                 {'error': 'Job posting not found or not active'},
@@ -916,20 +1043,17 @@ class PublicJobApplicationView(CreateAPIView):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         
-        application = serializer.save(job_posting=job_posting)
+        application = serializer.save(job_posting=job_posting, status='submitted')
         
         # Calculate AI score for the application
-        try:
+        if job_posting.ai_screening_enabled:
             from .ai_scoring import calculate_ai_score
             ai_score, skill_match, screening_notes = calculate_ai_score(application)
             application.ai_score = ai_score
             application.skill_match_percentage = skill_match
             application.ai_screening_notes = screening_notes
             application.status = 'screening'  # Update status to screening
-            application.save()
-        except Exception as e:
-            # If AI scoring fails, continue without it
-            pass
+            application.save(update_fields=['ai_score', 'skill_match_percentage', 'ai_screening_notes', 'status', 'updated_at'])
         
         return Response(
             {

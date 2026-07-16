@@ -14,6 +14,20 @@ interface JobPostingFormProps {
   job?: JobPosting
 }
 
+const getApiErrorMessage = (error: any) => {
+  const data = error.response?.data
+  if (!data) return 'Failed to save job posting'
+  if (typeof data === 'string') return data
+  if (typeof data.detail === 'string') return data.detail
+  if (data.detail && typeof data.detail === 'object') {
+    return Object.values(data.detail).flat().join(' ')
+  }
+  if (typeof data === 'object') {
+    return Object.values(data).flat().join(' ')
+  }
+  return 'Failed to save job posting'
+}
+
 const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSuccess, job }) => {
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
@@ -33,6 +47,8 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
     min_salary: '',
     max_salary: '',
     required_skills: '',
+    application_deadline: '',
+    ai_screening_enabled: true,
     status: 'active'
   })
 
@@ -50,6 +66,8 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
         min_salary: job.min_salary?.toString() || '',
         max_salary: job.max_salary?.toString() || '',
         required_skills: Array.isArray(job.required_skills) ? job.required_skills.join(', ') : '',
+        application_deadline: job.application_deadline || '',
+        ai_screening_enabled: job.ai_screening_enabled ?? true,
         status: job.status || 'active'
       })
     }
@@ -93,6 +111,16 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
     }
   }
 
+  const handleDesignationChange = (designationId: string) => {
+    const designation = designations.find((item) => String(item.id) === designationId)
+    setFormData((current) => ({
+      ...current,
+      designation: designationId,
+      min_salary: designation ? String(designation.min_salary ?? '') : '',
+      max_salary: designation ? String(designation.max_salary ?? '') : ''
+    }))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!sessionKey) return
@@ -116,6 +144,10 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
     }
     if (!formData.responsibilities.trim()) {
       toast.error('Responsibilities are required')
+      return
+    }
+    if (!formData.application_deadline) {
+      toast.error('Application deadline is required')
       return
     }
 
@@ -144,7 +176,7 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
       resetForm()
     } catch (error: any) {
       console.error('Error saving job posting:', error)
-      toast.error(error.response?.data?.detail || 'Failed to save job posting')
+      toast.error(getApiErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -163,6 +195,8 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
       min_salary: '',
       max_salary: '',
       required_skills: '',
+      application_deadline: '',
+      ai_screening_enabled: true,
       status: 'active'
     })
   }
@@ -228,7 +262,13 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
                   </label>
                   <select
                     value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value, designation: '' })}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      department: e.target.value,
+                      designation: '',
+                      min_salary: '',
+                      max_salary: ''
+                    })}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     required
                   >
@@ -247,7 +287,7 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
                   </label>
                   <select
                     value={formData.designation}
-                    onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                    onChange={(e) => handleDesignationChange(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     disabled={!formData.department}
                     required
@@ -310,9 +350,9 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
                   <input
                     type="number"
                     value={formData.min_salary}
-                    onChange={(e) => setFormData({ ...formData, min_salary: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    placeholder="e.g. 500000"
+                    readOnly
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white cursor-not-allowed"
+                    placeholder="Select a designation"
                   />
                 </div>
 
@@ -323,12 +363,15 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
                   <input
                     type="number"
                     value={formData.max_salary}
-                    onChange={(e) => setFormData({ ...formData, max_salary: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    placeholder="e.g. 800000"
+                    readOnly
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white cursor-not-allowed"
+                    placeholder="Select a designation"
                   />
                 </div>
               </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Salary band is controlled by the selected designation in HR Settings.
+              </p>
             </div>
 
             {/* Requirements */}
@@ -352,6 +395,30 @@ const JobPostingForm: React.FC<JobPostingFormProps> = ({ isOpen, onClose, onSucc
                   <option value="paused">Paused</option>
                   <option value="closed">Closed</option>
                 </select>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Application Deadline *
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.application_deadline}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setFormData({ ...formData, application_deadline: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    required
+                  />
+                </div>
+                <label className="flex items-center gap-3 self-end min-h-10 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={formData.ai_screening_enabled}
+                    onChange={(e) => setFormData({ ...formData, ai_screening_enabled: e.target.checked })}
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Enable automated candidate screening</span>
+                </label>
               </div>
 
               <div>

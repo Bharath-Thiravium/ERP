@@ -53,8 +53,20 @@ const Recruitment: React.FC = () => {
       
       const jobs = jobsResponse.data.results || []
       const apps = appsResponse.data.results || []
-      
-      setJobPostings(jobs)
+
+      const visibleApplicationCounts = apps.reduce<Record<number, number>>((counts, application: JobApplication) => {
+        counts[application.job_posting] = (counts[application.job_posting] || 0) + 1
+        return counts
+      }, {})
+      const jobsWithCurrentCounts = jobs.map((job: JobPosting) => ({
+        ...job,
+        applications_count: Math.max(
+          Number(job.applications_count) || 0,
+          visibleApplicationCounts[job.id] || 0
+        )
+      }))
+
+      setJobPostings(jobsWithCurrentCounts)
       // setApplications(apps)
       
       // Calculate stats
@@ -83,8 +95,10 @@ const Recruitment: React.FC = () => {
   }
 
   useEffect(() => {
-    fetchRecruitmentData()
-  }, [sessionKey])
+    if (activeView === 'overview' || activeView === 'jobs') {
+      fetchRecruitmentData()
+    }
+  }, [sessionKey, activeView])
 
   const getStatusColor = (status: string) => {
     switch (status) {

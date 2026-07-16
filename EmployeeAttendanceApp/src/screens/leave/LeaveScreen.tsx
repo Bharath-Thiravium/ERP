@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import ApiService from '../../services/ApiService';
+import { useFocusEffect } from '@react-navigation/native';
 
 type LeaveType = {
   id: number;
@@ -37,6 +38,7 @@ type LeaveApplication = {
   total_days: string | number;
   status: string;
   reason: string;
+  rejection_reason?: string;
 };
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -53,12 +55,10 @@ const LeaveScreen = () => {
   const [submitting, setSubmitting] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<LeaveApplication | null>(null);
 
-  useEffect(() => {
-    loadLeaveData();
-  }, []);
-
-  const loadLeaveData = async () => {
-    setLoading(true);
+  const loadLeaveData = useCallback(async (showLoader = true) => {
+    if (showLoader) {
+      setLoading(true);
+    }
     try {
       const [typesResponse, balancesResponse, appsResponse] = await Promise.all([
         ApiService.getLeaveTypes(),
@@ -69,15 +69,25 @@ const LeaveScreen = () => {
       setLeaveTypes(types);
       setBalances(balancesResponse.data.results || []);
       setApplications(appsResponse.data.results || []);
-      if (!selectedLeaveType && types.length > 0) {
-        setSelectedLeaveType(types[0].id);
+      if (types.length > 0) {
+        setSelectedLeaveType(current => current || types[0].id);
       }
     } catch (error: any) {
       Alert.alert('Leave Data Error', error.response?.data?.error || 'Unable to load leave data');
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadLeaveData();
+      const refreshTimer = setInterval(() => loadLeaveData(false), 20000);
+      return () => clearInterval(refreshTimer);
+    }, [loadLeaveData]),
+  );
 
   const selectedType = useMemo(
     () => leaveTypes.find(item => item.id === selectedLeaveType),
@@ -276,6 +286,12 @@ const LeaveScreen = () => {
               <Text style={styles.detailLabel}>Reason</Text>
               <Text style={styles.reasonText}>{selectedApplication?.reason || 'No reason provided'}</Text>
             </View>
+            {selectedApplication?.rejection_reason ? (
+              <View style={styles.rejectionBox}>
+                <Text style={styles.detailLabel}>HR Response</Text>
+                <Text style={styles.rejectionText}>{selectedApplication.rejection_reason}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -285,22 +301,22 @@ const LeaveScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f7fb' },
-  content: { padding: 20, paddingBottom: 36 },
+  content: { padding: 16, paddingBottom: 32 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f7fb' },
   loadingText: { marginTop: 12, color: '#64748b' },
-  hero: { backgroundColor: '#111827', borderRadius: 24, padding: 22, marginBottom: 20 },
-  eyebrow: { color: '#a78bfa', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
-  title: { color: '#fff', fontSize: 28, fontWeight: '800', marginTop: 8 },
+  hero: { backgroundColor: '#111827', borderRadius: 16, padding: 20, marginBottom: 16 },
+  eyebrow: { color: '#a78bfa', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  title: { color: '#fff', fontSize: 26, fontWeight: '800', marginTop: 6 },
   subtitle: { color: '#cbd5e1', marginTop: 8, lineHeight: 20 },
   section: { marginBottom: 20 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0f172a', marginBottom: 12 },
   balanceTotal: { color: '#6d28d9', fontWeight: '900', backgroundColor: '#ede9fe', borderRadius: 999, overflow: 'hidden', paddingHorizontal: 12, paddingVertical: 5, marginBottom: 12 },
-  balanceCard: { width: 170, backgroundColor: '#fff', borderRadius: 18, padding: 16, marginRight: 12, borderWidth: 1, borderColor: '#e2e8f0' },
+  balanceCard: { width: 164, backgroundColor: '#fff', borderRadius: 12, padding: 14, marginRight: 10, borderWidth: 1, borderColor: '#e2e8f0' },
   balanceName: { color: '#475569', fontWeight: '700' },
   balanceValue: { color: '#6d28d9', fontSize: 34, fontWeight: '900', marginTop: 10 },
   balanceMeta: { color: '#64748b', marginTop: 8, fontSize: 12 },
-  formCard: { backgroundColor: '#fff', borderRadius: 24, padding: 18, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0' },
+  formCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 18, borderWidth: 1, borderColor: '#e2e8f0' },
   label: { fontSize: 13, fontWeight: '700', color: '#334155', marginBottom: 8 },
   typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   typePill: { borderRadius: 999, borderWidth: 1, borderColor: '#cbd5e1', paddingHorizontal: 14, paddingVertical: 9, backgroundColor: '#fff' },
@@ -310,15 +326,15 @@ const styles = StyleSheet.create({
   helperText: { color: '#64748b', marginBottom: 12 },
   row: { flexDirection: 'row', gap: 12 },
   field: { flex: 1 },
-  input: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 14, padding: 12, marginBottom: 14, backgroundColor: '#fff', color: '#0f172a' },
+  input: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, padding: 12, marginBottom: 14, backgroundColor: '#fff', color: '#0f172a' },
   textArea: { minHeight: 86, textAlignVertical: 'top' },
-  submitButton: { backgroundColor: '#6d28d9', borderRadius: 16, alignItems: 'center', paddingVertical: 15 },
+  submitButton: { backgroundColor: '#6d28d9', borderRadius: 10, alignItems: 'center', paddingVertical: 15 },
   disabled: { opacity: 0.6 },
   submitText: { color: '#fff', fontWeight: '800' },
-  emptyCard: { backgroundColor: '#fff', borderRadius: 18, padding: 18, borderWidth: 1, borderColor: '#e2e8f0' },
+  emptyCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#e2e8f0' },
   emptyTitle: { color: '#0f172a', fontWeight: '800', marginBottom: 6 },
   emptyText: { color: '#64748b' },
-  requestCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 10 },
+  requestCard: { backgroundColor: '#fff', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 10 },
   requestHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   requestTitle: { color: '#0f172a', fontWeight: '800', fontSize: 15 },
   statusBadge: { overflow: 'hidden', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 12, fontWeight: '800', textTransform: 'capitalize' },
@@ -340,6 +356,8 @@ const styles = StyleSheet.create({
   detailValue: { color: '#0f172a', fontWeight: '900' },
   reasonBox: { backgroundColor: '#f8fafc', borderRadius: 18, padding: 14, marginTop: 14 },
   reasonText: { color: '#334155', marginTop: 8, lineHeight: 20 },
+  rejectionBox: { marginTop: 12, borderRadius: 12, padding: 12, backgroundColor: '#fff1f2', borderWidth: 1, borderColor: '#fecdd3' },
+  rejectionText: { color: '#be123c', lineHeight: 20, marginTop: 6 },
 });
 
 export default LeaveScreen;

@@ -47,32 +47,11 @@ const InterviewScheduler: React.FC<InterviewSchedulerProps> = ({
         params: { session_key: sessionKey, status: 'active' }
       })
       const employees = response.data.results || []
-      
-      // Add current service user as default interviewer
-      const currentUser = {
-        id: 'service_user',
-        first_name: 'Current',
-        last_name: 'User',
-        designation_title: 'HR Manager'
-      }
-      
-      setInterviewers([currentUser, ...employees])
-      
-      // Set current user as default
-      if (!formData.interviewer) {
-        setFormData(prev => ({ ...prev, interviewer: 'service_user' }))
-      }
+      setInterviewers(employees)
     } catch (error) {
       console.error('Error fetching interviewers:', error)
-      // Fallback: just add current user
-      const currentUser = {
-        id: 'service_user',
-        first_name: 'Current',
-        last_name: 'User',
-        designation_title: 'HR Manager'
-      }
-      setInterviewers([currentUser])
-      setFormData(prev => ({ ...prev, interviewer: 'service_user' }))
+      setInterviewers([])
+      toast.error('Unable to load active employees for interviewer selection')
     }
   }
 
@@ -83,11 +62,9 @@ const InterviewScheduler: React.FC<InterviewSchedulerProps> = ({
     setLoading(true)
     try {
       // Schedule interview
-      const interviewerValue = formData.interviewer === 'service_user' ? null : parseInt(formData.interviewer)
-      
       const response = await api.post('/api/hr/interviews/', {
         application_id: application.id,
-        interviewer_id: interviewerValue,
+        interviewer_id: parseInt(formData.interviewer),
         interview_date: formData.interview_date,
         interview_time: formData.interview_time,
         interview_type: formData.interview_type,
@@ -98,22 +75,14 @@ const InterviewScheduler: React.FC<InterviewSchedulerProps> = ({
         session_key: sessionKey
       })
 
-      // Update application status
-      const interviewerForApp = formData.interviewer === 'service_user' ? null : parseInt(formData.interviewer)
-      
-      await api.patch(`/api/hr/job-applications/${application.id}/`, {
-        status: 'interview_scheduled',
-        interview_date: `${formData.interview_date}T${formData.interview_time}`,
-        interviewer: interviewerForApp,
-        session_key: sessionKey
-      })
-
       // Check email status
       if (response.data.email_success) {
         toast.success('Interview scheduled and invitation email sent successfully')
       } else if (response.data.email_warning) {
-        toast.success('Interview scheduled successfully')
-        toast.error(`Email issue: ${response.data.email_warning}`, { duration: 6000 })
+        toast(`Interview scheduled, but invitation email was not sent: ${response.data.email_warning}`, {
+          duration: 6000,
+          icon: '!',
+        })
       } else {
         toast.success('Interview scheduled successfully')
       }
@@ -123,7 +92,8 @@ const InterviewScheduler: React.FC<InterviewSchedulerProps> = ({
       resetForm()
     } catch (error: any) {
       console.error('Error scheduling interview:', error)
-      toast.error(error.response?.data?.detail || 'Failed to schedule interview')
+      const detail = error.response?.data?.detail
+      toast.error(typeof detail === 'string' ? detail : 'Failed to schedule interview')
     } finally {
       setLoading(false)
     }
@@ -241,6 +211,7 @@ const InterviewScheduler: React.FC<InterviewSchedulerProps> = ({
                 onChange={(e) => setFormData({ ...formData, meeting_link: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                required
               />
             </div>
           )}
@@ -256,6 +227,7 @@ const InterviewScheduler: React.FC<InterviewSchedulerProps> = ({
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 placeholder="Office address or meeting room"
+                required
               />
             </div>
           )}

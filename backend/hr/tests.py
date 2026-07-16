@@ -1,7 +1,10 @@
 from django.test import TestCase
 from django.contrib.auth.models import User
 from authentication.models import Company
-from .models import Department, Employee, Attendance, Designation, AttendanceDevice, PayrollCycle, Payslip
+from .models import (
+    Department, Employee, Attendance, Designation, AttendanceDevice, PayrollCycle,
+    Payslip, JobPosting, JobApplication,
+)
 from .leave_models import LeaveType, LeaveApplication, LeaveBalance
 from decimal import Decimal
 from datetime import timedelta
@@ -371,3 +374,137 @@ class HRPhase1SecurityTest(TestCase):
         queryset = Employee.objects.filter(company=request.service_user.company)
         self.assertTrue(queryset.filter(id=self.employee_a.id).exists())
         self.assertFalse(queryset.filter(id=self.employee_b.id).exists())
+
+
+class RecruitmentIntegrityTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='recruitment-test', email='recruitment@example.com', password='testpass123'
+        )
+        self.company_a = Company.objects.create(
+            name='Recruitment Company A', company_prefix='RCA', email='a@recruitment.test',
+            created_by=self.user, approval_status='approved',
+        )
+        self.company_b = Company.objects.create(
+            name='Recruitment Company B', company_prefix='RCB', email='b@recruitment.test',
+            created_by=self.user, approval_status='approved',
+        )
+        self.department_a = Department.objects.create(
+            company=self.company_a, name='Engineering', code='ENG-A'
+        )
+        self.department_b = Department.objects.create(
+            company=self.company_b, name='Engineering', code='ENG-B'
+        )
+        self.designation_a = Designation.objects.create(
+            company=self.company_a, department=self.department_a, title='Senior Developer',
+            code='SDEV-A', min_salary=Decimal('600000'), max_salary=Decimal('900000'),
+        )
+        self.designation_b = Designation.objects.create(
+            company=self.company_b, department=self.department_b, title='Senior Developer',
+            code='SDEV-B', min_salary=Decimal('500000'), max_salary=Decimal('800000'),
+        )
+
+    def _job_payload(self, department=None, designation=None):
+        return {
+            'title': 'Backend Developer',
+            'department': (department or self.department_a).id,
+            'designation': (designation or self.designation_a).id,
+            'description': 'Build and maintain APIs.',
+            'requirements': 'Python and Django.',
+            'responsibilities': 'Own backend delivery.',
+            'employment_type': 'full_time',
+            'work_mode': 'office',
+            'min_salary': '1.00',
+            'max_salary': '2.00',
+            'required_skills': ['Python', 'Django'],
+            'application_deadline': (timezone.localdate() + timedelta(days=30)).isoformat(),
+            'status': 'active',
+        }
+
+    def _create_job(self):
+        return JobPosting.objects.create(
+            company=self.company_a,
+            title='Backend Developer',
+            department=self.department_a,
+            designation=self.designation_a,
+            description='Build APIs',
+            requirements='Python',
+            responsibilities='Delivery',
+            min_salary=self.designation_a.min_salary,
+            max_salary=self.designation_a.max_salary,
+            application_deadline=timezone.localdate() + timedelta(days=30),
+            status='active',
+        )
+
+    def test_job_posting_uses_designation_salary_band(self):
+        from .serializers import JobPostingSerializer
+
+        serializer = JobPostingSerializer(
+            data=self._job_payload(),
+            context={'request': _build_request(self.company_a)},
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data['min_salary'], Decimal('600000'))
+        self.assertEqual(serializer.validated_data['max_salary'], Decimal('900000'))
+
+    def test_job_posting_rejects_cross_company_designation(self):
+        from .serializers import JobPostingSerializer
+
+        serializer = JobPostingSerializer(
+            data=self._job_payload(designation=self.designation_b),
+            context={'request': _build_request(self.company_a)},
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('designation', serializer.errors)
+
+    def test_duplicate_application_for_same_job_is_rejected(self):
+        from .serializers import JobApplicationSerializer
+
+        job = self._create_job()
+        JobApplication.objects.create(
+            job_posting=job, first_name='First', last_name='Candidate',
+            email='candidate@example.com', phone='9000000000',
+        )
+        serializer = JobApplicationSerializer(data={
+            'job_posting': job.id,
+            'first_name': 'Second',
+            'last_name': 'Candidate',
+            'email': 'CANDIDATE@example.com',
+            'phone': '9000000001',
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('email', serializer.errors)
+
+    def test_duplicate_application_phone_for_same_job_is_rejected(self):
+        from .serializers import JobApplicationSerializer
+
+        job = self._create_job()
+        JobApplication.objects.create(
+            job_posting=job, first_name='First', last_name='Candidate',
+            email='first@example.com', phone='86808 12657',
+        )
+        serializer = JobApplicationSerializer(data={
+            'job_posting': job.id,
+            'first_name': 'Second',
+            'last_name': 'Candidate',
+            'email': 'second@example.com',
+            'phone': '8680812657',
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('phone', serializer.errors)
+
+    def test_application_cannot_skip_from_submitted_to_selected(self):
+        from .serializers import JobApplicationSerializer
+
+        application = JobApplication.objects.create(
+            job_posting=self._create_job(), first_name='Flow', last_name='Candidate',
+            email='flow@example.com', phone='9000000002', status='submitted',
+        )
+        serializer = JobApplicationSerializer(
+            application,
+            data={'status': 'selected'},
+            partial=True,
+            context={'request': _build_request(self.company_a)},
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('status', serializer.errors)

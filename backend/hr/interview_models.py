@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from django.core.validators import MinValueValidator, MaxValueValidator
 from .models import JobApplication, Employee
 
 class Interview(models.Model):
@@ -19,7 +20,7 @@ class Interview(models.Model):
     ]
     
     application = models.ForeignKey(JobApplication, on_delete=models.CASCADE, related_name='interviews')
-    interviewer = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='scheduled_interviews', null=True, blank=True)
+    interviewer = models.ForeignKey(Employee, on_delete=models.SET_NULL, related_name='scheduled_interviews', null=True, blank=True)
     
     # Interview Details
     interview_date = models.DateField()
@@ -39,10 +40,10 @@ class Interview(models.Model):
     
     # Feedback and Results
     feedback = models.TextField(blank=True, help_text="Interview feedback")
-    technical_rating = models.IntegerField(null=True, blank=True, help_text="Technical skills rating (1-10)")
-    communication_rating = models.IntegerField(null=True, blank=True, help_text="Communication rating (1-10)")
-    cultural_fit_rating = models.IntegerField(null=True, blank=True, help_text="Cultural fit rating (1-10)")
-    overall_rating = models.IntegerField(null=True, blank=True, help_text="Overall rating (1-10)")
+    technical_rating = models.IntegerField(null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(10)], help_text="Technical skills rating (1-10)")
+    communication_rating = models.IntegerField(null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(10)], help_text="Communication rating (1-10)")
+    cultural_fit_rating = models.IntegerField(null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(10)], help_text="Cultural fit rating (1-10)")
+    overall_rating = models.IntegerField(null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(10)], help_text="Overall rating (1-10)")
     
     # Recommendations
     recommendation = models.CharField(max_length=20, choices=[
@@ -65,8 +66,9 @@ class Interview(models.Model):
     
     @property
     def interview_datetime(self):
-        from datetime import datetime, time
-        return datetime.combine(self.interview_date, self.interview_time)
+        from datetime import datetime
+        value = datetime.combine(self.interview_date, self.interview_time)
+        return timezone.make_aware(value, timezone.get_current_timezone())
     
     def mark_completed(self):
         """Mark interview as completed"""

@@ -1,9 +1,13 @@
-from rest_framework import viewsets, status, permissions
+from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.decorators import action
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
-from django.db.models import Q
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.utils import timezone
+from datetime import date, time, datetime
 from authentication.models import ServiceUserSession
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from .interview_models import Interview, InterviewFeedback
 from .models import JobApplication, Employee
 from .serializers import JobApplicationSerializer
@@ -42,8 +46,8 @@ class InterviewSerializer:
 
 class InterviewListCreateView(ListCreateAPIView):
     """List and create interviews"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def get_queryset(self):
         session_key = self.get_session_key()
@@ -94,20 +98,57 @@ class InterviewListCreateView(ListCreateAPIView):
                         company=session.service_user.company
                     )
                 except Employee.DoesNotExist:
-                    pass
+                    return Response({'interviewer_id': ['Interviewer not found or access denied.']}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                interview_date = date.fromisoformat(request.data.get('interview_date', ''))
+                interview_time = time.fromisoformat(request.data.get('interview_time', ''))
+            except (TypeError, ValueError):
+                return Response({'detail': 'A valid interview date and time are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            scheduled_at = timezone.make_aware(
+                datetime.combine(interview_date, interview_time),
+                timezone.get_current_timezone(),
+            )
+            if scheduled_at <= timezone.now():
+                return Response({'interview_date': ['Interview must be scheduled in the future.']}, status=status.HTTP_400_BAD_REQUEST)
+
+            interview_type = request.data.get('interview_type', 'video')
+            location = (request.data.get('location') or '').strip()
+            meeting_link = (request.data.get('meeting_link') or '').strip()
+            if interview_type == 'video' and not meeting_link:
+                return Response({'meeting_link': ['Meeting link is required for a video interview.']}, status=status.HTTP_400_BAD_REQUEST)
+            if interview_type == 'in_person' and not location:
+                return Response({'location': ['Location is required for an in-person interview.']}, status=status.HTTP_400_BAD_REQUEST)
+            if application.status not in {'shortlisted', 'interviewed', 'interview_scheduled'}:
+                return Response({'application_id': [f'Cannot schedule an interview while application is {application.status}.']}, status=status.HTTP_400_BAD_REQUEST)
+            if interviewer and Interview.objects.filter(
+                interviewer=interviewer,
+                interview_date=interview_date,
+                interview_time=interview_time,
+                status__in=['scheduled', 'rescheduled'],
+            ).exists():
+                return Response({'interviewer_id': ['Interviewer already has an interview at this time.']}, status=status.HTTP_400_BAD_REQUEST)
 
             # Create interview
-            interview = Interview.objects.create(
-                application=application,
-                interviewer=interviewer,
-                interview_date=request.data.get('interview_date'),
-                interview_time=request.data.get('interview_time'),
-                interview_type=request.data.get('interview_type', 'video'),
-                interview_round=request.data.get('interview_round', 1),
-                location=request.data.get('location', ''),
-                meeting_link=request.data.get('meeting_link', ''),
-                notes=request.data.get('notes', '')
-            )
+            with transaction.atomic():
+                interview = Interview(
+                    application=application,
+                    interviewer=interviewer,
+                    interview_date=interview_date,
+                    interview_time=interview_time,
+                    interview_type=interview_type,
+                    interview_round=request.data.get('interview_round', 1),
+                    location=location,
+                    meeting_link=meeting_link,
+                    notes=request.data.get('notes', '')
+                )
+                interview.full_clean()
+                interview.save()
+                application.status = 'interview_scheduled'
+                application.interview_date = scheduled_at
+                application.interviewer = interviewer
+                application.save(update_fields=['status', 'interview_date', 'interviewer', 'updated_at'])
             
             # Ensure interview is saved before sending email
             interview.refresh_from_db()
@@ -132,11 +173,13 @@ class InterviewListCreateView(ListCreateAPIView):
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except JobApplication.DoesNotExist:
             return Response({'error': 'Invalid application'}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as exc:
+            return Response({'detail': exc.message_dict if hasattr(exc, 'message_dict') else exc.messages}, status=status.HTTP_400_BAD_REQUEST)
 
 class InterviewDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete interviews"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def get_queryset(self):
         session_key = self.get_session_key()
@@ -189,19 +232,100 @@ class InterviewDetailView(RetrieveUpdateDestroyAPIView):
                         response_data['email_success'] = 'Interview invitation resent successfully.'
                 return Response(response_data)
             
-            # Update fields
-            for field in ['interview_date', 'interview_time', 'interview_type', 'location', 
+            old_status = interview.status
+            requested_status = request.data.get('status', old_status)
+            allowed_statuses = {
+                'scheduled': {'scheduled', 'rescheduled', 'completed', 'cancelled', 'no_show'},
+                'rescheduled': {'rescheduled', 'completed', 'cancelled', 'no_show'},
+                'no_show': {'no_show', 'rescheduled', 'cancelled'},
+                'completed': {'completed'},
+                'cancelled': {'cancelled'},
+            }
+            if requested_status not in allowed_statuses.get(old_status, {old_status}):
+                return Response(
+                    {'status': [f'Cannot move interview from {old_status} to {requested_status}.']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if 'interview_date' in request.data:
+                try:
+                    interview.interview_date = date.fromisoformat(request.data['interview_date'])
+                except (TypeError, ValueError):
+                    return Response({'interview_date': ['Enter a valid date.']}, status=status.HTTP_400_BAD_REQUEST)
+            if 'interview_time' in request.data:
+                try:
+                    interview.interview_time = time.fromisoformat(request.data['interview_time'])
+                except (TypeError, ValueError):
+                    return Response({'interview_time': ['Enter a valid time.']}, status=status.HTTP_400_BAD_REQUEST)
+
+            if 'interviewer_id' in request.data:
+                interviewer_id = request.data.get('interviewer_id')
+                if interviewer_id:
+                    try:
+                        interview.interviewer = Employee.objects.get(
+                            id=interviewer_id,
+                            company=session.service_user.company,
+                        )
+                    except Employee.DoesNotExist:
+                        return Response({'interviewer_id': ['Interviewer not found or access denied.']}, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    interview.interviewer = None
+
+            # Update scalar fields after date/time conversion.
+            for field in ['interview_type', 'location',
                          'meeting_link', 'notes', 'feedback', 'technical_rating', 
                          'communication_rating', 'cultural_fit_rating', 'overall_rating', 
                          'recommendation', 'status']:
                 if field in request.data:
                     setattr(interview, field, request.data[field])
+
+            if interview.status in {'scheduled', 'rescheduled'}:
+                scheduled_at = timezone.make_aware(
+                    datetime.combine(interview.interview_date, interview.interview_time),
+                    timezone.get_current_timezone(),
+                )
+                if scheduled_at <= timezone.now():
+                    return Response({'interview_date': ['Interview must be scheduled in the future.']}, status=status.HTTP_400_BAD_REQUEST)
+                if interview.interview_type == 'video' and not interview.meeting_link:
+                    return Response({'meeting_link': ['Meeting link is required for a video interview.']}, status=status.HTTP_400_BAD_REQUEST)
+                if interview.interview_type == 'in_person' and not interview.location:
+                    return Response({'location': ['Location is required for an in-person interview.']}, status=status.HTTP_400_BAD_REQUEST)
+                if interview.interviewer and Interview.objects.filter(
+                    interviewer=interview.interviewer,
+                    interview_date=interview.interview_date,
+                    interview_time=interview.interview_time,
+                    status__in=['scheduled', 'rescheduled'],
+                ).exclude(pk=interview.pk).exists():
+                    return Response({'interviewer_id': ['Interviewer already has an interview at this time.']}, status=status.HTTP_400_BAD_REQUEST)
             
-            interview.save()
+            interview.full_clean()
+            with transaction.atomic():
+                if request.data.get('status') == 'completed':
+                    interview.status = 'completed'
+                    interview.completed_at = timezone.now()
+                    interview.application.status = 'interviewed'
+                    interview.application.save(update_fields=['status', 'updated_at'])
+
+                if interview.status in {'scheduled', 'rescheduled'}:
+                    interview.application.interview_date = scheduled_at
+                    interview.application.interviewer = interview.interviewer
+                    interview.application.status = 'interview_scheduled'
+                    interview.application.save(update_fields=['status', 'interview_date', 'interviewer', 'updated_at'])
+
+                recommendation = request.data.get('recommendation')
+                if recommendation == 'hire':
+                    interview.application.status = 'interviewed'
+                    interview.application.save(update_fields=['status', 'updated_at'])
+                elif recommendation == 'reject':
+                    interview.application.status = 'rejected'
+                    interview.application.save(update_fields=['status', 'updated_at'])
+                interview.save()
             return Response(InterviewSerializer.serialize(interview))
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except ValidationError as exc:
+            return Response({'detail': exc.message_dict if hasattr(exc, 'message_dict') else exc.messages}, status=status.HTTP_400_BAD_REQUEST)
     
     def test_email(self, request, pk=None):
         """Test interview email functionality"""

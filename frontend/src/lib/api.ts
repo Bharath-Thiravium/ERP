@@ -33,6 +33,14 @@ const resolveWsBaseUrl = (): string => {
 const API_BASE_URL = resolveApiBaseUrl()
 const WS_BASE_URL = resolveWsBaseUrl()
 
+const isPublicApiEndpoint = (url?: string): boolean => {
+  if (!url) return false
+
+  return url.includes('/api/hr/public/') ||
+         url.includes('/api/hr/share-analytics/track-click/') ||
+         url.includes('/api/hr/share-analytics/track-application/')
+}
+
 // Helper function to get WebSocket URL
 export const getWebSocketUrl = (endpoint: string): string => {
   // Handle both full URLs and relative paths
@@ -85,8 +93,9 @@ api.interceptors.request.use(
     const isLoginEndpoint = config.url?.includes('/login/') ||
                            config.url?.includes('/token/refresh/') ||
                            config.url?.includes('/health/')
+    const isPublicEndpoint = isPublicApiEndpoint(config.url)
 
-    if (!isLoginEndpoint) {
+    if (!isLoginEndpoint && !isPublicEndpoint) {
       // Check if this is a service user endpoint (HR, Finance, Inventory, CRM)
       // JWT-authenticated company-dashboard endpoints (use Bearer token, not session_key)
       const jwtCompanyDashboardPaths = [
@@ -164,9 +173,10 @@ api.interceptors.response.use(
     return response
   },
   async (error: AxiosError) => {
-    const originalRequest = error.config as any
+    const originalRequest = (error.config || {}) as any
+    const isPublicEndpoint = isPublicApiEndpoint(originalRequest.url)
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !isPublicEndpoint && !originalRequest._retry) {
       originalRequest._retry = true
 
       // Skip token refresh for service user endpoints (HR, Finance, Inventory, CRM, Reports)
@@ -256,7 +266,7 @@ api.interceptors.response.use(
     }
 
     // Handle other errors (but not for token validation failures during app init)
-    if (!originalRequest.url?.includes('/validate-token/')) {
+    if (!isPublicEndpoint && !originalRequest.url?.includes('/validate-token/')) {
       const errorData = error.response?.data as any
       
       // Don't show generic error toasts for Athens employee endpoints - let the component handle it

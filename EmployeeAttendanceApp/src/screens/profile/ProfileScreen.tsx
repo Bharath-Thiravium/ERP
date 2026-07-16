@@ -130,15 +130,14 @@ const ProfileScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#eef4ff',
+    backgroundColor: '#f6f8fc',
   },
   header: {
     alignItems: 'center',
-    padding: 32,
+    padding: 24,
     backgroundColor: '#111827',
-    marginBottom: 16,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    margin: 16,
+    borderRadius: 16,
   },
   avatar: {
     width: 80,
@@ -174,12 +173,13 @@ const styles = StyleSheet.create({
   },
   section: {
     backgroundColor: '#fff',
-    margin: 16,
-    padding: 20,
-    borderRadius: 20,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 3,
   },
@@ -230,9 +230,10 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     backgroundColor: '#ef4444',
-    margin: 16,
+    marginHorizontal: 16,
+    marginTop: 4,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 10,
     alignItems: 'center',
   },
   logoutButtonText: {

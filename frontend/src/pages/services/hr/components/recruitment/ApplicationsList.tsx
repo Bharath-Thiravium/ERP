@@ -33,7 +33,7 @@ const ApplicationsList: React.FC = () => {
     try {
       const response = await api.get('/api/hr/job-applications/', {
         headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
+        params: { session_key: sessionKey, page_size: 100 }
       })
       
       const allApplications = response.data.results || []
@@ -363,7 +363,7 @@ const ApplicationsList: React.FC = () => {
                     </>
                   )}
 
-                  {application.status === 'submitted' && (
+                  {(application.status === 'submitted' || application.status === 'screening') && (
                     <>
                       <Button 
                         variant="ghost" 
@@ -384,7 +384,7 @@ const ApplicationsList: React.FC = () => {
                     </>
                   )}
 
-                  {(application.status === 'shortlisted' || application.status === 'screening') && (
+                  {application.status === 'shortlisted' && (
                     <Button 
                       variant="ghost" 
                       size="sm"
@@ -412,7 +412,7 @@ const ApplicationsList: React.FC = () => {
                     </Button>
                   )}
 
-                  {(application.status === 'interviewed' || application.status === 'selected') && (
+                  {application.status === 'interviewed' && (
                     <>
                       <Button 
                         variant="ghost" 

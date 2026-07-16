@@ -1,7 +1,11 @@
-from rest_framework import status, permissions
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
+from django.core.exceptions import ValidationError
+from django.db import transaction
 from authentication.models import ServiceUserSession
+from authentication.authentication import ServiceUserSessionAuthentication
+from authentication.permissions import IsServiceUserAuthenticated
 from .offer_models import JobOffer
 from .models import JobApplication
 
@@ -31,8 +35,8 @@ class OfferSerializer:
 
 class OfferListCreateView(ListCreateAPIView):
     """List and create job offers"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def get_queryset(self):
         session_key = self.get_session_key()
@@ -73,6 +77,11 @@ class OfferListCreateView(ListCreateAPIView):
                 id=request.data.get('application_id'),
                 job_posting__company=session.service_user.company
             )
+            if application.status not in {'interviewed', 'offer_rejected'}:
+                return Response(
+                    {'application_id': [f'Offer cannot be sent while application is {application.status}.']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # Check if offer already exists
             existing_offer = JobOffer.objects.filter(application=application).first()
@@ -84,6 +93,9 @@ class OfferListCreateView(ListCreateAPIView):
                 existing_offer.benefits = request.data.get('benefits', '')
                 existing_offer.terms_conditions = request.data.get('terms_conditions', '')
                 existing_offer.notes = request.data.get('notes', '')
+                existing_offer.status = 'draft'
+                existing_offer.sent_at = None
+                existing_offer.full_clean()
                 existing_offer.save()
                 
                 # Send updated offer
@@ -91,12 +103,12 @@ class OfferListCreateView(ListCreateAPIView):
                 
                 response_data = OfferSerializer.serialize(existing_offer)
                 if not email_sent:
-                    response_data['email_warning'] = 'Offer updated but email not sent. Please configure company email settings.'
-                
+                    response_data['detail'] = 'Offer saved as draft, but email was not sent. Check company email settings.'
+                    return Response(response_data, status=status.HTTP_502_BAD_GATEWAY)
                 return Response(response_data, status=status.HTTP_200_OK)
             
             # Create new offer
-            offer = JobOffer.objects.create(
+            offer = JobOffer(
                 application=application,
                 salary_offered=request.data.get('salary_offered'),
                 joining_date=request.data.get('joining_date'),
@@ -105,13 +117,16 @@ class OfferListCreateView(ListCreateAPIView):
                 terms_conditions=request.data.get('terms_conditions', ''),
                 notes=request.data.get('notes', '')
             )
+            offer.full_clean()
+            offer.save()
             
             # Send offer
             email_sent = offer.send_offer()
             
             response_data = OfferSerializer.serialize(offer)
             if not email_sent:
-                response_data['email_warning'] = 'Offer created but email not sent. Please configure company email settings.'
+                response_data['detail'] = 'Offer saved as draft, but email was not sent. Check company email settings.'
+                return Response(response_data, status=status.HTTP_502_BAD_GATEWAY)
 
             return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -119,11 +134,16 @@ class OfferListCreateView(ListCreateAPIView):
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except JobApplication.DoesNotExist:
             return Response({'error': 'Invalid application'}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as exc:
+            return Response(
+                {'detail': exc.message_dict if hasattr(exc, 'message_dict') else exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 class OfferDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, and delete job offers"""
-    authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [ServiceUserSessionAuthentication]
+    permission_classes = [IsServiceUserAuthenticated]
 
     def get_queryset(self):
         session_key = self.get_session_key()
@@ -158,16 +178,49 @@ class OfferDetailView(RetrieveUpdateDestroyAPIView):
         try:
             session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
             offer = self.get_object()
-            
+
+            requested_status = request.data.get('status')
+            if requested_status and requested_status != offer.status:
+                allowed_transitions = {
+                    'draft': {'withdrawn'},
+                    'sent': {'accepted', 'rejected', 'withdrawn'},
+                    'accepted': set(),
+                    'rejected': set(),
+                    'withdrawn': set(),
+                    'expired': set(),
+                }
+                if requested_status not in allowed_transitions.get(offer.status, set()):
+                    return Response(
+                        {'status': [f'Cannot move offer from {offer.status} to {requested_status}.']},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
             # Update fields
             for field in ['salary_offered', 'joining_date', 'offer_valid_until', 
-                         'benefits', 'terms_conditions', 'notes', 'status',
+                         'benefits', 'terms_conditions', 'notes',
                          'candidate_response', 'negotiation_notes']:
                 if field in request.data:
                     setattr(offer, field, request.data[field])
-            
-            offer.save()
+
+            offer.full_clean()
+            with transaction.atomic():
+                offer.save()
+                if requested_status == 'accepted':
+                    offer.accept_offer()
+                elif requested_status == 'rejected':
+                    offer.reject_offer()
+                elif requested_status == 'withdrawn':
+                    offer.status = 'withdrawn'
+                    offer.save(update_fields=['status', 'updated_at'])
+                    if offer.application.status == 'offer_sent':
+                        offer.application.status = 'interviewed'
+                        offer.application.save(update_fields=['status', 'updated_at'])
             return Response(OfferSerializer.serialize(offer))
 
         except ServiceUserSession.DoesNotExist:
             return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        except ValidationError as exc:
+            return Response(
+                {'detail': exc.message_dict if hasattr(exc, 'message_dict') else exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )

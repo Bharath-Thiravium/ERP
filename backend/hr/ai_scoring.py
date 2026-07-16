@@ -2,7 +2,6 @@
 AI Scoring System for Job Applications
 Provides intelligent candidate evaluation and skill matching
 """
-import random
 import re
 from typing import Dict, List, Tuple
 from decimal import Decimal
@@ -67,16 +66,12 @@ def calculate_ai_score(application) -> Tuple[Decimal, Decimal, str]:
             screening_notes
         )
         
-    except Exception as e:
-        # Fallback scoring with better logic
-        ai_score = random.uniform(70, 90)
-        skill_match = random.uniform(60, 85)
-        screening_notes = f"AI screening completed. Candidate profile analyzed. Score: {ai_score:.1f}%"
-        
+    except Exception as exc:
+        # Never invent a recruitment score when source data cannot be evaluated.
         return (
-            Decimal(str(round(ai_score, 2))),
-            Decimal(str(round(skill_match, 2))),
-            screening_notes
+            Decimal('0.00'),
+            Decimal('0.00'),
+            f"Automated screening could not be completed: {type(exc).__name__}. Manual review required."
         )
 
 

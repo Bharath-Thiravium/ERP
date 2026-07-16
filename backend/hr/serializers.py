@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import Department, Designation, Employee, JobPosting, JobApplication, AttendanceSystem, Attendance, AttendanceDevice, AttendanceLog, PerformanceReview
 from .form_automation_models import ComplianceFormTemplate, MonthlyComplianceForm, EmployeeFormEntry
 
@@ -25,6 +26,21 @@ class DesignationSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'code', 'department', 'department_name', 'level', 
                  'min_salary', 'max_salary', 'is_active', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        service_user = getattr(request, 'service_user', None) if request else None
+        company = service_user.company if service_user else None
+        department = attrs.get('department', getattr(self.instance, 'department', None))
+        min_salary = attrs.get('min_salary', getattr(self.instance, 'min_salary', 0))
+        max_salary = attrs.get('max_salary', getattr(self.instance, 'max_salary', 0))
+        if company and department and department.company_id != company.id:
+            raise serializers.ValidationError({'department': 'Department not found or access denied.'})
+        if min_salary < 0 or max_salary < 0:
+            raise serializers.ValidationError({'min_salary': 'Salary values cannot be negative.'})
+        if min_salary > max_salary:
+            raise serializers.ValidationError({'max_salary': 'Maximum salary must be greater than or equal to minimum salary.'})
+        return attrs
 
 
 class EmployeeListSerializer(serializers.ModelSerializer):
@@ -211,14 +227,42 @@ class JobPostingSerializer(serializers.ModelSerializer):
             return obj.company.logo.url
         return None
 
+    def _get_company(self):
+        request = self.context.get('request')
+        service_user = getattr(request, 'service_user', None) if request else None
+        return service_user.company if service_user else None
+
+    def validate(self, attrs):
+        company = self._get_company()
+        department = attrs.get('department', getattr(self.instance, 'department', None))
+        designation = attrs.get('designation', getattr(self.instance, 'designation', None))
+        min_salary = attrs.get('min_salary', getattr(self.instance, 'min_salary', 0))
+        max_salary = attrs.get('max_salary', getattr(self.instance, 'max_salary', 0))
+        deadline = attrs.get('application_deadline', getattr(self.instance, 'application_deadline', None))
+
+        if company and department and department.company_id != company.id:
+            raise serializers.ValidationError({'department': 'Department not found or access denied.'})
+        if company and designation and designation.company_id != company.id:
+            raise serializers.ValidationError({'designation': 'Designation not found or access denied.'})
+        if department and designation and designation.department_id != department.id:
+            raise serializers.ValidationError({'designation': 'Designation must belong to the selected department.'})
+        if designation:
+            # Designation is the company's salary-band source of truth.
+            attrs['min_salary'] = designation.min_salary
+            attrs['max_salary'] = designation.max_salary
+        if deadline and deadline < timezone.localdate():
+            raise serializers.ValidationError({'application_deadline': 'Application deadline cannot be in the past.'})
+        return attrs
+
 
 class JobApplicationSerializer(serializers.ModelSerializer):
     job_title = serializers.CharField(source='job_posting.title', read_only=True)
+    job_posting_title = serializers.CharField(source='job_posting.title', read_only=True)
     
     class Meta:
         model = JobApplication
         fields = [
-            'id', 'application_number', 'job_posting', 'job_title', 'first_name', 'last_name', 'full_name',
+            'id', 'application_number', 'job_posting', 'job_title', 'job_posting_title', 'first_name', 'last_name', 'full_name',
             'email', 'phone', 'current_position', 'current_company', 'total_experience',
             'relevant_experience', 'current_salary', 'expected_salary', 'notice_period',
             'current_location', 'willing_to_relocate', 'linkedin_profile', 'portfolio_url',
@@ -227,6 +271,68 @@ class JobApplicationSerializer(serializers.ModelSerializer):
             'interview_date', 'interview_notes', 'interviewer', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'application_number', 'full_name', 'ai_score', 'skill_match_percentage', 'ai_screening_notes', 'created_at', 'updated_at']
+
+    STATUS_TRANSITIONS = {
+        'submitted': {'screening', 'shortlisted', 'rejected', 'withdrawn'},
+        'screening': {'shortlisted', 'rejected', 'withdrawn'},
+        'shortlisted': {'interview_scheduled', 'rejected', 'withdrawn'},
+        'interview_scheduled': {'interviewed', 'rejected', 'withdrawn'},
+        'interviewed': {'offer_sent', 'rejected', 'withdrawn'},
+        'offer_sent': {'offer_accepted', 'offer_rejected', 'withdrawn'},
+        'offer_accepted': {'selected'},
+        'offer_rejected': {'interviewed', 'withdrawn'},
+        'selected': set(),
+        'rejected': set(),
+        'withdrawn': set(),
+    }
+
+    def _get_company(self):
+        request = self.context.get('request')
+        service_user = getattr(request, 'service_user', None) if request else None
+        return service_user.company if service_user else None
+
+    def validate_resume(self, value):
+        if value and value.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError('Resume file must be 5 MB or smaller.')
+        if value:
+            extension = value.name.rsplit('.', 1)[-1].lower() if '.' in value.name else ''
+            if extension not in {'pdf', 'doc', 'docx'}:
+                raise serializers.ValidationError('Resume must be a PDF, DOC, or DOCX file.')
+        return value
+
+    def validate(self, attrs):
+        company = self._get_company()
+        job = attrs.get('job_posting', getattr(self.instance, 'job_posting', None))
+        interviewer = attrs.get('interviewer', getattr(self.instance, 'interviewer', None))
+        email = attrs.get('email', getattr(self.instance, 'email', '')).strip()
+        phone = attrs.get('phone', getattr(self.instance, 'phone', '')).strip()
+
+        if company and job and job.company_id != company.id:
+            raise serializers.ValidationError({'job_posting': 'Job posting not found or access denied.'})
+        if company and interviewer and interviewer.company_id != company.id:
+            raise serializers.ValidationError({'interviewer': 'Interviewer not found or access denied.'})
+        if not self.instance and job:
+            existing_candidates = JobApplication.objects.filter(job_posting=job)
+            if email and existing_candidates.filter(email__iexact=email).exists():
+                raise serializers.ValidationError({'email': 'This candidate has already applied for this job.'})
+
+            normalized_phone = ''.join(character for character in phone if character.isdigit())
+            if normalized_phone:
+                duplicate_phone = any(
+                    ''.join(character for character in existing_phone if character.isdigit()) == normalized_phone
+                    for existing_phone in existing_candidates.values_list('phone', flat=True)
+                )
+                if duplicate_phone:
+                    raise serializers.ValidationError({'phone': 'This candidate has already applied for this job.'})
+
+        new_status = attrs.get('status')
+        if self.instance and new_status and new_status != self.instance.status:
+            allowed = self.STATUS_TRANSITIONS.get(self.instance.status, set())
+            if new_status not in allowed:
+                raise serializers.ValidationError({
+                    'status': f'Cannot move application from {self.instance.status} to {new_status}.'
+                })
+        return attrs
 
 
 class PerformanceReviewSerializer(serializers.ModelSerializer):

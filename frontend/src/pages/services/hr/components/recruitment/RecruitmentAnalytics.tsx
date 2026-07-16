@@ -8,6 +8,7 @@ const RecruitmentAnalytics: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
   const [analytics, setAnalytics] = useState({
     totalApplications: 0,
+    activeJobs: 0,
     averageTimeToHire: 0,
     conversionRate: 0,
     topPerformingJobs: [] as any[],
@@ -22,71 +23,11 @@ const RecruitmentAnalytics: React.FC = () => {
     
     setLoading(true)
     try {
-      const [jobsResponse, appsResponse] = await Promise.all([
-        api.get('/api/hr/job-postings/', {
-          headers: { Authorization: `Bearer ${sessionKey}` },
-          params: { session_key: sessionKey }
-        }),
-        api.get('/api/hr/job-applications/', {
-          headers: { Authorization: `Bearer ${sessionKey}` },
-          params: { session_key: sessionKey }
-        })
-      ])
-      
-      const jobs = jobsResponse.data.results || []
-      const applications = appsResponse.data.results || []
-      
-      // Calculate analytics
-      const totalApplications = applications.length
-      const selectedApplications = applications.filter((app: any) => app.status === 'selected').length
-      const conversionRate = totalApplications > 0 ? (selectedApplications / totalApplications * 100) : 0
-      
-      // Calculate average time to hire (simplified)
-      const completedApplications = applications.filter((app: any) => 
-        ['selected', 'rejected'].includes(app.status)
-      )
-      const averageTimeToHire = completedApplications.length > 0 
-        ? Math.round(completedApplications.reduce((sum: number, app: any) => {
-            const created = new Date(app.created_at)
-            const updated = new Date(app.updated_at)
-            return sum + (updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
-          }, 0) / completedApplications.length)
-        : 0
-      
-      // Applications by status
-      const applicationsByStatus = applications.reduce((acc: any, app: any) => {
-        acc[app.status] = (acc[app.status] || 0) + 1
-        return acc
-      }, {})
-      
-      // Top performing jobs
-      const jobPerformance = jobs.map((job: any) => {
-        const jobApplications = applications.filter((app: any) => app.job_posting === job.id)
-        const selected = jobApplications.filter((app: any) => app.status === 'selected').length
-        return {
-          ...job,
-          applicationsCount: jobApplications.length,
-          selectedCount: selected,
-          conversionRate: jobApplications.length > 0 ? (selected / jobApplications.length * 100) : 0
-        }
-      }).sort((a: any, b: any) => b.conversionRate - a.conversionRate).slice(0, 5)
-      
-      // Source analysis
-      const sourceAnalysis = applications.reduce((acc: any, app: any) => {
-        const source = app.application_source || 'direct'
-        acc[source] = (acc[source] || 0) + 1
-        return acc
-      }, {})
-      
-      setAnalytics({
-        totalApplications,
-        averageTimeToHire,
-        conversionRate,
-        topPerformingJobs: jobPerformance,
-        applicationsByStatus,
-        monthlyTrends: [], // Would need more complex calculation
-        sourceAnalysis: Object.entries(sourceAnalysis).map(([source, count]) => ({ source, count }))
+      const response = await api.get('/api/hr/recruitment/analytics/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
       })
+      setAnalytics(response.data)
     } catch (error) {
       console.error('Error fetching analytics:', error)
     } finally {
@@ -156,7 +97,7 @@ const RecruitmentAnalytics: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm opacity-90">Active Jobs</p>
-                <p className="text-3xl font-bold">{analytics.topPerformingJobs.length}</p>
+                <p className="text-3xl font-bold">{analytics.activeJobs}</p>
               </div>
               <BarChart3 className="h-8 w-8 opacity-80" />
             </div>

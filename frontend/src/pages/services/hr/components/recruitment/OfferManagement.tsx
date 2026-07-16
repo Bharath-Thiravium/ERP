@@ -38,7 +38,6 @@ const OfferManagement: React.FC<OfferManagementProps> = ({
 
     setLoading(true)
     try {
-      // Create offer
       await api.post('/api/hr/offers/', {
         application_id: application.id,
         salary_offered: parseFloat(offerData.salary_offered),
@@ -50,18 +49,18 @@ const OfferManagement: React.FC<OfferManagementProps> = ({
         session_key: sessionKey
       })
 
-      // Update application status
-      await api.patch(`/api/hr/job-applications/${application.id}/`, {
-        status: 'offer_sent',
-        session_key: sessionKey
-      })
-
       toast.success('Offer sent successfully')
       onSuccess()
       onClose()
     } catch (error: any) {
       console.error('Error sending offer:', error)
-      toast.error(error.response?.data?.detail || 'Failed to send offer')
+      const detail = error.response?.data?.detail
+      const message = typeof detail === 'string'
+        ? detail
+        : detail && typeof detail === 'object'
+          ? Object.values(detail).flat().join(' ')
+          : 'Failed to send offer'
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -130,6 +129,7 @@ const OfferManagement: React.FC<OfferManagementProps> = ({
                 value={offerData.offer_valid_until}
                 onChange={(e) => setOfferData({ ...offerData, offer_valid_until: e.target.value })}
                 min={new Date().toISOString().split('T')[0]}
+                max={offerData.joining_date || undefined}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 required
               />

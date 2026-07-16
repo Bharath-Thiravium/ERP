@@ -23,11 +23,11 @@ const CandidatePipeline: React.FC = () => {
       const [appsResponse, jobsResponse] = await Promise.all([
         api.get('/api/hr/job-applications/', {
           headers: { Authorization: `Bearer ${sessionKey}` },
-          params: { session_key: sessionKey }
+          params: { session_key: sessionKey, page_size: 100 }
         }),
         api.get('/api/hr/job-postings/', {
           headers: { Authorization: `Bearer ${sessionKey}` },
-          params: { session_key: sessionKey }
+          params: { session_key: sessionKey, page_size: 100 }
         })
       ])
       
@@ -84,22 +84,32 @@ const CandidatePipeline: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'submitted': return 'bg-blue-500'
+      case 'screening': return 'bg-cyan-500'
       case 'shortlisted': return 'bg-green-500'
       case 'interview_scheduled': return 'bg-purple-500'
       case 'interviewed': return 'bg-indigo-500'
       case 'selected': return 'bg-emerald-500'
+      case 'offer_sent': return 'bg-amber-500'
+      case 'offer_accepted': return 'bg-teal-500'
+      case 'offer_rejected': return 'bg-orange-500'
       case 'rejected': return 'bg-red-500'
+      case 'withdrawn': return 'bg-gray-500'
       default: return 'bg-gray-500'
     }
   }
 
   const pipelineStages = [
     { key: 'submitted', label: 'New Applications', icon: Users },
+    { key: 'screening', label: 'Screening', icon: Clock },
     { key: 'shortlisted', label: 'Shortlisted', icon: CheckCircle },
     { key: 'interview_scheduled', label: 'Interview Scheduled', icon: Calendar },
     { key: 'interviewed', label: 'Interviewed', icon: Clock },
+    { key: 'offer_sent', label: 'Offer Sent', icon: Calendar },
+    { key: 'offer_accepted', label: 'Offer Accepted', icon: CheckCircle },
+    { key: 'offer_rejected', label: 'Offer Rejected', icon: X },
     { key: 'selected', label: 'Selected', icon: CheckCircle },
-    { key: 'rejected', label: 'Rejected', icon: X }
+    { key: 'rejected', label: 'Rejected', icon: X },
+    { key: 'withdrawn', label: 'Withdrawn', icon: X }
   ]
 
   const getApplicationsByStatus = (status: string) => {
@@ -149,13 +159,13 @@ const CandidatePipeline: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-6 gap-4">
+      <div className="flex gap-4 overflow-x-auto pb-3">
         {pipelineStages.map((stage) => {
           const stageApplications = getApplicationsByStatus(stage.key)
           const Icon = stage.icon
           
           return (
-            <Card key={stage.key} className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
+            <Card key={stage.key} className="min-w-[280px] w-[280px] bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center justify-between text-sm">
                   <div className="flex items-center space-x-2">
@@ -195,7 +205,7 @@ const CandidatePipeline: React.FC = () => {
                           )}
                         </div>
                         <div className="flex items-center space-x-1 ml-2">
-                          {stage.key === 'submitted' && (
+                          {['submitted', 'screening'].includes(stage.key) && (
                             <>
                               <Button 
                                 size="sm" 
@@ -216,24 +226,15 @@ const CandidatePipeline: React.FC = () => {
                             </>
                           )}
                           {stage.key === 'interviewed' && (
-                            <>
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                className="h-6 w-6 p-0 text-emerald-600 hover:text-emerald-700"
-                                onClick={() => updateApplicationStatus(application.id, 'selected')}
-                              >
-                                <CheckCircle className="h-3 w-3" />
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
-                                onClick={() => updateApplicationStatus(application.id, 'rejected')}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
+                              onClick={() => updateApplicationStatus(application.id, 'rejected')}
+                              title="Reject candidate"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
                           )}
                         </div>
                       </div>

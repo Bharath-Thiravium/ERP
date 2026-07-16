@@ -116,7 +116,14 @@ const JobApplication: React.FC = () => {
       navigate('/jobs')
     } catch (error: any) {
       console.error('Error submitting application:', error)
-      toast.error(error.response?.data?.detail || 'Failed to submit application')
+      const errorData = error.response?.data
+      toast.error(
+        errorData?.email?.[0] ||
+        errorData?.phone?.[0] ||
+        errorData?.detail ||
+        errorData?.message ||
+        'Failed to submit application'
+      )
     } finally {
       setSubmitting(false)
     }

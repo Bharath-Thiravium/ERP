@@ -20,7 +20,8 @@ import {
   Clock,
   CheckCircle,
   FileText,
-  Briefcase
+  Briefcase,
+  Bell
 } from 'lucide-react'
 // import { useAuthStore } from '../../../../store/authStore'
 import { useThemeStore } from '../../../../store/themeStore'
@@ -30,6 +31,19 @@ import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useSessionValidation } from '../../../../hooks/useSessionValidation'
 // toast import removed as it's not used
+
+const EmployeesPage = React.lazy(() => import('./Employees'))
+const RecruitmentPage = React.lazy(() => import('./Recruitment'))
+const PayrollPage = React.lazy(() => import('./Payroll'))
+const PerformancePage = React.lazy(() => import('./Performance'))
+const AttendancePage = React.lazy(() => import('./Attendance'))
+const LeaveManagementPage = React.lazy(() => import('./LeaveManagement'))
+const CompliancePage = React.lazy(() => import('./Compliance'))
+const StatutoryPage = React.lazy(() => import('./Statutory'))
+const GovernmentPortalPage = React.lazy(() => import('./GovernmentPortal'))
+const AnalyticsPage = React.lazy(() => import('./Analytics'))
+const SystemStatusPage = React.lazy(() => import('../components/system/SystemStatus'))
+const HRSettingsPage = React.lazy(() => import('../components/settings/HRSettings'))
 
 const HRDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -50,6 +64,8 @@ const HRDashboard: React.FC = () => {
   }, [])
   const [isLoading, setIsLoading] = useState(true)
   const [companyData, setCompanyData] = useState<any>(null)
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [showNotifications, setShowNotifications] = useState(false)
   // Password data state removed as it's not used
   // Removed unused isChangingPassword state
 
@@ -170,6 +186,43 @@ const HRDashboard: React.FC = () => {
     }
   }
 
+  const fetchNotifications = async () => {
+    if (!sessionKey) return
+    try {
+      const response = await api.get('/api/hr/notifications/', {
+        headers: { Authorization: `Bearer ${sessionKey}` },
+        params: { session_key: sessionKey }
+      })
+      const nextNotifications = response.data?.results || []
+      setNotifications(current => {
+        const currentSnapshot = current.map(item => [item.id, item.read])
+        const nextSnapshot = nextNotifications.map((item: any) => [item.id, item.read])
+        return JSON.stringify(currentSnapshot) === JSON.stringify(nextSnapshot)
+          ? current
+          : nextNotifications
+      })
+    } catch (error) {
+      console.error('Error fetching HR notifications:', error)
+    }
+  }
+
+  const openNotification = async (notification: any) => {
+    try {
+      await api.post(
+        `/api/hr/notifications/${notification.id}/read/`,
+        { session_key: sessionKey },
+        { headers: { Authorization: `Bearer ${sessionKey}` } }
+      )
+    } catch (error) {
+      console.error('Error marking HR notification as read:', error)
+    }
+    setNotifications(current => current.map(item => item.id === notification.id ? { ...item, read: true } : item))
+    setShowNotifications(false)
+    if (notification.metadata?.navigate_to === 'hr-leave') {
+      setActiveTab('leave')
+    }
+  }
+
   useEffect(() => {
     // Validate session on component mount
     const sessionKey = sessionStorage.getItem('service_session_key')
@@ -212,6 +265,9 @@ const HRDashboard: React.FC = () => {
   useEffect(() => {
     if (sessionKey) {
       fetchHRData()
+      fetchNotifications()
+      const notificationTimer = window.setInterval(fetchNotifications, 15000)
+      return () => window.clearInterval(notificationTimer)
     }
   }, [sessionKey])
 
@@ -357,10 +413,9 @@ const HRDashboard: React.FC = () => {
 
   // Render Settings Page
   const renderSettings = () => {
-    const HRSettings = React.lazy(() => import('../components/settings/HRSettings'))
     return (
       <React.Suspense fallback={<LoadingSpinner size="lg" />}>
-        <HRSettings />
+        <HRSettingsPage />
       </React.Suspense>
     )
   }
@@ -381,7 +436,6 @@ const HRDashboard: React.FC = () => {
 
   // Render Payroll Management
   const renderPayroll = () => {
-    const PayrollPage = React.lazy(() => import('./Payroll'))
     return (
       <React.Suspense fallback={<LoadingSpinner size="lg" />}>
         <PayrollPage />
@@ -391,7 +445,6 @@ const HRDashboard: React.FC = () => {
 
   // Render Performance Management
   const renderPerformance = () => {
-    const PerformancePage = React.lazy(() => import('./Performance'))
     return (
       <React.Suspense fallback={<LoadingSpinner size="lg" />}>
         <PerformancePage />
@@ -408,7 +461,6 @@ const HRDashboard: React.FC = () => {
 
   // Render Analytics Dashboard
   const renderAnalytics = () => {
-    const AnalyticsPage = React.lazy(() => import('./Analytics'))
     return (
       <React.Suspense fallback={<LoadingSpinner size="lg" />}>
         <AnalyticsPage />
@@ -421,17 +473,15 @@ const HRDashboard: React.FC = () => {
       case 'overview':
         return renderOverview()
       case 'employees':
-        const Employees = React.lazy(() => import('./Employees'))
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
-            <Employees />
+            <EmployeesPage />
           </React.Suspense>
         )
       case 'recruitment':
-        const Recruitment = React.lazy(() => import('./Recruitment'))
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
-            <Recruitment />
+            <RecruitmentPage />
           </React.Suspense>
         )
       case 'payroll':
@@ -439,35 +489,30 @@ const HRDashboard: React.FC = () => {
       case 'performance':
         return renderPerformance()
       case 'attendance':
-        const AttendancePage = React.lazy(() => import('./Attendance'))
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
             <AttendancePage />
           </React.Suspense>
         )
       case 'leave':
-        const LeaveManagementPage = React.lazy(() => import('./LeaveManagement'))
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
             <LeaveManagementPage />
           </React.Suspense>
         )
       case 'compliance':
-        const CompliancePage = React.lazy(() => import('./Compliance'))
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
             <CompliancePage />
           </React.Suspense>
         )
       case 'statutory':
-        const StatutoryPage = React.lazy(() => import('./Statutory'))
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
             <StatutoryPage />
           </React.Suspense>
         )
       case 'government-portal':
-        const GovernmentPortalPage = React.lazy(() => import('./GovernmentPortal'))
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
             <GovernmentPortalPage />
@@ -476,10 +521,9 @@ const HRDashboard: React.FC = () => {
       case 'analytics':
         return renderAnalytics()
       case 'system-status':
-        const SystemStatus = React.lazy(() => import('../components/system/SystemStatus'))
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
-            <SystemStatus />
+            <SystemStatusPage />
           </React.Suspense>
         )
       case 'settings':
@@ -595,6 +639,49 @@ const HRDashboard: React.FC = () => {
               </div>
 
               <div className="flex items-center space-x-3">
+                <div className="relative">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowNotifications(value => !value)
+                      fetchNotifications()
+                    }}
+                    className="relative h-9 w-9 p-0"
+                    aria-label="HR notifications"
+                  >
+                    <Bell className="h-4 w-4" />
+                    {notifications.some(item => !item.read) && (
+                      <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+                    )}
+                  </Button>
+                  {showNotifications && (
+                    <div className="absolute right-0 top-11 z-50 w-96 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                      <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+                        <p className="font-semibold text-gray-900 dark:text-white">HR Notifications</p>
+                        <p className="text-xs text-gray-500">{notifications.filter(item => !item.read).length} unread</p>
+                      </div>
+                      <div className="max-h-96 overflow-y-auto">
+                        {notifications.length === 0 ? (
+                          <p className="px-4 py-8 text-center text-sm text-gray-500">No HR notifications</p>
+                        ) : notifications.map(notification => (
+                          <button
+                            key={notification.id}
+                            type="button"
+                            onClick={() => openNotification(notification)}
+                            className={`block w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800 ${!notification.read ? 'bg-indigo-50/70 dark:bg-indigo-950/30' : ''}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white">{notification.title}</p>
+                              {!notification.read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-indigo-600" />}
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">{notification.message}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"

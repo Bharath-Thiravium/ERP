@@ -30,7 +30,7 @@ const InterviewsList: React.FC = () => {
     try {
       const response = await api.get('/api/hr/interviews/', {
         headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
+        params: { session_key: sessionKey, page_size: 100 }
       })
       setInterviews(response.data.results || [])
     } catch (error) {
@@ -67,16 +67,7 @@ const InterviewsList: React.FC = () => {
         session_key: sessionKey
       })
       
-      // Update application status
-      const interview = interviews.find(i => i.id === interviewId)
-      if (interview) {
-        await api.patch(`/api/hr/job-applications/${interview.application_id}/`, {
-          status: result,
-          session_key: sessionKey
-        })
-      }
-      
-      toast.success(`Candidate ${result} successfully`)
+      toast.success(result === 'hire' ? 'Candidate recommended for hire' : 'Candidate rejected')
       fetchInterviews()
     } catch (error) {
       console.error('Error updating interview result:', error)
@@ -244,16 +235,16 @@ const InterviewsList: React.FC = () => {
                       <Button 
                         size="sm"
                         className="bg-green-500 hover:bg-green-600 text-white"
-                        onClick={() => updateInterviewResult(interview.id, 'selected')}
+                        onClick={() => updateInterviewResult(interview.id, 'hire')}
                       >
                         <CheckCircle className="h-4 w-4 mr-1" />
-                        Select Candidate
+                        Recommend for Offer
                       </Button>
                       <Button 
                         size="sm"
                         variant="outline"
                         className="text-red-600 border-red-300 hover:bg-red-50"
-                        onClick={() => updateInterviewResult(interview.id, 'rejected')}
+                        onClick={() => updateInterviewResult(interview.id, 'reject')}
                       >
                         <X className="h-4 w-4 mr-1" />
                         Reject
@@ -261,10 +252,10 @@ const InterviewsList: React.FC = () => {
                     </div>
                   )}
                   
-                  {interview.recommendation === 'selected' && (
+                  {interview.recommendation === 'hire' && (
                     <div className="flex items-center space-x-2 mt-4">
                       <div className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                        ✓ Selected
+                        Recommended for Offer
                       </div>
                       <Button 
                         size="sm"
@@ -283,7 +274,7 @@ const InterviewsList: React.FC = () => {
                     </div>
                   )}
                   
-                  {interview.recommendation === 'rejected' && (
+                  {interview.recommendation === 'reject' && (
                     <div className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm mt-4 w-fit">
                       ✗ Rejected
                     </div>

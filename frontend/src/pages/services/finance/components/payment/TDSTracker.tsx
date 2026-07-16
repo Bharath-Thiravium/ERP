@@ -62,6 +62,20 @@ const TDSTracker: React.FC<Props> = ({ sessionKey, invoiceId, invoiceType, tdsMa
   const tdsPayment = payments.find(p => p.tds_applicable)
     ?? payments.find(p => p.status === 'completed');
 
+  const handleDeleteTdsPayment = async (paymentId: number) => {
+    if (!window.confirm('Delete this TDS entry? This will update the invoice outstanding amount.')) return;
+    try {
+      const { default: api } = await import('../../../../../lib/api');
+      const { default: toast } = await import('react-hot-toast');
+      await api.delete(`/api/finance/payments/${paymentId}/`, { params: { session_key: sessionKey } });
+      toast.success('TDS entry deleted');
+      onChanged();
+    } catch {
+      const { default: toast } = await import('react-hot-toast');
+      toast.error('Failed to delete TDS entry');
+    }
+  };
+
   const handleMarkCertReceived = async (paymentId: number, current: boolean) => {
     try {
       const { default: api } = await import('../../../../../lib/api');
@@ -133,10 +147,14 @@ const TDSTracker: React.FC<Props> = ({ sessionKey, invoiceId, invoiceType, tdsMa
     try {
       const { default: api } = await import('../../../../../lib/api');
       const { default: toast } = await import('react-hot-toast');
-      await api.delete(
-        `/api/finance/payment-tds/${paymentId}/deposits/${depositId}/`,
-        { params: { session_key: sessionKey } }
-      );
+      // Check if parent payment is tds_only — if so, delete the payment itself (cascade deletes deposit)
+      const parentPayment = payments.find(p => p.id === paymentId);
+      if (parentPayment?.payment_type === 'tds_only') {
+        if (!window.confirm('Delete this TDS entry? This will update the invoice outstanding amount.')) return;
+        await api.delete(`/api/finance/payments/${paymentId}/`, { params: { session_key: sessionKey } });
+      } else {
+        await api.delete(`/api/finance/payment-tds/${paymentId}/deposits/${depositId}/`, { params: { session_key: sessionKey } });
+      }
       toast.success('Entry removed'); onChanged();
     } catch {
       const { default: toast } = await import('react-hot-toast');
@@ -166,27 +184,24 @@ const TDSTracker: React.FC<Props> = ({ sessionKey, invoiceId, invoiceType, tdsMa
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-700 rounded-lg p-2 text-center">
-          <p className="text-[10px] text-gray-500 dark:text-gray-400">Total TDS</p>
-          <p className="text-xs font-bold text-orange-600">₹{fmt(tdsMax)}</p>
+        <div className="bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-center">
+          <p className="text-[10px] text-gray-500 dark:text-gray-400">TDS Max</p>
+          <p className="text-xs font-bold text-gray-700 dark:text-gray-200">₹{fmt(tdsMax)}</p>
         </div>
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-700 rounded-lg p-2 text-center">
           <p className="text-[10px] text-gray-500 dark:text-gray-400">Deposited</p>
           <p className="text-xs font-bold text-blue-600">₹{fmt(totalDeposited)}</p>
         </div>
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-700 rounded-lg p-2 text-center">
-          <p className="text-[10px] text-gray-500 dark:text-gray-400">Cert Received</p>
-          <p className={`text-xs font-bold ${totalCertReceived >= tdsMax && tdsMax > 0 ? 'text-green-600' : 'text-red-500'}`}>
-            ₹{fmt(totalCertReceived)}
-          </p>
+        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-700 rounded-lg p-2 text-center">
+          <p className="text-[10px] text-gray-500 dark:text-gray-400">Remaining</p>
+          <p className={`text-xs font-bold ${remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>₹{fmt(remaining)}</p>
         </div>
       </div>
-
-      {/* TDS outstanding */}
-      <div className="flex items-center justify-between px-3 py-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-lg">
-        <span className="text-xs text-gray-600 dark:text-gray-300">TDS Outstanding</span>
-        <span className={`text-sm font-bold ${tdsOutstanding > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-          ₹{fmt(tdsOutstanding)}
+      {/* Cert received sub-row */}
+      <div className="flex items-center justify-between px-3 py-1.5 bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-800 rounded-lg">
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">Form 16A / Cert Received</span>
+        <span className={`text-xs font-bold ${totalCertReceived >= tdsMax && tdsMax > 0 ? 'text-green-600' : 'text-amber-600'}`}>
+          ₹{fmt(totalCertReceived)}
         </span>
       </div>
 
@@ -215,6 +230,25 @@ const TDSTracker: React.FC<Props> = ({ sessionKey, invoiceId, invoiceType, tdsMa
           </div>
         );
       })}
+
+      {/* TDS-only payment entries */}
+      {payments.filter(p => p.payment_type === 'tds_only' && p.status === 'completed').map(p => (
+        <div key={p.id} className="flex items-center justify-between bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-700 rounded-lg px-3 py-2 text-xs">
+          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 flex-wrap">
+            <span className="font-medium">{p.payment_date}</span>
+            <span className="text-gray-400">{p.payment_number}</span>
+            {p.reference_number && <span className="text-gray-400">#{p.reference_number}</span>}
+            <span className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-1.5 py-0.5 rounded text-[10px] font-medium">TDS Entry</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="font-semibold text-orange-600">₹{fmt(p.tds_amount)}</span>
+            <button type="button" onClick={() => handleDeleteTdsPayment(p.id)}
+              className="text-gray-300 hover:text-red-500 transition-colors" title="Delete TDS entry">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      ))}
 
       {/* Existing deposit entries */}
       {allEntries.length > 0 && (

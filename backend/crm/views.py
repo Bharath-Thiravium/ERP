@@ -214,43 +214,45 @@ class LeadViewSet(CRMBaseViewSet):
         default_user = self._get_django_user()
         if not default_user:
             return Response({'error': 'No valid user found for conversion'}, status=status.HTTP_400_BAD_REQUEST)
+        ctx = {'request': request, 'skip_duplicate_check': True}
         with transaction.atomic():
-            account_serializer = AccountSerializer(data={
-                'company': lead.company.id,
-                'name': lead.company_name or f"{lead.first_name} {lead.last_name}",
-                'account_type': 'prospect',
-                'email': lead.email,
-                'created_by': default_user.id
-            })
-            if not account_serializer.is_valid():
-                return Response({'error': f'Account creation failed: {account_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
-            account = account_serializer.save(created_by=default_user)
+            # Reuse existing account by name, or create new
+            account_name = lead.company_name or f"{lead.first_name} {lead.last_name}"
+            from .models import Account as AccountModel, Contact as ContactModel
+            account = AccountModel.objects.filter(company=lead.company, name__iexact=account_name).first()
+            if not account:
+                account_serializer = AccountSerializer(data={
+                    'company': lead.company.id, 'name': account_name,
+                    'account_type': 'prospect', 'email': lead.email,
+                    'created_by': default_user.id
+                }, context=ctx)
+                if not account_serializer.is_valid():
+                    return Response({'error': f'Account creation failed: {account_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
+                account = account_serializer.save(created_by=default_user)
 
-            contact_serializer = ContactSerializer(data={
-                'company': lead.company.id,
-                'first_name': lead.first_name,
-                'last_name': lead.last_name,
-                'email': lead.email,
-                'phone': lead.phone,
-                'job_title': lead.job_title,
-                'created_by': default_user.id
-            })
-            if not contact_serializer.is_valid():
-                return Response({'error': f'Contact creation failed: {contact_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
-            contact = contact_serializer.save(created_by=default_user)
+            # Reuse existing contact by email, or create new
+            contact = ContactModel.objects.filter(company=lead.company, email__iexact=lead.email).first() if lead.email else None
+            if not contact:
+                contact_serializer = ContactSerializer(data={
+                    'company': lead.company.id, 'first_name': lead.first_name,
+                    'last_name': lead.last_name, 'email': lead.email,
+                    'phone': lead.phone, 'job_title': lead.job_title,
+                    'created_by': default_user.id
+                }, context=ctx)
+                if not contact_serializer.is_valid():
+                    return Response({'error': f'Contact creation failed: {contact_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
+                contact = contact_serializer.save(created_by=default_user)
 
             owner_id = lead.assigned_to.id if lead.assigned_to else default_user.id
             opp_serializer = OpportunitySerializer(data={
                 'company': lead.company.id,
                 'name': f"{lead.first_name} {lead.last_name} - Opportunity",
-                'account': account.id,
-                'contact': contact.id,
+                'account': account.id, 'contact': contact.id,
                 'amount': lead.estimated_value or 0,
                 'expected_close_date': lead.expected_close_date or timezone.now().date() + timedelta(days=30),
-                'owner': owner_id,
-                'created_by': default_user.id,
+                'owner': owner_id, 'created_by': default_user.id,
                 'description': lead.description
-            })
+            }, context=ctx)
             if not opp_serializer.is_valid():
                 return Response({'error': f'Opportunity creation failed: {opp_serializer.errors}'}, status=status.HTTP_400_BAD_REQUEST)
             opportunity = opp_serializer.save(created_by=default_user, owner_id=owner_id)

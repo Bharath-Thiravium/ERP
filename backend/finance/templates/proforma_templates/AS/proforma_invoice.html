@@ -5,361 +5,223 @@
     <meta charset="UTF-8">
     <title>Proforma Invoice - {{ proforma.proforma_number }}</title>
     <style>
-        @page {
-            size: A4;
-            margin: 12mm 12mm 12mm 12mm;
-            orphans: 2;
-            widows: 2;
-        }
-        
-        body {
-            font-family: Roboto, Arial, sans-serif;
-            font-size: 9pt;
-            line-height: 1.3;
-            margin: 0;
-            padding: 0;
-            color: #333;
-        }
-        
-        /* Clean & Simple: 3-column header */
-        .header-table {
-            width: 100%;
-            border-collapse: collapse;
-            border: 2px solid #000;
-            margin-bottom: 12px;
-            page-break-inside: avoid;
-        }
-        
-        .header-table td {
-            border: 1px solid #000;
-            padding: 6px;
-            vertical-align: top;
-        }
-        
-        .company-logo {
-            width: 15%;
-            text-align: center;
-            font-weight: bold;
-            font-size: 11pt;
-        }
-        
-        .company-logo img {
-            max-width: 50px;
-            max-height: 50px;
-            display: block;
-            margin: 0 auto;
-        }
-        
-        .company-details {
-            width: 55%;
-            font-size: 8.5pt;
-            line-height: 1.4;
-        }
-        
-        .company-name {
-            font-size: 12pt;
-            font-weight: bold;
-            margin-bottom: 3px;
-        }
-        
-        .document-title {
-            width: 30%;
-            text-align: center;
-            background-color: #f5f5f5;
-            border-left: 1px solid #000;
-            padding: 10px 6px !important;
-        }
-        
-        .document-title h1 {
-            margin: 0 0 4px 0;
-            font-size: 14pt;
-            font-weight: bold;
-            letter-spacing: 1px;
-        }
-        
-        .doc-meta {
-            font-size: 8pt;
-            line-height: 1.3;
-            color: #555;
-        }
-        
-        .customer-section {
-            width: 100%;
-            border-collapse: collapse;
-            border: 2px solid #000;
-            margin-bottom: 12px;
-            page-break-inside: avoid;
-        }
-        
-        .customer-section td {
-            border: 1px solid #000;
-            padding: 6px;
-            vertical-align: top;
-            font-size: 8.5pt;
-            line-height: 1.4;
-        }
-        
-        .section-header {
-            background-color: #ddd;
-            font-weight: bold;
-            text-align: center;
-            width: 50%;
-        }
-        
-        .items-table {
-            width: 100%;
-            border-collapse: collapse;
-            border: 2px solid #000;
-            margin-bottom: 12px;
-            page-break-inside: avoid;
-        }
-        
-        .items-table th {
-            background-color: #ccc;
-            border: 1px solid #000;
-            padding: 5px 3px;
-            font-size: 8pt;
-            font-weight: bold;
-            text-align: center;
-        }
-        
-        .items-table td {
-            border: 1px solid #000;
-            padding: 5px 3px;
-            font-size: 8pt;
-            line-height: 1.3;
-        }
-        
-        .totals-box {
-            width: 45%;
-            float: right;
-            border: 2px solid #000;
-            border-collapse: collapse;
-            page-break-inside: avoid;
-            margin-bottom: 12px;
-        }
-        
-        .totals-box td {
-            border: 1px solid #000;
-            padding: 5px 8px;
-            font-size: 8.5pt;
-        }
-        
-        .total-label {
-            background-color: #ddd;
-            font-weight: bold;
-            text-align: right;
-            width: 50%;
-        }
-        
-        .total-amount {
-            text-align: right;
-            font-weight: bold;
-        }
-        
-        .grand-total {
-            background-color: #ccc;
-            font-weight: bold;
-            font-size: 9pt;
-        }
-        
-        .amount-words {
-            clear: both;
-            margin-bottom: 12px;
-            font-weight: bold;
-            border: 1px solid #000;
-            padding: 6px;
-            background-color: #f9f9f9;
-            font-size: 8.5pt;
-            page-break-inside: avoid;
-        }
-        
-        .terms-section {
-            clear: both;
-            margin-bottom: 12px;
-            border: 1px solid #000;
-            padding: 6px;
-            font-size: 8pt;
-            line-height: 1.3;
-            page-break-inside: avoid;
-        }
-        
-        .signature-section {
-            margin-top: 20px;
-            text-align: right;
-            font-size: 8pt;
-            page-break-inside: avoid;
-        }
-        
-        .signature-box {
-            display: inline-block;
-            text-align: center;
-            padding: 25px 30px 0;
-            border-top: 2px solid #000;
-        }
+        @page { size: A4; margin: 8mm 12mm; }
+        body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 8pt; line-height: 1.3; margin: 0; padding: 0; color: #2c3e50; background: #fff; }
+        .header-section { margin-bottom: 8px; page-break-inside: avoid; }
+        .company-header { display: flex; align-items: flex-start; gap: 12px; padding-bottom: 7px; border-bottom: 2px solid #9b59b6; }
+        .company-logo-area { width: 70px; height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #f8f9fa; border-radius: 4px; }
+        .company-logo-area img { max-width: 62px; max-height: 46px; object-fit: contain; }
+        .company-info { flex: 1; }
+        .company-name { font-size: 16px; font-weight: 700; color: #2c3e50; margin-bottom: 2px; letter-spacing: -0.3px; }
+        .company-address { font-size: 7.5pt; color: #5d6d7e; line-height: 1.4; }
+        .doc-info-box { text-align: right; min-width: 160px; }
+        .doc-type { font-size: 20px; font-weight: 300; color: #9b59b6; letter-spacing: 3px; text-transform: uppercase; }
+        .doc-number { font-size: 11px; font-weight: 600; color: #2c3e50; margin-top: 3px; }
+        .doc-dates { font-size: 7.5pt; color: #5d6d7e; margin-top: 2px; }
+        .parties-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; page-break-inside: avoid; }
+        .party-card { padding: 6px 10px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid #9b59b6; }
+        .party-label { font-size: 6.5pt; font-weight: 600; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+        .party-name { font-size: 11px; font-weight: 600; color: #2c3e50; margin-bottom: 2px; }
+        .party-address { font-size: 7.5pt; color: #5d6d7e; line-height: 1.35; }
+        .party-gst { font-size: 7pt; color: #9b59b6; margin-top: 2px; font-weight: 500; }
+        .meta-bar { display: flex; gap: 2px; margin-bottom: 8px; page-break-inside: avoid; }
+        .meta-item { flex: 1; padding: 5px 6px; background: #ecf0f1; text-align: center; border-radius: 3px; }
+        .meta-item:nth-child(even) { background: #d5dbdb; }
+        .meta-label { font-size: 6pt; color: #7f8c8d; text-transform: uppercase; margin-bottom: 1px; }
+        .meta-value { font-size: 8pt; font-weight: 600; color: #2c3e50; }
+        .notice-box { margin-bottom: 8px; padding: 5px 10px; background: #eaf2f8; border-radius: 4px; border-left: 3px solid #3498db; page-break-inside: avoid; }
+        .notice-title { font-size: 6.5pt; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .notice-text { font-size: 7.5pt; color: #2c3e50; line-height: 1.35; }
+        .items-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        .items-table thead th { background: #9b59b6; color: white; padding: 5px 5px; font-size: 7pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; text-align: center; }
+        .items-table tbody td { padding: 5px 5px; border-bottom: 1px solid #ecf0f1; font-size: 7.5pt; color: #2c3e50; }
+        .items-table tbody tr:nth-child(even) { background: #f8f9fa; }
+        .item-desc { font-weight: 500; color: #2c3e50; }
+        .item-meta { font-size: 6.5pt; color: #7f8c8d; margin-top: 1px; }
+        .totals-section { display: grid; grid-template-columns: 1fr 240px; gap: 10px; margin-bottom: 8px; page-break-inside: avoid; }
+        .amount-words-box { padding: 7px 10px; background: #f5eef8; border-radius: 4px; border-left: 3px solid #9b59b6; }
+        .amount-label { font-size: 6.5pt; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .amount-value { font-size: 9pt; font-weight: 600; color: #2c3e50; font-style: italic; }
+        .totals-table { width: 100%; border-collapse: collapse; }
+        .totals-table td { padding: 4px 8px; border-bottom: 1px solid #ecf0f1; font-size: 7.5pt; }
+        .totals-table tr:last-child td { border-bottom: none; }
+        .totals-table .label-cell { background: #f8f9fa; color: #5d6d7e; text-align: right; }
+        .totals-table .value-cell { text-align: right; font-weight: 500; font-family: 'Courier New', monospace; }
+        .totals-table .grand-total-row td { background: #9b59b6; color: white; font-weight: 700; font-size: 9pt; }
+        .terms-box { margin-bottom: 8px; padding: 6px 10px; background: #fef9e7; border-radius: 4px; border-left: 3px solid #f1c40f; page-break-inside: avoid; }
+        .terms-title { font-size: 6.5pt; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .terms-text { font-size: 7.5pt; color: #5d6d7e; line-height: 1.35; }
+        .footer-section { margin-top: 8px; padding-top: 7px; border-top: 1px solid #ecf0f1; display: flex; justify-content: space-between; align-items: flex-end; page-break-inside: avoid; }
+        .signature-area { text-align: right; min-width: 160px; }
+        .signature-line { width: 140px; border-top: 1px solid #2c3e50; margin: 0 0 5px auto; padding-top: 4px; }
+        .signature-label { font-size: 7pt; color: #7f8c8d; text-transform: uppercase; }
+        .footer-text { text-align: center; font-size: 6.5pt; color: #95a5a6; margin-top: 6px; }
+        .footer-company { font-weight: 600; color: #2c3e50; }
     </style>
 </head>
 <body>
-    <!-- Header Section: 3-column layout -->
-    <table class="header-table">
-        <tr>
-            <td class="company-logo">
+    <div class="header-section">
+        <div class="company-header">
+            <div class="company-logo-area">
                 {% if logo_url %}
-                    <img src="{{ logo_url }}" alt="Logo">
+                    <img src="{{ logo_url }}" alt="{{ company.name }}">
                 {% elif company.logo %}
-                    <img src="{{ company.logo.url }}" alt="Logo">
+                    <img src="{{ company.logo.url }}" alt="{{ company.name }}">
                 {% else %}
-                    <div style="border: 1px solid #ccc; width: 50px; height: 50px; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 9px;">LOGO</div>
+                    <span style="font-size: 9px; color: #95a5a6;">LOGO</span>
                 {% endif %}
-            </td>
-            <td class="company-details">
+            </div>
+            <div class="company-info">
                 <div class="company-name">{{ company.name }}</div>
-                <div>{{ company.address|default:"" }}</div>
-                <div>{{ company.city|default:"" }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}</div>
-                <div>GSTIN: {{ company.gst_number|default:"N/A" }} | PAN: {{ company.pan_number|default:"N/A" }}</div>
-                <div>Phone: {{ company.phone|default:"N/A" }} | Email: {{ company.email|default:"N/A" }}</div>
-            </td>
-            <td class="document-title">
-                <h1>PROFORMA INVOICE</h1>
-                <div class="doc-meta">
-                    <div><strong>{{ proforma.proforma_number }}</strong></div>
-                    <div>{{ proforma.proforma_date|date:"d/m/Y" }}</div>
+                <div class="company-address">
+                    {% if company.address %}{{ company.address }}<br>{% endif %}
+                    {% if company.city %}{{ company.city }}{% endif %}{% if company.state %}, {{ company.state }}{% endif %}{% if company.pincode %} - {{ company.pincode }}{% endif %}<br>
+                    GSTIN: {{ company.gst_number|default:"N/A" }} | PAN: {{ company.pan_number|default:"N/A" }}<br>
+                    {% if company.phone %}Tel: {{ company.phone }}{% endif %}{% if company.email %} | {{ company.email }}{% endif %}
                 </div>
-            </td>
-        </tr>
-    </table>
+            </div>
+            <div class="doc-info-box">
+                <div class="doc-type">Proforma Invoice</div>
+                <div class="doc-number">{{ proforma.proforma_number }}</div>
+                <div class="doc-dates">
+                    <div>Date: {{ proforma.proforma_date|date:"d M Y" }}</div>
+                    <div>Valid Until: {{ proforma.due_date|date:"d M Y" }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <!-- Customer Section -->
-    <table class="customer-section">
-        <tr>
-            <td class="section-header">BILL TO</td>
-            <td class="section-header">SHIP TO</td>
-        </tr>
-        <tr>
-            <td>
-                <strong>{{ customer.name }}</strong><br>
+    <div class="parties-grid">
+        <div class="party-card">
+            <div class="party-label">Bill To</div>
+            <div class="party-name">{{ customer.name }}</div>
+            <div class="party-address">
                 {{ customer.billing_address_line1|default:"" }}<br>
                 {% if customer.billing_address_line2 %}{{ customer.billing_address_line2 }}<br>{% endif %}
-                {{ customer.billing_city|default:"" }}, {{ customer.billing_state|default:"" }} - {{ customer.billing_pincode|default:"" }}<br>
-                GSTIN: {{ customer.gstin|default:"N/A" }}<br>
-                Phone: {{ customer.phone|default:"N/A" }}
-            </td>
-            <td>
-                {% if proforma.shipping_address %}
-                    <strong>{{ proforma.shipping_address.label }}</strong><br>
-                    {{ proforma.shipping_address.full_address }}
-                {% else %}
-                    Same as Billing Address
-                {% endif %}
-            </td>
-        </tr>
-    </table>
+                {{ customer.billing_city|default:"" }}, {{ customer.billing_state|default:"" }} - {{ customer.billing_pincode|default:"" }}
+            </div>
+            <div class="party-gst">GSTIN: {{ customer.gstin|default:"N/A" }}</div>
+        </div>
+        <div class="party-card">
+            <div class="party-label">Ship To</div>
+            {% if proforma.shipping_address %}
+                <div class="party-name">{{ proforma.shipping_address.label|default:customer.name }}</div>
+                <div class="party-address">{{ proforma.shipping_address.full_address }}</div>
+            {% else %}
+                <div class="party-name">{{ customer.name }}</div>
+                <div class="party-address">{{ customer.billing_address_line1|default:"" }}</div>
+            {% endif %}
+        </div>
+    </div>
 
-    <!-- Document Info -->
-    <table style="width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 12px; page-break-inside: avoid;">
-        <tr>
-            <td style="border: 1px solid #000; padding: 5px; background-color: #ddd; font-weight: bold; font-size: 8pt;">PI #</td>
-            <td style="border: 1px solid #000; padding: 5px; font-size: 8pt;">{{ proforma.proforma_number }}</td>
-            <td style="border: 1px solid #000; padding: 5px; background-color: #ddd; font-weight: bold; font-size: 8pt;">Date</td>
-            <td style="border: 1px solid #000; padding: 5px; font-size: 8pt;">{{ proforma.proforma_date|date:"d/m/Y" }}</td>
-        </tr>
-        <tr>
-            <td style="border: 1px solid #000; padding: 5px; background-color: #ddd; font-weight: bold; font-size: 8pt;">Due Date</td>
-            <td style="border: 1px solid #000; padding: 5px; font-size: 8pt;">{{ proforma.due_date|date:"d/m/Y" }}</td>
-            <td style="border: 1px solid #000; padding: 5px; background-color: #ddd; font-weight: bold; font-size: 8pt;">GST Type</td>
-            <td style="border: 1px solid #000; padding: 5px; font-size: 8pt;">{{ proforma.gst_type|upper }}</td>
-        </tr>
-    </table>
+    <div class="meta-bar">
+        <div class="meta-item">
+            <div class="meta-label">Proforma #</div>
+            <div class="meta-value">{{ proforma.proforma_number }}</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Date</div>
+            <div class="meta-value">{{ proforma.proforma_date|date:"d/m/Y" }}</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Valid Until</div>
+            <div class="meta-value">{{ proforma.due_date|date:"d/m/Y" }}</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Status</div>
+            <div class="meta-value">{{ proforma.status|upper }}</div>
+        </div>
+        {% if proforma.purchase_order %}
+        <div class="meta-item">
+            <div class="meta-label">PO No.</div>
+            <div class="meta-value">{{ proforma.purchase_order.po_number }}</div>
+        </div>
+        {% endif %}
+        {% if proforma.reference %}
+        <div class="meta-item">
+            <div class="meta-label">Reference</div>
+            <div class="meta-value">{{ proforma.reference }}</div>
+        </div>
+        {% endif %}
+    </div>
 
-    <!-- Items Table -->
+    <div class="notice-box">
+        <div class="notice-title">Important Notice</div>
+        <div class="notice-text">This is a PROFORMA INVOICE and is NOT a tax invoice. This document is for quotation purposes only. Upon confirmation, a formal tax invoice will be issued.</div>
+    </div>
+
     <table class="items-table">
         <thead>
             <tr>
-                <th style="width: 5%;">S.No</th>
-                <th style="width: 35%;">Description</th>
+                <th style="width: 5%;">#</th>
+                <th style="width: 32%;">Description</th>
                 <th style="width: 10%;">HSN/SAC</th>
                 <th style="width: 8%;">Qty</th>
                 <th style="width: 8%;">Unit</th>
-                <th style="width: 12%;">Rate</th>
-                <th style="width: 6%;">Tax %</th>
-                <th style="width: 8%;">Amount</th>
+                <th style="width: 20%;">Rate (₹)</th>
+                <th style="width: 17%;">Total (₹)</th>
             </tr>
         </thead>
         <tbody>
             {% for item in items %}
             <tr>
-                <td style="text-align: center;">{{ forloop.counter }}</td>
+                <td style="text-align: center; color: #95a5a6;">{{ forloop.counter }}</td>
                 <td>
-                    <strong>{{ item.product_name }}</strong>
-                    {% if item.description %}<br><small style="font-size: 7pt;">{{ item.description }}</small>{% endif %}
+                    <div class="item-desc">{{ item.product_name }}</div>
+                    {% if item.description %}<div class="item-meta">{{ item.description }}</div>{% endif %}
                 </td>
-                <td style="text-align: center;">{{ item.hsn_sac_code|default:"N/A" }}</td>
+                <td style="text-align: center;">{{ item.hsn_sac_code|default:"—" }}</td>
                 <td style="text-align: right;">{{ item.quantity|floatformat:2 }}</td>
-                <td style="text-align: center;">{{ item.unit }}</td>
-                <td style="text-align: right;">₹{{ item.unit_price|floatformat:2 }}</td>
-                <td style="text-align: right;">{{ item.gst_rate|floatformat:0 }}%</td>
-                <td style="text-align: right;">₹{{ item.line_total|floatformat:2 }}</td>
+                <td style="text-align: center;">{{ item.unit|default:"Nos" }}</td>
+                <td style="text-align: right;">{{ item.unit_price|floatformat:2 }}</td>
+                <td style="text-align: right; font-weight: 600;">{{ item.line_total|floatformat:2 }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <!-- Totals -->
-    <table class="totals-box">
-        <tr>
-            <td class="total-label">Subtotal:</td>
-            <td class="total-amount">₹{{ proforma.subtotal|floatformat:2 }}</td>
-        </tr>
-        {% if proforma.discount_amount > 0 %}
-        <tr>
-            <td class="total-label">Discount:</td>
-            <td class="total-amount">-₹{{ proforma.discount_amount|floatformat:2 }}</td>
-        </tr>
-        {% endif %}
-        <tr>
-            <td class="total-label">Taxable:</td>
-            <td class="total-amount">₹{{ proforma.subtotal|floatformat:2 }}</td>
-        </tr>
-        {% if proforma.gst_type == "cgst_sgst" %}
-        <tr>
-            <td class="total-label">CGST:</td>
-            <td class="total-amount">₹{{ proforma.cgst_amount|floatformat:2 }}</td>
-        </tr>
-        <tr>
-            <td class="total-label">SGST:</td>
-            <td class="total-amount">₹{{ proforma.sgst_amount|floatformat:2 }}</td>
-        </tr>
-        {% elif proforma.gst_type == "igst" %}
-        <tr>
-            <td class="total-label">IGST:</td>
-            <td class="total-amount">₹{{ proforma.igst_amount|floatformat:2 }}</td>
-        </tr>
-        {% endif %}
-        <tr class="grand-total">
-            <td class="total-label">Grand Total:</td>
-            <td class="total-amount">₹{{ proforma.total_amount|floatformat:2 }}</td>
-        </tr>
-    </table>
-
-    <!-- Amount in Words -->
-    <div class="amount-words">
-        <strong>Amount in Words:</strong> {{ proforma.total_amount|num_to_words }}
+    <div class="totals-section">
+        <div class="amount-words-box">
+            <div class="amount-label">Amount in Words</div>
+            <div class="amount-value">{{ proforma.total_amount|num_to_words }}</div>
+        </div>
+        <table class="totals-table">
+            <tr>
+                <td class="label-cell">Subtotal</td>
+                <td class="value-cell">{{ proforma.subtotal|floatformat:2 }}</td>
+            </tr>
+            {% if proforma.discount_amount > 0 %}
+            <tr>
+                <td class="label-cell">Discount{% if proforma.discount_percentage > 0 %} ({{ proforma.discount_percentage }}%){% endif %}</td>
+                <td class="value-cell" style="color: #e74c3c;">-{{ proforma.discount_amount|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+            <tr class="grand-total-row">
+                <td>Grand Total</td>
+                <td class="value-cell">₹{{ proforma.total_amount|floatformat:2 }}</td>
+            </tr>
+        </table>
     </div>
 
-    <!-- Terms -->
-    <div class="terms-section">
-        <strong>Terms & Conditions:</strong><br>
-        {{ proforma.terms_and_conditions|default:"This is a proforma invoice and not an actual invoice. Conversion to final invoice upon confirmation."|truncatechars:150 }}
-    </div>
-
-    <!-- Signature -->
-    <div class="signature-section">
-        <div class="signature-box">
-            <div style="color: #666; font-size: 7pt; margin-bottom: 2px;">For {{ company.name }}</div>
-            <div style="margin-top: 25px; padding-top: 5px;">Authorized Signatory</div>
+    {% if proforma.terms_and_conditions or proforma.notes %}
+    <div class="terms-box">
+        <div class="terms-title">Terms & Conditions</div>
+        <div class="terms-text">
+            {% if proforma.notes %}{{ proforma.notes }}<br>{% endif %}
+            {{ proforma.terms_and_conditions|default:"This proforma invoice is valid for 30 days. Prices subject to change after validity period. This is not a tax invoice." }}
         </div>
     </div>
+    {% endif %}
 
-    <div style="text-align:center;padding:12px 0 2px;font-size:7px;color:#888;border-top:1px solid #ddd;margin-top:12px">This is a computer-generated document. No physical signature is required.</div>
+    <div class="footer-section">
+        <div class="footer-text">
+            <div class="footer-company">{{ company.name }}</div>
+            <div>This is a computer-generated proforma invoice and does not require physical signature.</div>
+        </div>
+        <div class="signature-area">
+            <div class="signature-line"></div>
+            <div class="signature-label">Authorized Signatory</div>
+        </div>
+    </div>
 </body>
 </html>

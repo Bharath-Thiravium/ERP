@@ -1452,6 +1452,40 @@ class CompanyServiceUserDetailView(RetrieveUpdateDestroyAPIView):
             'service', 'company', 'created_by'
         )
     
+
+    def post(self, request, *args, **kwargs):
+        """Reset password for a service user"""
+        if request.data.get('action') != 'reset_password':
+            return Response({'error': 'Invalid action.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        instance = self.get_object()
+        new_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
+
+        instance.password = make_password(new_password)
+        instance.must_change_password = True
+        instance.password_changed_at = timezone.now()
+        instance.password_expires_at = timezone.now() + timedelta(days=90)
+        instance.save(update_fields=['password', 'must_change_password', 'password_changed_at', 'password_expires_at', 'updated_at'])
+
+        ServiceUserSession.objects.filter(service_user=instance, is_active=True).update(
+            is_active=False,
+            revoked_at=timezone.now(),
+        )
+
+        log_security_event(
+            request.user,
+            'PASSWORD_CHANGED',
+            request,
+            f'Admin reset password for service user: {instance.username} ({instance.service.name})'
+        )
+
+        return Response({
+            'message': 'Password reset successfully.',
+            'username': instance.username,
+            'unique_service_id': instance.unique_service_id,
+            'new_password': new_password,
+        }, status=status.HTTP_200_OK)
+
     def perform_destroy(self, instance):
         """Custom delete logic to handle foreign key constraints"""
         from django.db import transaction
@@ -3606,6 +3640,7 @@ class CompanyServiceUserListCreateView(ListCreateAPIView):
 class CompanyServiceUserDetailView(RetrieveUpdateDestroyAPIView):
     """Retrieve, update, or delete a service user"""
     permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get', 'put', 'patch', 'delete', 'post', 'head', 'options']
 
     def get_serializer_class(self):
         from .serializers import CompanyServiceUserSerializer
@@ -3621,6 +3656,40 @@ class CompanyServiceUserDetailView(RetrieveUpdateDestroyAPIView):
             'service', 'company', 'created_by'
         )
     
+
+    def post(self, request, *args, **kwargs):
+        """Reset password for a service user"""
+        if request.data.get('action') != 'reset_password':
+            return Response({'error': 'Invalid action.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        instance = self.get_object()
+        new_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
+
+        instance.password = make_password(new_password)
+        instance.must_change_password = True
+        instance.password_changed_at = timezone.now()
+        instance.password_expires_at = timezone.now() + timedelta(days=90)
+        instance.save(update_fields=['password', 'must_change_password', 'password_changed_at', 'password_expires_at', 'updated_at'])
+
+        ServiceUserSession.objects.filter(service_user=instance, is_active=True).update(
+            is_active=False,
+            revoked_at=timezone.now(),
+        )
+
+        log_security_event(
+            request.user,
+            'PASSWORD_CHANGED',
+            request,
+            f'Admin reset password for service user: {instance.username} ({instance.service.name})'
+        )
+
+        return Response({
+            'message': 'Password reset successfully.',
+            'username': instance.username,
+            'unique_service_id': instance.unique_service_id,
+            'new_password': new_password,
+        }, status=status.HTTP_200_OK)
+
     def perform_destroy(self, instance):
         """Custom delete logic to handle foreign key constraints"""
         from django.db import transaction

@@ -42,28 +42,28 @@ const QuotationTemplateSettings: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching template info:', error);
-      // Set default templates if API fails - NOW WITH REFACTORED DESCRIPTIONS
+      // Set default templates if API fails - WITH REFACTORED DESCRIPTIONS
       setTemplates([
         {
           code: 'AS',
           name: 'Clean & Simple Template',
-          description: 'Clean 3-column header with logo panel, essential fields, single signature. Best for everyday use.',
-          features: ['Logo panel', 'Bill To / Ship To', 'GST breakdown', 'Single signature', 'Professional borders'],
-          best_for: 'Small and medium businesses'
+          description: 'Minimalist left-aligned header with clean typography. Subtle accent borders. Grid-based layout with soft gray backgrounds.',
+          features: ['Left-aligned clean header', 'Grid-based party cards', 'Minimalist design', 'Fast loading', 'Professional appearance'],
+          best_for: 'Quick everyday documents, daily quotations, internal use'
         },
         {
           code: 'BKGE', 
           name: 'Professional Template',
-          description: 'Teal-accented header, compliance fields (Place of Supply, Reverse Charge), Amount in Words, Payment Terms table, 2 signatures. Best for growing businesses and client-facing documents.',
-          features: ['Teal gradient header', 'Compliance fields', 'Place of Supply', 'Reverse Charge', 'Amount in Words', 'Payment Terms table', '2 signatures'],
-          best_for: 'Growing businesses and client-facing documents'
+          description: 'Modern full-width gradient header with accent colors. Centered document title. Pill-shaped meta badges. Premium dark header design.',
+          features: ['Gradient banner header', 'Centered modern layout', 'Pill-shaped badges', 'Bold professional look', 'Two signature sections'],
+          best_for: 'Client presentations, executive documents, modern business'
         },
         {
           code: 'TC',
           name: 'Detailed Terms Template', 
-          description: 'Premium gold/charcoal header, per-line GST columns, HSN/SAC-wise tax summary, bank details, declaration, 3 signatures.',
-          features: ['Premium header', 'Per-line GST columns', 'HSN/SAC organization', 'Bank details', 'Declaration section', '3 signatures'],
-          best_for: 'Premium and enterprise customers'
+          description: 'Premium gold/charcoal header. Per-line GST columns with CGST/SGST/IGST breakdown. HSN/SAC-wise tax summary table. Complete bank details. Legal declaration.',
+          features: ['Premium gold/charcoal header', 'Per-line GST breakdown', 'HSN Tax Summary table', 'Complete bank details (6 fields)', 'Legal declaration clause', '3 signature blocks'],
+          best_for: 'Enterprise, CA-compliant documents, government contracts, audit requirements'
         }
       ]);
     }

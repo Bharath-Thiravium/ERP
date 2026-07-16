@@ -7,17 +7,6 @@ from authentication.models import Company, CompanyServiceUser
 from .unit_models import Unit
 
 
-def _generate_configured_number(company, module):
-    from finance.numbering import generate_number
-
-    try:
-        return generate_number(company, module)
-    except Exception:
-        if getattr(company, 'use_document_numbering', False):
-            raise
-        raise
-
-
 def validate_gstin_optional(value):
     """Custom validator for GSTIN that allows blank values"""
     if not value or not value.strip():
@@ -155,14 +144,7 @@ class Product(models.Model):
 
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='products')
-    master_product = models.ForeignKey(
-        'common.MasterProduct',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='finance_products',
-    )
-    product_code = models.CharField(max_length=50, db_index=True)
+    product_code = models.CharField(max_length=50, unique=True, db_index=True)
     name = models.CharField(max_length=255)
     product_type = models.CharField(max_length=10, choices=PRODUCT_TYPE_CHOICES, default='product')
     description = models.TextField(blank=True)
@@ -206,10 +188,11 @@ class Product(models.Model):
         # Auto-generate product code if not provided
         if not self.product_code:
             try:
-                self.product_code = _generate_configured_number(self.company, 'product')
+                from authentication.utils import generate_auto_code
+                # Use product_type specific code generation
+                code_type = 'product' if self.product_type == 'product' else 'service'
+                self.product_code = generate_auto_code(self.company.id, code_type)
             except Exception as e:
-                if getattr(self.company, 'use_document_numbering', False):
-                    raise
                 # Fallback to old system if auto-code fails
                 if self.product_type == 'product':
                     # Generate company prefix + PROD codes for products
@@ -321,15 +304,8 @@ class Customer(models.Model):
 
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='finance_customers')
-    master_customer = models.ForeignKey(
-        'common.MasterCustomer',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='finance_customers',
-    )
     created_by = models.ForeignKey(CompanyServiceUser, on_delete=models.CASCADE, related_name='created_customers', null=True, blank=True)
-    customer_code = models.CharField(max_length=40, blank=True, db_index=True, help_text="Auto-generated unique customer code (e.g., TC-CUST-2627-001)")
+    customer_code = models.CharField(max_length=40, unique=True, blank=True, help_text="Auto-generated unique customer code (e.g., TC-CUST-2627-001)")
 
     # Customer Type and Basic Details - MANDATORY FIELDS
     customer_type = models.CharField(max_length=20, choices=CUSTOMER_TYPE_CHOICES, help_text="MANDATORY: Customer type")
@@ -552,10 +528,9 @@ class Customer(models.Model):
         
         if not self.customer_code:
             try:
-                self.customer_code = _generate_configured_number(self.company, 'customer')
+                from authentication.utils import generate_auto_code
+                self.customer_code = generate_auto_code(self.company.id, 'customer')
             except Exception as e:
-                if getattr(self.company, 'use_document_numbering', False):
-                    raise
                 # Fallback to old system if auto-code fails
                 max_retries = 10
                 for attempt in range(max_retries):
@@ -858,10 +833,9 @@ class Quotation(models.Model):
         # Auto-generate quotation number if not provided
         if not self.quotation_number:
             try:
-                self.quotation_number = _generate_configured_number(self.company, 'quotation')
+                from authentication.utils import generate_auto_code
+                self.quotation_number = generate_auto_code(self.company.id, 'quotation')
             except Exception as e:
-                if getattr(self.company, 'use_document_numbering', False):
-                    raise
                 # Fallback to old system if auto-code fails
                 from datetime import datetime
                 year = datetime.now().year
@@ -997,7 +971,8 @@ class Quotation(models.Model):
             if self.tds_amount > 0:
                 self.tds_applicable = True
 
-        self.total_amount = discounted_subtotal + self.total_tax + shipping_charges + other_charges + self.tds_amount
+        # TDS is deducted by customer from the base amount — it does NOT add to invoice total
+        self.total_amount = discounted_subtotal + self.total_tax + shipping_charges + other_charges
 
         # Ensure shipping_charges and other_charges are saved to the instance
         self.shipping_charges = shipping_charges
@@ -1346,7 +1321,8 @@ class PurchaseOrder(models.Model):
                     with transaction.atomic():
                         # First try the company's auto-code system
                         try:
-                            generated_code = _generate_configured_number(self.company, 'purchase_order')
+                            from authentication.utils import generate_auto_code
+                            generated_code = generate_auto_code(self.company.id, 'purchase_order')
                             
                             # Check if this generated code already exists
                             if not PurchaseOrder.objects.filter(
@@ -1356,8 +1332,6 @@ class PurchaseOrder(models.Model):
                                 self.internal_po_number = generated_code
                                 break  # Success, exit retry loop
                         except Exception:
-                            if getattr(self.company, 'use_document_numbering', False):
-                                raise
                             pass  # Fall through to manual generation
                         
                         # Fallback to manual generation
@@ -2010,10 +1984,9 @@ class ProformaInvoice(models.Model):
         # Generate proforma number if not provided
         if not self.proforma_number:
             try:
-                self.proforma_number = _generate_configured_number(self.company, 'proforma_invoice')
+                from authentication.utils import generate_auto_code
+                self.proforma_number = generate_auto_code(self.company.id, 'proforma_invoice')
             except Exception as e:
-                if getattr(self.company, 'use_document_numbering', False):
-                    raise
                 # Fallback to old system if auto-code fails
                 latest_proforma = ProformaInvoice.objects.filter(
                     company=self.company
@@ -2044,6 +2017,8 @@ class ProformaInvoice(models.Model):
         # Automatically set payment status when creating proforma invoice
         if self.pk is None:  # New proforma invoice
             self.payment_status = 'unpaid'
+            self.outstanding_amount = self.total_amount or Decimal('0')
+            self.paid_amount = Decimal('0')
 
         super().save(*args, **kwargs)
 
@@ -2361,10 +2336,9 @@ class Invoice(models.Model):
         # Generate invoice number if not provided
         if not self.invoice_number:
             try:
-                self.invoice_number = _generate_configured_number(self.company, 'invoice')
+                from authentication.utils import generate_auto_code
+                self.invoice_number = generate_auto_code(self.company.id, 'invoice')
             except Exception as e:
-                if getattr(self.company, 'use_document_numbering', False):
-                    raise
                 # Fallback to old system if auto-code fails
                 latest_invoice = Invoice.objects.filter(
                     company=self.company
@@ -2668,10 +2642,9 @@ class Payment(models.Model):
         # Generate payment number if not provided
         if not self.payment_number:
             try:
-                self.payment_number = _generate_configured_number(self.company, 'customer_payment')
+                from authentication.utils import generate_auto_code
+                self.payment_number = generate_auto_code(self.company.id, 'payment')
             except Exception as e:
-                if getattr(self.company, 'use_document_numbering', False):
-                    raise
                 # Fallback to old system if auto-code fails
                 latest_payment = Payment.objects.filter(
                     company=self.company
@@ -2718,11 +2691,21 @@ class Payment(models.Model):
         if tds_amount > 0:
             self.tds_applicable = True
         
-        # If TDS is applicable, ensure rate is set
-        if self.tds_applicable and tds_percentage == 0 and amount > 0 and tds_amount > 0:
-            self.tds_rate = (tds_amount / amount) * Decimal('100')
+        # Resolve base amount (subtotal) for TDS calculation.
+        # TDS is always on the base/subtotal amount, never on GST/total.
+        # Use invoice subtotal when available; fall back to gross payment amount.
+        invoice_subtotal = Decimal('0')
+        if self.invoice and self.invoice.subtotal:
+            invoice_subtotal = Decimal(str(self.invoice.subtotal))
+        elif self.proforma_invoice and self.proforma_invoice.subtotal:
+            invoice_subtotal = Decimal(str(self.proforma_invoice.subtotal))
+        tds_base = invoice_subtotal if invoice_subtotal > 0 else amount
+
+        # If TDS is applicable, ensure rate is set (back-calculate from base, not gross)
+        if self.tds_applicable and tds_percentage == 0 and tds_base > 0 and tds_amount > 0:
+            self.tds_rate = (tds_amount / tds_base) * Decimal('100')
             tds_percentage = self.tds_rate
-        
+
         # Calculate TDS amounts based on CA-level logic
         if self.tds_applicable:
             # Skip TDS calculation for TDS-only payments (amount=0, tds_amount>0)
@@ -2733,16 +2716,17 @@ class Payment(models.Model):
                 # Frontend already computed correct values — trust them
                 self.tds_amount = tds_amount
                 self.net_amount_received = net_amount_received
-                if amount > 0:
-                    self.tds_rate = (tds_amount / amount) * Decimal('100')
-            elif tds_percentage > 0 and amount > 0:
-                # Only rate provided — recalculate (legacy path)
-                self.tds_amount = (amount * tds_percentage) / Decimal('100')
+                # Back-calculate rate from base amount (subtotal), not gross
+                if tds_base > 0:
+                    self.tds_rate = (tds_amount / tds_base) * Decimal('100')
+            elif tds_percentage > 0 and tds_base > 0:
+                # Only rate provided — calculate TDS on base amount (subtotal)
+                self.tds_amount = (tds_base * tds_percentage) / Decimal('100')
                 self.net_amount_received = amount - self.tds_amount
             elif tds_amount > 0:
                 self.net_amount_received = amount - tds_amount
-                if amount > 0:
-                    self.tds_rate = (tds_amount / amount) * Decimal('100')
+                if tds_base > 0:
+                    self.tds_rate = (tds_amount / tds_base) * Decimal('100')
             else:
                 self.tds_amount = Decimal('0')
                 self.net_amount_received = amount
@@ -2754,14 +2738,15 @@ class Payment(models.Model):
 
         super().save(*args, **kwargs)
 
-        # Update related invoice/proforma payment status only for invoice payments
-        if self.payment_type == 'invoice':
+        # Update related invoice/proforma payment status for invoice and tds_only payments
+        if self.payment_type in ('invoice', 'tds_only'):
             self.update_invoice_payment_status()
 
     def update_invoice_payment_status(self):
         """Update invoice outstanding.
-        TDS logic: TDS amount counts toward paid only when tds_certificate_received=True.
-        Until then, only net_amount_received counts — keeping TDS portion in outstanding.
+        TDS logic: TDS-only payments reduce outstanding immediately (customer has already deducted it).
+        For regular payments with TDS, net_amount_received counts immediately; TDS portion counts
+        only when tds_certificate_received=True.
         """
         from decimal import Decimal
 
@@ -2772,13 +2757,9 @@ class Payment(models.Model):
             """
             total = Decimal('0')
             for p in payments_qs.filter(status='completed'):
-                # For TDS-only payments, count TDS when certificate is received
+                # For TDS-only payments, count TDS amount immediately toward outstanding
                 if getattr(p, 'payment_type', None) == 'tds_only':
-                    # Check TDS deposits for certificate status
-                    from django.db.models import Sum as DSum
-                    cert_received = p.tds_deposits.filter(certificate_received=True).aggregate(
-                        t=DSum('amount'))['t'] or Decimal('0')
-                    total += cert_received
+                    total += Decimal(str(p.tds_amount or 0))
                     continue
                     
                 net = Decimal(str(p.net_amount_received or 0))
@@ -2803,13 +2784,7 @@ class Payment(models.Model):
         if self.invoice:
             direct_payments = calc_paid(self.invoice.payments, self.invoice)
 
-            proforma_advances = Decimal('0')
-            if self.invoice.purchase_order:
-                proforma_advances = self.invoice.purchase_order.proforma_invoices.aggregate(
-                    total=models.Sum('paid_amount')
-                )['total'] or Decimal('0')
-
-            total_paid = direct_payments + proforma_advances
+            total_paid = direct_payments
             invoice_total = Decimal(str(self.invoice.total_amount or 0))
 
             self.invoice.paid_amount = total_paid
@@ -2855,12 +2830,9 @@ class Payment(models.Model):
         def calc_paid(payments_qs):
             total = Decimal('0')
             for p in payments_qs.filter(status='completed'):
-                # For TDS-only payments, count TDS when certificate is received
+                # For TDS-only payments, count TDS amount immediately toward outstanding
                 if getattr(p, 'payment_type', None) == 'tds_only':
-                    from django.db.models import Sum as DSum
-                    cert_received = p.tds_deposits.filter(certificate_received=True).aggregate(
-                        t=DSum('amount'))['t'] or Decimal('0')
-                    total += cert_received
+                    total += Decimal(str(p.tds_amount or 0))
                     continue
                     
                 net = Decimal(str(p.net_amount_received or 0))
@@ -2873,12 +2845,7 @@ class Payment(models.Model):
 
         if invoice:
             direct_payments = calc_paid(invoice.payments)
-            proforma_advances = Decimal('0')
-            if invoice.purchase_order:
-                proforma_advances = invoice.purchase_order.proforma_invoices.aggregate(
-                    total=models.Sum('paid_amount')
-                )['total'] or Decimal('0')
-            total_paid = direct_payments + proforma_advances
+            total_paid = direct_payments
             invoice.paid_amount = total_paid
             invoice_total = Decimal(str(invoice.total_amount or 0))
             invoice.outstanding_amount = invoice_total - total_paid
@@ -3000,7 +2967,7 @@ class Vendor(models.Model):
 
     # Basic Information
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='vendors')
-    vendor_code = models.CharField(max_length=20, blank=True, db_index=True)
+    vendor_code = models.CharField(max_length=20, unique=True, blank=True)
     name = models.CharField(max_length=255)
     vendor_type = models.CharField(max_length=20, choices=VENDOR_TYPE_CHOICES, default='business')
     
@@ -3053,10 +3020,9 @@ class Vendor(models.Model):
     def save(self, *args, **kwargs):
         if not self.vendor_code:
             try:
-                self.vendor_code = _generate_configured_number(self.company, 'vendor')
+                from authentication.utils import generate_auto_code
+                self.vendor_code = generate_auto_code(self.company.id, 'vendor')
             except Exception:
-                if getattr(self.company, 'use_document_numbering', False):
-                    raise
                 last_vendor = Vendor.objects.filter(
                     company=self.company,
                     vendor_code__startswith='VEN-'
@@ -3140,10 +3106,9 @@ class PurchaseRequest(models.Model):
     def save(self, *args, **kwargs):
         if not self.request_number:
             try:
-                self.request_number = _generate_configured_number(self.company, 'purchase_request')
+                from authentication.utils import generate_auto_code
+                self.request_number = generate_auto_code(self.company.id, 'purchase_request')
             except Exception:
-                if getattr(self.company, 'use_document_numbering', False):
-                    raise
                 from datetime import datetime
                 year = datetime.now().year
                 last_request = PurchaseRequest.objects.filter(
@@ -3297,10 +3262,9 @@ class VendorInvoice(models.Model):
     def save(self, *args, **kwargs):
         if not self.our_reference_number:
             try:
-                self.our_reference_number = _generate_configured_number(self.company, 'vendor_invoice')
+                from authentication.utils import generate_auto_code
+                self.our_reference_number = generate_auto_code(self.company.id, 'vendor_invoice')
             except Exception:
-                if getattr(self.company, 'use_document_numbering', False):
-                    raise
                 from datetime import datetime
                 year = datetime.now().year
                 last_invoice = VendorInvoice.objects.filter(
@@ -3447,10 +3411,9 @@ class PurchasePayment(models.Model):
     def save(self, *args, **kwargs):
         if not self.payment_number:
             try:
-                self.payment_number = _generate_configured_number(self.company, 'purchase_payment')
+                from authentication.utils import generate_auto_code
+                self.payment_number = generate_auto_code(self.company.id, 'purchase_payment')
             except Exception:
-                if getattr(self.company, 'use_document_numbering', False):
-                    raise
                 from datetime import datetime
                 year = datetime.now().year
                 last_payment = PurchasePayment.objects.filter(
@@ -3503,6 +3466,37 @@ class PurchasePayment(models.Model):
         
         self.vendor_invoice.last_payment_date = self.payment_date
         self.vendor_invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'status', 'last_payment_date'])
+
+
+class Gstr1ExportLog(models.Model):
+    """Audit log for every GSTR-1 export attempt."""
+    company_id = models.IntegerField(db_index=True)
+    company_gstin = models.CharField(max_length=15)
+    return_month = models.CharField(max_length=20)
+    financial_year = models.CharField(max_length=10)
+    from_date = models.DateField()
+    to_date = models.DateField()
+    exported_by_id = models.IntegerField()
+    exported_by_name = models.CharField(max_length=255)
+    exported_at = models.DateTimeField(auto_now_add=True)
+    file_name = models.CharField(max_length=255)
+    b2b_count = models.IntegerField(default=0)
+    b2cs_count = models.IntegerField(default=0)
+    cdnr_count = models.IntegerField(default=0)
+    cdnra_count = models.IntegerField(default=0)
+    hsn_b2b_count = models.IntegerField(default=0)
+    hsn_b2c_count = models.IntegerField(default=0)
+    docs_count = models.IntegerField(default=0)
+    validation_status = models.CharField(max_length=20, default='passed')
+    export_status = models.CharField(max_length=20, default='success')
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'finance_gstr1_export_logs'
+        ordering = ['-exported_at']
+
+    def __str__(self):
+        return f'GSTR1 {self.company_gstin} {self.return_month} by {self.exported_by_name}'
 
 
 class TDSDeposit(models.Model):

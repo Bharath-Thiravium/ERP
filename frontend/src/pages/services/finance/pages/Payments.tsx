@@ -13,14 +13,13 @@ import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
 interface PaymentStats {
-  total_payments: number;
-  total_amount: number;
-  pending_payments: number;
-  pending_amount: number;
-  completed_payments: number;
-  completed_amount: number;
-  failed_payments: number;
-  failed_amount: number;
+  cash_collected: number;
+  cash_count: number;
+  tds_deducted: number;
+  tds_count: number;
+  outstanding: number;
+  this_month: number;
+  this_month_count: number;
 }
 
 interface PaymentsProps {
@@ -38,14 +37,13 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
   const [selectedInvoiceForModal, setSelectedInvoiceForModal] = useState<any>(null);
   const [refreshList, setRefreshList] = useState(0);
   const [stats, setStats] = useState<PaymentStats>({
-    total_payments: 0,
-    total_amount: 0,
-    pending_payments: 0,
-    pending_amount: 0,
-    completed_payments: 0,
-    completed_amount: 0,
-    failed_payments: 0,
-    failed_amount: 0,
+    cash_collected: 0,
+    cash_count: 0,
+    tds_deducted: 0,
+    tds_count: 0,
+    outstanding: 0,
+    this_month: 0,
+    this_month_count: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -184,32 +182,32 @@ const Payments: React.FC<PaymentsProps> = ({ sessionKey }) => {
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
-          title="Total Payments"
-          value={loading ? '...' : stats.total_payments.toString()}
-          subtitle={`₹${loading ? '...' : parseFloat(stats.total_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
-          icon={CreditCard}
-          color="blue"
-        />
-        <MetricCard
-          title="Completed"
-          value={loading ? '...' : stats.completed_payments.toString()}
-          subtitle={`₹${loading ? '...' : parseFloat(stats.completed_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+          title="Cash Collected"
+          value={loading ? '...' : stats.cash_count.toString()}
+          subtitle={`₹${loading ? '...' : stats.cash_collected.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
           icon={CheckCircle}
           color="green"
         />
         <MetricCard
-          title="Pending"
-          value={loading ? '...' : stats.pending_payments.toString()}
-          subtitle={`₹${loading ? '...' : parseFloat(stats.pending_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
-          icon={Clock}
+          title="TDS Deducted"
+          value={loading ? '...' : stats.tds_count.toString()}
+          subtitle={`₹${loading ? '...' : stats.tds_deducted.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+          icon={CreditCard}
           color="orange"
         />
         <MetricCard
-          title="Failed"
-          value={loading ? '...' : stats.failed_payments.toString()}
-          subtitle={`₹${loading ? '...' : parseFloat(stats.failed_amount?.toString() || '0').toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+          title="Outstanding"
+          value={loading ? '...' : `₹${stats.outstanding.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+          subtitle="Across all invoices"
           icon={AlertCircle}
           color="red"
+        />
+        <MetricCard
+          title="This Month"
+          value={loading ? '...' : stats.this_month_count.toString()}
+          subtitle={`₹${loading ? '...' : stats.this_month.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+          icon={Clock}
+          color="blue"
         />
       </div>
 

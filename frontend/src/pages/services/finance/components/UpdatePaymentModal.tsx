@@ -10,13 +10,14 @@ interface Props {
   invoice: InvoiceProp;
   onClose: () => void;
   onSuccess: () => void;
+  onRefresh?: () => void;
   sessionKey: string;
   invoiceType?: 'tax_invoice' | 'proforma_invoice';
   initialTab?: 'cash' | 'tds';
 }
 
 const UpdatePaymentModal: React.FC<Props> = ({
-  invoice, onClose, onSuccess, sessionKey,
+  invoice, onClose, onSuccess, onRefresh, sessionKey,
   invoiceType = 'tax_invoice',
   initialTab = 'cash',
 }) => {
@@ -41,23 +42,21 @@ const UpdatePaymentModal: React.FC<Props> = ({
     : 0;
   const cashMax = parseFloat((totalAmount - tdsMax).toFixed(2));
 
-  // Cash outstanding = cashMax − cash already paid
+  // Cash outstanding = cashMax − cash already paid (exclude tds_only)
   const cashOutstanding = (() => {
     const cashPaid = payments
-      .filter(p => p.status === 'completed')
+      .filter(p => p.status === 'completed' && p.payment_type !== 'tds_only')
       .reduce((s, p) => s + parseFloat(p.net_amount_received || '0'), 0);
     return Math.max(0, parseFloat((cashMax - cashPaid).toFixed(2)));
   })();
 
-  // TDS outstanding = tdsMax − TDS cert-received so far
-  // (tracked via TDSDeposit.certificate_received, synced to Payment.tds_certificate_received)
-  const tdsOutstanding = (() => {
+  // TDS deposited = all deposits regardless of cert status
+  // TDS outstanding = tdsMax − total deposited (depositing reduces outstanding; cert is a separate tracking)
+  const tdsDeposited = (() => {
     const allDeposits = Object.values(depositsMap).flat();
-    const certReceived = allDeposits
-      .filter(d => d.certificate_received)
-      .reduce((s, d) => s + parseFloat(d.amount || '0'), 0);
-    return Math.max(0, parseFloat((tdsMax - certReceived).toFixed(2)));
+    return allDeposits.reduce((s, d) => s + parseFloat(d.amount || '0'), 0);
   })();
+  const tdsOutstanding = Math.max(0, parseFloat((tdsMax - tdsDeposited).toFixed(2)));
 
   const fetchDeposits = useCallback(async (pmts: PaymentRecord[]) => {
     // Fetch deposits for all completed payments (tds_amount may be 0 if TDS is invoice-level)
@@ -78,7 +77,7 @@ const UpdatePaymentModal: React.FC<Props> = ({
       const endpoint = invoiceType === 'proforma_invoice'
         ? `/api/finance/payments/?proforma_invoice=${invoice.id}`
         : `/api/finance/payments/?invoice=${invoice.id}`;
-      const res = await api.get(endpoint, { params: { session_key: sessionKey } });
+      const res = await api.get(endpoint, { params: { session_key: sessionKey, financial_year: 'all', page_size: 1000 } });
       const pmts: PaymentRecord[] = res.data.results ?? res.data;
       setPayments(pmts);
       await fetchDeposits(pmts);
@@ -95,6 +94,7 @@ const UpdatePaymentModal: React.FC<Props> = ({
   };
 
   const handleRecorded = () => { fetchPayments(); onSuccess(); };
+  const handleChanged  = () => { fetchPayments(); onRefresh?.(); };
 
   const statusLabel = (() => {
     if (cashOutstanding <= 0 && tdsOutstanding <= 0 && (payments.length > 0 || !tdsApplicable))
@@ -118,9 +118,28 @@ const UpdatePaymentModal: React.FC<Props> = ({
               </span>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{invoice.invoice_number}</p>
+            {/* Invoice overview row */}
             <div className="flex items-center gap-3 mt-1.5 flex-wrap">
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                Overall:&nbsp;
+                Invoice:&nbsp;<span className="font-semibold text-gray-700 dark:text-gray-200">₹{fmt(totalAmount)}</span>
+              </span>
+              {tdsApplicable && (
+                <>
+                  <span className="text-gray-300 dark:text-gray-600">|</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Cash Max:&nbsp;<span className="font-semibold text-gray-700 dark:text-gray-200">₹{fmt(cashMax)}</span>
+                  </span>
+                  <span className="text-gray-300 dark:text-gray-600">|</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    TDS Max:&nbsp;<span className="font-semibold text-orange-600">₹{fmt(tdsMax)}</span>
+                  </span>
+                </>
+              )}
+            </div>
+            {/* Outstanding row */}
+            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                Outstanding:&nbsp;
                 <span className={`font-semibold ${totalOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>
                   ₹{fmt(totalOutstanding)}
                 </span>
@@ -211,6 +230,7 @@ const UpdatePaymentModal: React.FC<Props> = ({
               invoiceType={invoiceType}
               sessionKey={sessionKey}
               cashOutstanding={cashOutstanding}
+              cashMax={cashMax}
               tdsApplicable={tdsApplicable}
               tdsSection={tdsSection}
               tdsRate={tdsRate}
@@ -229,7 +249,7 @@ const UpdatePaymentModal: React.FC<Props> = ({
               tdsRate={tdsRate}
               payments={payments as any}
               depositsMap={depositsMap}
-              onChanged={() => { fetchPayments(); onSuccess(); }}
+              onChanged={handleChanged}
             />
           )}
         </div>

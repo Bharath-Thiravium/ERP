@@ -46,6 +46,7 @@ import Payments from './Payments'
 import CustomerLedger from '../components/CustomerLedger'
 import ComplianceDashboard from './ComplianceDashboard'
 import Reports from './Reports'
+import Gstr1Export from './Gstr1Export'
 
 
 // Purchase & Expense Management Pages
@@ -270,6 +271,7 @@ const handlePOCreated = () => {
     { id: 'tds', label: 'TDS Register', icon: FileText, description: 'TDS deductions & 26Q filing' },
     { id: 'compliance', label: 'Indian Compliance', icon: Shield, description: 'Tax and regulatory compliance' },
     { id: 'reports', label: 'Reports', icon: FileBarChart, description: 'Extract and filter financial documents' },
+    { id: 'gstr1', label: 'GSTR-1 Export', icon: FileBarChart, description: 'Generate GSTR-1 Excel Offline Utility' },
     { id: 'einvoice', label: 'E-Invoice', icon: Zap, description: 'Electronic invoice management' },
     { id: 'integration', label: 'Integration', icon: Zap, description: 'Third-party integrations' },
     { id: 'settings', label: 'Settings', icon: Settings, description: 'System preferences and security' }
@@ -315,7 +317,7 @@ const handlePOCreated = () => {
         totalVendors,
         activeVendors: vendors.filter((v: any) => v.is_active).length,
         totalPurchaseRequests,
-        pendingRequests: purchaseRequests.filter((pr: any) => pr.status === 'draft').length,
+        pendingRequests: purchaseRequests.filter((pr: any) => pr.status === 'sent').length,
         totalVendorInvoices,
         vendorInvoiceValue,
         outstandingVendorAmount,
@@ -378,9 +380,9 @@ const handlePOCreated = () => {
         outstandingAmount,
         pendingQuotations: quotations.filter((q: any) => q.status === 'sent').length,
         approvedQuotations: quotations.filter((q: any) => q.status === 'approved').length,
-        draftPOs: pos.filter((p: any) => p.status === 'draft').length,
+        draftPOs: pos.filter((p: any) => p.status === 'sent').length,
         confirmedPOs: pos.filter((p: any) => p.status === 'active').length,
-        draftProformas: proformas.filter((p: any) => p.status === 'draft').length,
+        draftProformas: proformas.filter((p: any) => p.status === 'sent').length,
         sentProformas: proformas.filter((p: any) => p.status === 'sent').length,
         draftInvoices: invoices.filter((i: any) => i.status === 'draft').length,
         paidInvoices: invoices.filter((i: any) => i.payment_status === 'paid').length,
@@ -1310,6 +1312,8 @@ const handlePOCreated = () => {
         return <ComplianceDashboard sessionKey={sessionKey || ''} />
       case 'reports':
         return <Reports />
+      case 'gstr1':
+        return <Gstr1Export />
       case 'einvoice':
         return <EInvoiceManager />
       case 'integration':

@@ -1,8 +1,10 @@
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.filters import SearchFilter
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from django_filters.rest_framework import DjangoFilterBackend
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import InvalidPage
 from django.db import IntegrityError
@@ -69,41 +71,6 @@ class CustomerViewSet(CompanyScopedModelViewSet):
     """Customer management with centralized tenant enforcement"""
     queryset = Customer.objects.all()
     pagination_class = FinancePagination
-
-    def perform_create(self, serializer):
-        super().perform_create(serializer)
-        customer = serializer.instance
-        from common.sync_services import (
-            ensure_master_customer_from_finance_customer,
-            get_data_sharing_policy,
-            request_customer_sync_from_finance,
-        )
-        policy = get_data_sharing_policy(customer.company)
-        if policy.auto_sync_enabled and (policy.finance_to_crm_customers or policy.crm_to_finance_customers):
-            if policy.require_manual_approval and policy.finance_to_crm_customers:
-                request_customer_sync_from_finance(customer)
-            else:
-                ensure_master_customer_from_finance_customer(customer)
-
-    def destroy(self, request, *args, **kwargs):
-        customer = self.get_object()
-        from common.sync_services import is_shared_record, request_shared_delete
-        if is_shared_record(customer):
-            reason = request.query_params.get('delete_reason') or request.data.get('delete_reason') or request.data.get('reason')
-            if not reason:
-                return Response(
-                    {'error': 'Delete reason is required for shared records.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            sync_request = request_shared_delete(customer, reason, requested_by=request.service_user)
-            return Response(
-                {
-                    'message': 'Delete approval request sent to company admin.',
-                    'sync_request_id': sync_request.id,
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
-        return super().destroy(request, *args, **kwargs)
     
     def get_serializer_class(self):
         if self.action == 'create':
@@ -206,41 +173,6 @@ class ProductViewSet(CompanyScopedModelViewSet):
     """Product management with centralized tenant enforcement"""
     queryset = Product.objects.all()
     pagination_class = FinancePagination
-
-    def perform_create(self, serializer):
-        super().perform_create(serializer)
-        product = serializer.instance
-        from common.sync_services import (
-            ensure_master_product_from_finance_product,
-            get_data_sharing_policy,
-            request_product_sync_from_finance,
-        )
-        policy = get_data_sharing_policy(product.company)
-        if policy.auto_sync_enabled and (policy.finance_to_inventory_products or policy.inventory_to_finance_products):
-            if policy.require_manual_approval and policy.finance_to_inventory_products:
-                request_product_sync_from_finance(product)
-            else:
-                ensure_master_product_from_finance_product(product)
-
-    def destroy(self, request, *args, **kwargs):
-        product = self.get_object()
-        from common.sync_services import is_shared_record, request_shared_delete
-        if is_shared_record(product):
-            reason = request.query_params.get('delete_reason') or request.data.get('delete_reason') or request.data.get('reason')
-            if not reason:
-                return Response(
-                    {'error': 'Delete reason is required for shared records.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            sync_request = request_shared_delete(product, reason, requested_by=request.service_user)
-            return Response(
-                {
-                    'message': 'Delete approval request sent to company admin.',
-                    'sync_request_id': sync_request.id,
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
-        return super().destroy(request, *args, **kwargs)
     
     def get_serializer_class(self):
         if self.action == 'create':
@@ -751,6 +683,9 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
     """Invoice management with centralized tenant enforcement"""
     queryset = Invoice.objects.all()
     pagination_class = FinancePagination
+    # Ordering is handled manually in get_queryset() with a -id tiebreaker.
+    # Exclude DRF's OrderingFilter to prevent it from overriding order_by() after get_queryset().
+    filter_backends = [DjangoFilterBackend, SearchFilter]
     
     def get_serializer_class(self):
         if self.action == 'create':
@@ -831,7 +766,9 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
         ordering = self.request.query_params.get("ordering", "-created_at")
         if ordering not in allowed_ordering:
             ordering = "-created_at"
-        return queryset.order_by(ordering)
+        from django.db.models.expressions import RawSQL
+        seq = RawSQL("CAST(regexp_replace(invoice_number, '^.*?([0-9]+)[^0-9]*$', '\\1') AS INTEGER)", [])
+        return queryset.annotate(_seq=seq).order_by(ordering, '-_seq', '-id')
 
     def perform_create(self, serializer):
         super().perform_create(serializer)
@@ -958,7 +895,7 @@ class InvoiceViewSet(CompanyScopedModelViewSet):
         from django.db.models import Sum, Count, Q
         from django.utils import timezone as tz
 
-        qs = self.get_queryset().filter(is_rejected=False)
+        qs = self.get_queryset().filter(is_rejected=False).prefetch_related(None).select_related()
 
         today = tz.now().date()
         current_month = today.month
@@ -1029,8 +966,8 @@ class PaymentViewSet(CompanyScopedModelViewSet):
         proforma_id = self.request.query_params.get('proforma_invoice', '')
         
         if not invoice_id and not proforma_id:
-            # Main payment list - exclude TDS-only payments
-            queryset = queryset.exclude(payment_type='tds_only')
+            # Main payment list - exclude TDS-only payments that have no standalone value
+            pass  # Show all payment types including tds_only
         
         # Add search functionality
         search = self.request.query_params.get('search', '')
@@ -1060,20 +997,18 @@ class PaymentViewSet(CompanyScopedModelViewSet):
         if invoice_id:
             queryset = queryset.filter(invoice_id=invoice_id)
 
-        # Financial Year Filter - Default to current FY
-        financial_year = self.request.query_params.get('financial_year', '')
-        if financial_year == 'all':
-            # Explicitly show all years
-            pass
-        elif financial_year:
-            # Filter by specific FY
-            from .financial_year_utils import apply_financial_year_filter
-            queryset = apply_financial_year_filter(queryset, 'payment_date', financial_year)
-        else:
-            # Default: Show current FY only
-            from .financial_year_utils import get_current_financial_year, apply_financial_year_filter
-            current_fy = get_current_financial_year()
-            queryset = apply_financial_year_filter(queryset, 'payment_date', current_fy)
+        # Financial Year Filter - Skip for single-object actions to avoid 404 on old FY payments
+        if self.action not in ('retrieve', 'update', 'partial_update', 'destroy'):
+            financial_year = self.request.query_params.get('financial_year', '')
+            if financial_year == 'all':
+                pass
+            elif financial_year:
+                from .financial_year_utils import apply_financial_year_filter
+                queryset = apply_financial_year_filter(queryset, 'payment_date', financial_year)
+            else:
+                from .financial_year_utils import get_current_financial_year, apply_financial_year_filter
+                current_fy = get_current_financial_year()
+                queryset = apply_financial_year_filter(queryset, 'payment_date', current_fy)
 
         return queryset.order_by('-created_at')
 
@@ -1099,31 +1034,48 @@ class PaymentViewSet(CompanyScopedModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """Get payment statistics for the dashboard"""
-        payments = self.get_queryset()
+        from django.db.models import Sum, Count, Q
+        from django.utils import timezone as tz
+        from finance.models import Invoice
 
-        # Calculate statistics
-        total_payments = payments.count()
-        total_amount = payments.aggregate(total=Sum('amount'))['total'] or 0
+        payments = self.get_queryset().filter(status='completed')
+        today = tz.now().date()
 
-        pending_payments = payments.filter(status='pending')
-        pending_count = pending_payments.count()
-        pending_amount = pending_payments.aggregate(total=Sum('amount'))['total'] or 0
+        cash = payments.exclude(payment_type='tds_only')
+        tds  = payments.filter(payment_type='tds_only')
 
-        completed_payments = payments.filter(status='completed')
-        completed_count = completed_payments.count()
-        completed_amount = completed_payments.aggregate(total=Sum('amount'))['total'] or 0
+        cash_total = cash.aggregate(s=Sum('net_amount_received'))['s'] or 0
+        tds_total  = tds.aggregate(s=Sum('tds_amount'))['s'] or 0
 
-        failed_payments = payments.filter(status='failed')
-        failed_count = failed_payments.count()
-        failed_amount = failed_payments.aggregate(total=Sum('amount'))['total'] or 0
+        this_month = cash.filter(
+            payment_date__month=today.month,
+            payment_date__year=today.year
+        ).aggregate(s=Sum('net_amount_received'))['s'] or 0
+
+        # Outstanding from invoices scoped to same company
+        company = self.get_company()
+        outstanding = Invoice.objects.filter(
+            company=company, is_rejected=False
+        ).aggregate(s=Sum('outstanding_amount'))['s'] or 0
 
         return Response({
-            'total_payments': total_payments,
-            'total_amount': float(total_amount) if str(total_amount).lower() != "nan" else 0.0,
-            'pending_payments': pending_count,
-            'pending_amount': float(pending_amount) if str(pending_amount).lower() != "nan" else 0.0,
-            'completed_payments': completed_count,
-            'completed_amount': float(completed_amount) if str(completed_amount).lower() != "nan" else 0.0,
-            'failed_payments': failed_count,
-            'failed_amount': float(failed_amount) if str(failed_amount).lower() != "nan" else 0.0,
+            'cash_collected': float(cash_total),
+            'cash_count': cash.count(),
+            'tds_deducted': float(tds_total),
+            'tds_count': tds.count(),
+            'outstanding': float(outstanding),
+            'this_month': float(this_month),
+            'this_month_count': cash.filter(
+                payment_date__month=today.month,
+                payment_date__year=today.year
+            ).count(),
+            # keep legacy fields so nothing else breaks
+            'total_payments': payments.count(),
+            'total_amount': float(cash_total),
+            'completed_payments': cash.count(),
+            'completed_amount': float(cash_total),
+            'pending_payments': 0,
+            'pending_amount': 0,
+            'failed_payments': 0,
+            'failed_amount': 0,
         })

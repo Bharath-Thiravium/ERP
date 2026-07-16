@@ -168,7 +168,7 @@ const ProformaInvoiceView: React.FC<ProformaInvoiceViewProps> = ({ proformaInvoi
         ...d,
         customer_name: d.customer_details?.name || proformaInvoice.customer_name,
         customer_code: d.customer_details?.customer_code || proformaInvoice.customer_code,
-        status: proformaInvoice.status,
+        status: proformaInvoice.payment_status,
         is_rejected: d.is_rejected ?? proformaInvoice.is_rejected,
       })
     } catch (err: any) {

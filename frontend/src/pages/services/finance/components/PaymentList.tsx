@@ -10,6 +10,9 @@ interface Payment {
   payment_number: string;
   payment_date: string;
   amount: string;
+  tds_amount: string;
+  net_amount_received: string;
+  payment_type: string;
   payment_method: string;
   customer_name: string;
   customer_code: string;
@@ -281,7 +284,11 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {payments.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={payment.id} className={`transition-colors ${
+                    payment.payment_type === 'tds_only'
+                      ? 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/10 dark:hover:bg-orange-900/20'
+                      : 'hover:bg-gray-50'
+                  }`}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <CreditCard className="w-5 h-5 text-athenas-blue mr-3" />
@@ -291,6 +298,9 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
                             onClick={() => onViewPayment(payment)}
                           >
                             {payment.payment_number}
+                            {payment.payment_type === 'tds_only' && (
+                              <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 align-middle">TDS</span>
+                            )}
                           </div>
                           <div className="text-sm text-gray-500">
                             {new Date(payment.payment_date).toLocaleDateString()}
@@ -314,10 +324,15 @@ const PaymentList: React.FC<PaymentListProps> = ({ onAddPayment, onEditPayment, 
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <IndianRupee className="w-4 h-4 text-gray-400 mr-2" />
-                        <div className="text-sm font-medium text-gray-900">
-                          ₹{parseFloat(payment.amount || '0').toFixed(2)}
+                      <div className="flex items-center gap-2">
+                        <IndianRupee className="w-4 h-4 text-gray-400" />
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            ₹{parseFloat(payment.payment_type === 'tds_only' ? (payment.tds_amount || '0') : (payment.net_amount_received || payment.amount || '0')).toFixed(2)}
+                          </div>
+                          {payment.payment_type === 'tds_only' && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700">TDS</span>
+                          )}
                         </div>
                       </div>
                     </td>

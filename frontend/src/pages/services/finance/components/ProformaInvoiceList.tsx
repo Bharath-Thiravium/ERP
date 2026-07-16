@@ -179,8 +179,8 @@ const fetchProformaInvoices = useCallback(async () => {
       if (onMetricsUpdate) {
         onMetricsUpdate({
           total: count,
-          draft: invoices.filter(i => i.status === 'draft').length,
-          sent: invoices.filter(i => i.status === 'sent').length,
+          draft: 0,  // Status field removed from proforma invoices
+          sent: 0,   // Status field removed from proforma invoices
           rejected: invoices.filter(i => i.is_rejected).length,
           totalValue: invoices.reduce((s, i) => s + parseFloat(i.total_amount?.toString() || '0'), 0),
           paidAmount: invoices.reduce((s, i) => s + parseFloat(i.paid_amount?.toString() || '0'), 0),
@@ -644,12 +644,12 @@ const fetchProformaInvoices = useCallback(async () => {
                               <button onClick={() => handleDelete(proforma)} className="text-red-600 hover:text-red-800 transition-colors" title="Delete Proforma">
                                 <Trash2 className="w-4 h-4" />
                               </button>
-                              {!proforma.is_revised && (proforma.status === 'draft' || proforma.status === 'sent') && (
+                              {!proforma.is_revised && (proforma.payment_status === 'unpaid' || proforma.payment_status === 'partially_paid' || proforma.payment_status === 'overdue') && (
                                 <button onClick={() => handleEdit(proforma)} className="text-green-600 hover:text-green-800 transition-colors" title="Edit Proforma">
                                   <Edit className="w-4 h-4" />
                                 </button>
                               )}
-                              {!proforma.is_revised && (proforma.status === 'sent' || proforma.status === 'active') && (
+                              {!proforma.is_revised && (proforma.payment_status === 'unpaid' || proforma.payment_status === 'partially_paid' || proforma.payment_status === 'overdue') && (
                                 <button onClick={() => handleReject(proforma)} className="text-red-600 hover:text-red-800 transition-colors" title="Reject Proforma">
                                   <XCircle className="w-4 h-4" />
                                 </button>

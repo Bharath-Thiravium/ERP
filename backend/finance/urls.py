@@ -15,6 +15,7 @@ from . import unit_views
 from . import hsn_sac_views
 from . import refactored_invoice_views
 from . import financial_year_views
+from . import gstr1_views
 
 
 # Create router for ViewSets
@@ -174,6 +175,14 @@ urlpatterns = [
     # HSN/SAC Code Search endpoints
     path('hsn-codes/search/', hsn_sac_views.HSNCodeSearchView.as_view(), name='hsn_code_search'),
     path('sac-codes/search/', hsn_sac_views.SACCodeSearchView.as_view(), name='sac_code_search'),
+
+    # ============================================================================
+    # GSTR-1 EXPORT ENDPOINTS
+    # ============================================================================
+    path('gstr1/validate/', gstr1_views.gstr1_validate, name='gstr1_validate'),
+    path('gstr1/reconcile/', gstr1_views.gstr1_reconcile, name='gstr1_reconcile'),
+    path('gstr1/export/', gstr1_views.gstr1_export, name='gstr1_export'),
+    path('gstr1/validation-report/', gstr1_views.gstr1_validation_report, name='gstr1_validation_report'),
 
     # ============================================================================
     # DIRECT CUSTOMER PAYMENT ENDPOINTS - NEW FUNCTIONALITY

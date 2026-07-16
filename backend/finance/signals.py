@@ -4,6 +4,7 @@ Finance app signals for maintaining data consistency
 
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
+from django.utils import timezone
 from decimal import Decimal
 import logging
 
@@ -172,6 +173,68 @@ def update_po_on_invoice_save(sender, instance, created, **kwargs):
         
     except Exception as e:
         logger.error(f"Error updating PO after invoice save: {str(e)}")
+
+
+@receiver(post_delete, sender='finance.Payment')
+def recalculate_invoice_on_payment_delete(sender, instance, **kwargs):
+    """
+    Recalculate invoice/proforma paid_amount and outstanding_amount after a Payment is deleted.
+    This handles both single-instance delete() and queryset bulk delete(), since the
+    Payment.delete() override is bypassed by queryset.delete().
+    """
+    try:
+        invoice = instance.invoice
+        proforma_invoice = instance.proforma_invoice
+
+        def calc_paid(payments_qs, invoice_obj=None):
+            total = Decimal('0')
+            for p in payments_qs.filter(status='completed'):
+                if getattr(p, 'payment_type', None) == 'tds_only':
+                    total += Decimal(str(p.tds_amount or 0))
+                    continue
+                net = Decimal(str(p.net_amount_received or 0))
+                tds = Decimal(str(p.tds_amount or 0))
+                if tds > 0:
+                    total += net + (tds if p.tds_certificate_received else Decimal('0'))
+                else:
+                    total += Decimal(str(p.gross_payment_amount or p.amount or 0))
+            return total
+
+        if invoice:
+            total_paid = calc_paid(invoice.payments, invoice)
+            invoice_total = Decimal(str(invoice.total_amount or 0))
+            invoice.paid_amount = total_paid
+            invoice.outstanding_amount = invoice_total - total_paid
+            if invoice.outstanding_amount <= 0:
+                invoice.payment_status = 'paid'
+            elif total_paid > 0:
+                invoice.payment_status = 'partially_paid'
+            else:
+                invoice.payment_status = 'unpaid'
+            if (invoice.payment_status == 'unpaid' and
+                    invoice.due_date and invoice.due_date < timezone.now().date()):
+                invoice.payment_status = 'overdue'
+            last_payment = invoice.payments.filter(status='completed').order_by('-payment_date').first()
+            invoice.last_payment_date = last_payment.payment_date if last_payment else None
+            invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'last_payment_date'])
+
+        elif proforma_invoice:
+            total_paid = calc_paid(proforma_invoice.payments)
+            proforma_total = Decimal(str(proforma_invoice.total_amount or 0))
+            proforma_invoice.paid_amount = total_paid
+            proforma_invoice.outstanding_amount = proforma_total - total_paid
+            if abs(proforma_invoice.outstanding_amount) <= Decimal('0.01'):
+                proforma_invoice.payment_status = 'paid'
+            elif total_paid > 0:
+                proforma_invoice.payment_status = 'partially_paid'
+            else:
+                proforma_invoice.payment_status = 'unpaid'
+            last_payment = proforma_invoice.payments.filter(status='completed').order_by('-payment_date').first()
+            proforma_invoice.last_payment_date = last_payment.payment_date if last_payment else None
+            proforma_invoice.save(update_fields=['paid_amount', 'outstanding_amount', 'payment_status', 'last_payment_date'])
+
+    except Exception as e:
+        logger.error(f"Error recalculating invoice after payment deletion: {str(e)}")
 
 
 @receiver(post_save, sender='finance.ProformaInvoice')

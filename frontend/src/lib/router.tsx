@@ -18,6 +18,7 @@ const PurchaseOrders = React.lazy(() => import('../pages/services/finance/pages/
 const HRDashboard = React.lazy(() => import('../pages/services/hr/pages/Dashboard'))
 const InventoryDashboard = React.lazy(() => import('../pages/services/inventory/pages/Dashboard'))
 const CRMRoutes = React.lazy(() => import('../pages/services/crm/index'))
+const PTWModule = React.lazy(() => import('../pages/services/ptw/index'))
 const WaitingApproval = React.lazy(() => import('../pages/company/WaitingApproval'))
 const NotFoundPage = React.lazy(() => import('../pages/NotFoundPage'))
 const EmployeeApp = React.lazy(() => import('../pages/EmployeeApp'))
@@ -404,6 +405,18 @@ export const AppRouter: React.FC = () => {
           <ProtectedRoute requireServiceUser>
             <SuspenseWrapper>
               <CRMRoutes />
+            </SuspenseWrapper>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* PTW - Permit To Work Routes */}
+      <Route
+        path="/services/ptw/*"
+        element={
+          <ProtectedRoute requireServiceUser>
+            <SuspenseWrapper>
+              <PTWModule />
             </SuspenseWrapper>
           </ProtectedRoute>
         }

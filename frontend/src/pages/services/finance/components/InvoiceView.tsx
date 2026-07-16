@@ -1,9 +1,10 @@
-import React, { useState, useEffect, ErrorInfo } from 'react';
-import { X, FileText, IndianRupee, Printer, Building, User, MapPin, Calendar, Hash, CreditCard, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, ErrorInfo, useCallback } from 'react';
+import { X, FileText, IndianRupee, Printer, Building, User, MapPin, Calendar, Hash, CreditCard, RefreshCw, CheckCircle, Clock } from 'lucide-react';
 import { isOverdue, getOverdueDate } from '../../../../utils/overdueUtils';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import { sanitizeText } from '../../../../utils/sanitize';
+import { fmt } from './payment/types';
 
 // Error Boundary Component
 class InvoiceViewErrorBoundary extends React.Component<
@@ -176,14 +177,67 @@ interface InvoiceViewProps {
   sessionKey?: string;
 }
 
+interface PaymentEntry {
+  id: number;
+  payment_number: string;
+  payment_date: string;
+  payment_type: string;
+  payment_method: string;
+  gross_payment_amount: string;
+  net_amount_received: string;
+  tds_amount: string;
+  tds_rate: string;
+  tds_section: string;
+  tds_deposited: boolean;
+  tds_certificate_received: boolean;
+  reference_number: string;
+  status: string;
+  notes: string;
+}
+
+interface TDSDepositEntry {
+  id: number;
+  deposit_date: string;
+  amount: string;
+  challan_number: string;
+  form16a_number: string;
+  certificate_received: boolean;
+}
+
 const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, sessionKey }) => {
+  const [activeTab, setActiveTab] = useState<'invoice' | 'payments'>('invoice');
   const [detailedInvoice, setDetailedInvoice] = useState<Invoice>(invoice);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [payments, setPayments] = useState<PaymentEntry[]>([]);
+  const [depositsMap, setDepositsMap] = useState<Record<number, TDSDepositEntry[]>>({});
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
 
   const headerActionButtonClass = 'inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium rounded-lg border transition-colors';
   const neutralActionButtonClass = `${headerActionButtonClass} bg-white/85 hover:bg-white text-gray-700 border-gray-200 dark:bg-gray-800/80 dark:hover:bg-gray-800 dark:text-gray-200 dark:border-gray-600`;
   const primaryActionButtonClass = `${headerActionButtonClass} bg-blue-600 hover:bg-blue-700 text-white border-blue-600`;
+
+  const fetchPayments = useCallback(async () => {
+    if (!sessionKey) return;
+    setPaymentsLoading(true);
+    try {
+      const res = await api.get(`/api/finance/payments/`, {
+        params: { session_key: sessionKey, invoice: invoice.id, financial_year: 'all' }
+      });
+      const pmts: PaymentEntry[] = res.data.results ?? res.data;
+      setPayments(pmts);
+      // fetch deposits for each completed payment
+      const map: Record<number, TDSDepositEntry[]> = {};
+      await Promise.all(pmts.filter(p => p.status === 'completed').map(async p => {
+        try {
+          const r = await api.get(`/api/finance/payment-tds/${p.id}/deposits/`, { params: { session_key: sessionKey } });
+          map[p.id] = r.data.results ?? r.data;
+        } catch { map[p.id] = []; }
+      }));
+      setDepositsMap(map);
+    } catch { /* silent */ }
+    finally { setPaymentsLoading(false); }
+  }, [invoice.id, sessionKey]);
 
   const fetchDetailedInvoice = async () => {
       if (!sessionKey) {
@@ -252,6 +306,7 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
 
   useEffect(() => {
     fetchDetailedInvoice();
+    fetchPayments();
   }, [invoice.id, sessionKey]);
 
   const handlePrint = async () => {
@@ -403,8 +458,145 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 dark:border-gray-700 shrink-0 px-6">
+          <button onClick={() => setActiveTab('invoice')}
+            className={`flex items-center gap-2 py-3 px-1 mr-6 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'invoice'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <FileText className="w-4 h-4" /> Invoice
+          </button>
+          <button onClick={() => { setActiveTab('payments'); fetchPayments(); }}
+            className={`flex items-center gap-2 py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'payments'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <CreditCard className="w-4 h-4" /> Payments
+            {parseFloat(detailedInvoice.outstanding_amount || '0') > 0 && (
+              <span className="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-300 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
+                ₹{fmt(detailedInvoice.outstanding_amount)}
+              </span>
+            )}
+          </button>
+        </div>
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
+          {activeTab === 'payments' ? (
+            <div className="p-6 space-y-5">
+              {/* Payment summary cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-700 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Invoice Total</p>
+                  <p className="text-base font-bold text-blue-600">₹{fmt(detailedInvoice.total_amount)}</p>
+                </div>
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-700 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Paid</p>
+                  <p className="text-base font-bold text-green-600">₹{fmt(detailedInvoice.paid_amount)}</p>
+                </div>
+                <div className={`border rounded-lg p-3 text-center ${
+                  parseFloat(detailedInvoice.outstanding_amount || '0') > 0
+                    ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-700'
+                    : 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-700'
+                }`}>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Outstanding</p>
+                  <p className={`text-base font-bold ${
+                    parseFloat(detailedInvoice.outstanding_amount || '0') > 0 ? 'text-red-600' : 'text-green-600'
+                  }`}>₹{fmt(detailedInvoice.outstanding_amount)}</p>
+                </div>
+              </div>
+
+              {paymentsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : payments.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+                  <CreditCard className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">No payments recorded yet</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {payments.filter(p => p.status === 'completed').map(p => {
+                    const isTdsOnly = p.payment_type === 'tds_only';
+                    const deposits = depositsMap[p.id] || [];
+                    const net = parseFloat(p.net_amount_received || '0');
+                    const tds = parseFloat(p.tds_amount || '0');
+                    return (
+                      <div key={p.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                        {/* Payment row */}
+                        <div className={`flex items-center justify-between px-4 py-3 ${
+                          isTdsOnly ? 'bg-orange-50 dark:bg-orange-900/10' : 'bg-white dark:bg-gray-800'
+                        }`}>
+                          <div className="flex items-center gap-3">
+                            <div className={`w-2 h-2 rounded-full ${
+                              isTdsOnly ? 'bg-orange-400' : 'bg-green-400'
+                            }`} />
+                            <div>
+                              <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{p.payment_number}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {p.payment_date} · {p.payment_method?.replace(/_/g, ' ')}
+                                {p.reference_number && ` · #${p.reference_number}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            {isTdsOnly ? (
+                              <p className="text-sm font-bold text-orange-600">TDS ₹{fmt(tds)}</p>
+                            ) : (
+                              <>
+                                <p className="text-sm font-bold text-green-600">₹{fmt(net)}</p>
+                                {tds > 0 && <p className="text-xs text-orange-500">+TDS ₹{fmt(tds)}</p>}
+                              </>
+                            )}
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                              isTdsOnly
+                                ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+                                : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                            }`}>
+                              {isTdsOnly ? 'TDS Only' : 'Cash'}
+                            </span>
+                          </div>
+                        </div>
+                        {/* TDS deposit entries */}
+                        {deposits.length > 0 && (
+                          <div className="border-t border-gray-100 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
+                            {deposits.map(d => (
+                              <div key={d.id} className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-700/40 text-xs">
+                                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                                  <span className="text-orange-400">↳</span>
+                                  <span>Deposit {d.deposit_date}</span>
+                                  {d.challan_number && <span className="text-gray-400">#{d.challan_number}</span>}
+                                  {d.form16a_number && <span className="text-blue-500">16A: {d.form16a_number}</span>}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-orange-600">₹{fmt(d.amount)}</span>
+                                  {d.certificate_received
+                                    ? <span className="flex items-center gap-0.5 text-green-600"><CheckCircle className="w-3 h-3" /> 16A</span>
+                                    : <span className="flex items-center gap-0.5 text-amber-500"><Clock className="w-3 h-3" /> Pending</span>
+                                  }
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {p.notes && (
+                          <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700/30 border-t border-gray-100 dark:border-gray-700">
+                            <p className="text-xs text-gray-500 dark:text-gray-400 italic">{p.notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="p-6 space-y-8">
             {/* Company & Customer Info - Invoice Header Style */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -860,6 +1052,7 @@ const InvoiceView: React.FC<InvoiceViewProps> = ({ invoice, onClose, onPrint, se
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* Footer */}

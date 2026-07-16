@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.http import HttpResponse
+from django.utils.cache import add_never_cache_headers
 
 from authentication.authentication import ServiceUserSessionAuthentication
 from authentication.permissions import IsServiceUserAuthenticated
@@ -67,7 +68,10 @@ class ProformaTemplatePreviewView(APIView):
 
             sample = self._get_sample(company)
             html_content = proforma_pdf_service.preview_proforma_template(sample, template_name)
-            return HttpResponse(html_content, content_type='text/html')
+            response = HttpResponse(html_content, content_type='text/html')
+            # Prevent browser caching
+            add_never_cache_headers(response)
+            return response
         except Exception as e:
             return Response({'success': False, 'error': str(e), 'message': 'Failed to generate proforma template preview'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

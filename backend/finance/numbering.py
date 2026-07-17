@@ -58,12 +58,8 @@ def _generate_from_dashboard_numbering(company, module: str, dt):
     )
     config = configs.filter(is_active=True).first()
     if not config:
-        if configs.exists():
-            raise ValueError(f"Document numbering is inactive for company={company.id} module={module}")
-        raise ValueError(
-            f"Document numbering is not configured for Finance {document_type}. "
-            "Set it up in Company > Document Numbering before creating records."
-        )
+        # Fall through to internal numbering if dashboard config is missing or inactive
+        return None
     return config.get_next_number()
 
 

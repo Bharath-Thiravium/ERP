@@ -46,6 +46,7 @@ const StatutoryPayrollSettings: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [settings, setSettings] = useState<StatutoryPayrollSettingsData>({
     pf_establishment_code: '',
     pf_extension_code: '',
@@ -101,6 +102,29 @@ const StatutoryPayrollSettings: React.FC = () => {
 
   const handleSave = async () => {
     if (!sessionKey) return
+
+    const errors: Record<string, string> = {}
+    if (settings.pf_enabled && !settings.pf_establishment_code.trim()) {
+      errors.pf_establishment_code = 'PF establishment code is required when PF is enabled.'
+    }
+    if (settings.esi_enabled && !settings.esi_employer_code.trim()) {
+      errors.esi_employer_code = 'ESI employer code is required when ESI is enabled.'
+    }
+    if (settings.pt_enabled && !settings.pt_registration_number.trim()) {
+      errors.pt_registration_number = 'PT registration number is required when PT is enabled.'
+    }
+    if (settings.pt_enabled && settings.pt_slabs.length === 0) {
+      errors.pt_slabs = 'Add at least one company-verified PT salary slab.'
+    }
+    if (settings.tds_enabled && !settings.tan_number.trim()) {
+      errors.tan_number = 'TAN number is required when TDS is enabled.'
+    }
+
+    setFieldErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      toast.error(Object.values(errors)[0])
+      return
+    }
     
     try {
       setSaving(true)
@@ -114,10 +138,15 @@ const StatutoryPayrollSettings: React.FC = () => {
     } catch (error: any) {
       console.error('Error saving settings:', error)
       const responseData = error?.response?.data
-      const firstError = responseData && typeof responseData === 'object'
-        ? Object.values(responseData).flat().find(Boolean)
-        : null
-      toast.error(String(firstError || responseData?.error || 'Failed to save settings'))
+      const details = responseData?.details
+      const backendErrors = details && typeof details === 'object' && !Array.isArray(details)
+        ? Object.fromEntries(Object.entries(details).map(([field, value]) => [
+            field,
+            Array.isArray(value) ? String(value[0]) : String(value)
+          ]))
+        : {}
+      setFieldErrors(backendErrors)
+      toast.error(Object.values(backendErrors)[0] || responseData?.error || 'Failed to save settings')
     } finally {
       setSaving(false)
     }
@@ -125,7 +154,19 @@ const StatutoryPayrollSettings: React.FC = () => {
 
   const updateSetting = (field: keyof StatutoryPayrollSettingsData, value: any) => {
     setSettings(prev => ({ ...prev, [field]: value }))
+    setFieldErrors(prev => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
   }
+
+  const inputClass = (field: string) => `w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${
+    fieldErrors[field]
+      ? 'border-red-500 focus:ring-red-500'
+      : 'border-gray-300 dark:border-gray-600'
+  }`
 
   const toggleProfessionalTax = () => {
     setSettings(prev => ({
@@ -245,9 +286,13 @@ const StatutoryPayrollSettings: React.FC = () => {
                 type="text"
                 value={settings.pf_establishment_code}
                 onChange={(e) => updateSetting('pf_establishment_code', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                className={inputClass('pf_establishment_code')}
+                aria-invalid={Boolean(fieldErrors.pf_establishment_code)}
                 placeholder="Enter PF establishment code"
               />
+              {fieldErrors.pf_establishment_code && (
+                <p className="mt-1 text-xs text-red-600">{fieldErrors.pf_establishment_code}</p>
+              )}
             </div>
             
             <div>
@@ -335,9 +380,13 @@ const StatutoryPayrollSettings: React.FC = () => {
                 type="text"
                 value={settings.esi_employer_code}
                 onChange={(e) => updateSetting('esi_employer_code', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                className={inputClass('esi_employer_code')}
+                aria-invalid={Boolean(fieldErrors.esi_employer_code)}
                 placeholder="Enter ESI employer code"
               />
+              {fieldErrors.esi_employer_code && (
+                <p className="mt-1 text-xs text-red-600">{fieldErrors.esi_employer_code}</p>
+              )}
             </div>
             
             <div>
@@ -419,15 +468,19 @@ const StatutoryPayrollSettings: React.FC = () => {
             
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                PT Registration Number
+                PT Registration Number *
               </label>
               <input
                 type="text"
                 value={settings.pt_registration_number}
                 onChange={(e) => updateSetting('pt_registration_number', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                className={inputClass('pt_registration_number')}
+                aria-invalid={Boolean(fieldErrors.pt_registration_number)}
                 placeholder="Enter PT registration number"
               />
+              {fieldErrors.pt_registration_number && (
+                <p className="mt-1 text-xs text-red-600">{fieldErrors.pt_registration_number}</p>
+              )}
             </div>
             
             <div>
@@ -504,6 +557,9 @@ const StatutoryPayrollSettings: React.FC = () => {
                     </button>
                   </div>
                 ))}
+                {fieldErrors.pt_slabs && (
+                  <p className="text-xs text-red-600">{fieldErrors.pt_slabs}</p>
+                )}
               </div>
             )}
           </CardContent>
@@ -534,15 +590,19 @@ const StatutoryPayrollSettings: React.FC = () => {
             
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                TAN Number
+                TAN Number *
               </label>
               <input
                 type="text"
                 value={settings.tan_number}
                 onChange={(e) => updateSetting('tan_number', e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                className={inputClass('tan_number')}
+                aria-invalid={Boolean(fieldErrors.tan_number)}
                 placeholder="Enter TAN number"
               />
+              {fieldErrors.tan_number && (
+                <p className="mt-1 text-xs text-red-600">{fieldErrors.tan_number}</p>
+              )}
             </div>
             
             <div>

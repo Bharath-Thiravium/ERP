@@ -276,8 +276,10 @@ api.interceptors.response.use(
                                     originalRequest.url?.includes('/api/auth/company/service-users/')
       // Don't show toasts for preview endpoints — component handles the error
       const isPreviewEndpoint = originalRequest.url?.includes('-template-preview/')
+      // Statutory settings renders field-level validation and its own toast.
+      const isStatutorySettingsEndpoint = originalRequest.url?.includes('/api/hr/statutory-settings/')
       
-      if (!isAthensEmployeeEndpoint && !isPreApprovalEndpoint && !isPreviewEndpoint) {
+      if (!isAthensEmployeeEndpoint && !isPreApprovalEndpoint && !isPreviewEndpoint && !isStatutorySettingsEndpoint) {
         if (errorData?.message) {
           toast.error(errorData.message)
         } else if (errorData?.error) {

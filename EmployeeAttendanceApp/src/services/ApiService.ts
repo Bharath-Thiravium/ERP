@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BASE_URL = 'http://127.0.0.1:8005/api'; // USB adb reverse local testing API URL
+const BASE_URL = 'https://erp.athenas.co.in/api';
 
 class ApiService {
   private api;

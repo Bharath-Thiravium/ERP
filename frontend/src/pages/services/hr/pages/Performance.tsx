@@ -144,26 +144,27 @@ const Performance: React.FC = () => {
     setSelectedReview(null)
   }
 
-  const renderStars = (rating: number) => {
-    const stars = []
-    const fullStars = Math.floor(rating)
-    const hasHalfStar = rating % 1 !== 0
-
-    for (let i = 0; i < fullStars; i++) {
-      stars.push(<Star key={i} className="h-4 w-4 fill-current text-yellow-400" />)
-    }
-
-    if (hasHalfStar) {
-      stars.push(<Star key="half" className="h-4 w-4 fill-current text-yellow-400 opacity-50" />)
-    }
-
-    const remainingStars = 5 - Math.ceil(rating)
-    for (let i = 0; i < remainingStars; i++) {
-      stars.push(<Star key={`empty-${i}`} className="h-4 w-4 text-gray-300 dark:text-gray-600" />)
-    }
-
-    return stars
+  const getRatingBg = (rating: number) => {
+    if (rating >= 4.5) return 'from-green-500 to-emerald-500'
+    if (rating >= 3.5) return 'from-blue-500 to-indigo-500'
+    if (rating >= 2.5) return 'from-yellow-400 to-orange-400'
+    return 'from-red-400 to-pink-500'
   }
+
+  const renderRating = (rating: number) => (
+    <div className="flex items-center gap-2 shrink-0">
+      <div className="relative w-16 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div
+          className={`absolute inset-y-0 left-0 rounded-full bg-gradient-to-r ${getRatingBg(rating)}`}
+          style={{ width: `${(rating / 5) * 100}%` }}
+        />
+      </div>
+      <span className={`inline-flex items-center gap-0.5 text-xs font-bold px-1.5 py-0.5 rounded-md bg-gradient-to-r ${getRatingBg(rating)} text-white shadow-sm`}>
+        <Star className="h-2.5 w-2.5 fill-white text-white" />
+        {rating.toFixed(1)}
+      </span>
+    </div>
+  )
 
   if (loading) {
     return (
@@ -294,43 +295,19 @@ const Performance: React.FC = () => {
                   <CardHeader>
                     <CardTitle>Performance Metrics</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Overall Rating</span>
-                      <div className="flex items-center space-x-2">
-                        <div className="flex">{renderStars(dashboardData.average_ratings.avg_overall || 0)}</div>
-                        <span className="font-bold text-gray-900 dark:text-white">
-                          {(dashboardData.average_ratings.avg_overall || 0).toFixed(1)}
-                        </span>
+                  <CardContent className="space-y-3">
+                    {[
+                      { label: 'Overall Rating', value: dashboardData.average_ratings.avg_overall || 0, icon: '🎯' },
+                      { label: 'Quality Score', value: dashboardData.average_ratings.avg_quality || 0, icon: '✨' },
+                      { label: 'Productivity', value: dashboardData.average_ratings.avg_productivity || 0, icon: '⚡' },
+                      { label: 'Collaboration', value: dashboardData.average_ratings.avg_collaboration || 0, icon: '🤝' },
+                    ].map(({ label, value, icon }) => (
+                      <div key={label} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                        <span className="text-base shrink-0">{icon}</span>
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{label}</span>
+                        {renderRating(value)}
                       </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Quality Score</span>
-                      <div className="flex items-center space-x-2">
-                        <div className="flex">{renderStars(dashboardData.average_ratings.avg_quality || 0)}</div>
-                        <span className="font-bold text-gray-900 dark:text-white">
-                          {(dashboardData.average_ratings.avg_quality || 0).toFixed(1)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Productivity</span>
-                      <div className="flex items-center space-x-2">
-                        <div className="flex">{renderStars(dashboardData.average_ratings.avg_productivity || 0)}</div>
-                        <span className="font-bold text-gray-900 dark:text-white">
-                          {(dashboardData.average_ratings.avg_productivity || 0).toFixed(1)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Collaboration</span>
-                      <div className="flex items-center space-x-2">
-                        <div className="flex">{renderStars(dashboardData.average_ratings.avg_collaboration || 0)}</div>
-                        <span className="font-bold text-gray-900 dark:text-white">
-                          {(dashboardData.average_ratings.avg_collaboration || 0).toFixed(1)}
-                        </span>
-                      </div>
-                    </div>
+                    ))}
                   </CardContent>
                 </Card>
 
@@ -342,29 +319,31 @@ const Performance: React.FC = () => {
                   <CardContent>
                     {dashboardData.top_performers.length > 0 ? (
                       <div className="space-y-3">
-                        {dashboardData.top_performers.slice(0, 5).map((performer, index) => (
-                          <div key={performer.employee_id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                            <div className="flex items-center space-x-3">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
-                                index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-500' : 'bg-blue-500'
-                              }`}>
-                                {index + 1}
+                        {dashboardData.top_performers.slice(0, 5).map((performer, index) => {
+                          const rankStyles = [
+                            { bg: 'from-yellow-400 to-amber-500', ring: 'ring-yellow-300', label: '🥇' },
+                            { bg: 'from-gray-400 to-slate-500', ring: 'ring-gray-300', label: '🥈' },
+                            { bg: 'from-orange-400 to-amber-600', ring: 'ring-orange-300', label: '🥉' },
+                            { bg: 'from-blue-400 to-indigo-500', ring: 'ring-blue-300', label: `#${index + 1}` },
+                            { bg: 'from-purple-400 to-violet-500', ring: 'ring-purple-300', label: `#${index + 1}` },
+                          ][index] || { bg: 'from-blue-400 to-indigo-500', ring: 'ring-blue-300', label: `#${index + 1}` }
+                          return (
+                            <div key={performer.employee_id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
+                              <div className="flex items-center space-x-3 min-w-0">
+                                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm bg-gradient-to-br ${rankStyles.bg} ring-2 ${rankStyles.ring} shadow-sm shrink-0`}>
+                                  {index < 3 ? rankStyles.label : index + 1}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-gray-900 dark:text-white truncate">{performer.employee_name}</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{performer.department}</p>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-medium text-gray-900 dark:text-white">{performer.employee_name}</p>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">{performer.department}</p>
+                              <div className="shrink-0 ml-2">
+                                {renderRating(performer.overall_rating)}
                               </div>
                             </div>
-                            <div className="text-right">
-                              <div className="flex items-center space-x-1">
-                                <div className="flex">{renderStars(performer.overall_rating)}</div>
-                              </div>
-                              <p className={`font-bold ${getRatingColor(performer.overall_rating)}`}>
-                                {performer.overall_rating.toFixed(1)}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     ) : (
                       <div className="text-center py-8">
@@ -387,18 +366,13 @@ const Performance: React.FC = () => {
                     {dashboardData.department_performance.length > 0 ? (
                       <div className="space-y-3">
                         {dashboardData.department_performance.map((dept) => (
-                          <div key={dept.employee__department__name} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                            <div>
-                              <p className="font-medium text-gray-900 dark:text-white">{dept.employee__department__name}</p>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">{dept.review_count} reviews</p>
+                          <div key={dept.employee__department__name} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-gray-900 dark:text-white truncate">{dept.employee__department__name}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{dept.review_count} review{dept.review_count !== 1 ? 's' : ''}</p>
                             </div>
-                            <div className="text-right">
-                              <div className="flex items-center space-x-1">
-                                <div className="flex">{renderStars(dept.avg_rating)}</div>
-                              </div>
-                              <p className={`font-bold ${getRatingColor(dept.avg_rating)}`}>
-                                {dept.avg_rating.toFixed(1)}
-                              </p>
+                            <div className="shrink-0 ml-2">
+                              {renderRating(dept.avg_rating)}
                             </div>
                           </div>
                         ))}
@@ -421,20 +395,16 @@ const Performance: React.FC = () => {
                     {dashboardData.recent_reviews.length > 0 ? (
                       <div className="space-y-3">
                         {dashboardData.recent_reviews.map((review, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                            <div>
-                              <p className="font-medium text-gray-900 dark:text-white">{review.employee_name}</p>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">by {review.reviewer_name}</p>
+                          <div key={index} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-gray-900 dark:text-white truncate">{review.employee_name}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">by {review.reviewer_name}</p>
                             </div>
-                            <div className="text-right">
-                              <div className="flex items-center space-x-2">
-                                <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(review.status)}`}>
-                                  {review.status}
-                                </span>
-                                <span className={`font-bold ${getRatingColor(review.overall_rating)}`}>
-                                  {review.overall_rating.toFixed(1)}
-                                </span>
-                              </div>
+                            <div className="flex items-center gap-2 shrink-0 ml-2">
+                              <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${getStatusColor(review.status)}`}>
+                                {review.status}
+                              </span>
+                              {renderRating(review.overall_rating)}
                             </div>
                           </div>
                         ))}
@@ -493,12 +463,7 @@ const Performance: React.FC = () => {
                               <td className="py-4 px-4 text-gray-900 dark:text-white">{review.reviewer_name}</td>
                               <td className="py-4 px-4 text-gray-900 dark:text-white">{review.review_period}</td>
                               <td className="py-4 px-4">
-                                <div className="flex items-center space-x-2">
-                                  <div className="flex">{renderStars(review.overall_rating)}</div>
-                                  <span className={`font-bold ${getRatingColor(review.overall_rating)}`}>
-                                    {review.overall_rating.toFixed(1)}
-                                  </span>
-                                </div>
+                                {renderRating(review.overall_rating)}
                               </td>
                               <td className="py-4 px-4">
                                 <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(review.status)}`}>

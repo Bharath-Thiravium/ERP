@@ -100,7 +100,9 @@ class StatutorySettingsViewSet(viewsets.ModelViewSet):
                 return StatutorySettings.objects.none()
             
             session = safe_get_session(session_key)
-            return StatutorySettings.objects.filter(company=session.service_user.company)
+            return StatutorySettings.objects.filter(
+                company=session.service_user.company
+            ).order_by('pk')
         except (ComplianceError, Exception):
             return StatutorySettings.objects.none()
 

@@ -4,6 +4,7 @@ Comprehensive test suite for HR compliance system
 from django.test import TestCase
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from decimal import Decimal
 from datetime import date, datetime
 
@@ -12,7 +13,22 @@ from .models import Department, Designation, Employee
 from .statutory_models import StatutorySettings, EmployeeStatutoryDetails
 from .statutory_calculations import StatutoryCalculator
 from .compliance_validators import ComplianceValidators, DataIntegrityValidator
-from .error_handlers import ComplianceError, SafeCalculator
+from .error_handlers import ComplianceError, SafeCalculator, handle_compliance_errors
+
+
+class ComplianceErrorHandlerTests(TestCase):
+    def test_drf_validation_error_is_returned_as_structured_bad_request(self):
+        @handle_compliance_errors
+        def invalid_settings():
+            raise DRFValidationError({
+                'pf_establishment_code': ['PF establishment code is required.'],
+            })
+
+        response = invalid_settings()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['error_code'], 'VALIDATION_ERROR')
+        self.assertIn('pf_establishment_code', response.data['details'])
 
 
 class ComplianceValidatorTests(TestCase):

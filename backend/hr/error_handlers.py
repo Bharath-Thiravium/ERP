@@ -4,8 +4,9 @@ Enhanced error handling for HR compliance system
 import logging
 from functools import wraps
 from rest_framework import status
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
 from authentication.models import ServiceUserSession
 
 logger = logging.getLogger(__name__)
@@ -25,11 +26,18 @@ def handle_compliance_errors(func):
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except ValidationError as e:
+        except DRFValidationError as e:
+            logger.warning(f"API validation error in {func.__name__}: {e.detail}")
+            return Response({
+                'error': 'Please correct the highlighted statutory settings.',
+                'details': e.detail,
+                'error_code': 'VALIDATION_ERROR'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as e:
             logger.error(f"Validation error in {func.__name__}: {str(e)}")
             return Response({
                 'error': 'Validation failed',
-                'details': str(e),
+                'details': getattr(e, 'message_dict', None) or e.messages,
                 'error_code': 'VALIDATION_ERROR'
             }, status=status.HTTP_400_BAD_REQUEST)
         except ComplianceError as e:

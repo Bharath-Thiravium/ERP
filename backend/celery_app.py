@@ -23,10 +23,6 @@ app.conf.beat_schedule = {
         'task': 'hr.tasks.run_compliance_checks',
         'schedule': 60.0 * 60.0 * 24.0,  # Daily at midnight
     },
-    'monthly-ecr-generation': {
-        'task': 'hr.tasks.generate_monthly_ecr',
-        'schedule': 60.0 * 60.0 * 24.0 * 30.0,  # Monthly
-    },
     'weekly-compliance-reminders': {
         'task': 'hr.tasks.send_compliance_reminders',
         'schedule': 60.0 * 60.0 * 24.0 * 7.0,  # Weekly
@@ -39,10 +35,6 @@ app.conf.beat_schedule = {
         'task': 'hr.tasks.generate_compliance_reports',
         'schedule': 60.0 * 60.0 * 24.0 * 30.0,  # Monthly
     },
-    'daily-employee-sync': {
-        'task': 'hr.tasks.sync_employee_data',
-        'schedule': 60.0 * 60.0 * 24.0,  # Daily
-    },
     'hourly-calculation-validation': {
         'task': 'hr.tasks.validate_statutory_calculations',
         'schedule': 60.0 * 60.0,  # Hourly
@@ -51,10 +43,6 @@ app.conf.beat_schedule = {
         'task': 'hr.tasks.cleanup_old_alerts',
         'schedule': 60.0 * 60.0 * 24.0 * 7.0,  # Weekly
     },
-    'monthly-rate-updates': {
-        'task': 'hr.tasks.update_statutory_rates',
-        'schedule': 60.0 * 60.0 * 24.0 * 30.0,  # Monthly
-    }
 }
 
 app.conf.timezone = 'Asia/Kolkata'

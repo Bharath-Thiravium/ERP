@@ -1,235 +1,232 @@
-from django.db import models
-from django.utils import timezone
-from datetime import datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal
-from .models import Employee, Company
-from .statutory_models import StatutorySettings, ComplianceAlert
-from .error_handlers import ComplianceError, SafeCalculator
 import logging
+
+from django.db.models import Q
+from django.utils import timezone
+
+from .models import Employee
+from .statutory_models import (
+    ComplianceAlert,
+    EmployeeStatutoryDetails,
+    GovernmentReturn,
+    MinimumWageRate,
+    StatutorySettings,
+)
+from .error_handlers import ComplianceError
+
 
 logger = logging.getLogger(__name__)
 
+
 class ComplianceEngine:
-    """Advanced compliance monitoring and automation engine"""
-    
+    """Generate evidence-based statutory readiness and filing alerts."""
+
     def __init__(self, company):
         self.company = company
-        self.statutory_settings = StatutorySettings.objects.filter(company=company).first()
-    
-    def run_compliance_checks(self):
-        """Run all compliance checks and generate alerts with error handling"""
-        alerts = []
-        
+        self.settings = StatutorySettings.objects.filter(company=company).first()
+        self.today = timezone.localdate()
+
+    @staticmethod
+    def _statutory_details(employee):
         try:
-            # PF Compliance Checks
-            alerts.extend(self._check_pf_compliance())
-            
-            # ESI Compliance Checks
-            alerts.extend(self._check_esi_compliance())
-            
-            # Professional Tax Checks
-            alerts.extend(self._check_pt_compliance())
-            
-            # TDS Compliance Checks
-            alerts.extend(self._check_tds_compliance())
-            
-            # Labor Law Compliance
-            alerts.extend(self._check_labor_law_compliance())
-            
-            # Save alerts with error handling
-            for alert_data in alerts:
-                try:
-                    ComplianceAlert.objects.create(**alert_data)
-                except Exception as e:
-                    logger.error(f"Failed to create compliance alert: {str(e)}")
-            
-            logger.info(f"Compliance check completed for company {self.company.id}: {len(alerts)} alerts generated")
-            return alerts
-            
-        except Exception as e:
-            logger.error(f"Error during compliance checks for company {self.company.id}: {str(e)}")
-            raise ComplianceError("Compliance check failed", "COMPLIANCE_CHECK_ERROR")
-    
+            return employee.statutory_details
+        except EmployeeStatutoryDetails.DoesNotExist:
+            return None
+
+    def _active_employees(self):
+        return Employee.objects.filter(company=self.company, status='active').select_related(
+            'statutory_details'
+        )
+
+    def run_compliance_checks(self):
+        """Run enabled checks and update unresolved alerts without duplicating them."""
+        try:
+            alerts = []
+            if not self.settings:
+                alerts.append(self._alert(
+                    'compliance_violation',
+                    'high',
+                    'Statutory settings are not configured',
+                    'Configure the statutory schemes applicable to this company before payroll processing.',
+                    self.today + timedelta(days=3),
+                ))
+            else:
+                if self.settings.pf_enabled:
+                    alerts.extend(self._check_pf_compliance())
+                if self.settings.esi_enabled:
+                    alerts.extend(self._check_esi_compliance())
+                if self.settings.pt_enabled and not self.settings.pt_registration_number:
+                    alerts.append(self._alert(
+                        'compliance_violation', 'high', 'Professional Tax registration missing',
+                        'Professional Tax is enabled, but the company registration number is missing.',
+                        self.today + timedelta(days=7),
+                    ))
+                if self.settings.tds_enabled and not self.settings.tan_number:
+                    alerts.append(self._alert(
+                        'compliance_violation', 'high', 'TAN registration missing',
+                        'TDS is enabled, but the company TAN is missing.',
+                        self.today + timedelta(days=7),
+                    ))
+                alerts.extend(self._check_return_deadlines())
+
+            alerts.extend(self._check_minimum_wage_compliance())
+            saved = [self._save_alert(alert) for alert in alerts]
+            logger.info(
+                'Compliance check completed for company %s: %s active issues',
+                self.company.id,
+                len(saved),
+            )
+            return saved
+        except Exception as exc:
+            logger.exception('Compliance check failed for company %s', self.company.id)
+            raise ComplianceError('Compliance check failed', 'COMPLIANCE_CHECK_ERROR') from exc
+
+    def _alert(self, alert_type, priority, title, message, due_date=None):
+        return {
+            'company': self.company,
+            'alert_type': alert_type,
+            'priority': priority,
+            'title': title,
+            'message': message,
+            'due_date': due_date,
+        }
+
+    def _save_alert(self, alert):
+        lookup = {
+            'company': self.company,
+            'title': alert['title'],
+            'is_resolved': False,
+        }
+        defaults = {key: value for key, value in alert.items() if key not in {'company', 'title'}}
+        instance, _ = ComplianceAlert.objects.update_or_create(**lookup, defaults=defaults)
+        return instance
+
     def _check_pf_compliance(self):
-        """Check PF compliance issues"""
         alerts = []
-        employees = Employee.objects.filter(company=self.company, status='active')
-        
-        for emp in employees:
-            # Check UAN mapping
-            if not hasattr(emp, 'statutory_details') or not emp.statutory_details.uan_number:
-                alerts.append({
-                    'company': self.company,
-                    'alert_type': 'compliance_violation',
-                    'priority': 'high',
-                    'title': f'UAN Missing for {emp.first_name} {emp.last_name}',
-                    'message': 'Employee UAN number is not mapped',
-                    'due_date': timezone.now().date() + timedelta(days=7)
-                })
-            
-            # Check PF eligibility vs enrollment
-            if emp.base_salary >= 15000:
-                alerts.append({
-                    'company': self.company,
-                    'alert_type': 'compliance_violation',
-                    'priority': 'high',
-                    'title': f'PF Enrollment Required for {emp.first_name} {emp.last_name}',
-                    'message': 'Employee eligible for PF but not enrolled',
-                    'due_date': timezone.now().date() + timedelta(days=3)
-                })
-        
-        return alerts
-    
-    def _check_esi_compliance(self):
-        """Check ESI compliance issues"""
-        alerts = []
-        employees = Employee.objects.filter(company=self.company, status='active')
-        
-        for emp in employees:
-            # Calculate gross salary (base + allowances)
-            gross_salary = emp.base_salary * Decimal('1.4')  # Approximate gross (base + 40% allowances)
-            if gross_salary <= 21000:
-                alerts.append({
-                    'company': self.company,
-                    'alert_type': 'compliance_violation',
-                    'priority': 'medium',
-                    'title': f'ESI Enrollment Required for {emp.first_name} {emp.last_name}',
-                    'message': 'Employee eligible for ESI but not enrolled',
-                    'due_date': timezone.now().date() + timedelta(days=5)
-                })
-        
-        return alerts
-    
-    def _check_pt_compliance(self):
-        """Check Professional Tax compliance"""
-        alerts = []
-        
-        # Check monthly PT return due dates
-        today = timezone.now().date()
-        if today.day >= 15:  # PT return due by 15th
-            alerts.append({
-                'company': self.company,
-                'alert_type': 'filing_due',
-                'priority': 'high',
-                'title': 'Professional Tax Return Due',
-                'message': f'PT return for {today.strftime("%B %Y")} is due',
-                'due_date': today + timedelta(days=1)
-            })
-        
-        return alerts
-    
-    def _check_tds_compliance(self):
-        """Check TDS compliance issues"""
-        alerts = []
-        
-        # Check quarterly TDS return
-        today = timezone.now().date()
-        quarter_end_months = [3, 6, 9, 12]
-        
-        if today.month in quarter_end_months and today.day >= 25:
-            alerts.append({
-                'company': self.company,
-                'alert_type': 'filing_due',
-                'priority': 'critical',
-                'title': 'Quarterly TDS Return Due',
-                'message': f'TDS return for Q{(today.month-1)//3 + 1} is due',
-                'due_date': today + timedelta(days=5)
-            })
-        
-        return alerts
-    
-    def _check_labor_law_compliance(self):
-        """Check labor law compliance"""
-        alerts = []
-        
-        # Check minimum wage compliance
-        employees = Employee.objects.filter(company=self.company, status='active')
-        min_wage = 15000  # Example minimum wage
-        
-        for emp in employees:
-            if emp.base_salary < min_wage:
-                alerts.append({
-                    'company': self.company,
-                    'alert_type': 'wage_violation',
-                    'priority': 'critical',
-                    'title': f'Minimum Wage Violation - {emp.first_name} {emp.last_name}',
-                    'message': f'Employee salary below minimum wage of ₹{min_wage}',
-                    'due_date': timezone.now().date() + timedelta(days=1)
-                })
-        
+        ceiling = Decimal(self.settings.pf_ceiling)
+        for employee in self._active_employees():
+            details = self._statutory_details(employee)
+            has_pf_identity = bool(
+                employee.uan_number
+                or employee.pf_number
+                or (details and (details.uan_number or details.pf_account_number))
+            )
+            # A new employee at or below the configured wage ceiling requires enrollment.
+            if employee.base_salary <= ceiling and not has_pf_identity:
+                alerts.append(self._alert(
+                    'compliance_violation',
+                    'high',
+                    f'PF enrollment missing - {employee.employee_id}',
+                    f'UAN/PF account is missing for {employee.full_name}.',
+                    self.today + timedelta(days=7),
+                ))
         return alerts
 
-class AutomatedReporting:
-    """Automated report generation and submission"""
-    
-    def __init__(self, company):
-        self.company = company
-    
-    def generate_monthly_reports(self):
-        """Generate all monthly statutory reports"""
-        reports = []
-        
-        # ECR Report
-        reports.append(self._generate_ecr_report())
-        
-        # ESI Report
-        reports.append(self._generate_esi_report())
-        
-        # PT Challan
-        reports.append(self._generate_pt_challan())
-        
-        return reports
-    
-    def _generate_ecr_report(self):
-        """Generate ECR report for PF"""
-        from .form_generators import FormGenerator
-        generator = FormGenerator(self.company)
-        return generator.generate_ecr_report()
-    
-    def _generate_esi_report(self):
-        """Generate ESI monthly report"""
-        from .form_generators import FormGenerator
-        generator = FormGenerator(self.company)
-        return generator.generate_esi_report()
-    
-    def _generate_pt_challan(self):
-        """Generate PT challan"""
-        from .form_generators import FormGenerator
-        generator = FormGenerator(self.company)
-        return generator.generate_pt_challan()
+    def _check_esi_compliance(self):
+        alerts = []
+        ceiling = Decimal(self.settings.esi_ceiling)
+        for employee in self._active_employees():
+            details = self._statutory_details(employee)
+            has_esi_identity = bool(employee.esi_number or (details and details.esi_ip_number))
+            if employee.base_salary <= ceiling and not has_esi_identity:
+                alerts.append(self._alert(
+                    'compliance_violation',
+                    'high',
+                    f'ESI enrollment missing - {employee.employee_id}',
+                    f'ESI insurance number is missing for {employee.full_name}.',
+                    self.today + timedelta(days=7),
+                ))
+        return alerts
+
+    def _check_return_deadlines(self):
+        enabled_types = set()
+        if self.settings.pf_enabled:
+            enabled_types.add('pf_ecr')
+        if self.settings.esi_enabled:
+            enabled_types.add('esi_return')
+        if self.settings.pt_enabled:
+            enabled_types.add('pt_return')
+        if self.settings.tds_enabled:
+            enabled_types.add('tds_24q')
+
+        alerts = []
+        returns = GovernmentReturn.objects.filter(
+            company=self.company,
+            return_type__in=enabled_types,
+            status__in=['pending', 'generated', 'overdue', 'rejected'],
+            due_date__lte=self.today + timedelta(days=7),
+        )
+        for filing in returns:
+            overdue = filing.due_date < self.today
+            priority = 'critical' if overdue or filing.status == 'rejected' else 'high'
+            state = 'overdue' if overdue else 'due soon'
+            alerts.append(self._alert(
+                'filing_due',
+                priority,
+                f'{filing.get_return_type_display()} {filing.period_month:02d}/{filing.period_year} {state}',
+                f'Return status is {filing.get_status_display()} and due date is {filing.due_date:%d %b %Y}.',
+                filing.due_date,
+            ))
+        return alerts
+
+    def _check_minimum_wage_compliance(self):
+        alerts = []
+        missing_rates = set()
+        for employee in self._active_employees():
+            details = self._statutory_details(employee)
+            state = (employee.permanent_state or employee.state or '').strip()
+            category = details.wage_category if details else 'skilled'
+            if not state:
+                alerts.append(self._alert(
+                    'compliance_violation', 'medium',
+                    f'Employee state missing - {employee.employee_id}',
+                    f'Permanent state is required to validate minimum wage for {employee.full_name}.',
+                    self.today + timedelta(days=14),
+                ))
+                continue
+
+            rate = MinimumWageRate.objects.filter(
+                state__iexact=state,
+                category=category,
+                is_active=True,
+                effective_from__lte=self.today,
+            ).filter(
+                # An open-ended rate or a rate still effective today.
+                Q(effective_to__isnull=True) | Q(effective_to__gte=self.today)
+            ).order_by('-effective_from').first()
+            if not rate:
+                missing_rates.add((state, category))
+                continue
+            if employee.base_salary < rate.monthly_rate:
+                alerts.append(self._alert(
+                    'wage_violation', 'critical',
+                    f'Minimum wage violation - {employee.employee_id}',
+                    f'{employee.full_name} salary is below the configured {state} {category} minimum wage.',
+                    self.today + timedelta(days=1),
+                ))
+
+        for state, category in sorted(missing_rates):
+            alerts.append(self._alert(
+                'compliance_violation', 'medium',
+                f'Minimum wage rate missing - {state} / {category}',
+                'Add a current minimum wage rate before treating payroll as compliance-ready.',
+                self.today + timedelta(days=14),
+            ))
+        return alerts
+
 
 class ComplianceScheduler:
-    """Schedule compliance tasks and reminders"""
-    
-    @staticmethod
-    def schedule_monthly_tasks():
-        """Schedule monthly compliance tasks"""
-        from django_celery_beat.models import PeriodicTask, CrontabSchedule
-        
-        # Monthly ECR generation
-        schedule, _ = CrontabSchedule.objects.get_or_create(
-            minute=0, hour=9, day_of_month=1
-        )
-        
-        PeriodicTask.objects.get_or_create(
-            name='Generate Monthly ECR',
-            task='hr.tasks.generate_monthly_ecr',
-            crontab=schedule,
-            enabled=True
-        )
-    
+    """Create only the supported compliance monitoring schedule."""
+
     @staticmethod
     def schedule_compliance_checks():
-        """Schedule daily compliance checks"""
-        from django_celery_beat.models import PeriodicTask, CrontabSchedule
-        
-        schedule, _ = CrontabSchedule.objects.get_or_create(
-            minute=0, hour=8
-        )
-        
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+        schedule, _ = CrontabSchedule.objects.get_or_create(minute=0, hour=8)
         PeriodicTask.objects.get_or_create(
             name='Daily Compliance Check',
             task='hr.tasks.run_compliance_checks',
             crontab=schedule,
-            enabled=True
+            defaults={'enabled': True},
         )

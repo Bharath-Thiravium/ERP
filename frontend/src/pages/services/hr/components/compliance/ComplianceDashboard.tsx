@@ -1,402 +1,307 @@
-import React, { useState, useEffect } from 'react'
-import { CheckCircle, AlertTriangle, Trophy, FileText, RefreshCw, Users } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileClock,
+  IndianRupee,
+  RefreshCw,
+  Settings2,
+  Users
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { Button } from '../../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
 import api from '../../../../../lib/api'
 import toast from 'react-hot-toast'
 
-interface ComplianceData {
+interface SchemeSummary {
+  enabled: boolean
   total_employees: number
-  pf_enrolled: number
-  esi_enrolled: number
-  pt_applicable: number
-  tds_applicable: number
-  compliance_score: number
-  pending_returns: any[]
-  recent_alerts: any[]
+  eligible_employees?: number
+  taxable_employees?: number
+  monthly_contribution?: number | string
+  state?: string
+}
+
+interface ReturnSummary {
+  return_type: string
+  period_month: number
+  period_year: number
+  due_date: string
+}
+
+interface DashboardData {
+  pf_compliance: SchemeSummary
+  esi_compliance: SchemeSummary
+  pt_compliance: SchemeSummary
+  tds_compliance: SchemeSummary
+  pending_returns: ReturnSummary[]
+  overdue_returns: ReturnSummary[]
+  compliance_summary: {
+    total_items: number
+    compliant_items: number
+    compliance_percentage: number
+    status: string
+  }
 }
 
 interface ComplianceAlert {
   id: number
-  type: string
-  severity: string
+  alert_type: string
+  alert_type_display?: string
+  priority: string
   title: string
-  description: string
-  due_date: string
-  employee?: string
+  message: string
+  due_date?: string | null
 }
+
+const listFromResponse = <T,>(data: T[] | { results?: T[] }): T[] =>
+  Array.isArray(data) ? data : data?.results || []
+
+const formatReturnType = (value: string) =>
+  value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+
+const formatCurrency = (value?: number | string) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
+    Number(value || 0)
+  )
 
 const ComplianceDashboard: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
-  const [dashboardData, setDashboardData] = useState<ComplianceData | null>(null)
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [alerts, setAlerts] = useState<ComplianceAlert[]>([])
-  const [scorecard, setScorecard] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [checking, setChecking] = useState(false)
+  const [error, setError] = useState('')
+
+  const requestConfig = useMemo(
+    () => ({ headers: { Authorization: `Bearer ${sessionKey}` }, params: { session_key: sessionKey } }),
+    [sessionKey]
+  )
+
+  const loadData = useCallback(async () => {
+    if (!sessionKey) return
+    setError('')
+    try {
+      const [dashboardResponse, alertResponse] = await Promise.all([
+        api.get('/api/hr/statutory/dashboard/', requestConfig),
+        api.get('/api/hr/statutory-alerts/', {
+          ...requestConfig,
+          params: { session_key: sessionKey, is_resolved: false }
+        })
+      ])
+      setDashboard(dashboardResponse.data)
+      setAlerts(listFromResponse<ComplianceAlert>(alertResponse.data))
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.error || 'Unable to load compliance information.')
+    } finally {
+      setLoading(false)
+    }
+  }, [requestConfig, sessionKey])
 
   useEffect(() => {
-    fetchDashboardData()
-    fetchAlerts()
-    fetchScorecard()
-  }, [sessionKey])
-
-  const fetchDashboardData = async () => {
-    if (!sessionKey) return
-    
-    try {
-      const response = await api.get('/api/hr/compliance/dashboard/', {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
-      })
-      setDashboardData(response.data)
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-    }
-  }
-
-  const fetchAlerts = async () => {
-    if (!sessionKey) return
-    
-    try {
-      const response = await api.get('/api/hr/compliance/alerts/', {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
-      })
-      setAlerts(response.data)
-    } catch (error) {
-      console.error('Error fetching alerts:', error)
-    }
-  }
-
-  const fetchScorecard = async () => {
-    if (!sessionKey) return
-    
-    try {
-      const response = await api.get('/api/hr/compliance/scorecard/', {
-        headers: { Authorization: `Bearer ${sessionKey}` },
-        params: { session_key: sessionKey }
-      })
-      setScorecard(response.data)
-      setLoading(false)
-    } catch (error) {
-      console.error('Error fetching scorecard:', error)
-      setLoading(false)
-    }
-  }
+    loadData()
+  }, [loadData])
 
   const runComplianceCheck = async () => {
     if (!sessionKey) return
-    
+    setChecking(true)
     try {
-      setLoading(true)
-      await api.post('/api/hr/compliance/run_checks/', 
+      await api.post(
+        '/api/hr/compliance/run_checks/',
         { session_key: sessionKey },
         { headers: { Authorization: `Bearer ${sessionKey}` } }
       )
-      await fetchAlerts()
-      toast.success('Compliance check completed')
-      setLoading(false)
-    } catch (error: any) {
-      toast.error('Failed to run compliance check')
-      setLoading(false)
+      await loadData()
+      toast.success('Compliance evidence checked successfully')
+    } catch (requestError: any) {
+      toast.error(requestError?.response?.data?.error || 'Compliance check failed')
+    } finally {
+      setChecking(false)
     }
   }
 
   const resolveAlert = async (alertId: number) => {
     if (!sessionKey) return
-    
     try {
-      await api.post(`/api/hr/compliance/${alertId}/resolve_alert/`, 
-        { notes: 'Resolved from dashboard', session_key: sessionKey },
+      await api.post(
+        `/api/hr/statutory-alerts/${alertId}/resolve/`,
+        { session_key: sessionKey },
         { headers: { Authorization: `Bearer ${sessionKey}` } }
       )
-      await fetchAlerts()
-      toast.success('Alert resolved successfully')
-    } catch (error: any) {
-      toast.error('Failed to resolve alert')
-    }
-  }
-
-  const generateReturn = async (returnType: string) => {
-    if (!sessionKey) return
-    
-    try {
-      setLoading(true)
-      let endpoint = ''
-      let filename = ''
-      
-      switch (returnType.toLowerCase()) {
-        case 'ecr':
-          endpoint = '/api/hr/forms/pf-challan/'
-          filename = `ECR_${new Date().toISOString().split('T')[0]}.pdf`
-          break
-        case 'esi return':
-          endpoint = '/api/hr/forms/esi-challan/'
-          filename = `ESI_Return_${new Date().toISOString().split('T')[0]}.pdf`
-          break
-        default:
-          toast.error('Unknown return type')
-          setLoading(false)
-          return
-      }
-      
-      const response = await api.post(endpoint, 
-        { session_key: sessionKey },
-        {
-          headers: { Authorization: `Bearer ${sessionKey}` },
-          responseType: 'blob'
-        }
-      )
-      
-      const blob = new Blob([response.data], { type: 'application/pdf' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      
-      toast.success(`${returnType} generated successfully`)
-      setLoading(false)
-    } catch (error: any) {
-      toast.error(`Failed to generate ${returnType}`)
-      setLoading(false)
-    }
-  }
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'CRITICAL': return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-      case 'HIGH': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400'
-      case 'MEDIUM': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
-      case 'LOW': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
+      setAlerts((current) => current.filter((alert) => alert.id !== alertId))
+      toast.success('Alert marked as resolved')
+    } catch (requestError: any) {
+      toast.error(requestError?.response?.data?.error || 'Unable to resolve alert')
     }
   }
 
   if (loading) {
+    return <div className="flex h-56 items-center justify-center text-sm text-gray-500">Loading compliance data...</div>
+  }
+
+  if (error || !dashboard) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-      </div>
+      <Card>
+        <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+          <AlertTriangle className="h-8 w-8 text-red-500" />
+          <p className="text-sm text-gray-700 dark:text-gray-300">{error || 'Compliance data is unavailable.'}</p>
+          <Button size="sm" onClick={loadData}>Retry</Button>
+        </CardContent>
+      </Card>
     )
   }
 
+  const totalEmployees = Math.max(
+    dashboard.pf_compliance.total_employees || 0,
+    dashboard.esi_compliance.total_employees || 0,
+    dashboard.tds_compliance.total_employees || 0
+  )
+  const schemeRows = [
+    {
+      name: 'Provident Fund (PF)',
+      data: dashboard.pf_compliance,
+      detail: `${dashboard.pf_compliance.eligible_employees || 0} eligible employees`
+    },
+    {
+      name: 'Employee State Insurance (ESI)',
+      data: dashboard.esi_compliance,
+      detail: `${dashboard.esi_compliance.eligible_employees || 0} eligible employees`
+    },
+    {
+      name: 'Professional Tax (PT)',
+      data: dashboard.pt_compliance,
+      detail: dashboard.pt_compliance.state || 'State not configured'
+    },
+    {
+      name: 'Tax Deducted at Source (TDS)',
+      data: dashboard.tds_compliance,
+      detail: `${dashboard.tds_compliance.taxable_employees || 0} taxable employees`
+    }
+  ]
+
+  const priorityClass = (priority: string) => {
+    const normalized = priority.toLowerCase()
+    if (normalized === 'critical' || normalized === 'high') return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+    if (normalized === 'medium') return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+    return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Compliance Dashboard</h2>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">Real-time compliance monitoring and alerts</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Statutory Evidence Review</h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Readiness is based on saved configuration, approved payroll and recorded filing evidence.
+          </p>
         </div>
-        <Button onClick={runComplianceCheck} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Processing...' : 'Run Compliance Check'}
+        <Button onClick={runComplianceCheck} disabled={checking}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${checking ? 'animate-spin' : ''}`} />
+          {checking ? 'Checking...' : 'Run Evidence Check'}
         </Button>
       </div>
 
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Configuration Readiness', value: `${dashboard.compliance_summary.compliance_percentage}%`, icon: Settings2 },
+          { label: 'Active Employees', value: totalEmployees, icon: Users },
+          { label: 'Unresolved Alerts', value: alerts.length, icon: AlertTriangle },
+          { label: 'Overdue Returns', value: dashboard.overdue_returns.length, icon: FileClock }
+        ].map(({ label, value, icon: Icon }) => (
+          <Card key={label}>
+            <CardContent className="flex items-center justify-between p-5">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Overall Score</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {scorecard?.overall_score || 0}%
-                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
+                <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{value}</p>
               </div>
-              <Trophy className="h-8 w-8 text-yellow-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Employees</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {dashboardData?.total_employees || 0}
-                </p>
-              </div>
-              <Users className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Alerts</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{alerts.length}</p>
-              </div>
-              <AlertTriangle className={`h-8 w-8 ${alerts.length > 0 ? 'text-red-500' : 'text-green-500'}`} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Pending Returns</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {dashboardData?.pending_returns?.length || 0}
-                </p>
-              </div>
-              <FileText className="h-8 w-8 text-purple-500" />
-            </div>
-          </CardContent>
-        </Card>
+              <Icon className="h-7 w-7 text-blue-600" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Statutory Enrollment Status */}
       <Card>
-        <CardHeader>
-          <CardTitle>Statutory Enrollment Status</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Configured Schemes</CardTitle></CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-600 dark:text-gray-400">PF Enrolled</span>
-                <span className="text-gray-900 dark:text-white">
-                  {dashboardData?.pf_enrolled}/{dashboardData?.total_employees}
-                </span>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {schemeRows.map(({ name, data, detail }) => (
+              <div key={name} className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">{name}</p>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{detail}</p>
+                    {data.monthly_contribution !== undefined && (
+                      <p className="mt-2 flex items-center text-sm text-gray-700 dark:text-gray-300">
+                        <IndianRupee className="mr-1 h-3.5 w-3.5" /> Latest approved payroll contribution: {formatCurrency(data.monthly_contribution)}
+                      </p>
+                    )}
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                    data.enabled
+                      ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                  }`}>
+                    {data.enabled ? 'Enabled' : 'Not enabled'}
+                  </span>
+                </div>
               </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-green-500 h-2 rounded-full"
-                  style={{
-                    width: `${dashboardData ? (dashboardData.pf_enrolled / dashboardData.total_employees) * 100 : 0}%`
-                  }}
-                ></div>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-600 dark:text-gray-400">ESI Enrolled</span>
-                <span className="text-gray-900 dark:text-white">
-                  {dashboardData?.esi_enrolled}/{dashboardData?.total_employees}
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-blue-500 h-2 rounded-full"
-                  style={{
-                    width: `${dashboardData ? (dashboardData.esi_enrolled / dashboardData.total_employees) * 100 : 0}%`
-                  }}
-                ></div>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-600 dark:text-gray-400">PT Applicable</span>
-                <span className="text-gray-900 dark:text-white">
-                  {dashboardData?.pt_applicable}/{dashboardData?.total_employees}
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-yellow-500 h-2 rounded-full"
-                  style={{
-                    width: `${dashboardData ? (dashboardData.pt_applicable / dashboardData.total_employees) * 100 : 0}%`
-                  }}
-                ></div>
-              </div>
-            </div>
+            ))}
           </div>
         </CardContent>
       </Card>
 
-      {/* Active Alerts */}
       <Card>
-        <CardHeader>
-          <CardTitle>Active Compliance Alerts</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Unresolved Alerts</CardTitle></CardHeader>
         <CardContent>
-          {alerts.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-700">
-                    <th className="text-left p-3 text-gray-600 dark:text-gray-400">Type</th>
-                    <th className="text-left p-3 text-gray-600 dark:text-gray-400">Severity</th>
-                    <th className="text-left p-3 text-gray-600 dark:text-gray-400">Title</th>
-                    <th className="text-left p-3 text-gray-600 dark:text-gray-400">Employee</th>
-                    <th className="text-left p-3 text-gray-600 dark:text-gray-400">Due Date</th>
-                    <th className="text-left p-3 text-gray-600 dark:text-gray-400">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {alerts.map((alert) => (
-                    <tr key={alert.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <td className="p-3">
-                        <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300">
-                          {alert.type.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <span className={`px-2 py-1 rounded-full text-xs ${getSeverityColor(alert.severity)}`}>
-                          {alert.severity}
-                        </span>
-                      </td>
-                      <td className="p-3 text-gray-900 dark:text-white">{alert.title}</td>
-                      <td className="p-3 text-gray-600 dark:text-gray-400">{alert.employee || '-'}</td>
-                      <td className="p-3 text-gray-600 dark:text-gray-400">
-                        {new Date(alert.due_date).toLocaleDateString()}
-                      </td>
-                      <td className="p-3">
-                        <Button size="sm" onClick={() => resolveAlert(alert.id)}>
-                          Resolve
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {alerts.length === 0 ? (
+            <div className="flex items-center gap-2 rounded-lg bg-green-50 p-4 text-sm text-green-700 dark:bg-green-950 dark:text-green-300">
+              <CheckCircle2 className="h-5 w-5" /> No unresolved evidence alerts were found.
             </div>
           ) : (
-            <div className="text-center py-8">
-              <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-              <p className="text-gray-600 dark:text-gray-400">No active alerts. All compliance requirements are met.</p>
+            <div className="space-y-3">
+              {alerts.map((alert) => (
+                <div key={alert.id} className="flex flex-col justify-between gap-3 rounded-lg border border-gray-200 p-4 md:flex-row md:items-center dark:border-gray-700">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-gray-900 dark:text-white">{alert.title}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityClass(alert.priority)}`}>
+                        {alert.priority}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{alert.message}</p>
+                    {alert.due_date && <p className="mt-1 text-xs text-gray-500">Due: {new Date(`${alert.due_date}T00:00:00`).toLocaleDateString()}</p>}
+                  </div>
+                  <Button size="sm" onClick={() => resolveAlert(alert.id)}>Resolve</Button>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Pending Returns */}
       <Card>
-        <CardHeader>
-          <CardTitle>Pending Government Returns</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Return Status</CardTitle></CardHeader>
         <CardContent>
-          {dashboardData?.pending_returns && dashboardData.pending_returns.length > 0 ? (
-            <div className="space-y-3">
-              {dashboardData.pending_returns.map((returnItem, index) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">{returnItem.type}</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Due: {returnItem.due_date}</p>
-                    </div>
-                  </div>
-                  <Button size="sm" onClick={() => generateReturn(returnItem.type)}>Generate</Button>
-                </div>
-              ))}
-            </div>
+          {[...dashboard.overdue_returns, ...dashboard.pending_returns].length === 0 ? (
+            <p className="text-sm text-gray-500">No pending or overdue returns. Generate returns from Statutory &gt; Government Returns after payroll approval.</p>
           ) : (
-            <div className="text-center py-8">
-              <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-              <p className="text-gray-600 dark:text-gray-400">All government returns are up to date.</p>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px] text-sm">
+                <thead><tr className="border-b text-left text-gray-500 dark:border-gray-700"><th className="p-3">Return</th><th className="p-3">Period</th><th className="p-3">Due Date</th><th className="p-3">Status</th></tr></thead>
+                <tbody>
+                  {dashboard.overdue_returns.map((item) => (
+                    <tr key={`overdue-${item.return_type}-${item.period_month}-${item.period_year}`} className="border-b dark:border-gray-800">
+                      <td className="p-3 font-medium">{formatReturnType(item.return_type)}</td><td className="p-3">{item.period_month}/{item.period_year}</td><td className="p-3">{item.due_date}</td><td className="p-3 text-red-600">Overdue</td>
+                    </tr>
+                  ))}
+                  {dashboard.pending_returns.map((item) => (
+                    <tr key={`pending-${item.return_type}-${item.period_month}-${item.period_year}`} className="border-b dark:border-gray-800">
+                      <td className="p-3 font-medium">{formatReturnType(item.return_type)}</td><td className="p-3">{item.period_month}/{item.period_year}</td><td className="p-3">{item.due_date}</td><td className="p-3 text-amber-600">Pending filing</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>

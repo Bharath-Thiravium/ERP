@@ -13,7 +13,7 @@ class StatutorySettings(models.Model):
     # PF Settings
     pf_establishment_code = models.CharField(max_length=50, blank=True, help_text="PF Establishment Code")
     pf_extension_code = models.CharField(max_length=10, blank=True, help_text="PF Extension Code")
-    pf_enabled = models.BooleanField(default=True)
+    pf_enabled = models.BooleanField(default=False)
     pf_employee_rate = models.DecimalField(max_digits=5, decimal_places=2, default=12.00)
     pf_employer_rate = models.DecimalField(max_digits=5, decimal_places=2, default=12.00)
     pf_ceiling = models.DecimalField(max_digits=10, decimal_places=2, default=15000)
@@ -21,7 +21,7 @@ class StatutorySettings(models.Model):
     # ESI Settings  
     esi_employer_code = models.CharField(max_length=20, blank=True, help_text="ESI Employer Code")
     esi_local_office = models.CharField(max_length=100, blank=True, help_text="ESI Local Office")
-    esi_enabled = models.BooleanField(default=True)
+    esi_enabled = models.BooleanField(default=False)
     esi_employee_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.75)
     esi_employer_rate = models.DecimalField(max_digits=5, decimal_places=2, default=3.25)
     esi_ceiling = models.DecimalField(max_digits=10, decimal_places=2, default=21000)
@@ -36,14 +36,23 @@ class StatutorySettings(models.Model):
         ('Gujarat', 'Gujarat'),
         ('Tamil Nadu', 'Tamil Nadu'),
     ])
-    pt_enabled = models.BooleanField(default=True)
+    pt_enabled = models.BooleanField(default=False)
+    pt_slabs = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Company-verified monthly PT slabs. Each item contains min_salary, "
+            "max_salary (optional), and amount."
+        ),
+    )
     
     # TDS Settings
     tan_number = models.CharField(max_length=10, blank=True, validators=[
         RegexValidator(regex=r'^[A-Z]{4}[0-9]{5}[A-Z]{1}$', message='Enter valid TAN number')
     ], help_text="Tax Deduction Account Number")
     tds_circle = models.CharField(max_length=100, blank=True, help_text="TDS Circle")
-    tds_enabled = models.BooleanField(default=True)
+    tds_enabled = models.BooleanField(default=False)
+    overtime_enabled = models.BooleanField(default=False)
     
     # Labor Law Settings
     working_hours_per_day = models.IntegerField(default=8)

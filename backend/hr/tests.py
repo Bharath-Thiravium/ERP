@@ -8,6 +8,7 @@ from .models import (
 from .leave_models import LeaveType, LeaveApplication, LeaveBalance
 from decimal import Decimal
 from datetime import timedelta
+from types import SimpleNamespace
 from django.utils import timezone
 
 class DepartmentModelTest(TestCase):
@@ -129,6 +130,7 @@ class _MockServiceUser:
         self.company = company
         self.created_by = created_by
         self.is_active = True
+        self.service = SimpleNamespace(service_type='hr')
 
 
 def _build_request(company, created_by=None, method='post', path='/api/hr/test/', data=None):
@@ -346,11 +348,10 @@ class HRPhase1SecurityTest(TestCase):
         with self.assertRaises(ValidationError):
             payslip.save()
 
-    # --- Fix 7: TDS calculation HRA exemption cap ---
+    # --- TDS: FY 2025-26 default new-regime calculation ---
 
-    def test_tds_calculation_caps_hra_exemption(self):
-        """calculate_tds must cap the HRA exemption rather than treating the full
-        actual HRA paid as tax-exempt."""
+    def test_tds_calculation_uses_new_regime_standard_deduction(self):
+        """The default new regime uses the standard deduction and no HRA exemption."""
         from .statutory_calculations import StatutoryCalculator
         from .statutory_models import StatutorySettings
 
@@ -363,9 +364,9 @@ class HRPhase1SecurityTest(TestCase):
         capped_exemption = min(annual_hra_paid, annual_basic * Decimal('0.5'))
 
         result = calculator.calculate_tds(self.employee_a, annual_gross, capped_exemption)
-        # With capped exemption, taxable_income = 2,074,200 - 50,000 - 600,000 = 1,424,200
-        self.assertEqual(result['taxable_income'], Decimal('1424200.00'))
-        self.assertEqual(result['hra_exemption'], Decimal('600000.00'))
+        self.assertEqual(result['taxable_income'], Decimal('1999200.00'))
+        self.assertEqual(result['standard_deduction'], Decimal('75000.00'))
+        self.assertEqual(result['hra_exemption'], Decimal('0.00'))
 
     # --- Fix 3/8: tenant isolation on ViewSet querysets ---
 

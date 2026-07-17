@@ -131,6 +131,9 @@ urlpatterns = [
     path('interviews/<int:pk>/', interview_views.InterviewDetailView.as_view(), name='interview-detail'),
     path('offers/', offer_views.OfferListCreateView.as_view(), name='offer-list-create'),
     path('offers/<int:pk>/', offer_views.OfferDetailView.as_view(), name='offer-detail'),
+    path('public/offers/<uuid:token>/', offer_views.PublicOfferView.as_view(), name='public-offer-detail'),
+    path('public/offers/<uuid:token>/respond/', offer_views.PublicOfferResponseView.as_view(), name='public-offer-respond'),
+    path('recruitment/onboarding/<int:application_id>/', offer_views.CandidateOnboardingView.as_view(), name='candidate-onboarding'),
 
     # Department & Designation Management
     path('departments/', views.DepartmentListCreateView.as_view(), name='department-list-create'),

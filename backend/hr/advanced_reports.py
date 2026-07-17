@@ -7,7 +7,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 import io
-from .models import Employee, Payslip
+from .models import Employee, Payslip, PayrollCycle
 from .statutory_models import PayslipStatutoryDetails
 
 class AdvancedReportGenerator:
@@ -16,26 +16,64 @@ class AdvancedReportGenerator:
     def __init__(self, company):
         self.company = company
         self.styles = getSampleStyleSheet()
+
+    def _settings(self):
+        from .statutory_models import StatutorySettings
+        return StatutorySettings.objects.filter(company=self.company).first()
+
+    def _active_employees(self):
+        return Employee.objects.filter(company=self.company, status='active')
+
+    def _latest_finalized_payslips(self):
+        cycle = PayrollCycle.objects.filter(
+            company=self.company,
+            status__in=['approved', 'completed']
+        ).order_by('-end_date', '-updated_at').first()
+        if not cycle:
+            return Payslip.objects.none()
+        return Payslip.objects.filter(
+            payroll_cycle=cycle,
+            status__in=['approved', 'paid']
+        )
+
+    def _pf_eligible_employees(self, settings=None):
+        settings = settings or self._settings()
+        ceiling = settings.pf_ceiling if settings else 15000
+        return self._active_employees().filter(
+            Q(base_salary__lte=ceiling) |
+            Q(uan_number__gt='') |
+            Q(pf_number__gt='') |
+            Q(statutory_details__uan_number__gt='') |
+            Q(statutory_details__pf_account_number__gt='')
+        ).distinct()
+
+    def _pf_enrolled_employees(self):
+        return self._active_employees().filter(
+            Q(uan_number__gt='') |
+            Q(pf_number__gt='') |
+            Q(statutory_details__uan_number__gt='') |
+            Q(statutory_details__pf_account_number__gt='')
+        ).distinct()
+
+    def _esi_enrolled_employees(self):
+        return self._active_employees().filter(
+            Q(esi_number__gt='') |
+            Q(statutory_details__esi_ip_number__gt='')
+        ).distinct()
     
     def generate_compliance_dashboard_data(self):
         """Generate data for compliance dashboard"""
         from .statutory_models import StatutorySettings, GovernmentReturn
         
-        employees = Employee.objects.filter(company=self.company, status='active')
-        statutory_settings = StatutorySettings.objects.filter(company=self.company).first()
-        
-        # Calculate real enrollment based on salary thresholds
-        pf_eligible = employees.filter(base_salary__gte=15000).count()
-        esi_eligible = employees.filter(base_salary__lte=21000).count()
-        pt_applicable = employees.filter(base_salary__gte=15000).count()
-        tds_applicable = employees.filter(base_salary__gte=250000).count()
+        employees = self._active_employees()
+        payslips = self._latest_finalized_payslips()
         
         return {
             'total_employees': employees.count(),
-            'pf_enrolled': pf_eligible,
-            'esi_enrolled': esi_eligible,
-            'pt_applicable': pt_applicable,
-            'tds_applicable': tds_applicable,
+            'pf_enrolled': self._pf_enrolled_employees().count(),
+            'esi_enrolled': self._esi_enrolled_employees().count(),
+            'pt_applicable': payslips.filter(professional_tax__gt=0).count(),
+            'tds_applicable': payslips.filter(tds__gt=0).count(),
             'compliance_score': self._calculate_compliance_score(),
             'pending_returns': self._get_pending_returns(),
             'recent_alerts': self._get_recent_alerts()
@@ -60,7 +98,8 @@ class AdvancedReportGenerator:
         payslips = Payslip.objects.filter(
             employee__company=self.company,
             payroll_cycle__start_date__month=month,
-            payroll_cycle__start_date__year=year
+            payroll_cycle__start_date__year=year,
+            status__in=['approved', 'paid']
         )
         
         # Summary data
@@ -212,88 +251,84 @@ class AdvancedReportGenerator:
     
     def _calculate_compliance_score(self):
         """Calculate overall compliance score"""
-        scores = [
-            self._calculate_pf_compliance_score(),
-            self._calculate_esi_compliance_score(),
-            self._calculate_pt_compliance_score(),
-            self._calculate_tds_compliance_score(),
-            self._calculate_labor_law_compliance_score()
-        ]
-        return sum(scores) / len(scores)
+        from .statutory_models import GovernmentReturn
+
+        settings = self._settings()
+        if not settings:
+            return 0
+
+        scores = []
+        for enabled, calculator in [
+            (settings.pf_enabled, self._calculate_pf_compliance_score),
+            (settings.esi_enabled, self._calculate_esi_compliance_score),
+            (settings.pt_enabled, self._calculate_pt_compliance_score),
+            (settings.tds_enabled, self._calculate_tds_compliance_score),
+        ]:
+            if enabled:
+                scores.append(calculator())
+
+        if not scores:
+            return 0
+
+        scores.append(self._calculate_labor_law_compliance_score())
+        score = sum(scores) / len(scores)
+        overdue_count = GovernmentReturn.objects.filter(
+            company=self.company,
+            due_date__lt=timezone.localdate()
+        ).exclude(status='filed').count()
+        return max(0, score - min(40, overdue_count * 10))
     
     def _calculate_pf_compliance_score(self):
         """Calculate PF compliance score"""
         from .statutory_models import StatutorySettings
         
-        employees = Employee.objects.filter(company=self.company, status='active')
-        eligible = employees.filter(base_salary__gte=15000).count()
-        
-        # Check if PF is configured
-        statutory_settings = StatutorySettings.objects.filter(company=self.company).first()
-        has_pf_setup = statutory_settings and statutory_settings.pf_establishment_code
-        
+        statutory_settings = self._settings()
+        if not statutory_settings or not statutory_settings.pf_enabled:
+            return 0
+        if not statutory_settings.pf_establishment_code:
+            return 0
+
+        eligible_qs = self._pf_eligible_employees(statutory_settings)
+        eligible = eligible_qs.count()
         if eligible == 0:
             return 100
-        if not has_pf_setup:
-            return 0
-        
-        # If PF is setup and there are eligible employees, assume compliance
-        return 100
+        enrolled = self._pf_enrolled_employees().filter(id__in=eligible_qs.values('id')).count()
+        return min(100, enrolled / eligible * 100)
     
     def _calculate_esi_compliance_score(self):
         """Calculate ESI compliance score"""
         from .statutory_models import StatutorySettings
         
-        employees = Employee.objects.filter(company=self.company, status='active')
-        eligible = employees.filter(base_salary__lte=21000).count()
-        
-        # Check if ESI is configured
-        statutory_settings = StatutorySettings.objects.filter(company=self.company).first()
-        has_esi_setup = statutory_settings and statutory_settings.esi_employer_code
-        
+        statutory_settings = self._settings()
+        if not statutory_settings or not statutory_settings.esi_enabled:
+            return 0
+        if not statutory_settings.esi_employer_code:
+            return 0
+
+        eligible_qs = self._active_employees().filter(base_salary__lte=statutory_settings.esi_ceiling)
+        eligible = eligible_qs.count()
         if eligible == 0:
             return 100
-        if not has_esi_setup:
-            return 0
-        
-        # If ESI is setup and there are eligible employees, assume compliance
-        return 100
+        enrolled = self._esi_enrolled_employees().filter(id__in=eligible_qs.values('id')).count()
+        return min(100, enrolled / eligible * 100)
     
     def _calculate_pt_compliance_score(self):
         """Calculate PT compliance score"""
         from .statutory_models import StatutorySettings
         
-        employees = Employee.objects.filter(company=self.company, status='active')
-        applicable = employees.filter(base_salary__gte=15000).count()
-        
-        # Check if PT is configured
-        statutory_settings = StatutorySettings.objects.filter(company=self.company).first()
-        has_pt_setup = statutory_settings and statutory_settings.pt_registration_number
-        
-        if applicable == 0:
-            return 100
-        if not has_pt_setup:
+        statutory_settings = self._settings()
+        if not statutory_settings or not statutory_settings.pt_enabled:
             return 0
-        
-        return 100
+        return 100 if statutory_settings.pt_registration_number and statutory_settings.pt_state else 0
     
     def _calculate_tds_compliance_score(self):
         """Calculate TDS compliance score"""
         from .statutory_models import StatutorySettings
         
-        employees = Employee.objects.filter(company=self.company, status='active')
-        applicable = employees.filter(base_salary__gte=250000).count()
-        
-        # Check if TDS is configured
-        statutory_settings = StatutorySettings.objects.filter(company=self.company).first()
-        has_tds_setup = statutory_settings and statutory_settings.tan_number
-        
-        if applicable == 0:
-            return 100
-        if not has_tds_setup:
+        statutory_settings = self._settings()
+        if not statutory_settings or not statutory_settings.tds_enabled:
             return 0
-        
-        return 100
+        return 100 if statutory_settings.tan_number else 0
     
     def _calculate_labor_law_compliance_score(self):
         """Calculate labor law compliance score"""
@@ -306,8 +341,7 @@ class AdvancedReportGenerator:
             is_resolved=False
         ).count()
         
-        # Deduct 10 points per unresolved alert, minimum 60
-        score = max(60, 100 - (recent_alerts * 10))
+        score = max(0, 100 - (recent_alerts * 10))
         return score
     
     def _get_pending_returns(self):
@@ -318,7 +352,7 @@ class AdvancedReportGenerator:
         # Get actual pending returns from database
         pending_returns = GovernmentReturn.objects.filter(
             company=self.company,
-            status__in=['draft', 'pending']
+            status__in=['pending', 'generated', 'overdue']
         ).order_by('due_date')[:5]
         
         returns_data = []
@@ -406,27 +440,29 @@ class AdvancedReportGenerator:
         from .statutory_models import StatutorySettings, ComplianceAlert
         
         recommendations = []
-        employees = Employee.objects.filter(company=self.company, status='active')
-        statutory_settings = StatutorySettings.objects.filter(company=self.company).first()
+        statutory_settings = self._settings()
         
         # Check PF setup
-        pf_eligible = employees.filter(base_salary__gte=15000).count()
-        if pf_eligible > 0 and (not statutory_settings or not statutory_settings.pf_establishment_code):
+        pf_eligible = self._pf_eligible_employees(statutory_settings).count()
+        if statutory_settings and statutory_settings.pf_enabled and pf_eligible > 0 and not statutory_settings.pf_establishment_code:
             recommendations.append("Configure PF establishment code for eligible employees")
+        if statutory_settings and statutory_settings.pf_enabled and self._calculate_pf_compliance_score() < 100:
+            recommendations.append("Complete UAN/PF enrollment for all PF-eligible employees")
         
         # Check ESI setup
-        esi_eligible = employees.filter(base_salary__lte=21000).count()
-        if esi_eligible > 0 and (not statutory_settings or not statutory_settings.esi_employer_code):
+        esi_ceiling = statutory_settings.esi_ceiling if statutory_settings else 21000
+        esi_eligible = self._active_employees().filter(base_salary__lte=esi_ceiling).count()
+        if statutory_settings and statutory_settings.esi_enabled and esi_eligible > 0 and not statutory_settings.esi_employer_code:
             recommendations.append("Configure ESI employer code for eligible employees")
+        if statutory_settings and statutory_settings.esi_enabled and self._calculate_esi_compliance_score() < 100:
+            recommendations.append("Complete ESI IP enrollment for all ESI-eligible employees")
         
         # Check PT setup
-        pt_applicable = employees.filter(base_salary__gte=15000).count()
-        if pt_applicable > 0 and (not statutory_settings or not statutory_settings.pt_registration_number):
+        if statutory_settings and statutory_settings.pt_enabled and not statutory_settings.pt_registration_number:
             recommendations.append("Set up Professional Tax registration")
         
         # Check TDS setup
-        tds_applicable = employees.filter(base_salary__gte=250000).count()
-        if tds_applicable > 0 and (not statutory_settings or not statutory_settings.tan_number):
+        if statutory_settings and statutory_settings.tds_enabled and not statutory_settings.tan_number:
             recommendations.append("Configure TAN number for TDS compliance")
         
         # Check for unresolved alerts
@@ -437,10 +473,16 @@ class AdvancedReportGenerator:
         if unresolved_alerts > 0:
             recommendations.append(f"Resolve {unresolved_alerts} pending compliance alerts")
         
-        # If no specific issues, provide general recommendations
-        if not recommendations:
+        if not statutory_settings or not any([
+            statutory_settings.pf_enabled,
+            statutory_settings.esi_enabled,
+            statutory_settings.pt_enabled,
+            statutory_settings.tds_enabled,
+        ]):
+            recommendations.append("Enable and configure only the statutory schemes applicable to this company")
+        elif not recommendations:
             recommendations = [
-                "All statutory compliances are properly configured",
+                "Configured statutory schemes have no current system-detected issues",
                 "Continue monitoring monthly compliance requirements",
                 "Review employee salary changes for compliance impact"
             ]

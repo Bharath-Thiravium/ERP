@@ -24,68 +24,13 @@ from .government_serializers import (
 @permission_classes([permissions.AllowAny])
 @handle_compliance_errors
 def submit_to_government_portal(request):
-    """Submit return to government portal with enhanced security"""
+    """Reject direct filing until a verified government API is configured."""
     session_key = secure_session_check(request)
-    session = safe_get_session(session_key)
-    company = session.service_user.company
-    
-    # Validate and sanitize input data
-    serializer = GovernmentSubmissionSerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    data = serializer.validated_data
-    return_id = int(data['return_id'])  # Ensure integer
-    portal_type = SecurityValidator.sanitize_input(data['portal_type'])
-    
-    # Get government return
-    try:
-        gov_return = GovernmentReturn.objects.get(id=return_id, company=company)
-    except GovernmentReturn.DoesNotExist:
-        return Response({'error': 'Return not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Initialize portal integration
-    portal_integration = GovernmentPortalIntegration(company)
-    
-    # Submit based on portal type
-    if portal_type == 'epfo':
-        response = portal_integration.submit_pf_ecr(gov_return.return_data)
-    elif portal_type == 'esic':
-        response = portal_integration.submit_esi_return(gov_return.return_data)
-    elif portal_type == 'pt':
-        response = portal_integration.submit_pt_return(gov_return.return_data)
-    elif portal_type == 'income_tax':
-        response = portal_integration.submit_tds_return(gov_return.return_data)
-    else:
-        return Response({'error': 'Invalid portal type'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Create submission log
-    submission_log = SubmissionLog.objects.create(
-        company=company,
-        government_return=gov_return,
-        portal_name=portal_type.upper(),
-        submission_method='api',
-        acknowledgment_number=response.get('acknowledgment_number', ''),
-        submission_status='submitted' if response['status'] == 'success' else 'error',
-        response_data=response,
-        error_message=response.get('message', '') if response['status'] == 'error' else '',
-        submitted_at=timezone.now() if response['status'] == 'success' else None,
-        submitted_by=session.service_user
-    )
-    
-    # Update government return
-    if response['status'] == 'success':
-        gov_return.status = 'filed'
-        gov_return.filed_date = date.today()
-        gov_return.acknowledgment_number = response.get('acknowledgment_number', '')
-        gov_return.save()
-    
+    safe_get_session(session_key)
     return Response({
-        'status': response['status'],
-        'message': response.get('message', ''),
-        'acknowledgment_number': response.get('acknowledgment_number', ''),
-        'submission_log_id': submission_log.id
-    })
+        'error': 'Direct government portal filing is not configured.',
+        'detail': 'File on the official portal, then record the official acknowledgment number and filed date under Government Returns.',
+    }, status=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @api_view(['POST'])
@@ -93,41 +38,13 @@ def submit_to_government_portal(request):
 @permission_classes([permissions.AllowAny])
 @handle_compliance_errors
 def check_submission_status(request):
-    """Check status of submitted return with enhanced security"""
+    """Reject remote status checks until a verified portal API is configured."""
     session_key = secure_session_check(request)
-    session = safe_get_session(session_key)
-    company = session.service_user.company
-    
-    # Validate and sanitize input data
-    serializer = StatusCheckSerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    data = serializer.validated_data
-    acknowledgment_number = SecurityValidator.sanitize_input(data['acknowledgment_number'])
-    return_type = SecurityValidator.sanitize_input(data['return_type'])
-    
-    # Initialize portal integration
-    portal_integration = GovernmentPortalIntegration(company)
-    
-    # Check status
-    response = portal_integration.check_submission_status(acknowledgment_number, return_type)
-    
-    # Update submission log if found
-    try:
-        submission_log = SubmissionLog.objects.get(
-            company=company,
-            acknowledgment_number=acknowledgment_number
-        )
-        submission_log.submission_status = response.get('status', 'pending')
-        submission_log.response_data.update(response)
-        if response.get('status') == 'processed':
-            submission_log.processed_at = timezone.now()
-        submission_log.save()
-    except SubmissionLog.DoesNotExist:
-        pass
-    
-    return Response(response)
+    safe_get_session(session_key)
+    return Response({
+        'error': 'Government portal status integration is not configured.',
+        'detail': 'Verify the status on the official portal and update the return with its official filing details.',
+    }, status=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @api_view(['POST'])
@@ -135,54 +52,13 @@ def check_submission_status(request):
 @permission_classes([permissions.AllowAny])
 @handle_compliance_errors
 def generate_challan(request):
-    """Generate payment challan with enhanced security"""
+    """Reject synthetic challans until official generation is integrated."""
     session_key = secure_session_check(request)
-    session = safe_get_session(session_key)
-    company = session.service_user.company
-    
-    # Validate and sanitize input data
-    return_id = request.data.get('return_id')
-    challan_type = request.data.get('challan_type')
-    
-    if not return_id or not challan_type:
-        return Response({'error': 'Return ID and challan type are required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    return_id = int(return_id)  # Ensure integer
-    challan_type = SecurityValidator.sanitize_input(challan_type)
-    
-    # Get government return
-    try:
-        gov_return = GovernmentReturn.objects.get(id=return_id, company=company)
-    except GovernmentReturn.DoesNotExist:
-        return Response({'error': 'Return not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Initialize portal integration
-    portal_integration = GovernmentPortalIntegration(company)
-    
-    # Generate challan
-    challan_data = portal_integration.download_challan(
-        challan_type, 
-        f"{gov_return.period_month:02d}/{gov_return.period_year}"
-    )
-    
-    # Create challan record
-    challan = ChallanGeneration.objects.create(
-        company=company,
-        government_return=gov_return,
-        challan_number=challan_data['challan_number'],
-        challan_type=challan_type,
-        amount=gov_return.total_contribution,
-        due_date=gov_return.due_date,
-        bank_details=challan_data.get('bank_details', {})
-    )
-    
+    safe_get_session(session_key)
     return Response({
-        'challan_id': challan.id,
-        'challan_number': challan.challan_number,
-        'amount': challan.amount,
-        'due_date': challan.due_date,
-        'bank_details': challan.bank_details
-    })
+        'error': 'Official challan generation is not configured.',
+        'detail': 'Generate the challan on the official portal and retain its official reference as filing evidence.',
+    }, status=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @api_view(['GET'])

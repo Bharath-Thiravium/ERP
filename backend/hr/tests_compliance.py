@@ -2,12 +2,13 @@
 Comprehensive test suite for HR compliance system
 """
 from django.test import TestCase
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from datetime import date, datetime
 
 from authentication.models import Company, CompanyServiceUser
-from .models import Employee
+from .models import Department, Designation, Employee
 from .statutory_models import StatutorySettings, EmployeeStatutoryDetails
 from .statutory_calculations import StatutoryCalculator
 from .compliance_validators import ComplianceValidators, DataIntegrityValidator
@@ -81,21 +82,47 @@ class StatutoryCalculatorTests(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        self.user = User.objects.create_user(
+            username="statutory-test-admin",
+            email="statutory-admin@test.com",
+        )
         self.company = Company.objects.create(
             name="Test Company",
-            email="test@company.com"
+            company_prefix="STATTEST",
+            email="test@company.com",
+            created_by=self.user,
+        )
+        self.department = Department.objects.create(
+            company=self.company,
+            name="Compliance",
+            code="COMP",
+        )
+        self.designation = Designation.objects.create(
+            company=self.company,
+            department=self.department,
+            title="Compliance Executive",
+            code="COMP-EXEC",
         )
         
         self.statutory_settings = StatutorySettings.objects.create(
             company=self.company,
             pf_enabled=True,
+            pf_establishment_code="TESTPF001",
             pf_employee_rate=Decimal('12.00'),
             pf_employer_rate=Decimal('12.00'),
             pf_ceiling=Decimal('15000'),
             esi_enabled=True,
+            esi_employer_code="TESTESI001",
             esi_employee_rate=Decimal('0.75'),
             esi_employer_rate=Decimal('3.25'),
-            esi_ceiling=Decimal('21000')
+            esi_ceiling=Decimal('21000'),
+            pt_enabled=True,
+            pt_registration_number="TESTPT001",
+            pt_state="Tamil Nadu",
+            pt_slabs=[
+                {'min_salary': 0, 'max_salary': 10000, 'amount': 0},
+                {'min_salary': 10000.01, 'max_salary': None, 'amount': 200},
+            ],
         )
         
         self.employee = Employee.objects.create(
@@ -104,7 +131,14 @@ class StatutoryCalculatorTests(TestCase):
             first_name="John",
             last_name="Doe",
             email="john@test.com",
+            department=self.department,
+            designation=self.designation,
+            date_of_joining=date.today(),
             base_salary=Decimal('25000')
+        )
+        EmployeeStatutoryDetails.objects.create(
+            employee=self.employee,
+            uan_number="123456789012",
         )
         
         self.calculator = StatutoryCalculator(self.company)
@@ -144,9 +178,27 @@ class StatutoryCalculatorTests(TestCase):
             Decimal('25000')  # gross_salary
         )
         
-        self.assertGreater(result['professional_tax'], 0)
-        self.assertEqual(result['state'], 'Maharashtra')
-        self.assertIn('Above', result['pt_slab'])
+        self.assertEqual(result['professional_tax'], Decimal('200.00'))
+        self.assertEqual(result['state'], 'Tamil Nadu')
+        self.assertIn('and above', result['pt_slab'])
+
+    def test_new_high_salary_employee_is_not_auto_enrolled_in_pf(self):
+        employee = Employee.objects.create(
+            company=self.company,
+            employee_id="EMP002",
+            first_name="High",
+            last_name="Salary",
+            email="high.salary@test.com",
+            department=self.department,
+            designation=self.designation,
+            date_of_joining=date.today(),
+            base_salary=Decimal('50000'),
+        )
+
+        result = self.calculator.calculate_pf(employee, Decimal('30000'), 30, 30)
+
+        self.assertFalse(result['eligible'])
+        self.assertEqual(result['employee_pf'], Decimal('0'))
     
     def test_invalid_input_handling(self):
         """Test handling of invalid inputs"""
@@ -164,18 +216,44 @@ class ComplianceIntegrationTests(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        self.user = User.objects.create_user(
+            username="compliance-integration-admin",
+            email="compliance-admin@test.com",
+        )
         self.company = Company.objects.create(
             name="Integration Test Company",
-            email="integration@test.com"
+            company_prefix="COMPTEST",
+            email="integration@test.com",
+            created_by=self.user,
+        )
+        self.department = Department.objects.create(
+            company=self.company,
+            name="Compliance",
+            code="COMP",
+        )
+        self.designation = Designation.objects.create(
+            company=self.company,
+            department=self.department,
+            title="Compliance Executive",
+            code="COMP-EXEC",
         )
         
         # Create statutory settings
         StatutorySettings.objects.create(
             company=self.company,
             pf_enabled=True,
+            pf_establishment_code="TESTPF002",
             esi_enabled=True,
+            esi_employer_code="TESTESI002",
             pt_enabled=True,
-            tds_enabled=True
+            pt_registration_number="TESTPT002",
+            pt_state="Tamil Nadu",
+            pt_slabs=[
+                {'min_salary': 0, 'max_salary': 10000, 'amount': 0},
+                {'min_salary': 10000.01, 'max_salary': None, 'amount': 200},
+            ],
+            tds_enabled=True,
+            tan_number="ABCD12345E",
         )
     
     def test_end_to_end_compliance_flow(self):
@@ -187,6 +265,9 @@ class ComplianceIntegrationTests(TestCase):
             first_name="Integration",
             last_name="Test",
             email="integration@employee.com",
+            department=self.department,
+            designation=self.designation,
+            date_of_joining=date.today(),
             base_salary=Decimal('30000')
         )
         
@@ -207,7 +288,7 @@ class ComplianceIntegrationTests(TestCase):
         # Verify results
         self.assertTrue(pf_result['eligible'])
         self.assertFalse(esi_result['eligible'])  # Above ESI ceiling
-        self.assertGreater(pt_result['professional_tax'], 0)
+        self.assertEqual(pt_result['professional_tax'], Decimal('200.00'))
 
 
 class SecurityTests(TestCase):

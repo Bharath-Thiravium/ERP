@@ -3,8 +3,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from authentication.models import Company
 from .models import Employee
-from .compliance_engine import ComplianceEngine, AutomatedReporting
-from .government_integration import GovernmentPortalIntegration
+from .compliance_engine import ComplianceEngine
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,45 +23,35 @@ def run_compliance_checks():
 
 @shared_task
 def generate_monthly_ecr():
-    """Generate monthly ECR for all companies"""
-    companies = Company.objects.filter(is_active=True)
-    
-    for company in companies:
-        try:
-            reporting = AutomatedReporting(company)
-            ecr_report = reporting._generate_ecr_report()
-            logger.info(f"Generated ECR report for {company.name}")
-        except Exception as e:
-            logger.error(f"Error generating ECR for {company.name}: {str(e)}")
+    """Direct users to the approved-payslip government return workflow."""
+    logger.warning(
+        "Legacy scheduled ECR generation is disabled. Generate PF ECR from "
+        "Statutory > Government Returns after payroll approval."
+    )
+    return {'status': 'disabled', 'reason': 'approved_payroll_required'}
 
 @shared_task
 def generate_monthly_esi_report():
-    """Generate monthly ESI report for all companies"""
-    companies = Company.objects.filter(is_active=True)
-    
-    for company in companies:
-        try:
-            reporting = AutomatedReporting(company)
-            esi_report = reporting._generate_esi_report()
-            logger.info(f"Generated ESI report for {company.name}")
-        except Exception as e:
-            logger.error(f"Error generating ESI report for {company.name}: {str(e)}")
+    """Direct users to the approved-payslip government return workflow."""
+    logger.warning(
+        "Legacy scheduled ESI generation is disabled. Generate the ESI return "
+        "from Statutory > Government Returns after payroll approval."
+    )
+    return {'status': 'disabled', 'reason': 'approved_payroll_required'}
 
 @shared_task
 def submit_government_returns():
-    """Submit returns to government portals"""
-    companies = Company.objects.filter(is_active=True)
-    
-    for company in companies:
-        try:
-            # Submit returns via government portal integration
-            portal = GovernmentPortalIntegration(company)
-            epfo_result = portal.submit_pf_ecr({})
-            esic_result = portal.submit_esi_return({})
-            
-            logger.info(f"Submitted returns for {company.name}")
-        except Exception as e:
-            logger.error(f"Error submitting returns for {company.name}: {str(e)}")
+    """Keep filing explicit until an approved government API is configured.
+
+    Returns are generated in the dashboard and marked filed only after the user
+    records the official portal acknowledgment. An unattended task must never
+    claim that a statutory return was submitted.
+    """
+    logger.warning(
+        "Automatic government return submission is disabled. Generate the "
+        "return, file it on the official portal, and record its acknowledgment."
+    )
+    return {'status': 'disabled', 'reason': 'official_acknowledgment_required'}
 
 @shared_task
 def send_compliance_reminders():
@@ -83,8 +72,24 @@ def send_compliance_reminders():
                 subject = f"Compliance Reminders - {company.name}"
                 message = f"You have {len(alerts)} pending compliance items."
                 
-                # Get HR admin emails (mock implementation)
-                hr_emails = ['hr@company.com']  # Replace with actual HR emails
+                hr_emails = list(
+                    company.service_users.filter(
+                        service__name__icontains='human',
+                        is_active=True,
+                        role__in=['admin', 'manager'],
+                    ).exclude(email='').values_list('email', flat=True).distinct()
+                )
+                if not hr_emails:
+                    hr_emails = [
+                        email for email in [company.contact_person_email, company.email]
+                        if email
+                    ]
+                if not hr_emails:
+                    logger.warning(
+                        "Skipped compliance reminder for %s: no HR/company email configured",
+                        company.name,
+                    )
+                    continue
                 
                 send_mail(
                     subject,
@@ -143,45 +148,42 @@ def generate_compliance_reports():
 
 @shared_task
 def sync_employee_data():
-    """Sync employee data with government portals"""
-    companies = Company.objects.filter(is_active=True)
-    
-    for company in companies:
-        try:
-            employees = Employee.objects.filter(company=company, is_active=True)
-            
-            for employee in employees:
-                # Sync via government portal integration
-                portal = GovernmentPortalIntegration(company)
-                # Employee sync functionality would be implemented here
-            
-            logger.info(f"Synced employee data for {company.name}")
-        except Exception as e:
-            logger.error(f"Error syncing employee data for {company.name}: {str(e)}")
+    """Report that government employee sync is unavailable.
+
+    This task previously logged a successful sync without transmitting data.
+    """
+    logger.warning(
+        "Government employee sync is disabled because no approved connector is configured."
+    )
+    return {'status': 'disabled', 'reason': 'connector_not_configured'}
 
 @shared_task
 def validate_statutory_calculations():
     """Validate statutory calculations for accuracy"""
-    from .statutory_calculations import EnhancedStatutoryCalculations
+    from .statutory_calculations import StatutoryCalculator
     
     companies = Company.objects.filter(is_active=True)
     
     for company in companies:
         try:
-            calculator = EnhancedStatutoryCalculations(company)
-            employees = Employee.objects.filter(company=company, is_active=True)
+            calculator = StatutoryCalculator(company)
+            employees = Employee.objects.filter(company=company, status='active')
             
             validation_errors = []
             
             for employee in employees:
                 # Validate PF calculation
-                pf_result = calculator.calculate_pf(employee.basic_salary, employee)
-                if pf_result['employee_contribution'] < 0:
+                pf_result = calculator.calculate_pf(employee, employee.base_salary)
+                if pf_result['employee_pf'] < 0 or pf_result['employer_pf'] < 0:
                     validation_errors.append(f"Invalid PF calculation for {employee.first_name}")
                 
                 # Validate ESI calculation
-                esi_result = calculator.calculate_esi(employee.gross_salary, employee)
-                if esi_result['employee_contribution'] < 0:
+                esi_result = calculator.calculate_esi(
+                    employee,
+                    employee.base_salary,
+                    eligibility_wages=employee.base_salary,
+                )
+                if esi_result['employee_esi'] < 0 or esi_result['employer_esi'] < 0:
                     validation_errors.append(f"Invalid ESI calculation for {employee.first_name}")
             
             if validation_errors:
@@ -208,26 +210,12 @@ def cleanup_old_alerts():
 
 @shared_task
 def update_statutory_rates():
-    """Update statutory rates from government sources"""
-    from .statutory_models import StatutorySettings
-    
-    try:
-        # Mock implementation - in production, fetch from government APIs
-        companies = Company.objects.filter(is_active=True)
-        
-        for company in companies:
-            settings = StatutorySettings.objects.filter(company=company).first()
-            if settings:
-                # Update rates (mock values)
-                settings.pf_employee_rate = 12.0
-                settings.pf_employer_rate = 12.0
-                settings.esi_employee_rate = 0.75
-                settings.esi_employer_rate = 3.25
-                settings.save()
-        
-        logger.info("Updated statutory rates for all companies")
-    except Exception as e:
-        logger.error(f"Error updating statutory rates: {str(e)}")
+    """Never overwrite company-approved statutory rates with mock values."""
+    logger.warning(
+        "Automatic statutory rate updates are disabled. Rates require an "
+        "authoritative source review and company approval."
+    )
+    return {'status': 'disabled', 'reason': 'authoritative_source_required'}
 
 # Form Automation Tasks
 @shared_task

@@ -32,6 +32,15 @@ const OfferManagement: React.FC<OfferManagementProps> = ({
     notes: ''
   })
 
+  const getErrorMessage = (value: unknown): string => {
+    if (typeof value === 'string') return value
+    if (Array.isArray(value)) return value.map(getErrorMessage).filter(Boolean).join(' ')
+    if (value && typeof value === 'object') {
+      return Object.values(value).map(getErrorMessage).filter(Boolean).join(' ')
+    }
+    return ''
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!sessionKey || !application) return
@@ -54,12 +63,7 @@ const OfferManagement: React.FC<OfferManagementProps> = ({
       onClose()
     } catch (error: any) {
       console.error('Error sending offer:', error)
-      const detail = error.response?.data?.detail
-      const message = typeof detail === 'string'
-        ? detail
-        : detail && typeof detail === 'object'
-          ? Object.values(detail).flat().join(' ')
-          : 'Failed to send offer'
+      const message = getErrorMessage(error.response?.data) || 'Failed to send offer'
       toast.error(message)
     } finally {
       setLoading(false)
@@ -184,7 +188,11 @@ const OfferManagement: React.FC<OfferManagementProps> = ({
               disabled={loading}
               className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
             >
-              {loading ? 'Sending...' : 'Send Offer'}
+              {loading
+                ? 'Sending...'
+                : application.status === 'offer_sent'
+                  ? 'Resend Offer'
+                  : 'Send Offer'}
             </Button>
           </div>
         </form>

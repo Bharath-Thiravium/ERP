@@ -480,6 +480,24 @@ class JobApplication(models.Model):
     interview_date = models.DateTimeField(null=True, blank=True)
     interview_notes = models.TextField(blank=True)
     interviewer = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name='application_interviews')
+
+    # Recruitment-to-employee audit trail. The application is retained even
+    # when the employee record is later removed.
+    converted_employee = models.OneToOneField(
+        Employee,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='source_job_application',
+    )
+    converted_at = models.DateTimeField(null=True, blank=True)
+    converted_by = models.ForeignKey(
+        CompanyServiceUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='converted_job_applications',
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1091,28 +1109,6 @@ class Payslip(models.Model):
         self.validate_deductions()
         super().save(*args, **kwargs)
     
-    def calculate_professional_tax(self):
-        """Calculate state-wise professional tax"""
-        # Maharashtra PT slab
-        if self.gross_salary <= 5000:
-            return 0
-        elif self.gross_salary <= 10000:
-            return 175
-        else:
-            return 200
-    
-    def calculate_tds(self, annual_salary):
-        """Simplified TDS calculation"""
-        if annual_salary <= 250000:
-            return 0
-        elif annual_salary <= 500000:
-            return (annual_salary - 250000) * 0.05
-        elif annual_salary <= 1000000:
-            return 12500 + (annual_salary - 500000) * 0.20
-        else:
-            return 112500 + (annual_salary - 1000000) * 0.30
-
-
 class PayrollReport(models.Model):
     """Payroll reports and analytics"""
     REPORT_TYPES = [

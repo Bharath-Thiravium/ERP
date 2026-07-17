@@ -128,18 +128,18 @@ const CandidatePipeline: React.FC = () => {
     <div className="space-y-6">
       {/* Job Selection Header */}
       <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Candidate Pipeline</h2>
           <div className="text-sm text-gray-500 dark:text-gray-400">
             {selectedJobId ? `${filteredApplications.length} candidates for selected job` : `${applications.length} total candidates`}
           </div>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Select Job Posting:</label>
           <select
             value={selectedJobId || ''}
             onChange={(e) => setSelectedJobId(e.target.value ? parseInt(e.target.value) : null)}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white sm:w-auto"
           >
             <option value="">All Job Postings</option>
             {jobPostings.map((job) => (
@@ -159,13 +159,13 @@ const CandidatePipeline: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {pipelineStages.map((stage) => {
           const stageApplications = getApplicationsByStatus(stage.key)
           const Icon = stage.icon
           
           return (
-            <Card key={stage.key} className="min-w-[280px] w-[280px] bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
+            <Card key={stage.key} className="min-w-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center justify-between text-sm">
                   <div className="flex items-center space-x-2">

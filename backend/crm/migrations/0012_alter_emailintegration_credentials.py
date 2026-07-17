@@ -10,8 +10,27 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql="ALTER TABLE crm_emailintegration ALTER COLUMN credentials TYPE bytea USING credentials::text::bytea;",
-            reverse_sql="ALTER TABLE crm_emailintegration ALTER COLUMN credentials TYPE jsonb USING credentials::text::jsonb;"
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql=(
+                        "ALTER TABLE crm_emailintegration "
+                        "ALTER COLUMN credentials TYPE bytea "
+                        "USING credentials::text::bytea;"
+                    ),
+                    reverse_sql=(
+                        "ALTER TABLE crm_emailintegration "
+                        "ALTER COLUMN credentials TYPE jsonb "
+                        "USING credentials::text::jsonb;"
+                    ),
+                ),
+            ],
+            state_operations=[
+                migrations.AlterField(
+                    model_name='emailintegration',
+                    name='credentials',
+                    field=models.BinaryField(),
+                ),
+            ],
         ),
     ]

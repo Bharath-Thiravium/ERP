@@ -1,16 +1,39 @@
 import React, { useState, useEffect } from 'react'
-import { Users, UserPlus, Building, TrendingUp, CheckCircle, AlertTriangle, BarChart3 } from 'lucide-react'
+import { Users, UserPlus, Building, TrendingUp, CheckCircle, AlertTriangle, BarChart3, Briefcase, FileText, IndianRupee, X } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import EmployeeList from '../components/employees/EmployeeList'
 import EmployeeForm from '../components/employees/EmployeeForm'
 import EmployeeView from '../components/employees/EmployeeView'
 import MobileAccessManager from '../components/employees/MobileAccessManager'
-import { Employee } from '../types/hrTypes'
+import { Employee, EmployeeFormData } from '../types/hrTypes'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
 import api from '../../../../lib/api'
 
-const Employees: React.FC = () => {
+interface OnboardingRequest {
+  applicationId: number
+  offerId?: number
+}
+
+interface OnboardingPreview {
+  application_id: number
+  application_number: string
+  candidate_name: string
+  job_title: string
+  offer_status: string
+  annual_salary_offered: number
+  already_converted: boolean
+  employee?: Employee | null
+  resume_url?: string | null
+  initial_data: Partial<EmployeeFormData>
+}
+
+interface EmployeesProps {
+  onboardingRequest?: OnboardingRequest | null
+  onOnboardingHandled?: () => void
+}
+
+const Employees: React.FC<EmployeesProps> = ({ onboardingRequest, onOnboardingHandled }) => {
   const { sessionKey } = useServiceUserStore()
   const [showForm, setShowForm] = useState(false)
   const [showView, setShowView] = useState(false)
@@ -18,6 +41,11 @@ const Employees: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0)
   const [activeView, setActiveView] = useState('overview')
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [onboardingPreview, setOnboardingPreview] = useState<OnboardingPreview | null>(null)
+  const [onboardingLoading, setOnboardingLoading] = useState(false)
+  const [onboardingError, setOnboardingError] = useState('')
+  const [onboardingInitialData, setOnboardingInitialData] = useState<Partial<EmployeeFormData> | undefined>()
+  const [onboardingEndpoint, setOnboardingEndpoint] = useState<string | undefined>()
   const [stats, setStats] = useState({
     totalEmployees: 0,
     activeEmployees: 0,
@@ -71,9 +99,35 @@ const Employees: React.FC = () => {
     fetchEmployeeStats()
   }, [sessionKey, refreshKey])
 
+  useEffect(() => {
+    if (!onboardingRequest?.applicationId || !sessionKey) return
+    const fetchOnboardingPreview = async () => {
+      setOnboardingLoading(true)
+      setOnboardingError('')
+      setActiveView('list')
+      try {
+        const response = await api.get(
+          `/api/hr/recruitment/onboarding/${onboardingRequest.applicationId}/`,
+          {
+            headers: { Authorization: `Bearer ${sessionKey}` },
+            params: { session_key: sessionKey }
+          }
+        )
+        setOnboardingPreview(response.data)
+      } catch (error: any) {
+        setOnboardingError(error.response?.data?.detail || 'Unable to load candidate onboarding details.')
+      } finally {
+        setOnboardingLoading(false)
+      }
+    }
+    fetchOnboardingPreview()
+  }, [onboardingRequest?.applicationId, sessionKey])
+
   const handleAddEmployee = () => {
     // Clear any existing employee data to ensure clean create form
     setSelectedEmployee(undefined)
+    setOnboardingInitialData(undefined)
+    setOnboardingEndpoint(undefined)
     setShowForm(true)
   }
 
@@ -89,8 +143,14 @@ const Employees: React.FC = () => {
   }
 
   const handleFormClose = () => {
+    const wasCandidateOnboarding = Boolean(onboardingEndpoint)
     setShowForm(false)
     setSelectedEmployee(undefined)
+    setOnboardingInitialData(undefined)
+    setOnboardingEndpoint(undefined)
+    if (wasCandidateOnboarding) {
+      onOnboardingHandled?.()
+    }
   }
 
   const handleViewClose = () => {
@@ -101,6 +161,27 @@ const Employees: React.FC = () => {
   const handleFormSave = (_employee: Employee) => {
     setRefreshKey(prev => prev + 1)
     fetchEmployeeStats()
+    if (onboardingEndpoint) {
+      setOnboardingPreview(null)
+      setOnboardingInitialData(undefined)
+      setOnboardingEndpoint(undefined)
+      onOnboardingHandled?.()
+    }
+  }
+
+  const closeOnboarding = () => {
+    setOnboardingPreview(null)
+    setOnboardingError('')
+    onOnboardingHandled?.()
+  }
+
+  const startCandidateConversion = () => {
+    if (!onboardingPreview || onboardingPreview.already_converted) return
+    setSelectedEmployee(undefined)
+    setOnboardingInitialData(onboardingPreview.initial_data)
+    setOnboardingEndpoint(`/api/hr/recruitment/onboarding/${onboardingPreview.application_id}/`)
+    setShowForm(true)
+    setOnboardingPreview(null)
   }
 
   const renderOverview = () => (
@@ -306,9 +387,50 @@ const Employees: React.FC = () => {
       {showForm && (
         <EmployeeForm
           employee={selectedEmployee}
+          initialData={onboardingInitialData}
+          createEndpoint={onboardingEndpoint}
           onClose={handleFormClose}
           onSave={handleFormSave}
         />
+      )}
+
+      {(onboardingLoading || onboardingError || onboardingPreview) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl dark:bg-gray-900">
+            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-950 dark:text-white">Candidate onboarding</h2>
+                <p className="text-sm text-gray-500">Review the accepted offer before creating an employee.</p>
+              </div>
+              <button onClick={closeOnboarding} className="rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-6">
+              {onboardingLoading ? (
+                <p className="py-10 text-center text-gray-500">Loading candidate details...</p>
+              ) : onboardingError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{onboardingError}</div>
+              ) : onboardingPreview && (
+                <div className="space-y-5">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700"><Users className="h-5 w-5 text-indigo-600" /><p className="mt-2 text-xs text-gray-500">Candidate</p><p className="font-semibold">{onboardingPreview.candidate_name}</p><p className="text-xs text-gray-500">{onboardingPreview.application_number}</p></div>
+                    <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700"><Briefcase className="h-5 w-5 text-indigo-600" /><p className="mt-2 text-xs text-gray-500">Position</p><p className="font-semibold">{onboardingPreview.job_title}</p></div>
+                    <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700"><IndianRupee className="h-5 w-5 text-indigo-600" /><p className="mt-2 text-xs text-gray-500">Annual offer</p><p className="font-semibold">₹{Number(onboardingPreview.annual_salary_offered).toLocaleString('en-IN')}</p></div>
+                  </div>
+                  {onboardingPreview.resume_url && <a href={onboardingPreview.resume_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 hover:underline"><FileText className="h-4 w-4" />Review candidate resume</a>}
+                  {onboardingPreview.already_converted ? (
+                    <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">This candidate is already linked to employee {onboardingPreview.employee?.employee_id || ''}.</div>
+                  ) : (
+                    <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600 dark:bg-gray-800 dark:text-gray-300">Candidate personal details, department, designation, joining date and offered salary will be prefilled. HR can verify and complete statutory, bank and emergency details before saving.</div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+              <Button variant="outline" onClick={closeOnboarding}>Close</Button>
+              {onboardingPreview && !onboardingPreview.already_converted && <Button onClick={startCandidateConversion}>Create Employee Profile</Button>}
+            </div>
+          </div>
+        </div>
       )}
       
       {showView && selectedEmployee && (

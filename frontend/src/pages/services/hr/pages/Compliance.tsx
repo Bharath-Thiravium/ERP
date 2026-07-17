@@ -1,81 +1,54 @@
 import React, { useState } from 'react'
-import { Shield, BarChart3, Settings, Link, FileText, History } from 'lucide-react'
+import { BarChart3, ShieldCheck } from 'lucide-react'
 import ComplianceDashboard from '../components/compliance/ComplianceDashboard'
 import AdvancedReports from '../components/compliance/AdvancedReports'
-import AutomationCenter from '../components/compliance/AutomationCenter'
-import IntegrationHub from '../components/compliance/IntegrationHub'
-import MonthlyForms from '../components/compliance/MonthlyForms'
-import Configuration from '../components/compliance/Configuration'
-import FormHistory from '../components/compliance/FormHistory'
 
 const Compliance: React.FC = () => {
-  const [activeView, setActiveView] = useState('dashboard')
-
+  const [activeView, setActiveView] = useState<'dashboard' | 'reports'>('dashboard')
   const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: Shield },
-    { id: 'configuration', label: 'Configuration', icon: Settings },
-    { id: 'monthly-forms', label: 'Monthly Forms', icon: FileText },
-    { id: 'form-history', label: 'Form History', icon: History },
-    { id: 'reports', label: 'Reports', icon: BarChart3 },
-    { id: 'automation', label: 'Automation', icon: Settings },
-    { id: 'integration', label: 'Integration', icon: Link }
+    { id: 'dashboard' as const, label: 'Compliance Review', icon: ShieldCheck },
+    { id: 'reports' as const, label: 'Reports', icon: BarChart3 }
   ]
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 shadow-xl">
-        <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-blue-50 p-2 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+            <ShieldCheck className="h-6 w-6" />
+          </div>
           <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-              Compliance Management
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
-              Advanced compliance monitoring and automation platform
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Compliance Management</h1>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              Review statutory configuration, payroll evidence, returns and unresolved alerts.
             </p>
           </div>
-          <div className="p-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl">
-            <Shield className="h-8 w-8 text-white" />
-          </div>
         </div>
       </div>
 
-      {/* Premium Navigation Tabs */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-2 shadow-xl">
-        <div className="flex space-x-2">
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            const isActive = activeView === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveView(tab.id)}
-                className={`flex items-center px-6 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  isActive
-                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-white'
-                }`}
-              >
-                <Icon className={`h-4 w-4 mr-2 ${isActive ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
+      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          const active = activeView === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveView(tab.id)}
+              className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium ${
+                active
+                  ? 'border-blue-600 text-blue-700 dark:text-blue-300'
+                  : 'border-transparent text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {tab.label}
+            </button>
+          )
+        })}
       </div>
 
-      {/* Content Container */}
-      <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 shadow-xl overflow-hidden">
-        <div className="p-6">
-          {activeView === 'dashboard' && <ComplianceDashboard />}
-          {activeView === 'configuration' && <Configuration />}
-          {activeView === 'monthly-forms' && <MonthlyForms />}
-          {activeView === 'form-history' && <FormHistory />}
-          {activeView === 'reports' && <AdvancedReports />}
-          {activeView === 'automation' && <AutomationCenter />}
-          {activeView === 'integration' && <IntegrationHub />}
-        </div>
-      </div>
+      {activeView === 'dashboard' ? <ComplianceDashboard /> : <AdvancedReports />}
     </div>
   )
 }

@@ -430,7 +430,7 @@ PSQL_PATH = config('PSQL_PATH', default='/usr/bin/psql')
 DJANGO_VERSION = '5.2.6'
 
 # Frontend URL for email links
-FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3001')
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:8004')
 
 # Celery Configuration
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Save, Settings, Shield, Calculator, Percent } from 'lucide-react'
+import { Save, Settings, Shield, Calculator, Percent, Plus, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../../components/ui/Card'
 import { Button } from '../../../../../components/ui/Button'
 import { useServiceUserStore } from '../../../../../store/serviceUserStore'
@@ -26,6 +26,11 @@ interface StatutoryPayrollSettingsData {
   pt_registration_number: string
   pt_state: string
   pt_enabled: boolean
+  pt_slabs: Array<{
+    min_salary: number
+    max_salary: number | null
+    amount: number
+  }>
   // TDS Settings
   tan_number: string
   tds_circle: string
@@ -44,25 +49,26 @@ const StatutoryPayrollSettings: React.FC = () => {
   const [settings, setSettings] = useState<StatutoryPayrollSettingsData>({
     pf_establishment_code: '',
     pf_extension_code: '',
-    pf_enabled: true,
+    pf_enabled: false,
     pf_employee_rate: 12.00,
     pf_employer_rate: 12.00,
     pf_ceiling: 15000,
     esi_employer_code: '',
     esi_local_office: '',
-    esi_enabled: true,
+    esi_enabled: false,
     esi_employee_rate: 0.75,
     esi_employer_rate: 3.25,
     esi_ceiling: 21000,
     pt_registration_number: '',
     pt_state: 'Maharashtra',
-    pt_enabled: true,
+    pt_enabled: false,
+    pt_slabs: [],
     tan_number: '',
     tds_circle: '',
-    tds_enabled: true,
+    tds_enabled: false,
     working_hours_per_day: 8,
     working_days_per_week: 6,
-    overtime_enabled: true,
+    overtime_enabled: false,
     overtime_rate_multiplier: 2.00
   })
 
@@ -80,7 +86,11 @@ const StatutoryPayrollSettings: React.FC = () => {
         params: { session_key: sessionKey }
       })
       if (response.data.results && response.data.results.length > 0) {
-        setSettings(response.data.results[0])
+        setSettings(previous => ({
+          ...previous,
+          ...response.data.results[0],
+          pt_slabs: response.data.results[0].pt_slabs || []
+        }))
       }
     } catch (error) {
       console.error('Error fetching settings:', error)
@@ -101,9 +111,13 @@ const StatutoryPayrollSettings: React.FC = () => {
         headers: { Authorization: `Bearer ${sessionKey}` }
       })
       toast.success('Statutory & Payroll settings saved successfully')
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving settings:', error)
-      toast.error('Failed to save settings')
+      const responseData = error?.response?.data
+      const firstError = responseData && typeof responseData === 'object'
+        ? Object.values(responseData).flat().find(Boolean)
+        : null
+      toast.error(String(firstError || responseData?.error || 'Failed to save settings'))
     } finally {
       setSaving(false)
     }
@@ -113,9 +127,57 @@ const StatutoryPayrollSettings: React.FC = () => {
     setSettings(prev => ({ ...prev, [field]: value }))
   }
 
+  const toggleProfessionalTax = () => {
+    setSettings(prev => ({
+      ...prev,
+      pt_enabled: !prev.pt_enabled,
+      pt_slabs: !prev.pt_enabled && prev.pt_slabs.length === 0
+        ? [{ min_salary: 0, max_salary: null, amount: 0 }]
+        : prev.pt_slabs
+    }))
+  }
+
+  const addPtSlab = () => {
+    setSettings(prev => {
+      const newSlab = { min_salary: 0, max_salary: null, amount: 0 }
+      const openEndedIndex = prev.pt_slabs.findIndex(slab => slab.max_salary === null)
+
+      return {
+        ...prev,
+        pt_slabs: openEndedIndex === -1
+          ? [...prev.pt_slabs, newSlab]
+          : [
+              ...prev.pt_slabs.slice(0, openEndedIndex),
+              newSlab,
+              ...prev.pt_slabs.slice(openEndedIndex)
+            ]
+      }
+    })
+  }
+
+  const updatePtSlab = (
+    index: number,
+    field: 'min_salary' | 'max_salary' | 'amount',
+    value: number | null
+  ) => {
+    setSettings(prev => ({
+      ...prev,
+      pt_slabs: prev.pt_slabs.map((slab, slabIndex) => (
+        slabIndex === index ? { ...slab, [field]: value } : slab
+      ))
+    }))
+  }
+
+  const removePtSlab = (index: number) => {
+    setSettings(prev => ({
+      ...prev,
+      pt_slabs: prev.pt_slabs.filter((_, slabIndex) => slabIndex !== index)
+    }))
+  }
+
   const stateOptions = [
     'Maharashtra', 'Karnataka', 'West Bengal', 'Assam', 'Gujarat',
-    'Tamil Nadu', 'Delhi', 'Uttar Pradesh', 'Rajasthan', 'Madhya Pradesh'
+    'Tamil Nadu'
   ]
 
   if (loading) {
@@ -344,7 +406,7 @@ const StatutoryPayrollSettings: React.FC = () => {
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Professional Tax</span>
               <button
-                onClick={() => updateSetting('pt_enabled', !settings.pt_enabled)}
+                onClick={toggleProfessionalTax}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                   settings.pt_enabled ? 'bg-purple-500' : 'bg-gray-300 dark:bg-gray-600'
                 }`}
@@ -382,6 +444,68 @@ const StatutoryPayrollSettings: React.FC = () => {
                 ))}
               </select>
             </div>
+
+            {settings.pt_enabled && (
+              <div className="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Monthly Salary Slabs</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Enter only company-verified state PT slabs.</p>
+                  </div>
+                  <Button type="button" variant="outline" onClick={addPtSlab}>
+                    <Plus className="h-4 w-4 mr-1" /> Add Slab
+                  </Button>
+                </div>
+
+                {settings.pt_slabs.map((slab, index) => (
+                  <div key={index} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Min Salary</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={slab.min_salary}
+                        onChange={(event) => updatePtSlab(index, 'min_salary', Number(event.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Max Salary</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={slab.max_salary ?? ''}
+                        placeholder="No limit"
+                        onChange={(event) => updatePtSlab(
+                          index,
+                          'max_salary',
+                          event.target.value === '' ? null : Number(event.target.value)
+                        )}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">PT Amount</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={slab.amount}
+                        onChange={(event) => updatePtSlab(index, 'amount', Number(event.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removePtSlab(index)}
+                      className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
+                      title="Remove slab"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -492,11 +616,11 @@ const StatutoryPayrollSettings: React.FC = () => {
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">Statutory Compliance Information</h4>
         <ul className="text-sm text-blue-600 dark:text-blue-400 space-y-1">
-          <li>• PF: Mandatory for employees earning above ₹15,000/month</li>
-          <li>• ESI: Applicable for employees earning up to ₹21,000/month</li>
-          <li>• Professional Tax: State-specific tax with different slabs</li>
-          <li>• TDS: Income tax deducted at source based on annual salary</li>
-          <li>• All calculations follow current Indian labor law compliance</li>
+          <li>• Enable only the schemes registered for this company and enter the official registration numbers.</li>
+          <li>• PF membership and wage ceiling are evaluated from employee statutory details and configured limits.</li>
+          <li>• ESI eligibility uses regular monthly wages; the default configured ceiling is ₹21,000.</li>
+          <li>• Professional Tax uses the company-verified monthly salary slabs entered above; the system does not guess state rates.</li>
+          <li>• TDS is an estimate from payroll inputs. Verify generated returns before filing on the official portal.</li>
         </ul>
       </div>
     </div>

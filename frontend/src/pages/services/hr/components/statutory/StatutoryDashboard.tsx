@@ -127,7 +127,7 @@ const StatutoryDashboard: React.FC = () => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Compliance Status</p>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Configuration Readiness</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
                   {data.compliance_summary.compliance_percentage}%
                 </p>
@@ -145,7 +145,7 @@ const StatutoryDashboard: React.FC = () => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Compliant Items</p>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Configured Schemes</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
                   {data.compliance_summary.compliant_items}/{data.compliance_summary.total_items}
                 </p>

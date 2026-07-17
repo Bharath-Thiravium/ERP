@@ -21,12 +21,81 @@ class StatutorySettingsSerializer(serializers.ModelSerializer):
             'pf_employee_rate', 'pf_employer_rate', 'pf_ceiling',
             'esi_employer_code', 'esi_local_office', 'esi_enabled',
             'esi_employee_rate', 'esi_employer_rate', 'esi_ceiling',
-            'pt_registration_number', 'pt_state', 'pt_enabled',
-            'tan_number', 'tds_circle', 'tds_enabled',
+            'pt_registration_number', 'pt_state', 'pt_enabled', 'pt_slabs',
+            'tan_number', 'tds_circle', 'tds_enabled', 'overtime_enabled',
             'working_hours_per_day', 'working_days_per_week', 'overtime_rate_multiplier',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        def current_value(field, default=None):
+            if field in attrs:
+                return attrs[field]
+            if self.instance is not None:
+                return getattr(self.instance, field, default)
+            return default
+
+        errors = {}
+        required_when_enabled = (
+            ('pf_enabled', 'pf_establishment_code', 'PF establishment code'),
+            ('esi_enabled', 'esi_employer_code', 'ESI employer code'),
+            ('pt_enabled', 'pt_registration_number', 'PT registration number'),
+            ('tds_enabled', 'tan_number', 'TAN number'),
+        )
+        for enabled_field, registration_field, label in required_when_enabled:
+            if current_value(enabled_field, False) and not str(current_value(registration_field, '') or '').strip():
+                errors[registration_field] = f'{label} is required when this scheme is enabled.'
+
+        pt_slabs = current_value('pt_slabs', []) or []
+        if current_value('pt_enabled', False) and not pt_slabs:
+            errors['pt_slabs'] = 'Add at least one company-verified PT salary slab.'
+        previous_max = None
+        for index, slab in enumerate(pt_slabs):
+            try:
+                minimum = float(slab.get('min_salary', 0))
+                maximum_value = slab.get('max_salary')
+                maximum = float(maximum_value) if maximum_value not in (None, '') else None
+                amount = float(slab.get('amount', -1))
+            except (AttributeError, TypeError, ValueError):
+                errors['pt_slabs'] = f'PT slab {index + 1} contains invalid values.'
+                break
+            if minimum < 0 or amount < 0 or (maximum is not None and maximum < minimum):
+                errors['pt_slabs'] = f'PT slab {index + 1} has an invalid salary range or amount.'
+                break
+            if previous_max is not None and minimum <= previous_max:
+                errors['pt_slabs'] = 'PT salary slabs must be ordered and must not overlap.'
+                break
+            if maximum is None and index != len(pt_slabs) - 1:
+                errors['pt_slabs'] = 'An open-ended PT salary slab must be the final slab.'
+                break
+            previous_max = maximum
+
+        for field in ('pf_employee_rate', 'pf_employer_rate', 'esi_employee_rate', 'esi_employer_rate'):
+            value = current_value(field)
+            if value is not None and (value < 0 or value > 100):
+                errors[field] = 'Rate must be between 0 and 100 percent.'
+
+        for field in ('pf_ceiling', 'esi_ceiling'):
+            value = current_value(field)
+            if value is not None and value <= 0:
+                errors[field] = 'Ceiling must be greater than zero.'
+
+        working_hours = current_value('working_hours_per_day')
+        if working_hours is not None and not 1 <= working_hours <= 24:
+            errors['working_hours_per_day'] = 'Working hours must be between 1 and 24.'
+
+        working_days = current_value('working_days_per_week')
+        if working_days is not None and not 1 <= working_days <= 7:
+            errors['working_days_per_week'] = 'Working days must be between 1 and 7.'
+
+        overtime_rate = current_value('overtime_rate_multiplier')
+        if overtime_rate is not None and overtime_rate < 1:
+            errors['overtime_rate_multiplier'] = 'Overtime multiplier must be at least 1.'
+
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
 
 class EmployeeStatutoryDetailsSerializer(serializers.ModelSerializer):
@@ -205,7 +274,7 @@ class ProfessionalTaxReturnSerializer(serializers.Serializer):
     """Serializer for Professional Tax return generation"""
     period_month = serializers.IntegerField(min_value=1, max_value=12)
     period_year = serializers.IntegerField(min_value=2020, max_value=2030)
-    state = serializers.CharField(max_length=50)
+    state = serializers.CharField(max_length=50, required=False, allow_blank=True)
     include_employees = serializers.ListField(
         child=serializers.IntegerField(),
         required=False,
@@ -214,9 +283,9 @@ class ProfessionalTaxReturnSerializer(serializers.Serializer):
 
 
 class TDS24QSerializer(serializers.Serializer):
-    """Serializer for TDS 24Q return generation"""
-    quarter = serializers.IntegerField(min_value=1, max_value=4)
-    financial_year = serializers.CharField(max_length=10, help_text="Format: 2023-24")
+    """Serializer for monthly TDS payroll data used to prepare Form 24Q."""
+    period_month = serializers.IntegerField(min_value=1, max_value=12)
+    period_year = serializers.IntegerField(min_value=2020, max_value=2030)
     include_employees = serializers.ListField(
         child=serializers.IntegerField(),
         required=False,

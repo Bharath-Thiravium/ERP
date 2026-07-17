@@ -8,8 +8,6 @@ from authentication.models import ServiceUserSession
 from .models import Employee
 from .compliance_engine import ComplianceEngine
 from .advanced_reports import AdvancedReportGenerator
-from .tasks import run_compliance_checks, generate_monthly_ecr
-import json
 
 class ComplianceViewSet(viewsets.ViewSet):
     """Advanced compliance management views"""
@@ -268,9 +266,10 @@ class AdvancedReportsViewSet(viewsets.ViewSet):
             end_date = datetime.now()
             start_date = end_date - timedelta(days=180)
             
-            # Monthly alert trends
+            # Monthly alert trends. Historical scores cannot be reconstructed from
+            # current alerts without a stored monthly snapshot, so do not invent
+            # them from alert counts.
             alert_trends = []
-            monthly_scores = []
             
             for i in range(6):
                 month_start = end_date - timedelta(days=30 * (5-i))
@@ -282,17 +281,9 @@ class AdvancedReportsViewSet(viewsets.ViewSet):
                     created_at__lt=month_end
                 ).count()
                 
-                # Calculate compliance score (100 - alerts_count, min 60)
-                score = max(60, 100 - (alerts_count * 5))
-                
                 alert_trends.append({
                     'month': month_start.strftime('%b'),
                     'alerts': alerts_count
-                })
-                
-                monthly_scores.append({
-                    'month': month_start.strftime('%b'),
-                    'score': score
                 })
             
             # Category scores based on real compliance status
@@ -307,9 +298,10 @@ class AdvancedReportsViewSet(viewsets.ViewSet):
             }
             
             trends_data = {
-                'monthly_scores': monthly_scores,
+                'monthly_scores': [],
                 'category_scores': category_scores,
-                'alert_trends': alert_trends
+                'alert_trends': alert_trends,
+                'note': 'Monthly compliance scores require stored period snapshots and are not inferred from alert counts.'
             }
             
             return Response(trends_data)
@@ -317,7 +309,7 @@ class AdvancedReportsViewSet(viewsets.ViewSet):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class AutomationViewSet(viewsets.ViewSet):
-    """Automation and task management views"""
+    """Compatibility endpoints for automation features not yet configured."""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
     
@@ -328,10 +320,22 @@ class AutomationViewSet(viewsets.ViewSet):
         if not session_key and self.request.method in ['POST', 'PUT', 'PATCH']:
             session_key = self.request.data.get('session_key')
         return session_key
+
+    def unavailable(self):
+        return Response(
+            {
+                'error': 'Statutory automation is not configured.',
+                'detail': 'Generate returns and record official filing details from Statutory > Government Returns.'
+            },
+            status=status.HTTP_501_NOT_IMPLEMENTED,
+        )
     
     @action(detail=False, methods=['post'])
     def trigger_ecr_generation(self, request):
         """Manually trigger ECR generation"""
+        return self.unavailable()
+
+        # Retained below only for compatibility with older deployments.
         try:
             # Trigger async task
             task = generate_monthly_ecr.delay()
@@ -346,20 +350,27 @@ class AutomationViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def trigger_compliance_check(self, request):
         """Manually trigger compliance check"""
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+
         try:
-            # Trigger async task
-            task = run_compliance_checks.delay()
-            
+            session = ServiceUserSession.objects.get(session_key=session_key, is_active=True)
+            alerts = ComplianceEngine(session.service_user.company).run_compliance_checks()
             return Response({
-                'message': 'Compliance check triggered',
-                'task_id': task.id
+                'message': f'Compliance check completed with {len(alerts)} unresolved finding(s).',
+                'alerts_count': len(alerts),
             })
+        except ServiceUserSession.DoesNotExist:
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['get'])
     def task_status(self, request):
         """Get task status"""
+        return self.unavailable()
+
         try:
             from celery.result import AsyncResult
             
@@ -381,6 +392,8 @@ class AutomationViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def create_task(self, request):
         """Create a new automation task"""
+        return self.unavailable()
+
         session_key = self.get_session_key()
         if not session_key:
             return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -440,6 +453,8 @@ class AutomationViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def scheduled_tasks(self, request):
         """Get scheduled tasks status"""
+        return self.unavailable()
+
         session_key = self.get_session_key()
         if not session_key:
             return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -497,6 +512,8 @@ class AutomationViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['post'])
     def toggle_task(self, request, pk=None):
         """Toggle task on/off"""
+        return self.unavailable()
+
         session_key = self.get_session_key()
         if not session_key:
             return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -516,6 +533,8 @@ class AutomationViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['get'])
     def task_settings(self, request, pk=None):
         """Get task settings"""
+        return self.unavailable()
+
         session_key = self.get_session_key()
         if not session_key:
             return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -561,33 +580,26 @@ class IntegrationViewSet(viewsets.ViewSet):
             company = session.service_user.company
             
             from .statutory_models import StatutorySettings
-            from datetime import datetime, timedelta
-            
             statutory_settings = StatutorySettings.objects.filter(company=company).first()
-            now = datetime.now()
-            
-            # Real portal status based on company settings
-            portal_status = {
-                'epfo': {
-                    'status': 'Connected' if statutory_settings and statutory_settings.pf_establishment_code else 'Disconnected',
-                    'last_sync': 'Never synced' if not statutory_settings or not statutory_settings.pf_establishment_code else 'Configuration only',
-                    'next_sync': 'Setup required' if not statutory_settings or not statutory_settings.pf_establishment_code else 'Manual sync available'
-                },
-                'esic': {
-                    'status': 'Connected' if statutory_settings and statutory_settings.esi_employer_code else 'Disconnected',
-                    'last_sync': 'Never synced' if not statutory_settings or not statutory_settings.esi_employer_code else 'Configuration only',
-                    'next_sync': 'Setup required' if not statutory_settings or not statutory_settings.esi_employer_code else 'Manual sync available'
-                },
-                'income_tax': {
-                    'status': 'Connected' if statutory_settings and statutory_settings.tan_number else 'Disconnected',
-                    'last_sync': 'Never synced' if not statutory_settings or not statutory_settings.tan_number else 'Configuration only',
-                    'next_sync': 'Setup required' if not statutory_settings or not statutory_settings.tan_number else 'Manual sync available'
-                },
-                'professional_tax': {
-                    'status': 'Connected' if statutory_settings and statutory_settings.pt_registration_number else 'Disconnected',
-                    'last_sync': 'Never synced' if not statutory_settings or not statutory_settings.pt_registration_number else 'Configuration only',
-                    'next_sync': 'Setup required' if not statutory_settings or not statutory_settings.pt_registration_number else 'Manual sync available'
+
+            def portal_details(configured):
+                return {
+                    'status': 'Not integrated',
+                    'configured': configured,
+                    'last_sync': None,
+                    'next_sync': None,
+                    'message': (
+                        'Registration details are configured; filing is manual.'
+                        if configured else
+                        'Configure statutory registration details before generating returns.'
+                    ),
                 }
+
+            portal_status = {
+                'epfo': portal_details(bool(statutory_settings and statutory_settings.pf_establishment_code)),
+                'esic': portal_details(bool(statutory_settings and statutory_settings.esi_employer_code)),
+                'income_tax': portal_details(bool(statutory_settings and statutory_settings.tan_number)),
+                'professional_tax': portal_details(bool(statutory_settings and statutory_settings.pt_registration_number)),
             }
             
             return Response(portal_status)
@@ -597,19 +609,18 @@ class IntegrationViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def sync_portal(self, request):
         """Manually sync with government portal"""
-        try:
-            portal = request.data.get('portal')
-            if not portal:
-                return Response({'error': 'portal is required'}, 
-                              status=status.HTTP_400_BAD_REQUEST)
-            
-            # Mock sync operation
-            return Response({
-                'message': f'Sync initiated for {portal}',
-                'status': 'In Progress'
-            })
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        session_key = self.get_session_key()
+        if not session_key:
+            return Response({'error': 'Session key required'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not ServiceUserSession.objects.filter(session_key=session_key, is_active=True).exists():
+            return Response({'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response(
+            {
+                'error': 'Direct government portal sync is not configured.',
+                'detail': 'File through the official portal, then record the acknowledgment number and filing date.'
+            },
+            status=status.HTTP_501_NOT_IMPLEMENTED,
+        )
     
     @action(detail=False, methods=['get'])
     def submission_history(self, request):
@@ -643,23 +654,9 @@ class IntegrationViewSet(viewsets.ViewSet):
                     'type': return_obj.get_return_type_display(),
                     'portal': portal_map.get(return_obj.return_type, 'Unknown'),
                     'status': return_obj.status.title(),
-                    'reference': return_obj.acknowledgment_number or f"{return_obj.return_type.upper()}{return_obj.period_year}{return_obj.period_month:02d}{return_obj.id:03d}"
+                    'reference': return_obj.acknowledgment_number or ''
                 })
-            
-            # If no real data, provide sample data
-            if not submissions:
-                from datetime import datetime
-                now = datetime.now()
-                submissions = [
-                    {
-                        'date': now.strftime('%Y-%m-%d'),
-                        'type': 'PF ECR',
-                        'portal': 'EPFO',
-                        'status': 'Generated',
-                        'reference': f'ECR{now.year}{now.month:02d}001'
-                    }
-                ]
-            
+
             return Response(submissions)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

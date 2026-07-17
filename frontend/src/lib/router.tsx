@@ -25,6 +25,7 @@ const EmployeeApp = React.lazy(() => import('../pages/EmployeeApp'))
 const JobPortal = React.lazy(() => import('../pages/public/JobPortal'))
 const JobApplication = React.lazy(() => import('../pages/public/JobApplication'))
 const PublicJobDetail = React.lazy(() => import('../pages/public/PublicJobDetail'))
+const OfferResponse = React.lazy(() => import('../pages/public/OfferResponse'))
 
 
 // Protected Route Component
@@ -191,6 +192,7 @@ export const AppRouter: React.FC = () => {
   return (
     <Routes>
       {/* Public Routes */}
+      <Route path="/offers/:token" element={<SuspenseWrapper><OfferResponse /></SuspenseWrapper>} />
       <Route
         path="/login"
         element={

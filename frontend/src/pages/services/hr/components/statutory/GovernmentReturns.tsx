@@ -21,7 +21,7 @@ interface GovernmentReturn {
   total_wages: number
   total_contribution: number
   acknowledgment_number: string
-  return_data?: any
+  return_data?: Record<string, unknown>
 }
 
 const GovernmentReturns: React.FC = () => {
@@ -37,6 +37,12 @@ const GovernmentReturns: React.FC = () => {
   })
   const [viewModalVisible, setViewModalVisible] = useState(false)
   const [selectedReturn, setSelectedReturn] = useState<GovernmentReturn | null>(null)
+  const [filingReturn, setFilingReturn] = useState<GovernmentReturn | null>(null)
+  const [recordingFiling, setRecordingFiling] = useState(false)
+  const [filingForm, setFilingForm] = useState({
+    acknowledgment_number: '',
+    filed_date: new Date().toISOString().slice(0, 10)
+  })
 
   useEffect(() => {
     fetchReturns()
@@ -103,7 +109,7 @@ const GovernmentReturns: React.FC = () => {
       fetchReturns()
     } catch (error: any) {
       console.error('Error generating return:', error)
-      toast.error('Failed to generate return')
+      toast.error(error.response?.data?.error || 'Failed to generate return')
     } finally {
       setGenerating(false)
     }
@@ -125,21 +131,38 @@ const GovernmentReturns: React.FC = () => {
     }
   }
 
-  const handleSubmitReturn = async (returnId: number) => {
-    if (!sessionKey) return
-    
+  const handleRecordFiling = async () => {
+    if (!sessionKey || !filingReturn) return
+
     try {
-      const response = await api.post(`/api/hr/government-returns/${returnId}/submit_return/`, {
-        session_key: sessionKey
+      setRecordingFiling(true)
+      const response = await api.post(`/api/hr/government-returns/${filingReturn.id}/submit_return/`, {
+        ...filingForm,
+        session_key: sessionKey,
       }, {
         headers: { Authorization: `Bearer ${sessionKey}` }
       })
       toast.success(response.data.message)
-      fetchReturns()
+      setFilingReturn(null)
+      setFilingForm({
+        acknowledgment_number: '',
+        filed_date: new Date().toISOString().slice(0, 10)
+      })
+      await fetchReturns()
     } catch (error: any) {
-      console.error('Error submitting return:', error)
-      toast.error('Failed to submit return')
+      console.error('Error recording filing:', error)
+      toast.error(error.response?.data?.error || 'Failed to record filing')
+    } finally {
+      setRecordingFiling(false)
     }
+  }
+
+  const openFilingModal = (returnItem: GovernmentReturn) => {
+    setFilingReturn(returnItem)
+    setFilingForm({
+      acknowledgment_number: '',
+      filed_date: new Date().toISOString().slice(0, 10)
+    })
   }
 
   const getStatusColor = (status: string) => {
@@ -310,10 +333,10 @@ const GovernmentReturns: React.FC = () => {
                       </Button>
                       <Button 
                         size="sm"
-                        onClick={() => handleSubmitReturn(returnItem.id)}
+                        onClick={() => openFilingModal(returnItem)}
                       >
                         <Send className="h-4 w-4 mr-1" />
-                        Submit
+                        Record Filing
                       </Button>
                     </>
                   )}
@@ -496,13 +519,82 @@ const GovernmentReturns: React.FC = () => {
               </Button>
               {selectedReturn.status === 'generated' && (
                 <Button onClick={() => {
-                  handleSubmitReturn(selectedReturn.id)
+                  openFilingModal(selectedReturn)
                   setViewModalVisible(false)
                 }}>
                   <Send className="h-4 w-4 mr-2" />
-                  Submit Return
+                  Record Filing
                 </Button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {filingReturn && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Record Government Filing</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  File on the official portal first, then record its acknowledgment here.
+                </p>
+              </div>
+              <button
+                onClick={() => setFilingReturn(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-lg bg-gray-50 dark:bg-gray-700 p-3 text-sm text-gray-700 dark:text-gray-200">
+                {filingReturn.return_type_display} · {monthNames[filingReturn.period_month - 1]} {filingReturn.period_year}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Portal Acknowledgment Number *
+                </label>
+                <input
+                  type="text"
+                  value={filingForm.acknowledgment_number}
+                  onChange={(event) => setFilingForm((current) => ({
+                    ...current,
+                    acknowledgment_number: event.target.value
+                  }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  placeholder="Enter official portal ACK number"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Filed Date *
+                </label>
+                <input
+                  type="date"
+                  max={new Date().toISOString().slice(0, 10)}
+                  value={filingForm.filed_date}
+                  onChange={(event) => setFilingForm((current) => ({
+                    ...current,
+                    filed_date: event.target.value
+                  }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <Button variant="outline" onClick={() => setFilingReturn(null)} disabled={recordingFiling}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleRecordFiling}
+                disabled={recordingFiling || !filingForm.acknowledgment_number.trim() || !filingForm.filed_date}
+              >
+                {recordingFiling ? 'Recording...' : 'Record Filing'}
+              </Button>
             </div>
           </div>
         </div>

@@ -40,7 +40,6 @@ const AttendancePage = React.lazy(() => import('./Attendance'))
 const LeaveManagementPage = React.lazy(() => import('./LeaveManagement'))
 const CompliancePage = React.lazy(() => import('./Compliance'))
 const StatutoryPage = React.lazy(() => import('./Statutory'))
-const GovernmentPortalPage = React.lazy(() => import('./GovernmentPortal'))
 const AnalyticsPage = React.lazy(() => import('./Analytics'))
 const SystemStatusPage = React.lazy(() => import('../components/system/SystemStatus'))
 const HRSettingsPage = React.lazy(() => import('../components/settings/HRSettings'))
@@ -66,6 +65,7 @@ const HRDashboard: React.FC = () => {
   const [companyData, setCompanyData] = useState<any>(null)
   const [notifications, setNotifications] = useState<any[]>([])
   const [showNotifications, setShowNotifications] = useState(false)
+  const [candidateOnboarding, setCandidateOnboarding] = useState<{ applicationId: number; offerId?: number } | null>(null)
   // Password data state removed as it's not used
   // Removed unused isChangingPassword state
 
@@ -122,7 +122,6 @@ const HRDashboard: React.FC = () => {
     { id: 'leave', label: 'Leave Management', icon: Calendar },
     { id: 'compliance', label: 'Compliance', icon: Shield },
     { id: 'statutory', label: 'Statutory', icon: FileText },
-    { id: 'government-portal', label: 'Government Portal', icon: Shield },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'system-status', label: 'System Status', icon: CheckCircle },
     { id: 'settings', label: 'Settings', icon: Settings }
@@ -220,6 +219,17 @@ const HRDashboard: React.FC = () => {
     setShowNotifications(false)
     if (notification.metadata?.navigate_to === 'hr-leave') {
       setActiveTab('leave')
+    } else if (notification.metadata?.navigate_to === 'hr-candidate-onboarding') {
+      const applicationId = Number(notification.metadata?.application_id)
+      if (applicationId) {
+        setCandidateOnboarding({
+          applicationId,
+          offerId: notification.metadata?.offer_id ? Number(notification.metadata.offer_id) : undefined
+        })
+        setActiveTab('employees')
+      }
+    } else if (notification.metadata?.navigate_to === 'hr-recruitment') {
+      setActiveTab('recruitment')
     }
   }
 
@@ -475,7 +485,10 @@ const HRDashboard: React.FC = () => {
       case 'employees':
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
-            <EmployeesPage />
+            <EmployeesPage
+              onboardingRequest={candidateOnboarding}
+              onOnboardingHandled={() => setCandidateOnboarding(null)}
+            />
           </React.Suspense>
         )
       case 'recruitment':
@@ -510,12 +523,6 @@ const HRDashboard: React.FC = () => {
         return (
           <React.Suspense fallback={<LoadingSpinner size="lg" />}>
             <StatutoryPage />
-          </React.Suspense>
-        )
-      case 'government-portal':
-        return (
-          <React.Suspense fallback={<LoadingSpinner size="lg" />}>
-            <GovernmentPortalPage />
           </React.Suspense>
         )
       case 'analytics':

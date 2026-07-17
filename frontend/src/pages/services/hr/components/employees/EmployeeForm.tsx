@@ -23,6 +23,8 @@ import toast from 'react-hot-toast'
 
 interface EmployeeFormProps {
   employee?: Employee
+  initialData?: Partial<EmployeeFormData>
+  createEndpoint?: string
   onClose: () => void
   onSave: (employee: Employee) => void
 }
@@ -80,7 +82,7 @@ const getMediaUrl = (url?: string | null) => {
   return url
 }
 
-const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }) => {
+const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, initialData, createEndpoint, onClose, onSave }) => {
   const { sessionKey } = useServiceUserStore()
   const [loading, setLoading] = useState(false)
   const [departments, setDepartments] = useState<Department[]>([])
@@ -142,13 +144,16 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     local_city: employee?.local_city || '',
     local_state: employee?.local_state || '',
     local_pincode: employee?.local_pincode || '',
-    local_country: employee?.local_country || 'India'
+    local_country: employee?.local_country || 'India',
+    ...(!employee && initialData ? initialData : {})
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [profilePreview, setProfilePreview] = useState<string | null>(null)
   const [facePreview, setFacePreview] = useState<string | null>(null)
-  const [skillsText, setSkillsText] = useState<string>('')
+  const [skillsText, setSkillsText] = useState<string>(
+    !employee && Array.isArray(initialData?.skills) ? initialData.skills.join(', ') : ''
+  )
   const [ifscLookupLoading, setIfscLookupLoading] = useState(false)
   const [ifscLookupMessage, setIfscLookupMessage] = useState<string | null>(null)
   
@@ -272,14 +277,15 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
         local_city: '',
         local_state: '',
         local_pincode: '',
-        local_country: 'India'
+        local_country: 'India',
+        ...(initialData || {})
       })
       setProfilePreview(null)
       setFacePreview(null)
-      setSkillsText('')
+      setSkillsText(Array.isArray(initialData?.skills) ? initialData.skills.join(', ') : '')
       setErrors({})
     }
-  }, [employee])
+  }, [employee, initialData])
   const [showCamera, setShowCamera] = useState(false)
   const [loadingDropdowns, setLoadingDropdowns] = useState(false)
 
@@ -435,7 +441,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ employee, onClose, onSave }
     try {
       const url = employee 
         ? `/api/hr/employees/${employee.id}/`
-        : '/api/hr/employees/'
+        : (createEndpoint || '/api/hr/employees/')
       
       const method = employee ? 'put' : 'post'
       

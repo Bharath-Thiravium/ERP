@@ -1,6 +1,9 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.conf import settings
+from django.utils.html import escape
+import uuid
 from .models import JobApplication
 
 class JobOffer(models.Model):
@@ -15,6 +18,7 @@ class JobOffer(models.Model):
     ]
     
     application = models.OneToOneField(JobApplication, on_delete=models.CASCADE, related_name='offer')
+    response_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     
     # Offer Details
     salary_offered = models.DecimalField(max_digits=12, decimal_places=2)
@@ -34,6 +38,8 @@ class JobOffer(models.Model):
     # Response Details
     candidate_response = models.TextField(blank=True, help_text="Candidate's response/feedback")
     negotiation_notes = models.TextField(blank=True, help_text="Salary negotiation notes")
+    response_ip = models.GenericIPAddressField(null=True, blank=True)
+    response_user_agent = models.TextField(blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -76,6 +82,8 @@ class JobOffer(models.Model):
             company = self.application.job_posting.company
             candidate_name = self.application.full_name
             job_title = self.application.job_posting.title
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:8004')
+            response_url = f"{frontend_url.rstrip('/')}/offers/{self.response_token}"
             
             # Get company email service
             email_service = get_company_email_service(company)
@@ -93,32 +101,36 @@ class JobOffer(models.Model):
                 <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
                     <h2 style="color: #2c3e50;">Congratulations! Job Offer</h2>
                     
-                    <p>Dear <strong>{candidate_name}</strong>,</p>
+                    <p>Dear <strong>{escape(candidate_name)}</strong>,</p>
                     
-                    <p>We are pleased to offer you the position of <strong>{job_title}</strong> at {company.name}.</p>
+                    <p>We are pleased to offer you the position of <strong>{escape(job_title)}</strong> at {escape(company.name)}.</p>
                     
                     <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
                         <h3 style="margin-top: 0; color: #495057;">Offer Details:</h3>
                         <ul style="list-style: none; padding: 0;">
-                            <li style="margin: 8px 0;"><strong>Position:</strong> {job_title}</li>
+                            <li style="margin: 8px 0;"><strong>Position:</strong> {escape(job_title)}</li>
                             <li style="margin: 8px 0;"><strong>Salary:</strong> Rs.{self.salary_offered:,.2f} per annum</li>
                             <li style="margin: 8px 0;"><strong>Joining Date:</strong> {self.joining_date.strftime('%B %d, %Y') if hasattr(self.joining_date, 'strftime') else self.joining_date}</li>
                             <li style="margin: 8px 0;"><strong>Offer Valid Until:</strong> {self.offer_valid_until.strftime('%B %d, %Y') if hasattr(self.offer_valid_until, 'strftime') else self.offer_valid_until}</li>
                         </ul>
                     </div>
                     
-                    {f'<div style="background-color: #e8f5e8; padding: 15px; border-radius: 5px; margin: 20px 0;"><h4 style="margin-top: 0; color: #2d5a2d;">Benefits & Perks:</h4><p>{self.benefits}</p></div>' if self.benefits else ''}
+                    {f'<div style="background-color: #e8f5e8; padding: 15px; border-radius: 5px; margin: 20px 0;"><h4 style="margin-top: 0; color: #2d5a2d;">Benefits & Perks:</h4><p>{escape(self.benefits)}</p></div>' if self.benefits else ''}
                     
-                    {f'<div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0;"><h4 style="margin-top: 0; color: #856404;">Terms & Conditions:</h4><p>{self.terms_conditions}</p></div>' if self.terms_conditions else ''}
+                    {f'<div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0;"><h4 style="margin-top: 0; color: #856404;">Terms & Conditions:</h4><p>{escape(self.terms_conditions)}</p></div>' if self.terms_conditions else ''}
                     
-                    {f'<div style="background-color: #f0f8ff; padding: 15px; border-radius: 5px; margin: 20px 0;"><h4 style="margin-top: 0; color: #1e3a8a;">Additional Notes:</h4><p>{self.notes}</p></div>' if self.notes else ''}
+                    {f'<div style="background-color: #f0f8ff; padding: 15px; border-radius: 5px; margin: 20px 0;"><h4 style="margin-top: 0; color: #1e3a8a;">Additional Notes:</h4><p>{escape(self.notes)}</p></div>' if self.notes else ''}
                     
                     <p>We are excited about the possibility of you joining our team! Please let us know your decision by the offer validity date.</p>
+
+                    <div style="margin: 28px 0; text-align: center;">
+                        <a href="{response_url}" style="display: inline-block; background: #4f46e5; color: #fff; padding: 12px 22px; border-radius: 6px; text-decoration: none; font-weight: 600;">Review and respond to offer</a>
+                    </div>
                     
                     <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
                         <p style="margin: 0;"><strong>Best regards,</strong></p>
                         <p style="margin: 5px 0 0 0;">HR Team</p>
-                        <p style="margin: 5px 0 0 0;">{company.name}</p>
+                        <p style="margin: 5px 0 0 0;">{escape(company.name)}</p>
                     </div>
                 </div>
             </body>
@@ -141,6 +153,8 @@ Offer Details:
 Best regards,
 HR Team
 {company.name}
+
+Review and respond securely: {response_url}
             """
             
             # Send email using company email service

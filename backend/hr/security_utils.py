@@ -32,10 +32,15 @@ class SecurityValidator:
         """Validate file path to prevent path traversal"""
         if not file_path:
             return None
-        
-        # Remove any path traversal attempts
-        clean_path = re.sub(r'\.\./', '', file_path)
-        clean_path = re.sub(r'\.\.\\', '', clean_path)
+
+        if not isinstance(file_path, str):
+            raise ValidationError("Invalid file path")
+
+        normalized_path = file_path.replace('\\', '/')
+        if any(part == '..' for part in normalized_path.split('/')):
+            raise ValidationError("Path traversal is not allowed")
+
+        clean_path = normalized_path
         
         # Only allow safe characters
         if not re.match(r'^[a-zA-Z0-9_/.-]+$', clean_path):

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Filter, Eye, Edit, Trash2, Phone, Mail, User, Building, Target, Calendar, X } from 'lucide-react'
+import { Plus, Search, Filter, Eye, Edit, Trash2, Phone, Mail, User, Building, Target, Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button'
 import { LoadingSpinner } from '../../../../components/ui/LoadingSpinner'
 import { useServiceUserStore } from '../../../../store/serviceUserStore'
@@ -26,6 +26,7 @@ interface Lead {
 
 export const LeadsPage: React.FC = () => {
   const { sessionKey } = useServiceUserStore()
+  const pageSize = 20
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -33,6 +34,10 @@ export const LeadsPage: React.FC = () => {
   const [viewLead, setViewLead] = useState<Lead | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalLeads, setTotalLeads] = useState(0)
+  const [hasNextPage, setHasNextPage] = useState(false)
+  const [hasPreviousPage, setHasPreviousPage] = useState(false)
 
   const statusOptions = [
     { value: 'new', label: 'New', color: 'bg-blue-100 text-blue-800' },
@@ -55,13 +60,23 @@ export const LeadsPage: React.FC = () => {
 
 
   // Fetch leads
-  const fetchLeads = async () => {
+  const fetchLeads = async (page = currentPage) => {
     if (!sessionKey!) return
     
     try {
       setLoading(true)
-      const response = await crmApi.getLeads(sessionKey!)
-      setLeads(response.data.results || response.data)
+      const params: Record<string, string | number> = { page }
+      if (searchTerm.trim()) params.search = searchTerm.trim()
+      if (statusFilter !== 'all') params.status = statusFilter
+
+      const response = await crmApi.getLeads(sessionKey!, params)
+      const data = response.data
+      const results = data.results || data
+
+      setLeads(results)
+      setTotalLeads(typeof data.count === 'number' ? data.count : results.length)
+      setHasNextPage(Boolean(data.next))
+      setHasPreviousPage(Boolean(data.previous))
     } catch (error) {
       console.error('Error fetching leads:', error)
       toast.error('Failed to fetch leads')
@@ -71,16 +86,16 @@ export const LeadsPage: React.FC = () => {
   }
 
   useEffect(() => {
-    fetchLeads()
-  }, [sessionKey])
+    const timer = window.setTimeout(() => {
+      fetchLeads(currentPage)
+    }, searchTerm ? 300 : 0)
 
-  // Filter leads
-  const filteredLeads = leads.filter(lead => {
-    const matchesSearch = `${lead.first_name} ${lead.last_name} ${lead.email} ${lead.company_name}`
-      .toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || lead.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
+    return () => window.clearTimeout(timer)
+  }, [sessionKey, currentPage, searchTerm, statusFilter])
+
+  const totalPages = Math.max(1, Math.ceil(totalLeads / pageSize))
+  const startItem = totalLeads === 0 ? 0 : (currentPage - 1) * pageSize + 1
+  const endItem = totalLeads === 0 ? 0 : Math.min((currentPage - 1) * pageSize + leads.length, totalLeads)
 
   // Convert lead to opportunity
   const convertToOpportunity = async (leadId: number) => {
@@ -113,7 +128,11 @@ export const LeadsPage: React.FC = () => {
     try {
       await crmApi.deleteLead(sessionKey!, leadId)
       toast.success('Lead deleted successfully!')
-      fetchLeads()
+      if (leads.length === 1 && currentPage > 1) {
+        setCurrentPage(prev => prev - 1)
+      } else {
+        fetchLeads(currentPage)
+      }
     } catch (error) {
       console.error('Error deleting lead:', error)
       toast.error('Failed to delete lead')
@@ -161,7 +180,10 @@ export const LeadsPage: React.FC = () => {
                 type="text"
                 placeholder="Search leads..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value)
+                  setCurrentPage(1)
+                }}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
             </div>
@@ -169,7 +191,10 @@ export const LeadsPage: React.FC = () => {
           <div className="flex gap-2">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value)
+                setCurrentPage(1)
+              }}
               className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
             >
               <option value="all">All Status</option>
@@ -187,7 +212,7 @@ export const LeadsPage: React.FC = () => {
 
       {/* Leads Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredLeads.map((lead) => {
+        {leads.map((lead) => {
           const statusOption = statusOptions.find(s => s.value === lead.status)
           const priorityOption = priorityOptions.find(p => p.value === lead.priority)
           
@@ -334,7 +359,42 @@ export const LeadsPage: React.FC = () => {
         })}
       </div>
 
-      {filteredLeads.length === 0 && (
+      {leads.length > 0 && (
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 px-6 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Showing <span className="font-semibold text-gray-900 dark:text-white">{startItem}</span>
+              {' '}to <span className="font-semibold text-gray-900 dark:text-white">{endItem}</span>
+              {' '}of <span className="font-semibold text-gray-900 dark:text-white">{totalLeads}</span> leads
+            </p>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasPreviousPage}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasNextPage}
+                onClick={() => setCurrentPage(prev => prev + 1)}
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {leads.length === 0 && (
         <div className="text-center py-12">
           <User className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No leads found</h3>
@@ -358,7 +418,7 @@ export const LeadsPage: React.FC = () => {
           setShowCreateModal(false)
           setSelectedLead(null)
         }}
-        onSuccess={fetchLeads}
+        onSuccess={() => fetchLeads(currentPage)}
         lead={selectedLead}
       />
 
